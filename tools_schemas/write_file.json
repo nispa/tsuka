@@ -1,0 +1,19 @@
+{
+  "name": "write_file",
+  "description": "Crea un nuovo file o sovrascrive completamente un file esistente con il contenuto fornito.",
+  "requiredTier": "small",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "path": {
+        "type": "string",
+        "description": "Il percorso relativo o assoluto del file da creare/sovrascrivere."
+      },
+      "content": {
+        "type": "string",
+        "description": "Il contenuto completo da scrivere nel file."
+      }
+    },
+    "required": ["path", "content"]
+  }
+}

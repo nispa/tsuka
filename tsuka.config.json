@@ -1,0 +1,23 @@
+{
+  "activeProvider": "unsloth",
+  "providers": {
+    "ollama": {
+      "baseUrl": "http://localhost:11434/v1",
+      "model": "satgeze/qwenpaw-9b-heretic-1m:latest"
+    },
+    "openrouter": {
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "model": "meta-llama/llama-3.3-70b-instruct"
+    },
+    "unsloth": {
+      "baseUrl": "http://127.0.0.1:8888/v1",
+      "model": "satgeze-qwenpaw-9b-heretic-1m-latest-Q8_0"
+    }
+  },
+  "webSearch": {
+    "provider": "duckduckgo"
+  },
+  "activeRole": "developer",
+  "activeTrait": "creative",
+  "activeCharacter": "sensual_diva"
+}

@@ -1,0 +1,6 @@
+{
+  "name": "legal_research",
+  "displayName": "⚖️💻 Team Ricerca & Compliance (Ugo & Pippo)",
+  "description": "L'avvocato Ugo Cozzoli ricerca la conformità legale e le linee guida normative (GDPR) sul web, e Pippo le implementa nel software.",
+  "members": ["yes_lawyer", "pippo", "overseer"]
+}

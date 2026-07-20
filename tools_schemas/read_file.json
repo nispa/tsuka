@@ -1,0 +1,22 @@
+{
+  "name": "read_file",
+  "description": "Legge il contenuto di un file di testo. Permette anche di leggere solo un intervallo di righe specifico (1-based, inclusive).",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "path": {
+        "type": "string",
+        "description": "Il percorso relativo o assoluto del file da leggere."
+      },
+      "startLine": {
+        "type": "integer",
+        "description": "La riga iniziale da cui iniziare a leggere (1-indexed, opzionale)."
+      },
+      "endLine": {
+        "type": "integer",
+        "description": "La riga finale in cui terminare la lettura (1-indexed, inclusiva, opzionale)."
+      }
+    },
+    "required": ["path"]
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "name": "tsuka",
+  "version": "1.0.0",
+  "description": "TSUKA — TypeScript Unified Kit for Agents: multi-agent CLI harness",
+  "main": "dist/cli/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "dev": "tsx src/cli/index.ts",
+    "build": "tsc",
+    "start": "node dist/cli/index.js",
+    "test": "tsx tests/run_tests.ts",
+    "test:roles": "tsx tests/test_roles.ts",
+    "test:memory": "tsx tests/test_memory.ts"
+  },
+  "dependencies": {
+    "chalk": "^4.1.2",
+    "dotenv": "^16.4.5",
+    "highlight.js": "^11.11.1",
+    "marked": "^12.0.2",
+    "openai": "^4.52.7",
+    "ora": "^5.4.1",
+    "prompts": "^2.4.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.9",
+    "@types/prompts": "^2.4.9",
+    "tsx": "^4.16.2",
+    "typescript": "^5.5.3"
+  }
+}

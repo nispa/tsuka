@@ -1,0 +1,19 @@
+{
+  "name": "recall_memory",
+  "description": "Cerca nella memoria condivisa persistente i fatti salvati in precedenza (da qualsiasi agente e in qualsiasi sessione). Senza parametri mostra i ricordi più recenti; con 'query' cerca per parole chiave.",
+  "requiredTier": "small",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "description": "Parole chiave da cercare nei ricordi (opzionale; se omessa mostra i più recenti)."
+      },
+      "limit": {
+        "type": "integer",
+        "description": "Numero massimo di ricordi da restituire (opzionale, default 10, max 50)."
+      }
+    },
+    "required": []
+  }
+}

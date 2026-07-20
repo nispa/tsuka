@@ -1,0 +1,15 @@
+{
+  "name": "browse_url",
+  "description": "Visita un indirizzo web (URL) specifico e restituisce il contenuto testuale convertito in formato Markdown pulito. Utile per leggere documentazione, articoli o specifiche di codice online.",
+  "requiredTier": "small",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "url": {
+        "type": "string",
+        "description": "L'indirizzo URL completo da visitare (es. https://nodejs.org/en/about)."
+      }
+    },
+    "required": ["url"]
+  }
+}

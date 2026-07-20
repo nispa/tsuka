@@ -1,0 +1,15 @@
+{
+  "name": "delete_file",
+  "description": "Rimuove definitivamente un file dal file system.",
+  "requiredTier": "small",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "path": {
+        "type": "string",
+        "description": "Il percorso del file da eliminare."
+      }
+    },
+    "required": ["path"]
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "cyber_audit",
+  "displayName": "🛡️🦅🐦 Team Cybersecurity (Falco & Piccione)",
+  "description": "Falco analizza il sistema ed effettua l'hardening, mentre Piccione esegue controlli pignoli per trovare vulnerabilità.",
+  "members": ["falco", "piccione", "overseer"]
+}

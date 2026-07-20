@@ -1,0 +1,14 @@
+{
+  "name": "web_search",
+  "description": "Effettua una ricerca su internet per raccogliere informazioni in tempo reale e risposte aggiornate su notizie, documentazione o codice.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "description": "La frase o termine di ricerca da cercare sul web."
+      }
+    },
+    "required": ["query"]
+  }
+}

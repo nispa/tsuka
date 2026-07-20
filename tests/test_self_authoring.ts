@@ -1,0 +1,119 @@
+/**
+ * Test per il self-authoring dei tool (create_tool).
+ * Esecuzione: npx tsx tests/test_self_authoring.ts
+ */
+import * as fs from 'fs';
+import * as path from 'path';
+import { createDefaultRegistry } from '../src/tools/index';
+
+let passed = 0;
+let failed = 0;
+
+function check(id: string, condition: boolean, detail: string) {
+  if (condition) {
+    passed++;
+    console.log(`✔ ${id} PASS — ${detail}`);
+  } else {
+    failed++;
+    console.log(`✘ ${id} FAIL — ${detail}`);
+  }
+}
+
+async function main() {
+  console.log('=== Test Self-Authoring dei Tool ===\n');
+
+  const registry = await createDefaultRegistry();
+  const perm: any = { checkPermission: async () => true };
+  const implDir = path.resolve(process.cwd(), 'src', 'tools', 'impl');
+  const generatedPath = path.join(implDir, '__probe_tool.js');
+  const schemaPath = path.resolve(process.cwd(), 'tools_schemas', '__probe_tool.json');
+  const backupDir = path.resolve(process.cwd(), 'tools_backup');
+
+  // Pulizia pre-test
+  for (const p of [generatedPath, schemaPath]) {
+    if (fs.existsSync(p)) fs.unlinkSync(p);
+  }
+
+  try {
+    // --- X4.1: creazione di un tool valido + hot-register + esecuzione immediata ---
+    const createRes = await registry.executeTool('create_tool', {
+      name: '__probe_tool',
+      description: 'Tool di prova che concatena una stringa con il suo quadrato di lunghezza',
+      riskLevel: 'SAFE',
+      parameters: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'] },
+      executeBody: "const t = String(args.text || ''); return t + ':' + (t.length * t.length);"
+    }, perm);
+
+    check('X4.1a', createRes.success, `create_tool eseguito: ${createRes.output.split('\n')[0]}`);
+    check('X4.1b', fs.existsSync(generatedPath) && fs.existsSync(schemaPath), 'file .js e schema .json creati su disco');
+
+    // Hot-register: il tool è subito eseguibile senza riavvio
+    const useRes = await registry.executeTool('__probe_tool', { text: 'abc' }, perm);
+    check('X4.1c', useRes.success && useRes.output === 'abc:9', `hot-register: eseguito subito → "${useRes.output}"`);
+
+    // Lo schema è stato registrato correttamente
+    const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf-8'));
+    check('X4.1d', schema.name === '__probe_tool' && schema.requiredTier === 'small', 'schema JSON corretto');
+
+    // --- X4.2: blocklist di sicurezza ---
+    const blocked = await registry.executeTool('create_tool', {
+      name: '__evil_tool',
+      description: 'tenta di usare child_process',
+      executeBody: "const { execSync } = require('child_process'); return execSync('dir').toString();"
+    }, perm);
+    check('X4.2a', !blocked.success && /sicurezza/.test(blocked.output), 'child_process bloccato dalla policy');
+
+    const blocked2 = await registry.executeTool('create_tool', {
+      name: '__evil_tool2',
+      description: 'tenta eval',
+      executeBody: "return eval('1+1').toString();"
+    }, perm);
+    check('X4.2b', !blocked2.success, 'eval() bloccato dalla policy');
+
+    // --- X4.3: mai sovrascrivere tool core ---
+    const overwriteCore = await registry.executeTool('create_tool', {
+      name: 'read_file',
+      description: 'tenta di sovrascrivere un tool core',
+      executeBody: "return 'hacked';"
+    }, perm);
+    check('X4.3', !overwriteCore.success && /core/i.test(overwriteCore.output), 'sovrascrittura tool core rifiutata');
+
+    // --- X4.4: sovrascrittura di un generato → backup ---
+    await registry.executeTool('create_tool', {
+      name: '__probe_tool',
+      description: 'versione 2',
+      executeBody: "return 'v2';"
+    }, perm);
+    const backups = fs.existsSync(backupDir)
+      ? fs.readdirSync(backupDir).filter((f) => f.startsWith('__probe_tool.'))
+      : [];
+    check('X4.4', backups.length >= 1, `sovrascrittura con backup (${backups.length} backup)`);
+
+    // --- X4.5: codice sintatticamente rotto rifiutato ---
+    const broken = await registry.executeTool('create_tool', {
+      name: '__broken_tool',
+      description: 'sintassi rotta',
+      executeBody: "return {{{{;"
+    }, perm);
+    check('X4.5', !broken.success, 'codice con sintassi invalida rifiutato dalla sandbox');
+  } finally {
+    // Pulizia post-test
+    for (const p of [generatedPath, schemaPath]) {
+      if (fs.existsSync(p)) fs.unlinkSync(p);
+    }
+    if (fs.existsSync(backupDir)) {
+      for (const f of fs.readdirSync(backupDir)) {
+        if (f.startsWith('__probe_tool.')) fs.unlinkSync(path.join(backupDir, f));
+      }
+      if (fs.readdirSync(backupDir).length === 0) fs.rmdirSync(backupDir);
+    }
+  }
+
+  console.log(`\n=== Risultato: ${passed} passati, ${failed} falliti ===`);
+  process.exit(failed > 0 ? 1 : 0);
+}
+
+main().catch((err) => {
+  console.error('Errore fatale nel test:', err);
+  process.exit(1);
+});

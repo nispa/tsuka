@@ -1,0 +1,34 @@
+{
+  "name": "create_role",
+  "description": "Crea o aggiorna una nuova personalità o ruolo dell'agente salvandolo in un file JSON nella cartella 'roles/'. Consente l'auto-adattamento dell'agente.",
+  "requiredTier": "small",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "type": "string",
+        "description": "Il nome identificativo del file in minuscolo (es. 'lawyer')."
+      },
+      "displayName": {
+        "type": "string",
+        "description": "Il nome da visualizzare nella console con eventuali emoji (es. '⚖️ Avvocato')."
+      },
+      "description": {
+        "type": "string",
+        "description": "Una breve descrizione dello scopo e delle abilità del ruolo."
+      },
+      "systemPrompt": {
+        "type": "string",
+        "description": "Le istruzioni e direttive dettagliate sul carattere e sul comportamento del ruolo."
+      },
+      "allowedTools": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "I tool che questo ruolo è autorizzato ad usare (es. ['read_file', 'web_search'])."
+      }
+    },
+    "required": ["name", "displayName", "description", "systemPrompt", "allowedTools"]
+  }
+}

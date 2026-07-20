@@ -1,0 +1,15 @@
+{
+  "name": "save_memory",
+  "description": "Salva un fatto, una preferenza dell'utente o un'informazione importante nella memoria condivisa persistente. Il ricordo sarà visibile a tutti gli agenti e sarà preservato anche dopo la chiusura del programma. Usalo per informazioni utili a lungo termine (max 500 caratteri).",
+  "requiredTier": "small",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "content": {
+        "type": "string",
+        "description": "Il fatto o l'informazione da ricordare, in forma sintetica (max 500 caratteri)."
+      }
+    },
+    "required": ["content"]
+  }
+}

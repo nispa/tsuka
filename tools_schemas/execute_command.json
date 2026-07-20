@@ -1,0 +1,15 @@
+{
+  "name": "execute_command",
+  "description": "Esegue un comando o uno script PowerShell arbitrario su Windows. Fornisce streaming in tempo reale di stdout/stderr sulla console dell'utente. Questo tool consente modifiche complete al sistema ed è pericoloso.",
+  "requiredTier": "medium",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "command": {
+        "type": "string",
+        "description": "Il comando o lo script PowerShell da eseguire."
+      }
+    },
+    "required": ["command"]
+  }
+}
