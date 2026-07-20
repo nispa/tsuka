@@ -10,11 +10,13 @@ import { Agent } from '../../core/agent';
 /**
  * Rileva il protocollo di stato nei messaggi generati in un turno:
  * un membro dichiara il compito risolto scrivendo "STATO: COMPLETATO".
+ * Il marker deve stare a inizio riga (come richiesto dal protocollo): una
+ * semplice citazione a metà frase ("non scriverò STATO: COMPLETATO") non conta.
  * Vengono considerati solo i messaggi assistant (ignorati tool e system).
  */
 export function hasCompletionMarker(messages: any[]): boolean {
   return messages.some(
-    (m) => m.role === 'assistant' && typeof m.content === 'string' && /STATO:\s*COMPLETATO/i.test(m.content)
+    (m) => m.role === 'assistant' && typeof m.content === 'string' && /(^|\n)\s*STATO:\s*COMPLETATO/i.test(m.content)
   );
 }
 
@@ -116,7 +118,8 @@ Non dichiarare COMPLETATO se non hai verificato concretamente (con i tool) che i
         ctx.permissionManager,
         sysPrompt,
         roleObj.allowedTools,
-        ctx.configManager.getMaxHistoryMessages()
+        ctx.configManager.getMaxHistoryMessages(),
+        ctx.configManager.getMaxHistoryTokens()
       );
 
       // Semina la cronologia condivisa (saltando il placeholder system)

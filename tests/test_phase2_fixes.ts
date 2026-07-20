@@ -68,6 +68,22 @@ async function main() {
   check('T2.3b', noOrphanTool && toolCallsHaveResponses, 'nessun messaggio tool orfano / coppie tool_call-tool integre');
   check('T2.3c', after[0].role === 'system' && after[0].content === 'system prompt di test', 'system prompt preservato');
 
+  // --- T2.3d/e: pruning a budget di token stimati (protegge da output tool enormi) ---
+  const tokenAgent = new Agent(fakeProvider, registry, new PermissionManager(), 'sys', undefined, 40, 1024);
+  const tMsgs = tokenAgent.getMessages();
+  for (let i = 0; i < 8; i++) {
+    tMsgs.push({ role: 'user', content: `domanda ${i}` });
+    // ~2000 caratteri ≈ 570 token a messaggio: 8 coppie sforano largamente il budget di 1024
+    tMsgs.push({ role: 'assistant', content: 'x'.repeat(2000) });
+  }
+  const tRemoved = tokenAgent.pruneHistory();
+  const tAfter = tokenAgent.getMessages();
+  const tTokens = tAfter.reduce((sum: number, m: any) => sum + Math.ceil((typeof m.content === 'string' ? m.content.length : 0) / 3.5), 0);
+  check('T2.3d', tRemoved > 0 && tTokens <= 1024 + 600,
+    `budget token rispettato pur sotto il limite messaggi (rimossi ${tRemoved}, ~${tTokens} token residui)`);
+  check('T2.3e', tAfter[0].role === 'system' && tAfter.length >= 4,
+    'system prompt preservato e almeno gli ultimi 3 messaggi mantenuti');
+
   // --- T2.4: cache JSON dei config (via loadToolSchema come proxy è già coperto; qui testiamo il pattern generico) ---
   // Il meccanismo è identico (mtime-based) e condiviso: verifichiamo che getModelTier resti coerente
   check('T2.4', getModelTier('qwenpaw-9b') === 'small' && getModelTier('modello-senza-taglia') === 'small' && getModelTier('qwen-27b') === 'medium',

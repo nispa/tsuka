@@ -24,6 +24,7 @@ export interface AppConfig {
   activeTrait: string;
   activeCharacter: string;
   maxHistoryMessages?: number;
+  maxHistoryTokens?: number;
   workspaceRoot?: string;
 }
 
@@ -194,6 +195,20 @@ export class ConfigManager {
       return Math.floor(value);
     }
     return 40;
+  }
+
+  /**
+   * Budget massimo di token stimati (~3,5 caratteri/token) mantenuti in cronologia.
+   * Protegge la context window quando pochi messaggi contengono output tool molto
+   * grandi, caso in cui il limite a conteggio messaggi non basta.
+   * Default: 65536. Configurabile con "maxHistoryTokens" in tsuka.config.json (min 1024).
+   */
+  getMaxHistoryTokens(): number {
+    const value = this.config.maxHistoryTokens;
+    if (typeof value === 'number' && Number.isFinite(value) && value >= 1024) {
+      return Math.floor(value);
+    }
+    return 65536;
   }
 
   /**

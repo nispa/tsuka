@@ -73,7 +73,8 @@ async function main() {
       permissionManager,
       loadSystemPrompt(role, trait, model, registry, char),
       role.allowedTools,
-      configManager.getMaxHistoryMessages()
+      configManager.getMaxHistoryMessages(),
+      configManager.getMaxHistoryTokens()
     );
   };
 
@@ -141,7 +142,7 @@ async function main() {
   // Costruisce il contesto condiviso per tutti i comandi slash
   const commandCtx: CommandCtx = {
     configManager,
-    provider: provider as any,
+    provider,
     registry,
     permissionManager,
     agent: { current: agent },

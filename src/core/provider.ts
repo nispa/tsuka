@@ -20,6 +20,22 @@ export class LLMProvider {
     });
   }
 
+  /**
+   * Ripunta l'istanza a un altro provider (endpoint/chiave/modello) ricreando
+   * il client. Muta l'istanza condivisa: i riferimenti esistenti (agent,
+   * closure della REPL, CommandCtx) restano validi senza sostituzioni.
+   */
+  reconfigure(baseUrl: string, apiKey: string, defaultModel: string): void {
+    this.baseUrl = baseUrl;
+    this.apiKey = apiKey || 'ollama';
+    this.currentModel = defaultModel;
+    this.client = new OpenAI({
+      baseURL: this.baseUrl,
+      apiKey: this.apiKey,
+      dangerouslyAllowBrowser: true
+    });
+  }
+
   getCurrentModel(): string {
     return this.currentModel;
   }

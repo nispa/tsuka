@@ -1,5 +1,4 @@
 import { CommandCtx } from './types';
-import { LLMProvider } from '../../core/provider';
 import { runBenchmark, ModelProfile } from '../../core/modelProfile';
 import { CLITheme, InteractiveMenu } from '../ui';
 import { notifyIfUnprofiled } from '../shared';
@@ -33,9 +32,8 @@ export async function handleProvider(ctx: CommandCtx, arg: string): Promise<void
   ctx.configManager.setActiveProvider(target);
   const newConfig = ctx.configManager.getActiveProviderConfig();
 
-  const newProvider = new LLMProvider(newConfig.baseUrl, ctx.configManager.getApiKey(), newConfig.model);
-  // Aggiorna il provider nel contesto (mutazione dell'oggetto condiviso)
-  Object.assign(ctx.provider, newProvider);
+  // Ripunta l'istanza condivisa al nuovo endpoint: i riferimenti esistenti restano validi
+  ctx.provider.reconfigure(newConfig.baseUrl, ctx.configManager.getApiKey(), newConfig.model);
 
   ctx.agent.current = ctx.recreateAgent();
   CLITheme.success(`Provider cambiato a: ${chalk.green(target.toUpperCase())}`);

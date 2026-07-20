@@ -34,6 +34,7 @@ export class Agent {
   private messages: Array<{ role: 'system' | 'user' | 'assistant' | 'tool'; content: string | null; tool_calls?: any[]; tool_call_id?: string; name?: string }> = [];
   private allowedTools?: string[];
   private maxHistoryMessages: number;
+  private maxHistoryTokens: number;
 
   constructor(
     provider: LLMProvider,
@@ -41,14 +42,28 @@ export class Agent {
     permissionManager: PermissionManager,
     systemPrompt: string,
     allowedTools?: string[],
-    maxHistoryMessages: number = 40
+    maxHistoryMessages: number = 40,
+    maxHistoryTokens: number = 65536
   ) {
     this.provider = provider;
     this.registry = registry;
     this.permissionManager = permissionManager;
     this.allowedTools = allowedTools;
     this.maxHistoryMessages = Math.max(4, maxHistoryMessages);
+    this.maxHistoryTokens = Math.max(0, maxHistoryTokens);
     this.clearHistory(systemPrompt);
+  }
+
+  /**
+   * Stima i token di un messaggio (~3,5 caratteri/token), inclusi gli eventuali
+   * tool_calls serializzati che viaggiano nel contesto insieme al content.
+   */
+  private static estimateTokens(m: { content: string | null; tool_calls?: any[] }): number {
+    let chars = typeof m.content === 'string' ? m.content.length : 0;
+    if (m.tool_calls) {
+      try { chars += JSON.stringify(m.tool_calls).length; } catch {}
+    }
+    return Math.ceil(chars / 3.5);
   }
 
   getMessages() {
@@ -62,18 +77,38 @@ export class Agent {
   }
 
   /**
-   * Mantiene la cronologia entro il limite configurato: conserva il system prompt
-   * e gli ultimi (maxHistoryMessages - 1) messaggi. Il punto di taglio è scelto in
-   * modo sicuro: il primo messaggio mantenuto non è mai una risposta 'tool' orfana
-   * del suo tool_call (altrimenti l'API rifiuterebbe la richiesta).
+   * Mantiene la cronologia entro i limiti configurati: conserva il system prompt
+   * e taglia i messaggi meno recenti in base a due criteri combinati:
+   *  1. numero massimo di messaggi (maxHistoryMessages);
+   *  2. budget di token stimati (maxHistoryTokens): protegge la context window
+   *     anche quando pochi messaggi contengono output tool molto grandi.
+   * Il punto di taglio è scelto in modo sicuro: il primo messaggio mantenuto non è
+   * mai una risposta 'tool' orfana del suo tool_call (altrimenti l'API rifiuterebbe
+   * la richiesta) e restano sempre almeno gli ultimi 3 messaggi oltre al system.
    * Ritorna il numero di messaggi rimossi.
    */
   pruneHistory(): number {
-    if (this.messages.length <= this.maxHistoryMessages) {
-      return 0;
+    // 1) Limite a conteggio messaggi
+    let start = 1;
+    if (this.messages.length > this.maxHistoryMessages) {
+      start = this.messages.length - (this.maxHistoryMessages - 1);
     }
 
-    let start = this.messages.length - (this.maxHistoryMessages - 1);
+    // 2) Limite a token stimati: avanza il punto di taglio finché il budget è
+    //    rispettato, senza mai scendere sotto gli ultimi 3 messaggi (un output
+    //    recente sopra budget da solo resta: rimuoverlo romperebbe il turno in corso)
+    if (this.maxHistoryTokens > 0) {
+      let total = Agent.estimateTokens(this.messages[0]);
+      for (let i = start; i < this.messages.length; i++) {
+        total += Agent.estimateTokens(this.messages[i]);
+      }
+      while (total > this.maxHistoryTokens && start < this.messages.length - 3) {
+        total -= Agent.estimateTokens(this.messages[start]);
+        start++;
+      }
+    }
+
+    // Taglio sicuro rispetto alle coppie tool_call/tool
     while (start < this.messages.length - 1 && this.messages[start].role === 'tool') {
       start++;
     }
@@ -85,7 +120,7 @@ export class Agent {
 
     this.messages = [this.messages[0], ...this.messages.slice(start)];
     console.log(
-      chalk.gray(`[Cronologia: rimossi ${removed} messaggi meno recenti per restare entro il limite di ${this.maxHistoryMessages}]`)
+      chalk.gray(`[Cronologia: rimossi ${removed} messaggi meno recenti per restare entro i limiti di contesto (${this.maxHistoryMessages} messaggi / ~${this.maxHistoryTokens} token)]`)
     );
     return removed;
   }

@@ -2,7 +2,6 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { RiskLevel, PermissionManager } from '../safety/permissions';
 import { getModelProfile } from '../core/modelProfile';
-import chalk from 'chalk';
 
 /**
  * Contesto opzionale passato all'esecuzione dei tool (es. accesso al registry
@@ -282,8 +281,6 @@ export class ToolRegistry {
         output: `Errore: Operazione '${name}' rifiutata dall'utente. Richiesta non eseguita.`
       };
     }
-
-    console.log(chalk.gray(`[Esecuzione Tool: ${name}...]`));
 
     try {
       const output = await tool.execute(args, { registry: this });

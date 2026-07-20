@@ -351,3 +351,18 @@ Il nome "PowerHarness" era già occupato (pettorina per cani). Nuovo nome scelto
 | `src/cli/commands/provider.ts` | Chiamata dopo ogni cambio modello (`/models`, `/use`, incluso il set forzato) e dopo `/provider`. |
 
 **Verifica**: `tsc --noEmit` pulito; avvio REPL → warning e hint mostrati per il modello Unsloth non profilato; suite completa **14/14**.
+
+---
+
+## 2026-07-20 — Rifiniture post-valutazione: log duplicato, provider swap pulito, pruning a token, marker STATO ✅
+
+**Contesto**: valutazione generale del progetto (richiesta utente) a piano di ottimizzazione già completato. Emersi 4 punti residui, tutti sistemati. Nota: il sospetto problema sui caratteri wide in `stream.ts` si è rivelato infondato (`trackText` usa già `CLITheme.cleanLen`, che conta emoji/CJK come 2 colonne).
+
+| Problema | File | Fix |
+|----------|------|-----|
+| `console.log('[Esecuzione Tool: …]')` residuo nel core: duplicava la riga `● nome(args)` dello StreamRenderer e inseriva una riga non tracciata nella zona erase/repaint ANSI | `src/tools/registry.ts` | Rimosso (l'evento `tool_start` copre già il feedback); eliminato l'import di chalk ormai inutilizzato |
+| Swap provider via `Object.assign(ctx.provider, newProvider)`: copiava campi privati, richiedeva `provider as any` in `index.ts` | `src/core/provider.ts`, `src/cli/commands/provider.ts`, `src/cli/index.ts` | Nuovo metodo `LLMProvider.reconfigure(baseUrl, apiKey, model)` che muta l'istanza condivisa ricreando il client; rimosso il cast `as any` dal CommandCtx |
+| Pruning solo a conteggio messaggi: 40 messaggi con output tool enormi potevano comunque sforare la context window | `src/core/agent.ts`, `src/core/config.ts`, `src/cli/index.ts`, `src/cli/commands/team.ts` | Secondo criterio di taglio a budget di token stimati (~3,5 char/token, `tool_calls` inclusi): `maxHistoryTokens` in `tsuka.config.json` (default 65536, min 1024), getter `getMaxHistoryTokens()`, 7° parametro di `Agent`. Restano sempre system + ultimi 3 messaggi; taglio sicuro tool_call/tool invariato |
+| `hasCompletionMarker` scattava anche su citazioni a metà frase ("non scriverò STATO: COMPLETATO") | `src/cli/commands/team.ts` | Regex ancorata a inizio riga: `/(^|\n)\s*STATO:\s*COMPLETATO/i` (coerente col protocollo, che richiede una riga finale dedicata) |
+
+**Verifica**: `tsc --noEmit` pulito; +4 test di regressione (TM.1e/TM.1f marker a inizio riga vs citazione; T2.3d/T2.3e budget token rispettato con system + ultimi 3 preservati); suite completa **14/14** (test_phase2 9 test, test_team_loop 10 test).

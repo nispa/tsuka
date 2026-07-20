@@ -45,6 +45,14 @@ async function main() {
     { role: 'assistant', content: 'stato: completato' }
   ]), 'marker case-insensitive');
 
+  check('TM.1e', !hasCompletionMarker([
+    { role: 'assistant', content: 'Non scriverò STATO: COMPLETATO finché non ho verificato i file.' }
+  ]), 'citazione a metà frase non è una dichiarazione (marker richiesto a inizio riga)');
+
+  check('TM.1f', hasCompletionMarker([
+    { role: 'assistant', content: 'Verificato con i tool.\n  STATO: COMPLETATO' }
+  ]), 'marker a inizio riga con indentazione rilevato');
+
   // --- getTeamMaxRounds ---
   const configPath = path.resolve(process.cwd(), 'tsuka.config.json');
   const backup = fs.existsSync(configPath) ? fs.readFileSync(configPath, 'utf-8') : null;
