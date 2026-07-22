@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { homePath } from '../core/apphome';
 
 export interface RoleConfig {
   name: string;
@@ -59,7 +60,7 @@ export function loadJsonFile<T>(filePath: string): T | null {
 export function listAvailableItems<T>(dirName: string, loadFn: (name: string) => T | null): T[] {
   const items: T[] = [];
   try {
-    const dir = path.resolve(process.cwd(), dirName);
+    const dir = homePath(dirName);
     if (fs.existsSync(dir)) {
       for (const file of fs.readdirSync(dir)) {
         if (file.endsWith('.json')) {
@@ -77,7 +78,7 @@ export function listAvailableItems<T>(dirName: string, loadFn: (name: string) =>
 // ── Caricamento ruoli, tratti, personaggi, team ──
 
 export function loadRole(roleName: string): RoleConfig {
-  const role = loadJsonFile<RoleConfig>(path.resolve(process.cwd(), `roles/${roleName}.json`));
+  const role = loadJsonFile<RoleConfig>(homePath('roles', `${roleName}.json`));
   if (role) return role;
   return {
     name: 'developer',
@@ -89,7 +90,7 @@ export function loadRole(roleName: string): RoleConfig {
 }
 
 export function loadTrait(traitName: string): TraitConfig {
-  const trait = loadJsonFile<TraitConfig>(path.resolve(process.cwd(), `traits/${traitName}.json`));
+  const trait = loadJsonFile<TraitConfig>(homePath('traits', `${traitName}.json`));
   if (trait) return trait;
   return {
     name: 'professional',
@@ -101,11 +102,11 @@ export function loadTrait(traitName: string): TraitConfig {
 
 export function loadCharacter(charName: string): CharacterConfig | null {
   if (charName === 'custom') return null;
-  return loadJsonFile<CharacterConfig>(path.resolve(process.cwd(), `characters/${charName}.json`));
+  return loadJsonFile<CharacterConfig>(homePath('characters', `${charName}.json`));
 }
 
 export function loadTeam(teamName: string): TeamConfig | null {
-  return loadJsonFile<TeamConfig>(path.resolve(process.cwd(), `teams/${teamName}.json`));
+  return loadJsonFile<TeamConfig>(homePath('teams', `${teamName}.json`));
 }
 
 export function listAvailableCharacters(): CharacterConfig[] {

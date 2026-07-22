@@ -141,7 +141,9 @@ Non dichiarare COMPLETATO se non hai verificato concretamente (con i tool) che i
           promptAttivazione,
           (chunk, channel) => renderer.onDelta(chunk, channel ?? 'content'),
           (stats) => renderer.setStats(stats),
-          (ev) => renderer.onAgentEvent(ev),
+          // rearm: i prompt di autorizzazione disattivano il raw mode alla chiusura,
+          // riattivarlo a ogni evento mantiene Esc/Ctrl+X funzionanti per tutto il run
+          (ev) => { renderer.onAgentEvent(ev); interrupt.rearm(); },
           interrupt.signal
         );
         if (interrupt.aborted) {

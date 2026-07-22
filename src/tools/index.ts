@@ -24,11 +24,15 @@ export async function createDefaultRegistry(): Promise<ToolRegistry> {
     if ((ext === '.ts' || ext === '.js') && !file.endsWith('.d.ts') && !file.endsWith('.test.ts')) {
       const filePath = path.join(implDir, file);
       try {
-        // Converte il percorso assoluto in un URL "file://" valido (richiesto su Windows per import)
-        const fileUrl = pathToFileURL(filePath).href;
-        
-        // Esegue l'importazione dinamica asincrona del modulo
-        const module = await import(fileUrl);
+        // Import dinamico del modulo. In ESM serve un URL "file://" (obbligatorio
+        // su Windows); nella build CommonJS però tsc traspila import() in una
+        // require() che NON accetta URL file:// → fallback sul path assoluto.
+        let module: any;
+        try {
+          module = await import(pathToFileURL(filePath).href);
+        } catch {
+          module = require(filePath);
+        }
         
         // Cerca tutti gli export del modulo per trovare definizioni conformi all'interfaccia Tool
         for (const key of Object.keys(module)) {

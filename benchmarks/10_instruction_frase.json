@@ -1,0 +1,12 @@
+{
+  "name": "frase_8_parole",
+  "description": "Vincoli lessicali contati: frase di esattamente 8 parole con prima e ultima parola imposte",
+  "category": "instruction",
+  "prompt": "Scrivi una frase in italiano di esattamente 8 parole, che inizi con la parola \"Il\" e finisca con la parola \"blu\". Nessuna virgola. Rispondi solo con la frase, nessun altro testo.",
+  "checks": [
+    { "type": "word_count", "value": 8, "weight": 2 },
+    { "type": "first_word", "value": "Il" },
+    { "type": "last_word", "value": "blu" },
+    { "type": "not_contains", "value": "," }
+  ]
+}

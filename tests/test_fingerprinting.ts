@@ -6,7 +6,8 @@
  */
 import * as fs from 'fs';
 import * as path from 'path';
-import { computeTier, getModelProfile } from '../src/core/modelProfile';
+import { computeTier, getModelProfile, BENCHMARK_VERSION } from '../src/core/modelProfile';
+import { getBenchmarkTestsHash } from '../src/core/benchmarkTests';
 import { getModelTier } from '../src/tools/registry';
 
 let passed = 0;
@@ -25,10 +26,18 @@ function check(id: string, condition: boolean, detail: string) {
 async function main() {
   console.log('=== Test Capability Fingerprinting (unit) ===\n');
 
-  // --- computeTier: mapping punteggi → tier ---
-  check('X2.1a', computeTier({ instruction: 1, json: 1, toolCalling: 1 }) === 'large', 'toolCalling 1 → large');
-  check('X2.1b', computeTier({ instruction: 1, json: 1, toolCalling: 0.5 }) === 'medium', 'toolCalling 0.5 → medium');
-  check('X2.1c', computeTier({ instruction: 0, json: 0, toolCalling: 0 }) === 'small', 'toolCalling 0 → small');
+  // --- computeTier v2: criteri combinati, non solo toolCalling ---
+  check('X2.1a', computeTier({ instruction: 1, json: 1, toolCalling: 1 }) === 'large', 'punteggi pieni → large');
+  check('X2.1b', computeTier({ instruction: 0.75, json: 0.7, toolCalling: 0.6 }) === 'medium', 'punteggi intermedi → medium');
+  check('X2.1c', computeTier({ instruction: 0, json: 0, toolCalling: 0 }) === 'small', 'punteggi nulli → small');
+  check('X2.1d', computeTier({ instruction: 0.5, json: 0.4, toolCalling: 1 }) === 'small',
+    'toolCalling perfetto NON basta più per large (json sotto soglia medium)');
+  check('X2.1e', computeTier({ instruction: 0.5, json: 1, toolCalling: 1 }) === 'medium',
+    'senza precisione di formato niente large, anche con tool perfetti');
+  check('X2.1f', computeTier({ instruction: 1, json: 1, toolCalling: 0.8 }) === 'medium',
+    'catena di tool incompleta (0.8) → medium, non large');
+  check('X2.1g', computeTier({ instruction: 0.8, json: 0.91, toolCalling: 1 }) === 'medium',
+    'caso reale 4B (0.8/0.91/1): precisione instruction sotto 0.85 → medium');
 
   // --- Persistenza: salviamo un profilo finto e lo rileggiamo ---
   const profilePath = path.resolve(process.cwd(), 'models_profile.json');
@@ -42,7 +51,28 @@ async function main() {
           tier: 'large',
           scores: { instruction: 1, json: 1, toolCalling: 1 },
           tokensPerSecond: 42.5,
+          testedAt: new Date().toISOString(),
+          benchmarkVersion: BENCHMARK_VERSION,
+          testsHash: getBenchmarkTestsHash()
+        },
+        '__probe_stale_tests__': {
+          model: '__probe_stale_tests__',
+          provider: 'test',
+          tier: 'large',
+          scores: { instruction: 1, json: 1, toolCalling: 1 },
+          tokensPerSecond: 10,
+          testedAt: new Date().toISOString(),
+          benchmarkVersion: BENCHMARK_VERSION,
+          testsHash: 'deadbeef'
+        },
+        '__probe_legacy__': {
+          model: '__probe_legacy__',
+          provider: 'test',
+          tier: 'large',
+          scores: { instruction: 1, json: 1, toolCalling: 1 },
+          tokensPerSecond: 10,
           testedAt: new Date().toISOString()
+          // nessun benchmarkVersion: profilo v1 (test vecchi, troppo facili)
         }
       }
     }, null, 2), 'utf-8');
@@ -56,6 +86,14 @@ async function main() {
 
     const missing = getModelProfile('__modello_che_non_esiste__');
     check('X2.2d', missing === null, 'modello senza profilo → null');
+
+    // --- Versionamento: i profili misurati col benchmark vecchio sono invalidati ---
+    check('X2.3a', getModelProfile('__probe_legacy__') === null,
+      'profilo senza benchmarkVersion (v1) → trattato come assente');
+    check('X2.3b', getModelTier('__probe_legacy__') === 'small',
+      'tier del profilo legacy ignorato → fallback euristica');
+    check('X2.3c', getModelProfile('__probe_stale_tests__') === null,
+      'profilo con hash del set di test diverso → invalidato (test cambiati al volo)');
   } finally {
     if (backup !== null) {
       fs.writeFileSync(profilePath, backup, 'utf-8');

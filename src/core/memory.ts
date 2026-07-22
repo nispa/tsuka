@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { homePath } from './apphome';
 
 /**
  * Un singolo ricordo nella memoria condivisa.
@@ -37,7 +38,7 @@ export class MemoryStore {
    * @param maxFacts Numero massimo di fatti conservati (oltre il limite, i più vecchi sono rimossi FIFO)
    */
   constructor(filePath?: string, maxFacts: number = 200) {
-    this.filePath = filePath ?? path.resolve(process.cwd(), 'memory', 'memory.json');
+    this.filePath = filePath ?? homePath('memory', 'memory.json');
     this.maxFacts = Math.max(1, maxFacts);
     this.load();
   }

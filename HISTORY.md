@@ -366,3 +366,175 @@ Il nome "PowerHarness" era già occupato (pettorina per cani). Nuovo nome scelto
 | `hasCompletionMarker` scattava anche su citazioni a metà frase ("non scriverò STATO: COMPLETATO") | `src/cli/commands/team.ts` | Regex ancorata a inizio riga: `/(^|\n)\s*STATO:\s*COMPLETATO/i` (coerente col protocollo, che richiede una riga finale dedicata) |
 
 **Verifica**: `tsc --noEmit` pulito; +4 test di regressione (TM.1e/TM.1f marker a inizio riga vs citazione; T2.3d/T2.3e budget token rispettato con system + ultimi 3 preservati); suite completa **14/14** (test_phase2 9 test, test_team_loop 10 test).
+
+---
+
+## 2026-07-20 — Scansione server all'avvio con aggancio al volo + fix box di stato ✅ (report utente)
+
+**Sintomi segnalati**: (1) il box blu "Stato Sessione" non chiudeva bene sul bordo destro; (2) all'avvio la CLI cercava solo il provider configurato — se quello era spento falliva invece di scansionare gli altri server locali (Ollama, Unsloth, …) e agganciarsi al modello disponibile o già caricato.
+
+### Fix 1 — Box di stato disallineato (`src/cli/ui.ts`)
+
+**Diagnosi**: in `CLITheme.box` la matematica delle larghezze era incoerente — bordi alto/basso larghi `w`, riga del titolo `w-2`, righe di contenuto `w+2`. Il bordo destro non poteva mai allinearsi.
+
+**Fix**: helper `row()` unico per titolo e contenuto con formula condivisa (`inner = w - 6`: 2 bordi + 2 spazi di margine per lato). Verificato a 80 colonne: tutte le righe esattamente 80 caratteri visivi.
+
+### Fix 2 — Scansione server e aggancio al volo (`src/core/discovery.ts` nuovo)
+
+| Componente | Dettaglio |
+|-----------|-----------|
+| `probeProvider()` | Interroga un server con timeout breve (2,5s) via `/v1/models` (fallback nativo Ollama `/api/tags`) e rileva il modello *già caricato in RAM*: flag `"loaded": true` nella risposta `/v1/models` (Unsloth Studio), `"state": "loaded"` (LM Studio), endpoint `/api/ps` (Ollama) |
+| `scanProviders()` | Prova prima il provider attivo in config; se non risponde, sonda **in parallelo tutti gli altri server locali** configurati. I provider remoti non attivi non vengono interrogati (l'avvio non dipende dalla rete) |
+| Avvio (`src/cli/index.ts`) | Se il provider configurato è spento ma un altro è vivo → **switch automatico** con aggiornamento del config. Priorità modello: **già caricato in RAM** > configurato se presente sul server > primo disponibile. Il pannello di stato è stampato **dopo** la scansione (prima mostrava dati potenzialmente stantii) e include la nuova riga **Modello** |
+| `src/core/config.ts` | Nuovi `getApiKeyFor(name)`, `getProviderNames()`, `getProviderConfig(name)` (il vecchio `getApiKey()` delega a `getApiKeyFor`) |
+
+**Razionale dell'aggancio al modello caricato**: agganciarsi al modello già in RAM evita che il server ne ricarichi un altro da zero (decine di secondi sui GGUF grandi).
+
+### Fix 3 — Benchmark attribuito al modello sbagliato su Unsloth (report utente, stesso giorno)
+
+**Sintomo**: all'avvio TSUKA si è agganciato a un modello **non caricato** e `/benchmark` ha profilato quel nome credendolo attivo, mentre il server rispondeva con un altro modello.
+
+**Diagnosi**: la prima versione del rilevamento usava solo `/api/ps`, che è un endpoint **esclusivo di Ollama** → su Unsloth `loadedModel` restava null e la priorità ricadeva sul modello configurato, presente nella lista ma non caricato. Sondando il server reale è emerso che **Unsloth Studio marca il modello attivo** con `"loaded": true` direttamente nella risposta di `/v1/models` (12 modelli listati, 1 solo `loaded`) — il flag veniva semplicemente ignorato.
+
+**Fix** (`src/core/discovery.ts`): `probeProvider` ora legge `loaded === true` (Unsloth Studio) e `state === 'loaded'` (LM Studio) dalle entry di `/v1/models`; `/api/ps` resta come fallback per Ollama. **Nota**: i profili in `models_profile.json` misurati su Unsloth prima di questo fix possono essere attribuiti al nome sbagliato — rifare `/benchmark` per il modello in uso.
+
+### Verifica
+- `tsc --noEmit` pulito
+- Test allineamento box a 80 colonne: 7/7 righe esatte
+- Test live: con tutti i server spenti la scansione fallisce in fretta con messaggio chiaro e lascia la REPL utilizzabile (`/provider`)
+- Test con finto server Ollama (`/v1/models` + `/api/ps`): provider attivo `unsloth` spento → aggancio automatico al finto Ollama e scelta del modello caricato (`qwen2:7b`) invece di quello configurato ✔
+- Test live su Unsloth Studio reale: 12 modelli in lista, rilevato correttamente il solo `loaded: true` (`HauhauCS/Qwen3.5-9B-Uncensored-…`) → è quello che verrebbe agganciato all'avvio, non più il configurato non caricato ✔
+
+---
+
+## 2026-07-20 — Autocompletamento Tab dei comandi slash ✅
+
+**Richiesta utente**: completare i comandi `/` con Tab, come in una shell.
+
+**Implementazione** (leggera: il readline nativo già in uso supporta l'opzione `completer`, zero dipendenze nuove):
+
+| File | Intervento |
+|------|-----------|
+| `src/cli/input.ts` | Nuova `setCompletionSource({ commands, argumentsFor })` + `completeLine()` (esportata per i test): completa il nome comando sull'intera riga, oppure l'ultima parola come argomento (match case-insensitive). Il testo libero non viene mai completato. `completer` attivo solo in modalità interattiva (TTY). |
+| `src/cli/index.ts` | Registrazione della sorgente all'avvio: comandi = chiavi del dispatch map + comandi inline; argomenti dinamici per `/use` e `/benchmark` (modelli disponibili, letti dal riferimento mutabile → sempre aggiornati dopo `/provider` o `/models`), `/provider` (nomi provider dal config), `/forget` (`all`). |
+| `src/cli/ui.ts` | Hint dei tasti sotto il box `/help`: `Tab completa comandi e argomenti · ↑/↓ naviga la history · Esc interrompe la generazione`. |
+
+**Verifica**: `tsc --noEmit` pulito; nuova suite `tests/test_completer.ts` **11/11** (prefissi comando, argomenti filtrati, case-insensitive, testo libero ignorato, sorgente non registrata); suite completa **15/15**.
+
+---
+
+## 2026-07-20 — FIX: Esc morto in "Elaborazione risultati" + Ctrl+X come interruzione ✅ (report utente)
+
+**Sintomo**: Esc (e Ctrl+X, che non era mappato) non interrompeva la generazione nella fase "Elaborazione risultati…".
+
+**Diagnosi** (2 cause):
+1. **Raw mode spento dai prompt di autorizzazione**: quando un tool RESTRICTED/DANGEROUS chiede `[y/N]`, la libreria `prompts` alla chiusura fa `setRawMode(false)` + `pause()` su stdin → il listener keypress di `GenerationInterrupt` resta attaccato ma sordo per tutto il resto del run (round successivi inclusi).
+2. **Segnale controllato solo dentro la chiamata LLM**: `agent.run` non guardava `signal.aborted` tra un round e l'altro né durante l'esecuzione dei tool — l'abort diventava effettivo solo se c'era un fetch in volo da annullare.
+
+| File | Intervento |
+|------|-----------|
+| `src/cli/interrupt.ts` | Nuovo `rearm()`: riattiva raw mode + resume se un altro consumatore di stdin li ha spenti (idempotente, costo nullo). Mappato **Ctrl+X** come alternativa a Esc — essendo un byte singolo scatta subito, mentre Esc ha ~500ms di latenza intrinseca (è il prefisso delle sequenze escape). |
+| `src/core/agent.ts` | `signal.aborted` controllato: a inizio round, dopo il blocco tool, e **per ogni singolo tool**: i tool rimanenti dopo l'abort non vengono eseguiti ma ricevono una risposta `tool` sintetica `[Esecuzione annullata…]` (cronologia coerente: nessun tool_call orfano). |
+| `src/cli/index.ts`, `commands/team.ts` | Handler eventi: `(ev) => { renderer.onAgentEvent(ev); interrupt.rearm(); }` → il raw mode viene riasserito a ogni evento dell'agente. |
+| `src/cli/commands/call.ts` | `rearm()` prima di ogni intervento dei partecipanti. |
+| `src/cli/statusline.ts`, `ui.ts` | Hint aggiornati: `esc/ctrl+x interrompe`. |
+
+**Verifica**: `tsc --noEmit` pulito; nuova suite `tests/test_interrupt.ts` **8/8** (segnale pre-abortito → nessuna chiamata LLM; abort a metà tool → secondo tool saltato con risposta sintetica, nessun tool_call orfano, nessuna seconda chiamata LLM; flusso normale invariato); suite completa **16/16**.
+
+---
+
+## 2026-07-20 — Menu interattivo per la memoria condivisa (/memory) ✅ (richiesta utente)
+
+**Richiesta**: la memoria si poteva solo elencare (`/memory`) o cancellare per id (`/forget`) — nessun modo di selezionare un ricordo e "recuperarlo".
+
+**Implementazione** (`src/cli/commands/memory.ts` nuovo, registrato nel dispatch map al posto del blocco inline):
+- `/memory` apre un **menu interattivo** con gli ultimi 30 ricordi (data, fonte, anteprima; contenuto esteso nella descrizione della voce).
+- Selezionando un ricordo: contenuto completo in un box + sottomenu con **Recupera nel contesto della chat** (inietta il ricordo nella cronologia dell'agente come messaggio etichettato — l'agente lo tiene presente nelle risposte successive), **Elimina** (con ritorno all'elenco aggiornato), Torna all'elenco, Chiudi.
+- Senza TTY degrada all'elenco testuale semplice di prima. `/forget <id|all>` resta invariato per l'uso diretto.
+
+**Verifica**: `tsc --noEmit` pulito; e2e REPL in pipe (fallback non-TTY corretto); suite completa **16/16**. Sistemata in corsa la descrizione di `/memory` nel box `/help` che sbordava dalla colonna (max 38 char).
+
+---
+
+## 2026-07-20 — Benchmark v2: test severi + invalidazione profili vecchi ✅ (report utente)
+
+**Sintomo**: il benchmark promuoveva tutti a LARGE — anche un 4B (`unsloth/Qwen3.5-4B-GGUF` con 1/1/1 in `models_profile.json`).
+
+**Diagnosi**: i 3 micro-test del 2024 (rispondi "PONG", JSON con 2 chiavi, una tool call singola) sono banali per qualsiasi modello moderno; in più `computeTier` guardava **solo** il punteggio toolCalling — una tool call valida bastava per LARGE, instruction e JSON non pesavano nulla.
+
+**Riprogettazione** (`src/core/modelProfile.ts`):
+
+| Test (5, punteggi frazionari) | Cosa misura |
+|------------------------------|-------------|
+| 1. Instruction multi-vincolo | 3 righe esatte (`ROSSO`/`42`/`blu`), 4 sotto-controlli da 0.25 |
+| 2. JSON strutturato | validità 0.4 + schema (array utenti, tipi) 0.3 + valori e somma calcolata 0.3 |
+| 3. Scelta del tool | tool giusto tra 3 (con distrattore meteo) e argomenti estratti dal testo → 0.4 |
+| 4. **Catena a 2 passi** | usare l'id restituito dal primo tool nella seconda chiamata (propagazione esatta `USR-7431`) → 0.4 |
+| 5. **Astensione** | richiesta senza bisogno di tool → non deve chiamarne (i modelli piccoli chiamano tool a sproposito) → 0.2 |
+
+- **`computeTier` v2 a criteri combinati**: LARGE solo con toolCalling ≥ 0.9 **e** instruction ≥ 0.75 **e** json ≥ 0.75; MEDIUM con toolCalling ≥ 0.6 e json ≥ 0.5; altrimenti SMALL.
+- **`BENCHMARK_VERSION = 2`** salvata nel profilo: `getModelProfile()` tratta i profili di versioni precedenti come assenti → i vecchi LARGE regalati (incluso quello del 4B) sono automaticamente invalidati e il warning "usa /benchmark" riappare.
+- `printProfile` (`/benchmark`) aggiornato: punteggi percentuali colorati con legenda dei sotto-test.
+- README EN/IT: sezione fingerprinting aggiornata (5 test, criteri v2).
+
+**Verifica**: `tsc --noEmit` pulito; `test_fingerprinting.ts` esteso a **12 test** (tier combinati: toolCalling perfetto non basta più per LARGE; profili legacy → null e fallback euristica); suite completa **16/16**. **Benchmark v2 live** su Unsloth (`HauhauCS/Qwen3.5-9B-…`, modello caricato): 100%/100%/100% → LARGE, catena e astensione incluse — plausibilmente merito reale per un 9B del 2026; il discrimine si vedrà rimisurando i modelli piccoli.
+
+---
+
+## 2026-07-21 — Benchmark v3: test dichiarativi in `benchmarks/*.json` + asticella alzata ✅ (report + richiesta utente)
+
+**Contesto**: anche il 4B (`unsloth/Qwen3.5-4B-GGUF`) passava la v2 a pieni voti. L'utente ha chiesto sia di alzare l'asticella sia di rendere i test **modificabili al volo da file JSON**, con enumerazione ed esecuzione automatica.
+
+### Motore dichiarativo (`src/core/benchmarkTests.ts` nuovo)
+
+- **Test = file JSON in `benchmarks/`** (home dell'app): nome, categoria (`instruction`/`json`/`toolCalling`), peso, tool offerti (schema OpenAI), prompt singolo oppure `steps` concatenati (i `toolResult` dichiarati nel file vengono restituiti alla tool call del passo precedente — catene multi-turno senza codice).
+- **DSL di 17 check pesati**: testuali (`word_count`, `line_count`, `first_word`/`last_word` con strip punteggiatura, `contains`/`not_contains`, `regex`/`not_regex`, `not_empty`), JSON (`json_valid`, `json_path_equals`/`type`/`length` con percorsi tipo `economici[0].nome`), tool (`tool_called`, `tool_not_called`, `tool_arg_equals`, `tool_arg_regex`). Punteggio test = pesi superati / pesi totali; catena rotta → i check successivi valgono 0 ma pesano.
+- **Hash del set** (md5 8 hex, cache su mtime) salvato nel profilo: modificare/aggiungere/rimuovere un test **invalida automaticamente** i profili misurati col set precedente. `BENCHMARK_VERSION = 3` (versione motore).
+- `runBenchmark` enumera i test, li esegue in sequenza con progress (`Test i/N: nome [categoria]`), aggrega i punteggi in medie pesate per categoria, salva `testResults` per-test nel profilo; `/benchmark` li stampa uno per uno.
+- **Tier ricalcolato alla lettura** (`getModelProfile`): se le soglie di `computeTier` cambiano, i profili già misurati si adeguano senza rimisurare.
+
+### Set di default (5 test, volutamente difficili)
+
+| File | Categoria | Contenuto |
+|------|-----------|-----------|
+| `10_instruction_frase.json` | instruction | Frase di **esattamente 8 parole**, prima/ultima parola imposte, niente virgole |
+| `11_instruction_lista.json` | instruction | 3 colori con parola vietata, minuscolo, senza numerazione/simboli |
+| `20_json_prodotti.json` | json | Selezione dei 3 più economici, ordinamento, somma calcolata (56) |
+| `30_tool_catena.json` | toolCalling (peso 2) | find_user → risultato con **3 id quasi identici** (Mario Rossi/Maria Rossi/Maria Rosi) → get_orders con l'id giusto |
+| `31_tool_trappola.json` | toolCalling | Il prompt **nomina** get_weather ma chiede solo di spiegarlo: non va chiamato |
+
+### Soglie tier aggiornate
+
+LARGE: toolCalling ≥ 0.9 **e** instruction ≥ **0.85** **e** json ≥ **0.85** (era 0.75: il 4B passava per un soffio).
+
+### Verifica
+- `tsc --noEmit` pulito; nuova suite `tests/test_benchmark_dsl.ts` **23/23** (loader/enumerazione/hash, check testuali/JSON/tool, catena con provider finto: perfetta = 1, id distrattore = 4/7, nessuna tool call = 0); `test_fingerprinting.ts` → **14 test** (hash stantio → profilo invalidato; caso reale 4B → medium); suite completa **17/17**.
+- **Live sul 4B** (unico modello caricato su Unsloth): frase_8_parole **60%** (conteggio parole sbagliato), json 91%, catena e trappola 100% → instruction 0.8 ⇒ **tier MEDIUM** (prima: LARGE con 1/1/1). Il profilo salvato si è auto-corretto a medium grazie al tier ricalcolato alla lettura. Il benchmark ora discrimina.
+- README EN/IT: sezione fingerprinting riscritta (test da file, hash, set di default).
+
+---
+
+## 2026-07-21 — /models: modello caricato in evidenza + caricamento esplicito sul server ✅ (richiesta utente)
+
+**Richiesta**: selezionare un modello dalla lista e far sì che Unsloth lo carichi. Di fatto Unsloth Studio (e Ollama) caricano just-in-time il modello nominato nella prima richiesta — ma TSUKA non mostrava quale fosse caricato, e lo swap partiva "a sorpresa" alla prima chat, che restava appesa per minuti.
+
+| File | Intervento |
+|------|-----------|
+| `src/core/discovery.ts` | Nuova `warmUpModel(baseUrl, apiKey, model)`: richiesta minima (`max_tokens: 1`, timeout 5 min) che forza il server JIT a caricare il modello subito. |
+| `src/cli/commands/provider.ts` | `pickModel` e `/use` ora usano `probeProvider` (lista + modello in RAM in un colpo): il menu marca il modello caricato con `● caricato`. Nuovo helper `maybeWarmUp`: se il modello scelto su server locale non è quello in RAM, conferma `[y/N]` → spinner "Caricamento di … sul server" → esito verificato. Rifiutando, il caricamento avviene come prima alla prima richiesta. |
+
+**Nota comportamentale**: dopo lo swap esplicito il modello scelto diventa quello caricato, quindi la scansione all'avvio (che privilegia il modello in RAM) resta coerente con la scelta dell'utente. Se invece si rifiuta il warm-up e si riavvia prima di chattare, all'avvio la scansione riaggancia il modello ancora caricato.
+
+**Verifica**: `tsc --noEmit` pulito; suite completa **17/17**; sonda live read-only su Unsloth → rilevamento corretto del modello in RAM nel percorso usato dal menu. (Il flusso interattivo warm-up non è testato in automatico: dipende da rete e conferme utente.)
+
+---
+
+## 2026-07-21 — FIX: input morto dopo la generazione su Windows (raw mode lock) ✅ (report utente)
+
+**Sintomo**: dopo una generazione (stats stampate) il prompt era vivo (cursore lampeggiante) ma **completamente sordo**: nessun carattere, niente eco, Esc morto, perfino Ctrl+C morto. Riavvio forzato del terminale come unica uscita.
+
+**Diagnosi**: la simulazione con finto TTY (stesso identico flusso: prompts → spinner warm-up → askInput → arm/generazione/disarm → askInput) **non riproduce il problema**: la logica applicativa è corretta. Il colpevole è il layer nativo della console Windows: ogni passaggio raw→cooked (readline a ogni `close`, prompts a ogni menu, l'interrupt a ogni `disarm`) fa avviare a libuv una **ReadConsole cooked pendente che non è cancellabile in modo affidabile**; al ritorno in raw mode i tasti vengono ingoiati dalla lettura-zombie (bufferizzati in attesa di un Invio che non arriva a nessun consumatore): eco morta, niente SIGINT (raw), input defunto. Spiega anche i vecchi report "Esc non triggera".
+
+**Fix** (`src/cli/rawlock.ts` nuovo, strategia alla Ink): `lockRawMode()` all'avvio della REPL — il raw mode viene acceso una volta e i successivi `setRawMode(false)` dei componenti vengono **ignorati** (monkey-patch sul metodo): niente più finestre cooked durante la sessione, quindi niente letture-zombie. readline e prompts funzionano comunque (sono loro stessi ad attivare il raw quando servono). La console è ripristinata (cooked) solo su `process.on('exit')`, così la shell resta pulita anche uscendo con Ctrl+C. Senza TTY: no-op.
+
+**Verifica**: simulazione fake-TTY con lock attivo → tutti i flussi ok e sequenza toggle `true,true,…` (zero passaggi cooked in sessione); `tsc --noEmit` pulito; suite completa **17/17**; e2e in pipe non-TTY invariato. **Conferma finale possibile solo sul terminale reale dell'utente** (il wedge è nel driver console Windows, non simulabile).

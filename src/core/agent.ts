@@ -144,6 +144,10 @@ export class Agent {
     let toolRounds = 0;
 
     while (!isDone) {
+      // Interruzione utente arrivata tra un round e l'altro (es. durante i tool):
+      // esce subito senza aspettare che sia la prossima chiamata API a fallire
+      if (signal?.aborted) break;
+
       const tools = this.registry.listForLLM(this.provider.getCurrentModel(), this.allowedTools);
 
       // Mantiene il contesto entro la finestra configurata prima di ogni chiamata API
@@ -193,6 +197,19 @@ export class Agent {
             toolArgs = toolCall.function.arguments;
           }
 
+          // Interruzione utente: i tool rimanenti non vengono eseguiti, ma ogni
+          // tool_call riceve comunque la sua risposta 'tool' (cronologia coerente:
+          // un tool_call orfano farebbe rifiutare la successiva chiamata API)
+          if (signal?.aborted) {
+            this.messages.push({
+              role: 'tool',
+              tool_call_id: toolCall.id,
+              name: toolName,
+              content: '[Esecuzione annullata: generazione interrotta dall\'utente]'
+            });
+            continue;
+          }
+
           emit({ type: 'tool_start', name: toolName, args: toolArgs });
 
           // Esecuzione del tool con verifica dei permessi integrata
@@ -208,6 +225,9 @@ export class Agent {
 
           emit({ type: 'tool_end', name: toolName, args: toolArgs, success: result.success, output: result.output });
         }
+
+        // Dopo i tool: se nel frattempo è arrivata l'interruzione, stop pulito
+        if (signal?.aborted) break;
 
         // Guardia anti loop-infinito: se il modello continua a richiedere tool oltre
         // il limite, interrompiamo il ciclo con un messaggio esplicito all'utente.

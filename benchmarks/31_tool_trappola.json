@@ -1,0 +1,36 @@
+{
+  "name": "trappola_astensione",
+  "description": "Il tool è nominato nella domanda ma NON va chiamato: serve solo spiegarlo",
+  "category": "toolCalling",
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "get_weather",
+        "description": "Restituisce le condizioni meteo di una città.",
+        "parameters": {
+          "type": "object",
+          "properties": { "city": { "type": "string", "description": "Nome della città" } },
+          "required": ["city"]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "find_user",
+        "description": "Trova l'id di un utente dato il suo nome completo.",
+        "parameters": {
+          "type": "object",
+          "properties": { "name": { "type": "string", "description": "Nome completo dell'utente" } },
+          "required": ["name"]
+        }
+      }
+    }
+  ],
+  "prompt": "Spiegami in una sola frase a cosa serve il tool get_weather.",
+  "checks": [
+    { "type": "tool_not_called", "weight": 3 },
+    { "type": "not_empty" }
+  ]
+}

@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { homePath } from '../../core/apphome';
 import { Tool } from '../registry';
 
 export const createRoleTool: Tool = {
@@ -12,7 +13,7 @@ export const createRoleTool: Tool = {
     systemPrompt: string;
     allowedTools: string[];
   }) => {
-    const rolesDir = path.resolve(process.cwd(), 'roles');
+    const rolesDir = homePath('roles');
     
     // Assicura che la cartella roles esista
     if (!fs.existsSync(rolesDir)) {

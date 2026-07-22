@@ -1,5 +1,9 @@
 import { OpenAI } from 'openai';
+import chalk from 'chalk';
 import { ThinkTagParser, stripThinkBlocks, StreamChannel } from './thinkParser';
+
+const FIRST_TOKEN_TIMEOUT_MS = 120_000; // 2 minuti di attesa per il primo token
+const MAX_RETRIES = 3;                  // tentativi prima di dichiarare "mancata risposta"
 
 // dotenv caricato dal punto di ingresso (cli/index.ts)
 
@@ -85,117 +89,159 @@ export class LLMProvider {
     signal?: AbortSignal
   ): Promise<{ content: string; toolCalls?: any[]; stats?: { durationMs: number; tokenCount: number; tokensPerSecond: number } }> {
     const startTime = Date.now();
-    try {
-      const response = await this.client.chat.completions.create({
-        model: this.currentModel,
-        messages: messages as any,
-        tools: tools,
-        tool_choice: tools && tools.length > 0 ? 'auto' : undefined,
-        stream: !!onChunk,
-        // Richiede le statistiche d'uso reali nel chunk finale dello stream
-        // (supportato da OpenAI/OpenRouter; Ollama ignora i campi sconosciuti senza errori)
-        ...(onChunk ? { stream_options: { include_usage: true } } : {})
-      }, signal ? { signal } : undefined);
 
-      if (onChunk && (Symbol.asyncIterator in response || (response as any)[Symbol.asyncIterator])) {
-        let fullText = '';
-        const toolCallsAccumulator: any[] = [];
-        let chunkCount = 0;
-        let usage: any = null;
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      if (signal?.aborted) break;
 
-        // Separa i blocchi <think> inline dal contenuto: la cronologia (fullText)
-        // non deve contenere il reasoning, che viaggia sul canale dedicato
-        const thinkParser = new ThinkTagParser((text, channel) => {
-          if (channel === 'content') {
-            fullText += text;
-          }
-          onChunk(text, channel);
-        });
+      const attemptAbort = new AbortController();
+      let timedOut = false;
 
-        for await (const chunk of response as any) {
-          // Il chunk finale dello stream può contenere le statistiche d'uso reali (choices vuoto)
-          if (chunk?.usage) {
-            usage = chunk.usage;
-          }
+      const onUserAbort = () => attemptAbort.abort();
+      if (signal) {
+        if (signal.aborted) break;
+        signal.addEventListener('abort', onUserAbort, { once: true });
+      }
 
-          const choice = chunk.choices?.[0];
-          const content = choice?.delta?.content || '';
-          // OpenRouter espone il reasoning come campo delta dedicato
-          // (alcuni gateway DeepSeek-compatibili usano reasoning_content)
-          const reasoning = (choice?.delta as any)?.reasoning || (choice?.delta as any)?.reasoning_content || '';
+      const firstTokenTimer = setTimeout(() => {
+        timedOut = true;
+        attemptAbort.abort();
+      }, FIRST_TOKEN_TIMEOUT_MS);
 
-          if (reasoning) {
-            chunkCount++;
-            onChunk(reasoning, 'reasoning');
-          }
+      try {
+        const response = await this.client.chat.completions.create({
+          model: this.currentModel,
+          messages: messages as any,
+          tools: tools,
+          tool_choice: tools && tools.length > 0 ? 'auto' : undefined,
+          stream: !!onChunk,
+          ...(onChunk ? { stream_options: { include_usage: true } } : {})
+        }, { signal: attemptAbort.signal });
 
-          if (content) {
-            chunkCount++;
-            thinkParser.push(content);
-          }
+        const isStreaming = onChunk && (Symbol.asyncIterator in response || (response as any)[Symbol.asyncIterator]);
+        if (!isStreaming) clearTimeout(firstTokenTimer);
 
-          if (choice?.delta?.tool_calls) {
-            for (const tc of choice.delta.tool_calls) {
-              const idx = tc.index;
-              if (!toolCallsAccumulator[idx]) {
-                toolCallsAccumulator[idx] = {
-                  id: '',
-                  type: 'function',
-                  function: { name: '', arguments: '' }
-                };
+        if (isStreaming) {
+          let fullText = '';
+          const toolCallsAccumulator: any[] = [];
+          let chunkCount = 0;
+          let usage: any = null;
+          let receivedFirstToken = false;
+
+          const thinkParser = new ThinkTagParser((text, channel) => {
+            if (channel === 'content') {
+              fullText += text;
+            }
+            onChunk(text, channel);
+          });
+
+          for await (const chunk of response as any) {
+            if (!receivedFirstToken) {
+              receivedFirstToken = true;
+              clearTimeout(firstTokenTimer);
+            }
+
+            if (chunk?.usage) {
+              usage = chunk.usage;
+            }
+
+            const choice = chunk.choices?.[0];
+            const content = choice?.delta?.content || '';
+            const reasoning = (choice?.delta as any)?.reasoning || (choice?.delta as any)?.reasoning_content || '';
+
+            if (reasoning) {
+              chunkCount++;
+              onChunk(reasoning, 'reasoning');
+            }
+
+            if (content) {
+              chunkCount++;
+              thinkParser.push(content);
+            }
+
+            if (choice?.delta?.tool_calls) {
+              for (const tc of choice.delta.tool_calls) {
+                const idx = tc.index;
+                if (!toolCallsAccumulator[idx]) {
+                  toolCallsAccumulator[idx] = {
+                    id: '',
+                    type: 'function',
+                    function: { name: '', arguments: '' }
+                  };
+                }
+                if (tc.id) toolCallsAccumulator[idx].id = tc.id;
+                if (tc.function?.name) toolCallsAccumulator[idx].function.name += tc.function.name;
+                if (tc.function?.arguments) toolCallsAccumulator[idx].function.arguments += tc.function.arguments;
               }
-              if (tc.id) toolCallsAccumulator[idx].id = tc.id;
-              if (tc.function?.name) toolCallsAccumulator[idx].function.name += tc.function.name;
-              if (tc.function?.arguments) toolCallsAccumulator[idx].function.arguments += tc.function.arguments;
             }
           }
+
+          clearTimeout(firstTokenTimer);
+          thinkParser.flush();
+
+          const cleanToolCalls = toolCallsAccumulator.filter(
+            (tc) => tc && tc.function && tc.function.name
+          );
+
+          const durationMs = Date.now() - startTime;
+          const tokenCount = usage?.completion_tokens ?? chunkCount;
+          const tokensPerSecond = durationMs > 0 ? (tokenCount / (durationMs / 1000)) : 0;
+
+          return {
+            content: fullText,
+            toolCalls: cleanToolCalls.length > 0 ? cleanToolCalls : undefined,
+            stats: {
+              durationMs,
+              tokenCount,
+              tokensPerSecond: parseFloat(tokensPerSecond.toFixed(1))
+            }
+          };
+        } else {
+          const nonStreamResponse = response as any;
+          const msg = nonStreamResponse.choices[0]?.message;
+          const content = stripThinkBlocks(msg?.content || '');
+          const durationMs = Date.now() - startTime;
+
+          const charPerToken = 3.5;
+          const tokenCount = nonStreamResponse.usage?.completion_tokens ?? Math.round(content.length / charPerToken);
+          const tokensPerSecond = durationMs > 0 ? (tokenCount / (durationMs / 1000)) : 0;
+
+          return {
+            content: content,
+            toolCalls: msg?.tool_calls || undefined,
+            stats: {
+              durationMs,
+              tokenCount,
+              tokensPerSecond: parseFloat(tokensPerSecond.toFixed(1))
+            }
+          };
+        }
+      } catch (error: any) {
+        if (signal?.aborted) break;
+
+        if (timedOut) {
+          if (attempt < MAX_RETRIES) {
+            process.stdout.write('\n');
+            console.log(
+              chalk.yellow(`[Tentativo ${attempt}/${MAX_RETRIES}] Il modello '${this.currentModel}' non risponde, riprovo...`)
+            );
+            continue;
+          }
+          throw new Error(
+            `[Mancata risposta] Il modello '${this.currentModel}' non ha prodotto token dopo ${MAX_RETRIES} tentativi ` +
+            `(timeout: ${FIRST_TOKEN_TIMEOUT_MS / 1000}s per tentativo).`
+          );
         }
 
-        // Rilascia eventuale testo trattenuto dal parser (prefissi di tag a fine stream)
-        thinkParser.flush();
-
-        // Pulisce e filtra lo stream dei tool call accumulati
-        const cleanToolCalls = toolCallsAccumulator.filter(
-          (tc) => tc && tc.function && tc.function.name
-        );
-
-        const durationMs = Date.now() - startTime;
-        // Token reali dall'API (completion_tokens); fallback al conteggio dei chunk se assenti
-        const tokenCount = usage?.completion_tokens ?? chunkCount;
-        const tokensPerSecond = durationMs > 0 ? (tokenCount / (durationMs / 1000)) : 0;
-
-        return {
-          content: fullText,
-          toolCalls: cleanToolCalls.length > 0 ? cleanToolCalls : undefined,
-          stats: {
-            durationMs,
-            tokenCount,
-            tokensPerSecond: parseFloat(tokensPerSecond.toFixed(1))
-          }
-        };
-      } else {
-        const nonStreamResponse = response as any;
-        const msg = nonStreamResponse.choices[0]?.message;
-        const content = stripThinkBlocks(msg?.content || '');
-        const durationMs = Date.now() - startTime;
-
-        // Token reali dall'API se presenti; altrimenti stima basata sulla lunghezza del testo
-        const charPerToken = 3.5;
-        const tokenCount = nonStreamResponse.usage?.completion_tokens ?? Math.round(content.length / charPerToken);
-        const tokensPerSecond = durationMs > 0 ? (tokenCount / (durationMs / 1000)) : 0;
-
-        return {
-          content: content,
-          toolCalls: msg?.tool_calls || undefined,
-          stats: {
-            durationMs,
-            tokenCount,
-            tokensPerSecond: parseFloat(tokensPerSecond.toFixed(1))
-          }
-        };
+        throw new Error(`Errore di comunicazione con il modello '${this.currentModel}': ${error.message}`);
+      } finally {
+        clearTimeout(firstTokenTimer);
+        if (signal) signal.removeEventListener('abort', onUserAbort);
       }
-    } catch (error: any) {
-      throw new Error(`Errore di comunicazione con il modello '${this.currentModel}': ${error.message}`);
     }
+
+    throw new Error(
+      `[Mancata risposta] Il modello '${this.currentModel}' non ha prodotto token dopo ${MAX_RETRIES} tentativi ` +
+      `(timeout: ${FIRST_TOKEN_TIMEOUT_MS / 1000}s per tentativo).`
+    );
   }
 }

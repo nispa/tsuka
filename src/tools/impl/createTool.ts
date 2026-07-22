@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vm from 'vm';
+import { homePath } from '../../core/apphome';
 import { Tool, ToolExecutionContext } from '../registry';
 
 /**
@@ -147,7 +148,7 @@ export const createToolTool: Tool = {
     // ── 6. Backup della versione precedente (versioning/rollback) ──
     let backupNote = '';
     if (fs.existsSync(targetPath)) {
-      const backupDir = path.resolve(process.cwd(), 'tools_backup');
+      const backupDir = homePath('tools_backup');
       if (!fs.existsSync(backupDir)) {
         fs.mkdirSync(backupDir, { recursive: true });
       }
@@ -160,7 +161,7 @@ export const createToolTool: Tool = {
     // ── 7. Scrittura del modulo e dello schema ──
     fs.writeFileSync(targetPath, moduleCode, 'utf-8');
 
-    const schemaDir = path.resolve(process.cwd(), 'tools_schemas');
+    const schemaDir = homePath('tools_schemas');
     if (!fs.existsSync(schemaDir)) {
       fs.mkdirSync(schemaDir, { recursive: true });
     }

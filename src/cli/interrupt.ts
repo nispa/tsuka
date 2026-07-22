@@ -34,7 +34,10 @@ export class GenerationInterrupt {
 
     this.keyHandler = (_str, key) => {
       if (!key) return;
-      if (key.name === 'escape') {
+      // Ctrl+X come alternativa a Esc: è un byte singolo, quindi scatta subito
+      // (Esc è il prefisso delle sequenze escape e il parser lo emette con
+      // ~500ms di ritardo per distinguerlo da frecce e altri tasti speciali)
+      if (key.name === 'escape' || (key.ctrl && key.name === 'x')) {
         this.controller.abort();
       } else if (key.ctrl && key.name === 'c') {
         StatusLine.emergencyReset();
@@ -43,6 +46,21 @@ export class GenerationInterrupt {
       }
     };
     process.stdin.on('keypress', this.keyHandler);
+  }
+
+  /**
+   * Riattiva l'intercettazione dei tasti se un altro consumatore di stdin l'ha
+   * disattivata: i prompt di autorizzazione dei tool (`prompts`) alla chiusura
+   * fanno setRawMode(false) + pause, lasciando il listener di Esc sordo per il
+   * resto della generazione. Da chiamare a ogni evento dell'agente: idempotente
+   * e a costo nullo quando il raw mode è già attivo.
+   */
+  rearm(): void {
+    if (!this.keyHandler || !process.stdin.isTTY) return;
+    if (!process.stdin.isRaw) {
+      process.stdin.setRawMode(true);
+    }
+    process.stdin.resume();
   }
 
   disarm(): void {

@@ -18,6 +18,9 @@ Welcome to the **TSUKA** technical documentation system. This portal covers the 
 ### 4. [Security & Permissions Framework](security.md)
 * Deep dive into the user-in-the-loop permission manager (`SAFE`, `RESTRICTED`, `DANGEROUS` risk levels), the local sandbox protection, and the deterministic web source URL logging.
 
+### 5. [Guida Didattica — Costruire un harness agentico](guida-didattica.md) 🎓
+* Il percorso completo, tappa per tappa, per arrivare a un harness come TSUKA: i componenti comuni a tutti gli harness (ciclo agentico, tool registry, permessi, gestione contesto), le scelte peculiari di questo progetto (fingerprinting, self-authoring, personas, protocollo STATO) e le trappole reali incontrate lungo la strada.
+
 ---
 
 ## 🏗️ High-Level Design Principles

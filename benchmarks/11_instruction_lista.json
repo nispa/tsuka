@@ -1,0 +1,11 @@
+{
+  "name": "lista_vincoli_negativi",
+  "description": "Vincoli negativi: lista di 3 colori con parola vietata e formato imposto",
+  "category": "instruction",
+  "prompt": "Elenca esattamente 3 colori, uno per riga, tutti in minuscolo. Vietato usare la parola \"rosso\". Non numerare le righe e non usare trattini, punti o altri simboli: solo la parola del colore su ogni riga.",
+  "checks": [
+    { "type": "line_count", "value": 3, "weight": 2 },
+    { "type": "not_contains", "value": "rosso", "weight": 2 },
+    { "type": "not_regex", "value": "[A-Z0-9]|^\\s*[-•*.]", "flags": "m" }
+  ]
+}

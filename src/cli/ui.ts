@@ -42,18 +42,17 @@ export class CLITheme {
   // ── Box generico con titolo ──
   static box(title: string, lines: string[], color: (s: string) => string = chalk.cyan) {
     const w = TTY_WIDTH();
-    const inner = w - 4;
+    // Larghezza utile: w meno 2 bordi e 2 spazi di margine per lato
+    const inner = w - 6;
     const bar = color('│');
     const top = color('┌') + color('─'.repeat(w - 2)) + color('┐');
     const bot = color('└') + color('─'.repeat(w - 2)) + color('┘');
-    const cleanTitle = CLITheme.cleanLen(title);
-    const titleLine = color('│') + '  ' + chalk.bold(color(title)) +
-      ' '.repeat(Math.max(0, w - 4 - cleanTitle - 2)) + color('│');
+    const row = (content: string, visualLen: number) =>
+      bar + '  ' + content + ' '.repeat(Math.max(0, inner - visualLen)) + '  ' + bar;
     console.log(top);
-    console.log(titleLine);
+    console.log(row(chalk.bold(color(title)), CLITheme.cleanLen(title)));
     for (const l of lines) {
-      const pad = Math.max(0, inner - CLITheme.cleanLen(l));
-      console.log(bar + '  ' + l + ' '.repeat(pad) + '  ' + bar);
+      console.log(row(l, CLITheme.cleanLen(l)));
     }
     console.log(bot);
   }
@@ -177,7 +176,7 @@ export class CLITheme {
       ['/role', 'Seleziona il ruolo dell\'agente (menu)'],
       ['/trait', 'Seleziona l\'attitudine (menu)'],
       ['/search-engine', 'Seleziona il motore di ricerca'],
-      ['/memory', 'Mostra i ricordi della memoria condivisa'],
+      ['/memory', 'Menu memoria (leggi/recupera/elimina)'],
       ['/forget <id|all>', 'Elimina un ricordo o tutta la memoria'],
       ['/reset', 'Resetta la sessione (cronologia e permessi)'],
       ['/info', 'Mostra modello corrente e server attivo'],
@@ -194,6 +193,7 @@ export class CLITheme {
       console.log(line);
     }
     console.log(bot);
+    console.log(chalk.gray('  Tab completa comandi e argomenti · ↑/↓ naviga la history · Esc/Ctrl+X interrompe la generazione'));
     console.log();
   }
 

@@ -1,10 +1,13 @@
+#!/usr/bin/env node
 import * as dotenv from 'dotenv';
 import prompts from 'prompts';
 import chalk from 'chalk';
 import * as fs from 'fs';
 import * as path from 'path';
 import { LLMProvider } from '../core/provider';
+import { homePath } from '../core/apphome';
 import { ConfigManager } from '../core/config';
+import { scanProviders } from '../core/discovery';
 import { MemoryStore } from '../core/memory';
 import { createDefaultRegistry } from '../tools/index';
 import { PermissionManager } from '../safety/permissions';
@@ -13,7 +16,8 @@ import { getModelProfile } from '../core/modelProfile';
 import { CLITheme, InteractiveMenu } from './ui';
 import { StreamRenderer } from './stream';
 import { StatusLine } from './statusline';
-import { askInput } from './input';
+import { askInput, setCompletionSource } from './input';
+import { lockRawMode } from './rawlock';
 import { GenerationInterrupt } from './interrupt';
 import {
   RoleConfig, TraitConfig, CharacterConfig, TeamConfig,
@@ -24,6 +28,7 @@ import { CommandCtx } from './commands/types';
 import { handleExit, handleInfo, handleReset } from './commands/session';
 import { handleProvider, handleModels, handleUse, handleSearchEngine, handleBenchmark } from './commands/provider';
 import { handleCharacter, handleRenameChar, handleRole, handleTrait } from './commands/persona';
+import { handleMemory } from './commands/memory';
 import { handleCall } from './commands/call';
 import { handleTeam } from './commands/team';
 
@@ -31,8 +36,10 @@ import { handleTeam } from './commands/team';
 export { RoleConfig, TraitConfig, CharacterConfig, TeamConfig };
 export { loadRole, loadTrait, loadCharacter, loadTeam, loadSystemPrompt, listAvailableItems };
 
-// Carica variabili d'ambiente (.env per le API key protette)
-dotenv.config();
+// Carica variabili d'ambiente (.env per le API key protette) dalla home
+// dell'app, non dalla cwd: il comando globale `tsuka` può essere lanciato
+// da qualsiasi cartella e deve comunque trovare le chiavi.
+dotenv.config({ path: homePath('.env') });
 
 // Ctrl+C durante la generazione: ripristina il terminale (riga di stato, cursore)
 process.on('SIGINT', () => {
@@ -42,6 +49,10 @@ process.on('SIGINT', () => {
 });
 
 async function main() {
+  // Blocca il raw mode per tutta la sessione: evita il wedge dell'input su
+  // Windows causato dai passaggi raw→cooked di readline/prompts (vedi rawlock.ts)
+  lockRawMode();
+
   CLITheme.banner();
 
   // Inizializza gestori e registri
@@ -81,13 +92,69 @@ async function main() {
   // Inizializzazione iniziale dell'agente
   let agent = recreateAgent();
   
-  // Stampa informazioni iniziali
+  // Scansione dei server all'avvio: prova il provider attivo e, se spento,
+  // gli altri server locali configurati, agganciandosi al volo a quello vivo
+  // e al modello disponibile (o già caricato in memoria) in quel momento.
+  let availableModels: string[] = [];
+  let initSpinner = CLITheme.createSpinner(`Scansione dei server LLM (attivo: ${activeProvider})...`);
+  initSpinner.start();
+
+  const candidates = configManager.getProviderNames().map((name) => ({
+    name,
+    config: configManager.getProviderConfig(name)!,
+    apiKey: configManager.getApiKeyFor(name),
+  }));
+  const scan = await scanProviders(candidates, activeProvider);
+
+  if (scan) {
+    if (scan.name !== activeProvider) {
+      initSpinner.succeed(chalk.green(`Server '${scan.name}' attivo`) + chalk.gray(` (il provider configurato '${activeProvider}' non risponde)`));
+      activeProvider = scan.name;
+      configManager.setActiveProvider(scan.name);
+      activeConfig = configManager.getActiveProviderConfig();
+      provider.reconfigure(activeConfig.baseUrl, configManager.getApiKey(), activeConfig.model);
+      agent = recreateAgent();
+    } else {
+      initSpinner.succeed(chalk.green(`Connessione stabilita con ${activeProvider}.`));
+    }
+
+    availableModels = scan.models;
+    if (availableModels.length === 0) {
+      CLITheme.warning('Nessun modello trovato sul server.');
+    } else {
+      // Priorità: modello già caricato in RAM > modello configurato se presente > primo disponibile
+      const configured = activeConfig.model;
+      const chosen = scan.loadedModel ?? (availableModels.includes(configured) ? configured : availableModels[0]);
+      if (chosen !== provider.getCurrentModel()) {
+        provider.setCurrentModel(chosen);
+        configManager.updateActiveModel(chosen);
+        agent = recreateAgent();
+      }
+      if (scan.loadedModel && scan.loadedModel !== configured) {
+        CLITheme.success(`Agganciato al modello già caricato sul server: ${chalk.green(chosen)}`);
+      } else if (!availableModels.includes(configured) && chosen !== configured) {
+        CLITheme.warning(`Il modello configurato '${configured}' non è presente. Impostato fallback a '${chosen}'.`);
+      } else {
+        const loadedHint = scan.loadedModel === chosen ? chalk.gray(' (già caricato in memoria)') : '';
+        CLITheme.success(`Modello attivo: ${chalk.green(chosen)}${loadedHint}`);
+      }
+      // Suggerisce /benchmark se il modello attivo non è mai stato profilato
+      notifyIfUnprofiled(provider.getCurrentModel());
+    }
+  } else {
+    initSpinner.fail(chalk.red('Nessun server LLM raggiungibile.'));
+    CLITheme.warning('Avvia Ollama ("ollama serve") o il server Unsloth locale, oppure verifica le chiavi API nel file .env.');
+    CLITheme.info('Puoi comunque digitare comandi o cambiare provider con /provider.\n');
+  }
+
+  // Pannello di stato con i dati effettivi post-scansione
   const initialCharName = configManager.getActiveCharacter();
   const initialChar = loadCharacter(initialCharName);
   {
     const rows: { label: string; value: string; color?: (s: string) => string }[] = [
       { label: 'Provider', value: activeProvider.toUpperCase(), color: chalk.green },
       { label: 'Server', value: activeConfig.baseUrl, color: chalk.cyan },
+      { label: 'Modello', value: scan ? provider.getCurrentModel() : 'nessuno (server offline)', color: scan ? chalk.green : chalk.red },
     ];
     if (initialChar) {
       rows.push({ label: 'Personaggio', value: `${initialChar.displayName} (${initialChar.aiName})`, color: chalk.green });
@@ -96,44 +163,6 @@ async function main() {
       rows.push({ label: 'Attitudine', value: loadTrait(configManager.getActiveTrait()).displayName, color: chalk.green });
     }
     CLITheme.statusPanel(rows);
-  }
-  
-  let availableModels: string[] = [];
-  let initSpinner = CLITheme.createSpinner(`Connessione a ${activeProvider}...`);
-  initSpinner.start();
-
-  try {
-    availableModels = await provider.listModels();
-    initSpinner.succeed(chalk.green('Connessione stabilita con successo!'));
-    
-    // Controlla se il modello configurato è disponibile sul server
-    if (availableModels.length > 0) {
-      if (!availableModels.includes(activeConfig.model)) {
-        const fallbackModel = availableModels[0];
-        provider.setCurrentModel(fallbackModel);
-        configManager.updateActiveModel(fallbackModel);
-        
-        agent = recreateAgent();
-        
-        CLITheme.warning(
-          `Il modello configurato '${activeConfig.model}' non è presente. Impostato fallback a '${fallbackModel}'.`
-        );
-      } else {
-        CLITheme.success(`Modello attivo: ${chalk.green(activeConfig.model)}`);
-      }
-      // Suggerisce /benchmark se il modello attivo non è mai stato profilato
-      notifyIfUnprofiled(provider.getCurrentModel());
-    } else {
-      CLITheme.warning('Nessun modello trovato sul server.');
-    }
-  } catch (error: any) {
-    initSpinner.fail(chalk.red(`Impossibile connettersi a ${activeProvider}.`));
-    if (activeProvider === 'ollama') {
-      CLITheme.warning('Assicurati che Ollama sia in esecuzione localmente (esegui "ollama serve").');
-    } else {
-      CLITheme.warning('Verifica la connessione internet e le chiavi API nel file .env.');
-    }
-    CLITheme.info('Puoi comunque digitare comandi o cambiare provider.\n');
   }
 
   // Visualizza la guida ai comandi
@@ -170,7 +199,23 @@ async function main() {
     '/trait':      handleTrait,
     '/search-engine': handleSearchEngine,
     '/benchmark':  handleBenchmark,
+    '/memory':     handleMemory,
   };
+
+  // Autocompletamento con Tab: nomi comando + argomenti dinamici.
+  // I comandi inline (gestiti direttamente nel loop REPL) vanno aggiunti a mano.
+  setCompletionSource({
+    commands: [...new Set([
+      ...Object.keys(commandMap),
+      '/clear', '/help', '/reset', '/info', '/memory', '/forget',
+    ])].sort(),
+    argumentsFor: (command) => {
+      if (command === '/use' || command === '/benchmark') return commandCtx.availableModels.current;
+      if (command === '/provider') return configManager.getProviderNames();
+      if (command === '/forget') return ['all'];
+      return [];
+    },
+  });
 
   // Avvia il loop REPL (readline nativo: history navigabile con frecce su/giù)
   while (true) {
@@ -233,22 +278,6 @@ async function main() {
         } else {
           console.log(`- Ruolo Agente:    ${chalk.green(loadRole(configManager.getActiveRole()).displayName)}`);
           console.log(`- Attitudine:      ${chalk.green(loadTrait(configManager.getActiveTrait()).displayName)}`);
-        }
-        console.log();
-        continue;
-      }
-      if (command === '/memory') {
-        const store = MemoryStore.getInstance();
-        const facts = store.getRecent(20);
-        console.log(chalk.bold(`\n🧠 Memoria condivisa (${store.count()} ricordi totali, ultimi ${facts.length}):`));
-        if (facts.length === 0) {
-          console.log(chalk.gray('  (vuota — gli agenti possono salvare fatti con il tool save_memory)'));
-        } else {
-          for (const f of facts) {
-            const date = f.timestamp.replace('T', ' ').slice(0, 16);
-            const content = f.content.length > 90 ? f.content.slice(0, 90) + '…' : f.content;
-            console.log(`  ${chalk.gray(f.id)}  ${chalk.cyan(date)}  ${chalk.yellow(`(${f.source})`)} ${content}`);
-          }
         }
         console.log();
         continue;
@@ -316,7 +345,9 @@ async function main() {
          trimmedInput,
          (chunk, channel) => renderer.onDelta(chunk, channel ?? 'content'),
          (stats) => renderer.setStats(stats),
-         (ev) => renderer.onAgentEvent(ev),
+         // rearm: i prompt di autorizzazione disattivano il raw mode alla chiusura,
+         // riattivarlo a ogni evento mantiene Esc/Ctrl+X funzionanti per tutto il run
+         (ev) => { renderer.onAgentEvent(ev); interrupt.rearm(); },
          interrupt.signal
        );
        if (interrupt.aborted) {

@@ -89,7 +89,7 @@ export class StatusLine {
     const cols = process.stdout.columns || 80;
     const elapsed = ((Date.now() - this.startedAt) / 1000).toFixed(1);
     const spinner = chalk.magenta(FRAMES[this.frame++ % FRAMES.length]);
-    let line = spinner + ' ' + chalk.gray(`${this.label} (${elapsed}s · ${this.tokens} tok · esc interrompe)`);
+    let line = spinner + ' ' + chalk.gray(`${this.label} (${elapsed}s · ${this.tokens} tok · esc/ctrl+x interrompe)`);
 
     if (this.hint) {
       const used = CLITheme.cleanLen(line) + 3; // ' · ' di separazione

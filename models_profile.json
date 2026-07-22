@@ -15,14 +15,43 @@
     "unsloth/Qwen3.5-4B-GGUF": {
       "model": "unsloth/Qwen3.5-4B-GGUF",
       "provider": "http://127.0.0.1:8888/v1",
-      "tier": "large",
+      "tier": "medium",
       "scores": {
-        "instruction": 1,
-        "json": 1,
+        "instruction": 0.8,
+        "json": 0.91,
         "toolCalling": 1
       },
-      "tokensPerSecond": 5.6,
-      "testedAt": "2026-07-19T21:38:54.473Z"
+      "tokensPerSecond": 12.6,
+      "testedAt": "2026-07-20T22:03:26.560Z",
+      "benchmarkVersion": 3,
+      "testsHash": "882f0262",
+      "testResults": [
+        {
+          "name": "frase_8_parole",
+          "category": "instruction",
+          "score": 0.6
+        },
+        {
+          "name": "lista_vincoli_negativi",
+          "category": "instruction",
+          "score": 1
+        },
+        {
+          "name": "json_prodotti",
+          "category": "json",
+          "score": 0.91
+        },
+        {
+          "name": "catena_tool_distrattori",
+          "category": "toolCalling",
+          "score": 1
+        },
+        {
+          "name": "trappola_astensione",
+          "category": "toolCalling",
+          "score": 1
+        }
+      ]
     },
     "HauhauCS/Qwen3.5-9B-Uncensored-HauhauCS-Aggressive": {
       "model": "HauhauCS/Qwen3.5-9B-Uncensored-HauhauCS-Aggressive",
@@ -33,8 +62,78 @@
         "json": 1,
         "toolCalling": 1
       },
-      "tokensPerSecond": 47.1,
-      "testedAt": "2026-07-19T21:40:43.246Z"
+      "tokensPerSecond": 51.4,
+      "testedAt": "2026-07-22T09:04:02.414Z",
+      "benchmarkVersion": 3,
+      "testsHash": "882f0262",
+      "testResults": [
+        {
+          "name": "frase_8_parole",
+          "category": "instruction",
+          "score": 1
+        },
+        {
+          "name": "lista_vincoli_negativi",
+          "category": "instruction",
+          "score": 1
+        },
+        {
+          "name": "json_prodotti",
+          "category": "json",
+          "score": 1
+        },
+        {
+          "name": "catena_tool_distrattori",
+          "category": "toolCalling",
+          "score": 1
+        },
+        {
+          "name": "trappola_astensione",
+          "category": "toolCalling",
+          "score": 1
+        }
+      ]
+    },
+    "Abhiray/gemma-4-E4B-it-heretic-GGUF": {
+      "model": "Abhiray/gemma-4-E4B-it-heretic-GGUF",
+      "provider": "http://127.0.0.1:8888/v1",
+      "tier": "medium",
+      "scores": {
+        "instruction": 1,
+        "json": 0.73,
+        "toolCalling": 1
+      },
+      "tokensPerSecond": 18.7,
+      "testedAt": "2026-07-21T11:35:51.687Z",
+      "benchmarkVersion": 3,
+      "testsHash": "882f0262",
+      "testResults": [
+        {
+          "name": "frase_8_parole",
+          "category": "instruction",
+          "score": 1
+        },
+        {
+          "name": "lista_vincoli_negativi",
+          "category": "instruction",
+          "score": 1
+        },
+        {
+          "name": "json_prodotti",
+          "category": "json",
+          "score": 0.73
+        },
+        {
+          "name": "catena_tool_distrattori",
+          "category": "toolCalling",
+          "score": 1
+        },
+        {
+          "name": "trappola_astensione",
+          "category": "toolCalling",
+          "score": 1
+        }
+      ]
     }
   }
 }

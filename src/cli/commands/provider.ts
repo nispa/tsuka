@@ -1,8 +1,43 @@
 import { CommandCtx } from './types';
 import { runBenchmark, ModelProfile } from '../../core/modelProfile';
+import { probeProvider, warmUpModel, isLocalUrl } from '../../core/discovery';
 import { CLITheme, InteractiveMenu } from '../ui';
 import { notifyIfUnprofiled } from '../shared';
 import chalk from 'chalk';
+import prompts from 'prompts';
+
+/**
+ * Se il modello scelto è su un server locale e non è quello caricato in RAM,
+ * propone di caricarlo subito (richiesta minima da 1 token): il server con
+ * caricamento just-in-time fa lo swap ora, invece che a sorpresa alla prima
+ * chat. `loadedModel` = modello attualmente in RAM (null se non rilevabile).
+ */
+async function maybeWarmUp(ctx: CommandCtx, selectedModel: string, loadedModel: string | null): Promise<void> {
+  const baseUrl = ctx.provider.getBaseUrl();
+  if (!isLocalUrl(baseUrl) || !loadedModel || loadedModel === selectedModel) return;
+
+  console.log();
+  const confirm = await prompts({
+    type: 'confirm',
+    name: 'ok',
+    message: chalk.yellow(`Sul server è caricato '${loadedModel}'. Caricare adesso '${selectedModel}'? (lo swap può richiedere minuti)`),
+    initial: true
+  });
+  if (!confirm.ok) {
+    CLITheme.info('Il modello verrà caricato dal server alla prima richiesta.');
+    return;
+  }
+
+  const spinner = CLITheme.createSpinner(`Caricamento di '${selectedModel}' sul server...`);
+  spinner.start();
+  const ok = await warmUpModel(baseUrl, ctx.configManager.getApiKey(), selectedModel);
+  if (ok) {
+    spinner.succeed(chalk.green(`Modello '${selectedModel}' caricato e pronto.`));
+  } else {
+    spinner.fail(chalk.red('Caricamento non riuscito (timeout o errore del server).'));
+    CLITheme.warning('Il server proverà comunque a caricarlo alla prima richiesta.');
+  }
+}
 
 export async function handleProvider(ctx: CommandCtx, arg: string): Promise<void> {
   let targetProvider = arg.toLowerCase();
@@ -61,7 +96,12 @@ async function pickModel(ctx: CommandCtx): Promise<boolean> {
   const spinner = CLITheme.createSpinner('Recupero dei modelli...');
   spinner.start();
   try {
-    const models = await ctx.provider.listModels();
+    // probeProvider fornisce sia la lista sia il modello caricato in RAM
+    // (flag "loaded" di Unsloth/LM Studio, /api/ps di Ollama)
+    const name = ctx.configManager.getActiveProviderName();
+    const scan = await probeProvider(name, ctx.configManager.getActiveProviderConfig(), ctx.configManager.getApiKey());
+    const models = scan ? scan.models : await ctx.provider.listModels();
+    const loadedModel = scan?.loadedModel ?? null;
     ctx.availableModels.current = models;
     spinner.succeed(chalk.green('Modelli trovati!'));
 
@@ -74,10 +114,13 @@ async function pickModel(ctx: CommandCtx): Promise<boolean> {
     console.log();
     const selectedModel = await InteractiveMenu.select<string>(
       'Seleziona il modello da utilizzare (usa le frecce):',
-      models.map((m) => ({
-        title: m === current ? `${m} (selezionato)` : m,
-        value: m,
-      })),
+      models.map((m) => {
+        const tags = [
+          m === loadedModel ? chalk.green('● caricato') : '',
+          m === current ? chalk.gray('(selezionato)') : '',
+        ].filter(Boolean).join(' ');
+        return { title: tags ? `${m} ${tags}` : m, value: m };
+      }),
       current
     );
 
@@ -87,6 +130,7 @@ async function pickModel(ctx: CommandCtx): Promise<boolean> {
       ctx.configManager.updateActiveModel(selectedModel);
       ctx.agent.current = ctx.recreateAgent();
       CLITheme.printModelChanged(oldModel, selectedModel);
+      await maybeWarmUp(ctx, selectedModel, loadedModel);
       notifyIfUnprofiled(selectedModel);
       return true;
     }
@@ -111,7 +155,9 @@ export async function handleUse(ctx: CommandCtx, arg: string): Promise<void> {
   const spinner = CLITheme.createSpinner(`Controllo del modello '${arg}'...`);
   spinner.start();
   try {
-    const models = await ctx.provider.listModels();
+    const name = ctx.configManager.getActiveProviderName();
+    const scan = await probeProvider(name, ctx.configManager.getActiveProviderConfig(), ctx.configManager.getApiKey());
+    const models = scan ? scan.models : await ctx.provider.listModels();
     ctx.availableModels.current = models;
     spinner.stop();
 
@@ -121,6 +167,7 @@ export async function handleUse(ctx: CommandCtx, arg: string): Promise<void> {
       ctx.configManager.updateActiveModel(arg);
       ctx.agent.current = ctx.recreateAgent();
       CLITheme.printModelChanged(oldModel, arg);
+      await maybeWarmUp(ctx, arg, scan?.loadedModel ?? null);
       notifyIfUnprofiled(arg);
     } else {
       CLITheme.error(`Il modello '${arg}' non è presente su questo server.`);
@@ -157,14 +204,27 @@ export async function handleSearchEngine(ctx: CommandCtx, _arg: string): Promise
   }
 }
 
+function formatScore(score: number): string {
+  const pct = Math.round(score * 100) + '%';
+  if (score >= 0.75) return chalk.green(pct);
+  if (score >= 0.4) return chalk.yellow(pct);
+  return chalk.red(pct);
+}
+
 function printProfile(p: ModelProfile): void {
   const tierColor = p.tier === 'large' ? chalk.green : p.tier === 'medium' ? chalk.yellow : chalk.red;
   console.log(`  Modello:     ${chalk.cyan(p.model)}`);
   console.log(`  Tier misurato: ${tierColor(p.tier.toUpperCase())}`);
-  console.log(`  ├─ Instruction following: ${p.scores.instruction ? chalk.green('OK') : chalk.red('FALLITO')}`);
-  console.log(`  ├─ Output JSON:           ${p.scores.json ? chalk.green('OK') : chalk.red('FALLITO')}`);
-  console.log(`  ├─ Function calling:      ${p.scores.toolCalling === 1 ? chalk.green('OK') : p.scores.toolCalling === 0.5 ? chalk.yellow('PARZIALE') : chalk.red('FALLITO')}`);
+  console.log(`  ├─ Instruction following: ${formatScore(p.scores.instruction)}`);
+  console.log(`  ├─ Output JSON:           ${formatScore(p.scores.json)}`);
+  console.log(`  ├─ Tool calling:          ${formatScore(p.scores.toolCalling)}`);
   console.log(`  └─ Velocità:              ${chalk.cyan(p.tokensPerSecond + ' tok/s')}`);
+  if (p.testResults && p.testResults.length > 0) {
+    console.log(chalk.gray(`  Test eseguiti (${p.testResults.length}, da benchmarks/):`));
+    for (const t of p.testResults) {
+      console.log(`    • ${t.name} ${chalk.gray(`[${t.category}]`)} → ${formatScore(t.score)}`);
+    }
+  }
 }
 
 export async function handleBenchmark(ctx: CommandCtx, arg: string): Promise<void> {

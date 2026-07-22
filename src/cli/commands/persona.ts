@@ -1,5 +1,5 @@
 import * as fs from 'fs';
-import * as path from 'path';
+import { homePath } from '../../core/apphome';
 import { CommandCtx } from './types';
 import { CLITheme, InteractiveMenu } from '../ui';
 import chalk from 'chalk';
@@ -51,7 +51,7 @@ export async function handleRenameChar(ctx: CommandCtx, arg: string): Promise<vo
   }
 
   try {
-    const charPath = path.resolve(process.cwd(), `characters/${charName}.json`);
+    const charPath = homePath('characters', `${charName}.json`);
     if (fs.existsSync(charPath)) {
       const raw = fs.readFileSync(charPath, 'utf-8');
       const data = JSON.parse(raw) as any;

@@ -1,0 +1,15 @@
+{
+  "name": "json_prodotti",
+  "description": "JSON con selezione, ordinamento e somma calcolata dai dati nel prompt",
+  "category": "json",
+  "prompt": "Dati questi prodotti con prezzo in euro: penna 2, quaderno 5, zaino 40, matita 1, astuccio 8. Rispondi SOLO con un oggetto JSON valido, senza testo extra e senza blocchi markdown, con: chiave \"economici\" = array dei 3 prodotti più economici ordinati dal più economico al più caro, ogni elemento un oggetto con \"nome\" (stringa) e \"prezzo\" (numero); chiave \"spesa_totale\" = somma dei prezzi di TUTTI e 5 i prodotti.",
+  "checks": [
+    { "type": "json_valid", "weight": 3 },
+    { "type": "json_path_length", "path": "economici", "value": 3, "weight": 2 },
+    { "type": "json_path_equals", "path": "economici[0].nome", "value": "matita" },
+    { "type": "json_path_equals", "path": "economici[0].prezzo", "value": 1 },
+    { "type": "json_path_equals", "path": "economici[1].nome", "value": "penna" },
+    { "type": "json_path_equals", "path": "economici[2].nome", "value": "quaderno" },
+    { "type": "json_path_equals", "path": "spesa_totale", "value": 56, "weight": 2 }
+  ]
+}

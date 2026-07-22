@@ -1,6 +1,10 @@
 import * as fs from 'fs';
-import * as path from 'path';
+import { homePath } from './apphome';
 import type { LLMProvider } from './provider';
+import {
+  loadBenchmarkTests, getBenchmarkTestsHash, runBenchTest,
+  BenchTestResult, BenchCategory
+} from './benchmarkTests';
 
 /**
  * Capability Fingerprinting: misura OGGETTIVAMENTE le capacità di un modello
@@ -11,12 +15,23 @@ import type { LLMProvider } from './provider';
  * decidere il tier dei tool (small/medium/large) in modo misurato.
  */
 
+/**
+ * Versione del MOTORE di benchmark: incrementarla invalida i profili misurati
+ * con le versioni precedenti (trattati come assenti → riproporre /benchmark).
+ * v2: test hardcoded più severi dei 3 originali (che ogni modello moderno
+ * passava, assegnando LARGE anche a modelli da 4B).
+ * v3: test dichiarativi caricati da `benchmarks/*.json` (modificabili al volo);
+ * oltre alla versione del motore, il profilo salva l'hash del set di test:
+ * cambiare un test invalida automaticamente i profili misurati col set vecchio.
+ */
+export const BENCHMARK_VERSION = 3;
+
 export interface ModelScores {
-  /** 0 o 1: segue istruzioni esatte di formato */
+  /** 0..1: media pesata dei test di categoria "instruction" in benchmarks/ */
   instruction: number;
-  /** 0 o 1: produce JSON valido e conforme */
+  /** 0..1: media pesata dei test di categoria "json" in benchmarks/ */
   json: number;
-  /** 0 / 0.5 / 1: emette tool call validi con argomenti corretti */
+  /** 0..1: media pesata dei test di categoria "toolCalling" in benchmarks/ */
   toolCalling: number;
 }
 
@@ -27,13 +42,18 @@ export interface ModelProfile {
   scores: ModelScores;
   tokensPerSecond: number;
   testedAt: string; // ISO 8601
+  benchmarkVersion?: number;
+  /** Hash del set di test in benchmarks/ al momento della misura */
+  testsHash?: string;
+  /** Punteggio di ogni singolo test eseguito */
+  testResults?: BenchTestResult[];
 }
 
 interface ProfilesFile {
   profiles: Record<string, ModelProfile>;
 }
 
-const PROFILE_PATH = path.resolve(process.cwd(), 'models_profile.json');
+const PROFILE_PATH = homePath('models_profile.json');
 let cache: { mtimeMs: number; profiles: Record<string, ModelProfile> } | null = null;
 
 function loadProfiles(): Record<string, ModelProfile> {
@@ -56,11 +76,24 @@ function loadProfiles(): Record<string, ModelProfile> {
 }
 
 /**
- * Restituisce il profilo misurato del modello, se presente (altrimenti null).
+ * Restituisce il profilo misurato del modello, se presente e misurato con la
+ * versione corrente del benchmark (i profili di versioni precedenti sono
+ * trattati come assenti: i vecchi test erano troppo facili e sovrastimavano
+ * il tier — serve rimisurare con /benchmark).
  */
 export function getModelProfile(modelName: string): ModelProfile | null {
   const profiles = loadProfiles();
-  return profiles[modelName] ?? null;
+  const profile = profiles[modelName] ?? null;
+  if (profile && (profile.benchmarkVersion ?? 1) !== BENCHMARK_VERSION) {
+    return null;
+  }
+  // Set di test cambiato dopo la misura → profilo stantio, va rimisurato
+  if (profile && profile.testsHash !== getBenchmarkTestsHash()) {
+    return null;
+  }
+  // Il tier è sempre ricalcolato dai punteggi: se le soglie di computeTier
+  // cambiano, i profili già misurati si adeguano senza dover rimisurare
+  return profile ? { ...profile, tier: computeTier(profile.scores) } : null;
 }
 
 function saveProfile(profile: ModelProfile): void {
@@ -75,92 +108,89 @@ function saveProfile(profile: ModelProfile): void {
 }
 
 /**
- * Deriva il tier dai punteggi misurati.
+ * Deriva il tier dai punteggi misurati (v2: criteri combinati, non solo toolCalling).
+ * LARGE richiede la catena di tool quasi perfetta E precisione su formato/JSON:
+ * sono le capacità che servono davvero per execute_command e create_tool.
  */
 export function computeTier(scores: ModelScores): 'small' | 'medium' | 'large' {
-  if (scores.toolCalling >= 0.75) return 'large';
-  if (scores.toolCalling >= 0.4) return 'medium';
+  if (scores.toolCalling >= 0.9 && scores.instruction >= 0.85 && scores.json >= 0.85) {
+    return 'large';
+  }
+  if (scores.toolCalling >= 0.6 && scores.json >= 0.5) {
+    return 'medium';
+  }
   return 'small';
 }
 
 /**
- * Esegue il benchmark di capability fingerprinting su un modello.
- * Tre micro-test (instruction, JSON, tool calling) + misura della velocità.
- * Il profilo risultante viene salvato su disco e restituito.
+ * Esegue il benchmark di capability fingerprinting su un modello (v3).
+ * I test sono caricati da `benchmarks/*.json`: vengono enumerati, eseguiti in
+ * sequenza e ognuno produce un punteggio 0..1; i punteggi confluiscono nella
+ * media pesata della propria categoria (instruction / json / toolCalling).
+ * Il profilo salva versione del motore + hash del set di test.
  */
 export async function runBenchmark(
   provider: LLMProvider,
   model: string,
   onProgress?: (step: string) => void
 ): Promise<ModelProfile> {
+  const tests = loadBenchmarkTests();
+  if (tests.length === 0) {
+    throw new Error('Nessun test trovato in benchmarks/ — aggiungi almeno un file .json di test.');
+  }
+
   const previousModel = provider.getCurrentModel();
   provider.setCurrentModel(model);
 
   try {
-    // ── Test 1: instruction following (misura anche la velocità) ──
-    onProgress?.('Test 1/3: instruction following...');
-    const r1 = await provider.chatWithTools(
-      [{ role: 'user', content: 'Rispondi esattamente e solamente con la parola: PONG. Nessun altro testo, nessuna punteggiatura.' }],
-      undefined
-    );
-    const instruction = r1.content.trim().replace(/[^A-Za-z]/g, '').toUpperCase() === 'PONG' ? 1 : 0;
-    const tokensPerSecond = r1.stats?.tokensPerSecond ?? 0;
+    onProgress?.(`${tests.length} test caricati da benchmarks/...`);
 
-    // ── Test 2: output JSON strutturato ──
-    onProgress?.('Test 2/3: output JSON...');
-    const r2 = await provider.chatWithTools(
-      [{ role: 'user', content: 'Rispondi SOLO con un oggetto JSON valido con chiavi "a" (numero intero) e "b" (stringa). Nessun testo prima o dopo, nessun blocco markdown.' }],
-      undefined
-    );
-    let json = 0;
-    try {
-      const m = r2.content.match(/\{[\s\S]*\}/);
-      if (m) {
-        const obj = JSON.parse(m[0]);
-        if (typeof obj.a === 'number' && typeof obj.b === 'string') json = 1;
-      }
-    } catch {}
+    const testResults: BenchTestResult[] = [];
+    let tokensPerSecond = 0;
 
-    // ── Test 3: function calling ──
-    onProgress?.('Test 3/3: function calling...');
-    const weatherTool = [{
-      type: 'function',
-      function: {
-        name: 'get_weather',
-        description: "Restituisce le condizioni meteo di una città.",
-        parameters: {
-          type: 'object',
-          properties: {
-            city: { type: 'string', description: 'Nome della città' }
-          },
-          required: ['city']
-        }
+    for (let i = 0; i < tests.length; i++) {
+      const test = tests[i];
+      onProgress?.(`Test ${i + 1}/${tests.length}: ${test.name} [${test.category}]...`);
+      const outcome = await runBenchTest(provider, test);
+      if (tokensPerSecond === 0 && outcome.tokensPerSecond) {
+        tokensPerSecond = outcome.tokensPerSecond;
       }
-    }];
-    const r3 = await provider.chatWithTools(
-      [{ role: 'user', content: 'Che tempo fa a Roma? Usa il tool get_weather per rispondere.' }],
-      weatherTool
-    );
-    let toolCalling = 0;
-    const tc = r3.toolCalls?.[0];
-    if (tc) {
-      toolCalling = 0.5; // ha emesso una tool call, ma con argomenti non validi
-      try {
-        const args = JSON.parse(tc.function.arguments);
-        if (tc.function.name === 'get_weather' && typeof args.city === 'string' && args.city.trim().length > 0) {
-          toolCalling = 1;
-        }
-      } catch {}
+      testResults.push({
+        name: test.name,
+        category: test.category,
+        score: Math.round(outcome.score * 100) / 100
+      });
     }
 
-    const scores: ModelScores = { instruction, json, toolCalling };
+    // Media pesata per categoria (peso del test: campo "weight", default 1).
+    // Una categoria senza test vale 0: il set deve coprire tutte e tre.
+    const categoryScore = (cat: BenchCategory): number => {
+      let sum = 0;
+      let weight = 0;
+      for (let i = 0; i < tests.length; i++) {
+        if (tests[i].category !== cat) continue;
+        const w = tests[i].weight ?? 1;
+        sum += testResults[i].score * w;
+        weight += w;
+      }
+      return weight > 0 ? Math.round((sum / weight) * 100) / 100 : 0;
+    };
+
+    const scores: ModelScores = {
+      instruction: categoryScore('instruction'),
+      json: categoryScore('json'),
+      toolCalling: categoryScore('toolCalling')
+    };
     const profile: ModelProfile = {
       model,
       provider: provider.getBaseUrl(),
       tier: computeTier(scores),
       scores,
       tokensPerSecond,
-      testedAt: new Date().toISOString()
+      testedAt: new Date().toISOString(),
+      benchmarkVersion: BENCHMARK_VERSION,
+      testsHash: getBenchmarkTestsHash(),
+      testResults
     };
     saveProfile(profile);
     return profile;

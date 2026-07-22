@@ -22,6 +22,7 @@
 | Caratteristica | Descrizione |
 |---------------|-------------|
 | 🧩 **Tool a caldo** | Aggiungi un file `.ts` in `src/tools/impl/` — scoperto automaticamente all'avvio |
+| 📡 **Auto-discovery dei server** | All'avvio scansiona i server LLM locali (Ollama, Unsloth, …) e si aggancia a quello vivo — preferendo il modello già caricato in RAM |
 | 🎭 **Sistema personaggi** | Ruoli (competenze) × Tratti (personalità) × Personaggi (agenti nominati) in JSON |
 | 📊 **Capability Fingerprinting** | `/benchmark` misura oggettivamente le capacità del modello — tier *misurato, non indovinato* |
 | 🛠️ **Auto-creazione tool** | Gli agenti scrivono nuovi tool JavaScript via `create_tool` — sandbox + registrazione a caldo |
@@ -108,7 +109,9 @@ Due meccanismi decidono quali tool un modello può usare:
 | Meccanismo | Metodo | Esempio |
 |-----------|--------|---------|
 | **Euristica nome** (fallback) | Rileva `9b`, `26b`, `70b` dal nome | `qwen-9b` → SMALL |
-| **Capability Fingerprinting** 📊 | `/benchmark` esegue 3 micro-test | Un 9B con punteggio 3/3 → **LARGE** (corretto!) |
+| **Capability Fingerprinting** 📊 | `/benchmark` esegue il set di test in `benchmarks/` | Un 4B che passa test banali non prende più LARGE |
+
+**I test di benchmark sono file JSON in [`benchmarks/`](benchmarks/)** — si aggiungono, modificano o rimuovono al volo, senza toccare il codice. Ogni file dichiara un prompt (o passi concatenati con risultati tool dichiarati), i tool offerti al modello e una lista di check dichiarativi pesati (`word_count`, `regex`, `json_path_equals`, `tool_arg_equals`, ...). `/benchmark` enumera i test, li esegue e riporta i punteggi singoli; i punteggi di categoria (instruction / json / toolCalling) sono medie pesate. I profili salvano l'**hash del set di test**: modificare un test invalida automaticamente i profili misurati prima. Il set di default è volutamente difficile: vincoli lessicali contati, valori calcolati dentro il JSON, catena di tool a 2 passi con **id distrattori quasi identici**, e una domanda-trappola che nomina un tool senza richiederlo. Il tier LARGE richiede la catena quasi perfetta *più* precisione ≥85% su formato e JSON.
 
 ```powershell
 /benchmark                     # Testa il modello corrente
@@ -168,7 +171,19 @@ create_tool({
 
 ⚠️ I tool generati non possono essere `DANGEROUS` e non possono sovrascrivere tool core `.ts`.
 
-### 7. Cross-Platform 🖥️
+### 7. Auto-Discovery dei Server all'Avvio 📡
+
+All'avvio TSUKA non si fida ciecamente del provider configurato — scansiona ([`src/core/discovery.ts`](src/core/discovery.ts)):
+
+1. **Sonda il provider attivo** (timeout breve 2,5s, via `/v1/models` con fallback nativo Ollama `/api/tags`).
+2. Se è spento, **sonda in parallelo tutti gli altri server locali configurati** e si aggancia al primo vivo (il config viene aggiornato automaticamente). I provider remoti non vengono mai sondati se non attivi: l'avvio non dipende dalla rete.
+3. **Priorità del modello**: modello già caricato in RAM → modello configurato se presente sul server → primo disponibile. Agganciarsi al modello caricato evita che il server ne ricarichi un altro da zero — e garantisce che i profili di `/benchmark` siano attribuiti al modello che risponde davvero.
+
+Il modello caricato è rilevato per famiglia di server: Unsloth Studio lo marca con `"loaded": true` in `/v1/models`, LM Studio con `"state": "loaded"`, Ollama tramite l'endpoint `/api/ps`.
+
+Se nessun server risponde, la REPL parte comunque — cambia manualmente con `/provider`.
+
+### 8. Cross-Platform 🖥️
 
 Astratto da [`src/core/platform.ts`](src/core/platform.ts):
 
@@ -285,6 +300,25 @@ npm run dev
 npm run build
 npm start
 ```
+
+### Installazione come Comando Globale (`tsuka`)
+
+Per lanciare TSUKA da qualsiasi finestra PowerShell senza `npm run dev`:
+
+```powershell
+npm run build
+npm link        # crea il comando globale `tsuka` (shim nel PATH)
+tsuka           # avvialo da qualunque cartella
+```
+
+**Home dell'app vs workspace** (`src/core/apphome.ts`): gli asset dell'applicazione —
+`roles/`, `traits/`, `characters/`, `teams/`, `tools_schemas/`, `tsuka.config.json`, `.env`,
+memoria condivisa e profili dei modelli — vivono sempre nella *cartella di installazione*
+(o in `TSUKA_HOME`, se quella variabile d'ambiente è impostata). Il *workspace* è la cartella
+da cui lanci `tsuka`: è lì che operano i file tool degli agenti (read/write/edit/grep) con i
+path relativi. Puoi quindi fare `cd` in qualsiasi progetto e far lavorare gli agenti su di
+esso, mentre personaggi, memoria e config seguono l'installazione. Dopo una modifica ai
+sorgenti, aggiorna il comando globale con `npm run build`. Per disinstallare: `npm unlink -g tsuka`.
 
 ## 🧪 Validazione Autonoma
 

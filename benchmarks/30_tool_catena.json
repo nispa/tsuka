@@ -1,0 +1,60 @@
+{
+  "name": "catena_tool_distrattori",
+  "description": "Scelta del tool giusto e propagazione dell'id corretto tra distrattori quasi identici",
+  "category": "toolCalling",
+  "weight": 2,
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "find_user",
+        "description": "Trova l'id di un utente dato il suo nome completo.",
+        "parameters": {
+          "type": "object",
+          "properties": { "name": { "type": "string", "description": "Nome completo dell'utente" } },
+          "required": ["name"]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "get_orders",
+        "description": "Restituisce il numero di ordini di un utente dato il suo id.",
+        "parameters": {
+          "type": "object",
+          "properties": { "user_id": { "type": "string", "description": "Id dell'utente (es. USR-123)" } },
+          "required": ["user_id"]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "get_weather",
+        "description": "Restituisce le condizioni meteo di una città.",
+        "parameters": {
+          "type": "object",
+          "properties": { "city": { "type": "string", "description": "Nome della città" } },
+          "required": ["city"]
+        }
+      }
+    }
+  ],
+  "steps": [
+    {
+      "prompt": "Quanti ordini ha fatto l'utente Maria Rossi? Usa i tool a disposizione.",
+      "checks": [
+        { "type": "tool_called", "value": "find_user", "weight": 2 },
+        { "type": "tool_arg_regex", "arg": "name", "value": "maria\\s+rossi", "flags": "i" }
+      ]
+    },
+    {
+      "toolResult": "{\"results\":[{\"name\":\"Mario Rossi\",\"user_id\":\"USR-2209\"},{\"name\":\"Maria Rossi\",\"user_id\":\"USR-7431\"},{\"name\":\"Maria Rosi\",\"user_id\":\"USR-8817\"}]}",
+      "checks": [
+        { "type": "tool_called", "value": "get_orders", "weight": 2 },
+        { "type": "tool_arg_equals", "arg": "user_id", "value": "USR-7431", "weight": 3 }
+      ]
+    }
+  ]
+}

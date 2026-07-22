@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { homePath } from './apphome';
 
 // dotenv caricato dal punto di ingresso (cli/index.ts)
 
@@ -28,8 +29,8 @@ export interface AppConfig {
   workspaceRoot?: string;
 }
 
-const LEGACY_CONFIG_PATH = path.resolve(process.cwd(), 'harness.config.json');
-export const CONFIG_PATH = path.resolve(process.cwd(), 'tsuka.config.json');
+const LEGACY_CONFIG_PATH = homePath('harness.config.json');
+export const CONFIG_PATH = homePath('tsuka.config.json');
 
 // Migrazione legacy: rinomina harness.config.json → tsuka.config.json al primo avvio
 if (!fs.existsSync(CONFIG_PATH) && fs.existsSync(LEGACY_CONFIG_PATH)) {
@@ -127,7 +128,10 @@ export class ConfigManager {
   }
 
   getApiKey(): string {
-    const provider = this.config.activeProvider;
+    return this.getApiKeyFor(this.config.activeProvider);
+  }
+
+  getApiKeyFor(provider: string): string {
     if (provider === 'openrouter') {
       return process.env.OPENROUTER_API_KEY || '';
     }
@@ -135,6 +139,14 @@ export class ConfigManager {
       return process.env.UNSLOTH_API_KEY || 'local';
     }
     return 'local';
+  }
+
+  getProviderNames(): string[] {
+    return Object.keys(this.config.providers);
+  }
+
+  getProviderConfig(name: string): ProviderConfig | undefined {
+    return this.config.providers[name];
   }
 
   updateActiveModel(modelName: string): void {

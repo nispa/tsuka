@@ -1,5 +1,5 @@
 import * as fs from 'fs';
-import * as path from 'path';
+import { homePath } from '../core/apphome';
 import { RiskLevel, PermissionManager } from '../safety/permissions';
 import { getModelProfile } from '../core/modelProfile';
 
@@ -127,7 +127,7 @@ const schemaCache = new Map<string, { mtimeMs: number; data: ToolSchemaData }>()
  */
 export function loadToolSchema(name: string): ToolSchemaData {
   try {
-    const schemaPath = path.resolve(process.cwd(), `tools_schemas/${name}.json`);
+    const schemaPath = homePath('tools_schemas', `${name}.json`);
     if (!fs.existsSync(schemaPath)) {
       return fallbackSchema(name);
     }

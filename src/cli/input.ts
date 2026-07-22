@@ -1,7 +1,7 @@
 import * as readline from 'readline';
 import * as fs from 'fs';
-import * as path from 'path';
 import chalk from 'chalk';
+import { homePath } from '../core/apphome';
 
 /**
  * Input principale della REPL basato sul readline nativo di Node:
@@ -13,8 +13,45 @@ import chalk from 'chalk';
  * i due sistemi non si contendono mai stdin.
  */
 
-const HISTORY_FILE = path.resolve(process.cwd(), '.tsuka_history');
+const HISTORY_FILE = homePath('.tsuka_history');
 const MAX_HISTORY = 100;
+
+/**
+ * Autocompletamento con Tab: comandi slash e, per alcuni comandi, i loro
+ * argomenti (es. i nomi dei modelli per /use). La sorgente è registrata
+ * dalla REPL all'avvio con setCompletionSource, così questo modulo non
+ * dipende dalla mappa dei comandi né dallo stato della sessione.
+ */
+export interface CompletionSource {
+  commands: string[];
+  /** Opzioni di completamento per l'argomento di un dato comando (es. '/use' → modelli). */
+  argumentsFor?: (command: string) => string[];
+}
+
+let completionSource: CompletionSource | null = null;
+
+export function setCompletionSource(source: CompletionSource): void {
+  completionSource = source;
+}
+
+/** Esportata per i test. Formato readline: [candidati, sottostringa da sostituire]. */
+export function completeLine(line: string): [string[], string] {
+  if (!completionSource || !line.startsWith('/')) return [[], line];
+
+  const parts = line.split(' ');
+  if (parts.length === 1) {
+    // Completa il nome del comando
+    const hits = completionSource.commands.filter((c) => c.startsWith(line));
+    return [hits, line];
+  }
+
+  // Completa l'ultima parola come argomento del comando
+  const command = parts[0].toLowerCase();
+  const last = parts[parts.length - 1];
+  const options = completionSource.argumentsFor?.(command) ?? [];
+  const hits = options.filter((o) => o.toLowerCase().startsWith(last.toLowerCase()));
+  return [hits, last];
+}
 
 // History in memoria, dal più recente al più vecchio (formato readline)
 let history: string[] = loadHistory();
@@ -65,6 +102,7 @@ export function askInput(message: string): Promise<string | undefined> {
       history: interactive ? [...history] : undefined,
       historySize: MAX_HISTORY,
       removeHistoryDuplicates: true,
+      completer: interactive ? completeLine : undefined,
     });
 
     let settled = false;

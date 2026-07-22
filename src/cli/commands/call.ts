@@ -105,6 +105,7 @@ export async function handleCall(ctx: CommandCtx, arg: string): Promise<void> {
 
       // Streaming con status "Thinking…" e pannello markdown finale per ogni intervento
       const renderer = new StreamRenderer({ headerName: p.aiName, headerColor: chalk.green });
+      interrupt.rearm(); // il raw mode può essere stato disattivato da prompt intermedi
       renderer.begin();
       try {
         await ctx.provider.chatWithTools(
