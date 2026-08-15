@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Architettura di Tsuka</title>
+<title>Architettura di TSUKA v0.2.0</title>
 <style>
   :root{
     --paper:#EFF1F4; --surface:#FFFFFF; --surface-2:#F6F7F9;
@@ -25,16 +25,6 @@
       --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px -12px rgba(0,0,0,.6);
     }
   }
-  :root[data-theme="dark"]{
-    --paper:#0D141B; --surface:#141E27; --surface-2:#18242F;
-    --ink:#DEE6EC; --ink-2:#A3B3C0; --ink-3:#7C8D9B;
-    --rule:#26343F; --rule-soft:#1D2A34;
-    --brass:#E0A659; --brass-soft:#2C2317; --brass-line:#7A5A2C;
-    --verde:#6FB3AF; --verde-soft:#14262A;
-    --warn:#E08A6C; --warn-soft:#2B1A15;
-    --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px -12px rgba(0,0,0,.6);
-  }
-
   *{box-sizing:border-box}
   body{
     background:var(--paper); color:var(--ink);
@@ -42,13 +32,11 @@
     font-size:17px; line-height:1.65; margin:0;
     -webkit-font-smoothing:antialiased;
   }
-  .serif{font-family:ui-serif,"Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua",Georgia,serif}
-  code,kbd,.mono{font-family:ui-monospace,"Cascadia Code","JetBrains Mono",Consolas,"Liberation Mono",monospace}
+  code,kbd,.mono{font-family:ui-monospace,"Cascadia Code","JetBrains Mono",Consolas,monospace}
 
   .wrap{max-width:1180px;margin:0 auto;padding:0 24px 96px;display:grid;grid-template-columns:1fr;gap:40px}
-  @media(min-width:1000px){.wrap{grid-template-columns:210px minmax(0,1fr);gap:56px;padding-top:8px}}
+  @media(min-width:1000px){.wrap{grid-template-columns:230px minmax(0,1fr);gap:56px;padding-top:8px}}
 
-  /* ── indice ── */
   nav.toc{display:none}
   @media(min-width:1000px){
     nav.toc{display:block;position:sticky;top:24px;align-self:start;max-height:calc(100vh - 48px);overflow:auto;padding-top:64px}
@@ -60,22 +48,19 @@
     border-left:2px solid transparent;
   }
   nav.toc a:hover{color:var(--ink);background:var(--surface);border-left-color:var(--brass-line)}
-  nav.toc a:focus-visible{outline:2px solid var(--brass);outline-offset:1px}
   nav.toc .n{color:var(--brass);font-variant-numeric:tabular-nums;font-weight:600;min-width:15px}
 
-  /* ── testata ── */
   header.top{padding:56px 0 32px;border-bottom:1px solid var(--rule)}
   .eyebrow{
     font-size:11.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--brass);
     font-weight:700;margin:0 0 14px
   }
-  h1{font-size:clamp(38px,6vw,58px);line-height:1.02;margin:0 0 18px;letter-spacing:-.02em;text-wrap:balance;font-weight:600}
-  .lede{font-size:19px;color:var(--ink-2);max-width:64ch;margin:0 0 8px;text-wrap:pretty}
+  h1{font-size:clamp(38px,5vw,54px);line-height:1.05;margin:0 0 18px;letter-spacing:-.02em;font-weight:700}
+  .lede{font-size:19px;color:var(--ink-2);max-width:64ch;margin:0 0 8px}
   .stamp{font-size:13.5px;color:var(--ink-3);margin-top:22px}
 
-  /* ── striscia dei numeri ── */
   .facts{
-    display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:1px;
+    display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:1px;
     background:var(--rule-soft);border:1px solid var(--rule-soft);border-radius:9px;
     overflow:hidden;margin:32px 0 0
   }
@@ -87,490 +72,137 @@
   section{padding:44px 0;border-bottom:1px solid var(--rule-soft)}
   section:last-of-type{border-bottom:none}
   h2{
-    font-size:27px;line-height:1.2;margin:0 0 6px;letter-spacing:-.01em;font-weight:600;
-    display:flex;gap:13px;align-items:baseline;text-wrap:balance
+    font-size:26px;line-height:1.2;margin:0 0 6px;letter-spacing:-.01em;font-weight:600;
+    display:flex;gap:13px;align-items:baseline
   }
   h2 .n{
     color:var(--brass);font-size:13px;font-variant-numeric:tabular-nums;font-weight:700;
     letter-spacing:.06em;flex:none;padding-top:2px
   }
-  h3{font-size:16px;margin:30px 0 8px;letter-spacing:.01em;font-weight:650;color:var(--ink)}
-  p{margin:0 0 15px;max-width:68ch;text-wrap:pretty}
-  .sub{color:var(--ink-2);max-width:68ch;margin:0 0 22px}
-  strong{font-weight:650}
-  a{color:var(--brass)}
+  h3{font-size:17px;margin:28px 0 8px;letter-spacing:.01em;font-weight:600;color:var(--ink)}
+  p{margin:0 0 15px;max-width:68ch}
+  code{background:var(--surface-2);border:1px solid var(--rule);padding:2px 5px;border-radius:4px;font-size:0.9em;color:var(--brass)}
 
-  ul,ol.list{max-width:68ch;padding-left:20px;margin:0 0 15px}
-  li{margin-bottom:7px}
-
-  code{
-    font-size:.87em;background:var(--surface-2);border:1px solid var(--rule-soft);
-    padding:1px 5px;border-radius:4px;color:var(--ink)
-  }
-  pre{
-    background:var(--surface);border:1px solid var(--rule);border-radius:9px;
-    padding:16px 18px;overflow-x:auto;margin:0 0 18px;box-shadow:var(--shadow)
-  }
-  pre code{background:none;border:none;padding:0;font-size:13.5px;line-height:1.7;color:var(--ink-2)}
-
-  .tablewrap{overflow-x:auto;margin:0 0 18px;border:1px solid var(--rule);border-radius:9px;background:var(--surface);box-shadow:var(--shadow)}
-  table{border-collapse:collapse;width:100%;font-size:14.5px;min-width:440px}
-  th,td{text-align:left;padding:10px 15px;border-bottom:1px solid var(--rule-soft);vertical-align:top}
-  thead th{
-    font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3);
-    font-weight:700;background:var(--surface-2);white-space:nowrap
-  }
-  tbody tr:last-child td{border-bottom:none}
-  td code{white-space:nowrap}
-
-  /* ── flusso ── */
-  .flow{display:flex;flex-direction:column;gap:0;margin:8px 0 20px;max-width:68ch}
-  .step{display:grid;grid-template-columns:26px 1fr;gap:15px;align-items:start}
-  .step .rail{display:flex;flex-direction:column;align-items:center;height:100%}
-  .step .dot{
-    width:26px;height:26px;border-radius:50%;flex:none;display:grid;place-items:center;
-    background:var(--surface);border:1.5px solid var(--brass-line);color:var(--brass);
-    font-size:12px;font-weight:700;font-variant-numeric:tabular-nums
-  }
-  .step .line{width:1.5px;flex:1;background:var(--rule);min-height:14px}
-  .step:last-child .line{display:none}
-  .step .body{padding-bottom:16px}
-  .step b{display:block;font-size:15px;margin-bottom:2px}
-  .step span{font-size:14px;color:var(--ink-2)}
-
-  /* ── riquadri ── */
-  .note{
-    border-left:3px solid var(--verde);background:var(--verde-soft);
-    padding:14px 18px;border-radius:0 8px 8px 0;margin:0 0 18px;max-width:68ch
-  }
-  .note p{margin:0;font-size:15.5px}
-  .note p + p{margin-top:10px}
-  .note .lbl{
-    display:block;font-size:11px;letter-spacing:.1em;text-transform:uppercase;
-    font-weight:700;color:var(--verde);margin-bottom:5px
-  }
-  .warn{border-left-color:var(--warn);background:var(--warn-soft)}
-  .warn .lbl{color:var(--warn)}
-
-  .debt{display:flex;flex-direction:column;gap:1px;background:var(--rule-soft);border:1px solid var(--rule-soft);border-radius:9px;overflow:hidden;max-width:68ch}
-  .debt article{background:var(--surface);padding:15px 18px}
-  .debt b{display:block;font-size:15px;margin-bottom:3px}
-  .debt p{margin:0;font-size:14.5px;color:var(--ink-2)}
-
-  .pill{
-    display:inline-block;font-size:12px;padding:2px 9px;border-radius:99px;
-    border:1px solid var(--brass-line);color:var(--brass);background:var(--brass-soft);
-    letter-spacing:.02em;white-space:nowrap
-  }
-  .cmds{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 20px;max-width:68ch}
-  .cmds code{font-size:13px;padding:3px 8px}
-
-  /* ── da implementare ── */
-  .todo{
-    display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:700;
-    letter-spacing:.1em;text-transform:uppercase;padding:3px 9px;border-radius:99px;
-    background:var(--warn-soft);color:var(--warn);border:1px dashed var(--warn);
-    white-space:nowrap;vertical-align:middle
-  }
-  h2 .todo,h3 .todo{margin-left:2px;position:relative;top:-1px}
-  .planned{
-    border:1px dashed var(--warn-line,var(--warn));background:transparent;
-    border-radius:9px;padding:0;margin:0 0 18px;max-width:68ch;overflow:hidden
-  }
-  .planned > header{
-    display:flex;align-items:center;gap:10px;flex-wrap:wrap;
-    padding:12px 18px;background:var(--warn-soft);border-bottom:1px dashed var(--warn)
-  }
-  .planned > header b{font-size:15.5px}
-  .planned .inner{padding:14px 18px;background:var(--surface)}
-  .planned .inner p{margin:0;font-size:15px}
-  .planned .inner p + p{margin-top:10px}
-  .planned .inner ul{margin:10px 0 0}
-
-  footer{padding:36px 0 0;color:var(--ink-3);font-size:14px;max-width:68ch}
-  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+  table{width:100%;border-collapse:collapse;margin:20px 0;font-size:14.5px;background:var(--surface);border-radius:8px;overflow:hidden;border:1px solid var(--rule-soft)}
+  th,td{padding:10px 14px;text-align:left;border-bottom:1px solid var(--rule-soft)}
+  th{background:var(--surface-2);font-weight:600;color:var(--ink-2)}
 </style>
+</head>
+<body>
 
 <div class="wrap">
+  <nav class="toc">
+    <ol>
+      <li><a href="#s1"><span class="n">01</span> Modello a Livelli</a></li>
+      <li><a href="#s2"><span class="n">02</span> ReAct & Performance</a></li>
+      <li><a href="#s3"><span class="n">03</span> Sicurezza & Audit</a></li>
+      <li><a href="#s4"><span class="n">04</span> Multi-Agent & Blackboard</a></li>
+      <li><a href="#s5"><span class="n">05</span> Creatività & Effort</a></li>
+      <li><a href="#s6"><span class="n">06</span> Multi-Skill System</a></li>
+      <li><a href="#s7"><span class="n">07</span> Evoluzioni Future</a></li>
+    </ol>
+  </nav>
 
-<nav class="toc" aria-label="Indice">
-  <ol>
-    <li><a href="#modello"><span class="n">1</span><span>Il modello mentale</span></a></li>
-    <li><a href="#strati"><span class="n">2</span><span>Gli strati</span></a></li>
-    <li><a href="#viaggio"><span class="n">3</span><span>Il viaggio di una richiesta</span></a></li>
-    <li><a href="#assi"><span class="n">4</span><span>I quattro assi</span></a></li>
-    <li><a href="#tool"><span class="n">5</span><span>I tool</span></a></li>
-    <li><a href="#memorie"><span class="n">6</span><span>Le tre memorie</span></a></li>
-    <li><a href="#contesto"><span class="n">7</span><span>Governo del contesto</span></a></li>
-    <li><a href="#costo"><span class="n">8</span><span>Governo del costo</span></a></li>
-    <li><a href="#modalita"><span class="n">9</span><span>Modalità di esecuzione</span></a></li>
-    <li><a href="#provider"><span class="n">10</span><span>Provider e modelli</span></a></li>
-    <li><a href="#sicurezza"><span class="n">11</span><span>Sicurezza</span></a></li>
-    <li><a href="#mappa"><span class="n">12</span><span>Mappa e comandi</span></a></li>
-    <li><a href="#debito"><span class="n">13</span><span>Limiti noti</span></a></li>
-    <li><a href="#roadmap"><span class="n">14</span><span>Da implementare</span></a></li>
-    <li><a href="#interfaccia"><span class="n">15</span><span>Verso una nuova UI</span></a></li>
-  </ol>
-</nav>
+  <div>
+    <header class="top">
+      <div class="eyebrow">Documento di Architettura Ufficiale — TSUKA v0.2.0</div>
+      <h1>TSUKA Architecture Reference</h1>
+      <p class="lede">Framework multi-agente CLI in TypeScript per l'orchestrazione deterministica di LLM locali e cloud. ReAct loop, tool hot-plug, character system ortogonale, isolamento dei workspace e audit di sicurezza difensivo.</p>
+      
+      <div class="facts">
+        <div><b>22</b><span>Tool Attivi</span></div>
+        <div><b>16</b><span>Ruoli JSON</span></div>
+        <div><b>24</b><span>Personaggi</span></div>
+        <div><b>5</b><span>Preset Packs</span></div>
+        <div><b>42</b><span>Suite Test (100%)</span></div>
+      </div>
+    </header>
 
-<main>
+    <main>
+      <!-- SEC 1 -->
+      <section id="s1">
+        <h2><span class="n">01</span> Modello Architetturale a 3 Livelli</h2>
+        <p>L'architettura di TSUKA è strutturata in 3 layer disaccoppiati per garantire che l'interfaccia CLI, il motore agentico ed il registry dei tool siano totalmente indipendenti:</p>
+        <table>
+          <thead>
+            <tr><th>Layer</th><th>Componenti Principali</th><th>Responsabilità</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><b>CLI Layer</b></td>
+              <td><code>src/cli/index.ts</code>, <code>StreamRenderer</code>, <code>ui.ts</code>, <code>initCmd.ts</code></td>
+              <td>REPL interattiva, rendering token live, gestione dello stream `<think>`, comando <code>tsuka init</code>.</td>
+            </tr>
+            <tr>
+              <td><b>Core Layer</b></td>
+              <td><code>Agent</code>, <code>LLMProvider</code>, <code>Blackboard</code>, <code>EffortControl</code>, <code>RunController</code></td>
+              <td>Ciclo ReAct, gestione del contesto, misurazione dei token, lavagna di run e retry loops.</td>
+            </tr>
+            <tr>
+              <td><b>Tool & Safety Layer</b></td>
+              <td><code>ToolRegistry</code>, <code>PermissionManager</code>, <code>auditCode</code>, <code>impl/*.ts</code></td>
+              <td>Discovery dinamica dei tool, autorizzazione <code>SAFE/RESTRICTED/DANGEROUS</code>, workspace jail.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
 
-<header class="top">
-  <p class="eyebrow">Documentazione di sistema</p>
-  <h1 class="serif">Architettura di Tsuka</h1>
-  <p class="lede">Un harness agentico in TypeScript per modelli locali. Questo documento descrive come funziona il sistema: cosa decide il codice, cosa decide il modello, e dove passa il confine.</p>
-  <p class="stamp">Stato al 15 agosto 2026, a valle di FASE 3 · Le regole di lavoro sul codice stanno in <code>AGENTS.md</code>, lo stato dei lavori in <code>TASKS.md</code>.</p>
+      <!-- SEC 2 -->
+      <section id="s2">
+        <h2><span class="n">02</span> Ciclo ReAct, Timeout e Context Budget</h2>
+        <p>Il motore agentico <code>Agent.run()</code> implementa il pattern <strong>ReAct</strong> (Reason + Act) con pruning deterministico:</p>
+        <ul>
+          <li><b>Timer a Orologio Continuo (<code>llmTimeoutMs</code>)</b>: Copre l'intera durata della generazione del modello (compreso il ragionamento nei tag `<think>`), evitando che chiamate incantate blocchino il processo.</li>
+          <li><b>Context Budget Bar</b>: Calibrazione esatta dei token e pruning automatico della history al superamento del 75% della finestra di contesto del modello.</li>
+        </ul>
+      </section>
 
-  <div class="facts">
-    <div><b>21</b><span>TOOL</span></div>
-    <div><b>21</b><span>COMANDI</span></div>
-    <div><b>19</b><span>MODULI CORE</span></div>
-    <div><b>16</b><span>RUOLI</span></div>
-    <div><b>9</b><span>TRATTI</span></div>
-    <div><b>24</b><span>PERSONAGGI</span></div>
-    <div><b>7</b><span>TEAM</span></div>
-    <div><b>38</b><span>SUITE TEST</span></div>
+      <!-- SEC 3 -->
+      <section id="s3">
+        <h2><span class="n">03</span> Sicurezza, Workspace Jail ed Audit Difensivo</h2>
+        <p>TSUKA adotta una politica di sicurezza a controllo utente <em>User-in-the-loop</em>:</p>
+        <ul>
+          <li><b>Livello SAFE</b>: Scritture nulle, lettura file (<code>read_file</code>, <code>grep_search</code>) e scansione di vulnerabilità difensiva (<code>audit_code</code>).</li>
+          <li><b>Livello RESTRICTED</b>: Modifiche al filesystem (<code>write_file</code>, <code>edit_file</code>, <code>delete_file</code>) con richiesta di conferma <code>[y/N/sempre]</code>.</li>
+          <li><b>Livello DANGEROUS</b>: Comandi di shell (<code>execute_command</code>) che richiedono **sempre** l'approvazione esplicita manuale dell'utente.</li>
+          <li><b>Workspace Jail</b>: Isolamento e restrizione di ogni path di I/O entro i confini della cartella di lavoro attiva.</li>
+        </ul>
+      </section>
+
+      <!-- SEC 4 -->
+      <section id="s4">
+        <h2><span class="n">04</span> Multi-Agente, Blackboard di Run e Parallel Staging</h2>
+        <p>I workflow avanzati <code>/team</code> e <code>/goal</code> gestiscono l'esecuzione sequenziale e parallela con garanzia di isolamento:</p>
+        <ul>
+          <li><b>Blackboard di Run (<code>blackboard.ts</code>)</b>: Stato condiviso in-memory di un singolo workflow basato su <code>AsyncLocalStorage</code>, accessibile via <code>post_note</code> e <code>read_notes</code>. Distrutto alla fine del run per non inquinare la memoria persistente.</li>
+          <li><b>Workspace Paralleli (<code>parallelWorkspace.ts</code>)</b>: Ogni ramo di un blocco <code>PARALLELO</code> di <code>/goal</code> opera in una propria directory di staging isolata (<code>workspace/parallel-n/</code>), con fusione e rilevamento automatico dei conflitti al termine.</li>
+          <li><b>Run Controller (<code>loop.ts</code>)</b>: Controllore esecutivo con verifiche oggettive che innesca cicli di correzione guidati dall'Overseer.</li>
+        </ul>
+      </section>
+
+      <!-- SEC 5 -->
+      <section id="s5">
+        <h2><span class="n">05</span> Gestione della Creatività e dello Sforzo di Ragionamento</h2>
+        <p>TSUKA introduce una cascata di configurazione trasparente per il campionamento ed il ragionamento:</p>
+        <ul>
+          <li><b>Campionamento Sintetico (<code>samplingParams</code>)</b>: Mappatura tramite preset umani <code>precise</code>, <code>balanced</code>, <code>creative</code>.</li>
+          <li><b>Reasoning Effort (<code>/effort</code>)</b>: Controllo dello sforzo di pensiero dei modelli di ragionamento (<code>none</code>, <code>low</code>, <code>medium</code>, <code>xhigh</code>, <code>auto</code>, <code>ask</code>).</li>
+        </ul>
+      </section>
+
+      <!-- SEC 6 -->
+      <section id="s6">
+        <h2><span class="n">06</span> Architettura Multi-Skill (Ruoli Modulari)</h2>
+        <p>Un personaggio in TSUKA può supportare un array di ruoli differenti (<code>roles: ["developer", "architect"]</code>) e commutare la propria competenza attiva a caldo durante la sessione tramite il comando slash <code>/skill [nome]</code> o il tool SAFE <code>switch_skill</code>.</p>
+      </section>
+
+      <!-- SEC 7 -->
+      <section id="s7">
+        <h2><span class="n">07</span> Evoluzioni Future (Backlog T10.1)</h2>
+        <p>L'evoluzione futura programmata nel backlog (Task <code>T10.1</code>) prevede il <strong>Dynamic Model Auto-Routing</strong>: l'orchestratore seleziona ed assegna autonomamente il modello LLM più adatto ed economico ad ogni agente del team basandosi sui profili di fingerprinting misurati da <code>/benchmark</code> (<code>models_profile.json</code>).</p>
+      </section>
+    </main>
   </div>
-</header>
-
-<section id="modello">
-  <h2><span class="n">01</span> Il modello mentale</h2>
-  <p class="sub">Tsuka è un ciclo ReAct con attorno un'infrastruttura che decide <em>cosa il modello vede</em>.</p>
-<pre><code>messaggio utente
-  → si assembla il prompt (identità + memoria pertinente + tool ammessi)
-  → il modello risponde: testo, oppure chiamate a tool
-  → i tool vengono eseguiti (permessi + tetto di contesto)
-  → i risultati rientrano in cronologia
-  → si ripete, fino a una risposta senza tool o al limite di round</code></pre>
-  <div class="note">
-    <span class="lbl">Il principio</span>
-    <p>Più il flusso è deciso dal codice e meno dal modello, meglio rende un modello locale. <strong>Il modello sceglie il contenuto; l'harness sceglie il contesto</strong>, i tool disponibili, quando fermarsi e quanto può costare.</p>
-  </div>
-  <p>Il ciclo vive in <code>src/core/agent.ts</code>, con una guardia dura: <code>MAX_TOOL_ROUNDS = 15</code> round consecutivi di tool per singola richiesta.</p>
-</section>
-
-<section id="strati">
-  <h2><span class="n">02</span> Gli strati, e il confine che conta</h2>
-  <div class="tablewrap"><table>
-    <thead><tr><th>Strato</th><th>Cartella</th><th>Responsabilità</th></tr></thead>
-    <tbody>
-      <tr><td><b>core</b></td><td><code>src/core/</code></td><td>Ciclo agentico, provider, memoria, contesto, costo. Non conosce il terminale.</td></tr>
-      <tr><td><b>tools</b></td><td><code>src/tools/</code></td><td>Registro, schemi, implementazioni. Non conosce l'interfaccia.</td></tr>
-      <tr><td><b>cli</b></td><td><code>src/cli/</code></td><td>REPL, comandi, rendering. È <em>un</em> client, non l'unico possibile.</td></tr>
-      <tr><td><b>safety</b></td><td><code>src/safety/</code></td><td>Livelli di rischio e permessi.</td></tr>
-    </tbody>
-  </table></div>
-  <p>Il confine è dichiarato in <code>agentEvents.ts</code>: «il core non stampa più direttamente, chi invoca l'agente decide come visualizzare». <code>Agent.run</code> accetta infatti <code>onChunk</code>, <code>onStats</code>, <code>onEvent</code> e un <code>AbortSignal</code> — tutto ciò che serve a un'interfaccia qualunque.</p>
-  <div class="note warn">
-    <span class="lbl">Ma il confine è violato</span>
-    <p>Restano <strong>23 <code>console.log</code>/<code>error</code>/<code>warn</code></strong> dentro <code>core/</code> e <code>tools/</code>. In una CLI a scorrimento non si notano; per qualunque altra interfaccia sono un problema.</p>
-  </div>
-</section>
-
-<section id="viaggio">
-  <h2><span class="n">03</span> Il viaggio di una richiesta</h2>
-  <div class="flow">
-    <div class="step"><div class="rail"><div class="dot">1</div><div class="line"></div></div><div class="body"><b>Assemblaggio del prompt</b><span>Identità del personaggio → <code>systemPrompt</code> del ruolo → tratto → linee guida → memoria pertinente al compito → elenco tool.</span></div></div>
-    <div class="step"><div class="rail"><div class="dot">2</div><div class="line"></div></div><div class="body"><b>Selezione dei tool</b><span><code>listForLLM</code> filtra due volte: per i tool ammessi dal ruolo, e per il tier del modello a quel livello di effort.</span></div></div>
-    <div class="step"><div class="rail"><div class="dot">3</div><div class="line"></div></div><div class="body"><b>Potatura</b><span><code>pruneHistory()</code> riporta la cronologia entro i limiti prima di ogni chiamata.</span></div></div>
-    <div class="step"><div class="rail"><div class="dot">4</div><div class="line"></div></div><div class="body"><b>Chiamata</b><span>In streaming, con <code>reasoning_effort</code> risolto e <code>max_tokens</code> come soffitto.</span></div></div>
-    <div class="step"><div class="rail"><div class="dot">5</div><div class="line"></div></div><div class="body"><b>Esecuzione dei tool</b><span>Validazione degli argomenti contro lo schema → permessi → esecuzione → <strong>troncamento del risultato</strong>.</span></div></div>
-    <div class="step"><div class="rail"><div class="dot">6</div><div class="line"></div></div><div class="body"><b>Ritorno in cronologia</b><span>E nuovo giro, fino a una risposta senza tool.</span></div></div>
-  </div>
-</section>
-
-<section id="assi">
-  <h2><span class="n">04</span> I quattro assi dichiarativi</h2>
-  <p class="sub">Tutta la configurazione degli agenti è in JSON, senza codice. I quattro assi sono <strong>ortogonali</strong> e ricombinabili.</p>
-  <div class="tablewrap"><table>
-    <thead><tr><th>Asse</th><th>Cartella</th><th>Cosa definisce</th></tr></thead>
-    <tbody>
-      <tr><td><b>Ruolo</b></td><td><code>roles/</code></td><td>Competenza: <code>systemPrompt</code>, <code>allowedTools</code>, <code>reasoningEffort</code> di base</td></tr>
-      <tr><td><b>Tratto</b></td><td><code>traits/</code></td><td>Tono e stile della comunicazione</td></tr>
-      <tr><td><b>Personaggio</b></td><td><code>characters/</code></td><td>Ruolo + tratto + identità + <code>description</code></td></tr>
-      <tr><td><b>Team</b></td><td><code>teams/</code></td><td>Formazione fissa di personaggi per un workflow</td></tr>
-    </tbody>
-  </table></div>
-  <div class="note">
-    <span class="lbl">Non è un campo decorativo</span>
-    <p>La <code>description</code> del personaggio è <strong>funzionale</strong>. L'orchestrator di <code>/goal</code> sceglie gli agenti <em>solo</em> da lì: non vede il <code>systemPrompt</code> del ruolo, non vede gli <code>allowedTools</code>. Una descrizione vaga rende il personaggio non selezionabile.</p>
-  </div>
-</section>
-
-<section id="tool">
-  <h2><span class="n">05</span> I tool</h2>
-  <p>Ventuno tool, con una separazione netta fra <strong>schema</strong> (<code>tools_schemas/&lt;nome&gt;.json</code>: descrizione, parametri, <code>requiredTier</code>, <code>riskLevel</code>, modificabile a caldo) e <strong>implementazione</strong> (<code>src/tools/impl/&lt;nome&gt;.ts</code>: solo la logica).</p>
-  <p><b>Auto-discovery:</b> <code>src/tools/index.ts</code> scandisce <code>impl/</code>, importa i moduli dinamicamente e registra ciò che rispetta l'interfaccia <code>Tool</code>. Aggiungere un tool = aggiungere due file.</p>
-  <h3>Tre filtri in cascata decidono cosa il modello vede</h3>
-  <ol class="list">
-    <li><code>allowedTools</code> del ruolo attivo</li>
-    <li><strong>Tier</strong> del modello — da profilo <em>misurato</em> se disponibile, altrimenti euristica sul nome</li>
-    <li><code>requiredTier</code> dichiarato nello schema</li>
-  </ol>
-  <p>Prima dell'esecuzione: validazione degli argomenti contro lo schema e verifica del permesso. Dopo: troncamento del risultato entro il tetto di contesto.</p>
-  <h3>Le famiglie</h3>
-  <div class="cmds">
-    <code>read_file</code><code>write_file</code><code>edit_file</code><code>delete_file</code><code>list_dir</code><code>grep_search</code>
-    <code>execute_command</code><code>get_ps_info</code>
-    <code>web_search</code><code>browse_url</code>
-    <code>save_memory</code><code>recall_memory</code>
-    <code>post_note</code><code>read_notes</code><code>send_message</code><code>report_status</code><code>route_next</code><code>cast_vote</code>
-    <code>spawn_agent</code><code>create_role</code><code>create_tool</code>
-  </div>
-</section>
-
-<section id="memorie">
-  <h2><span class="n">06</span> Le tre memorie</h2>
-  <p class="sub">È la distinzione più importante del sistema, ed è facile confonderle.</p>
-  <div class="tablewrap"><table>
-    <thead><tr><th></th><th>Dove</th><th>Vita</th><th>Contiene</th></tr></thead>
-    <tbody>
-      <tr><td><b>Cronologia</b></td><td>in memoria, per agente</td><td>il turno</td><td>ciò che è stato <strong>detto</strong></td></tr>
-      <tr><td><b>Lavagna</b></td><td><code>blackboard.ts</code></td><td>il <strong>run</strong></td><td>stato condiviso del workflow in corso</td></tr>
-      <tr><td><b>Memoria</b></td><td><code>memory/memory.json</code></td><td>oltre la sessione</td><td>ciò che vale <strong>dopo</strong></td></tr>
-    </tbody>
-  </table></div>
-  <h3>La lavagna</h3>
-  <p>Scoped con <code>AsyncLocalStorage</code> sul <code>runId</code>, non un singleton: i branch di un blocco <code>PARALLELO</code> condividono la stessa lavagna perché sono lo stesso run, run diversi no. Muore in un <code>finally</code> a fine run. È un <strong>log ordinato, non una mappa</strong>: due note con la stessa chiave non si sovrascrivono.</p>
-  <h3>La memoria persistente</h3>
-  <ul>
-    <li><b>Scope</b> per workspace (più <code>globale</code>): progetti diversi non si mescolano.</li>
-    <li><b>Kind</b> (<code>fatto</code>, <code>decisione</code>, <code>lezione</code>, <code>run</code>) che pilota l'<strong>eviction a punteggio</strong>: gli scarti di run cadono per primi, le lezioni per ultime, i <code>pinned</code> mai.</li>
-    <li><b>Source</b> — chi l'ha scritto — usato anche in lettura, per non far entrare gli scarti di un agente nel prompt di un altro.</li>
-    <li><b>Recupero per rilevanza</b> al compito, non per recenza, con normalizzazione morfologica: <code>corsi</code> trova <code>corso</code>, <code>badge</code> trova <code>badges</code>. Zero dipendenze esterne.</li>
-    <li><b>Costruire un prompt non scrive</b> sulla memoria: la lettura per iniezione non altera <code>hits</code>/<code>lastUsed</code>, che restano il segnale degli usi voluti.</li>
-  </ul>
-</section>
-
-<section id="contesto">
-  <h2><span class="n">07</span> Il governo del contesto</h2>
-  <p class="sub">Un modello locale ha una finestra piccola e degrada molto prima di riempirla. Tre difese, in ordine di quando intervengono.</p>
-  <div class="tablewrap"><table>
-    <thead><tr><th>Quando</th><th>Difesa</th><th>Cosa fa</th></tr></thead>
-    <tbody>
-      <tr><td><span class="pill">all'ingresso</span></td><td><code>capForContext</code></td><td>Tronca ogni risultato di tool oltre il tetto (default 4000 token), con testa + coda e una nota che dice <strong>come recuperare il resto</strong>.</td></tr>
-      <tr><td><span class="pill">durante</span></td><td><code>pruneHistory</code></td><td>Taglia i messaggi meno recenti per numero e per budget di token, senza mai lasciare orfana una risposta <code>tool</code>.</td></tr>
-      <tr><td><span class="pill">alla soglia</span></td><td><code>compressHistory</code></td><td>Sostituisce i messaggi vecchi con un riassunto generato dal modello.</td></tr>
-    </tbody>
-  </table></div>
-  <p>Il tetto all'ingresso è la difesa più importante: senza, un singolo <code>read_file</code> può saturare la finestra prima che qualunque altra cosa intervenga. <code>read_file</code> ha <code>offset</code>/<code>limit</code>, quindi il troncamento è <strong>paginazione, non un vicolo cieco</strong>.</p>
-  <p>La stima dei token è euristica (~3,5 caratteri/token) ma <strong>calibrata a runtime</strong> sul <code>promptTokens</code> reale dell'API, con media mobile, e include gli schemi dei tool.</p>
-  <div class="note warn">
-    <span class="lbl">Taratura pratica</span>
-    <p><code>maxHistoryTokens</code> va impostato sulla finestra <strong>reale</strong> del modello, non lasciato al default. Un budget più alto della finestra rende inefficaci sia la potatura sia la compressione: non scattano mai in tempo.</p>
-  </div>
-</section>
-
-<section id="costo">
-  <h2><span class="n">08</span> Il governo del costo e del tempo</h2>
-  <p>Su un modello locale il collo di bottiglia non è il contesto, è <strong>quanto il modello pensa</strong>. Misura reale su questo harness: 174 secondi per una chiamata, di cui circa <strong>3.200 token di solo ragionamento</strong> per decidere di chiamare <em>un</em> tool. Il prompt processing era il 3,5% del tempo.</p>
-  <p>Dimezzare il prompt su quella chiamata valeva 3 secondi. Portare il ragionamento da 3.200 a 300 token ne valeva 150.</p>
-  <h3>La cascata dell'effort</h3>
-<pre><code>pin globale → override del chiamante → personaggio → ruolo → default di config</code></pre>
-  <ul>
-    <li>Il <b>ruolo</b> porta il valore di base: progettare vale un ragionamento alto, tradurre no.</li>
-    <li>Il <b>personaggio</b> differenzia due agenti che condividono un ruolo, ed è l'unico livello raggiungibile da <code>/goal</code>, il cui DSL seleziona personaggi.</li>
-    <li>Il <b>pin globale</b> (<code>/effort</code>) vive in memoria di processo e non è persistente.</li>
-    <li>Il <b>tratto</b> è deliberatamente fuori dalla cascata: descrive il tono, non la profondità.</li>
-  </ul>
-  <div class="note warn">
-    <span class="lbl">Conseguenza da conoscere</span>
-    <p>L'effort decide anche <strong>quali tool il modello vede</strong>, perché il tier viene cercato alla chiave <code>modello@effort</code>. Cambiare effort può far comparire o sparire dei tool: <code>/effort</code> lo annuncia esplicitamente.</p>
-  </div>
-  <p><code>/benchmark</code> non misura un livello solo: <strong>spazza i quattro livelli</strong>, salva un profilo per ciascuno e raccomanda il più economico che raggiunge il tier più alto. Registra anche <code>avgCompletionTokens</code>, perché i token al secondo da soli non rivelano l'over-thinking: a effort alto la velocità può essere identica e i token emessi cinque volte tanti.</p>
-  <p>Due soffitti duri nel provider: <code>FIRST_TOKEN_TIMEOUT_MS</code> (120s, attesa del primo token) e <code>MAX_GENERATION_MS</code> (300s, <strong>mai azzerato</strong> all'arrivo del primo token), più <code>max_tokens</code> a 8192 come tetto generoso.</p>
-</section>
-
-<section id="modalita">
-  <h2><span class="n">09</span> Le cinque modalità di esecuzione</h2>
-  <div class="tablewrap"><table>
-    <thead><tr><th>Modalità</th><th>Comando</th><th>Come sceglie gli agenti</th></tr></thead>
-    <tbody>
-      <tr><td><b>Chat</b></td><td>—</td><td>Un agente, il personaggio attivo</td></tr>
-      <tr><td><b>Dibattito</b></td><td><code>/call</code></td><td>Più personaggi discutono lo stesso tema</td></tr>
-      <tr><td><b>Team</b></td><td><code>/team</code></td><td>Formazione <strong>fissa</strong> da <code>teams/*.json</code></td></tr>
-      <tr><td><b>Goal</b></td><td><code>/goal</code></td><td>Formazione <strong>dinamica</strong>: l'orchestrator sceglie in base all'obiettivo</td></tr>
-      <tr><td><b>Sub-agente</b></td><td><code>spawn_agent</code></td><td>Il modello stesso delega un sottocompito</td></tr>
-    </tbody>
-  </table></div>
-  <p><code>/team</code> ha quattro strategie: <code>roundRobin</code>, <code>pipeline</code>, <code>hybrid</code>, <code>orchestrated</code>. <code>/goal</code> fa produrre all'orchestrator un piano in un mini-DSL:</p>
-<pre><code>AGENTE: @nome — Task
-PARALLELO:
-AGENTE: @nome1 — Task indipendente
-AGENTE: @nome2 — Task indipendente
-FINE PARALLELO
-AGENTE: @nome3 — Task successivo
-FINE</code></pre>
-  <p>I blocchi paralleli girano in <strong>workspace di staging isolati</strong> e vengono fusi solo alla fine: due branch che scrivono lo stesso file con contenuto diverso producono un conflitto, e quel file non viene copiato — la workspace principale resta intatta.</p>
-  <div class="note">
-    <span class="lbl">Ogni turno è un agente nuovo</span>
-    <p>In <code>/team</code>, <code>/goal</code> e <code>spawn_agent</code> ogni membro riceve un <code>Agent</code> costruito da zero con system prompt più compito: <strong>nessuna cronologia ereditata</strong>. È il motivo per cui il sistema regge su un modello con poca finestra — e il motivo per cui il coordinamento deve passare dalla lavagna e dai file, non dalla cronologia.</p>
-  </div>
-</section>
-
-<section id="provider">
-  <h2><span class="n">10</span> Provider e modelli</h2>
-  <p>Un solo client, l'<strong>SDK ufficiale OpenAI</strong>, puntato a basi diverse: Unsloth Studio (<code>127.0.0.1:8888/v1</code>), Ollama (<code>:11434/v1</code>), OpenRouter. Tutti parlano <code>/v1/chat/completions</code>.</p>
-  <p>All'avvio <code>discovery.ts</code> sonda i provider configurati per capire quale risponde e quale modello è <strong>già caricato in RAM</strong>, così da non far ricaricare un GGUF diverso senza motivo.</p>
-  <p>Lo streaming separa due canali, <code>content</code> e <code>reasoning</code>. <strong>Il ragionamento non entra in cronologia</strong>: costa tempo, non finestra.</p>
-</section>
-
-<section id="sicurezza">
-  <h2><span class="n">11</span> Sicurezza</h2>
-  <ul>
-    <li><b>Tre livelli di rischio</b> per tool (<code>SAFE</code>, <code>RESTRICTED</code>, <code>DANGEROUS</code>) dichiarati nello schema; i più rischiosi chiedono conferma.</li>
-    <li><b>Coda dei permessi</b>: le richieste sono serializzate, perché più agenti in parallelo che chiedono conferma insieme romperebbero l'interfaccia.</li>
-    <li><code>checkPermission</code> è <b>asincrona</b> — dettaglio architetturale rilevante: rende sostituibile il menu locale con qualunque altro canale di conferma.</li>
-    <li><b>Jail del workspace</b> sui tool di file, limiti di dimensione, filtro delle variabili d'ambiente sensibili prima che finiscano nel contesto.</li>
-    <li><code>create_tool</code> esegue in sandbox <code>vm</code>, con blocklist, nessun <code>DANGEROUS</code>, nessuna sovrascrittura dei tool core, backup automatico.</li>
-  </ul>
-</section>
-
-<section id="mappa">
-  <h2><span class="n">12</span> Mappa dei moduli e comandi</h2>
-  <div class="tablewrap"><table>
-    <thead><tr><th>File</th><th>Ruolo</th></tr></thead>
-    <tbody>
-      <tr><td><code>agent.ts</code></td><td>Ciclo ReAct, potatura, compressione, cascata dell'effort</td></tr>
-      <tr><td><code>provider.ts</code></td><td>Client LLM, streaming, timeout, statistiche</td></tr>
-      <tr><td><code>memory.ts</code></td><td>Memoria persistente: scope, kind, eviction, ricerca</td></tr>
-      <tr><td><code>blackboard.ts</code></td><td>Stato condiviso del run</td></tr>
-      <tr><td><code>contextBudget.ts</code></td><td>Tetto di contesto per risultato di tool</td></tr>
-      <tr><td><code>effortControl.ts</code></td><td>Pin globale dell'effort e segnalazione</td></tr>
-      <tr><td><code>modelProfile.ts</code></td><td>Profili misurati per modello e livello di effort</td></tr>
-      <tr><td><code>benchmarkTests.ts</code></td><td>Test dichiarativi del benchmark</td></tr>
-      <tr><td><code>config.ts</code></td><td>Configurazione, migrazione legacy, workspace root</td></tr>
-      <tr><td><code>discovery.ts</code></td><td>Scansione dei provider e del modello caricato</td></tr>
-      <tr><td><code>parallelWorkspace.ts</code></td><td>Staging isolato e fusione con rilevamento conflitti</td></tr>
-      <tr><td><code>platform.ts</code></td><td>Astrazione della shell per sistema operativo</td></tr>
-      <tr><td><code>thinkParser.ts</code></td><td>Estrazione dei blocchi di ragionamento</td></tr>
-      <tr><td><code>logBuffer.ts</code></td><td>Buffering dell'output per branch paralleli</td></tr>
-      <tr><td><code>messageQueue.ts</code></td><td>Messaggi punto-punto fra agenti</td></tr>
-      <tr><td><code>agentEvents.ts</code></td><td>Contratto degli eventi verso l'interfaccia</td></tr>
-      <tr><td><code>apphome.ts</code></td><td>App home contro workspace</td></tr>
-    </tbody>
-  </table></div>
-  <h3>Comandi</h3>
-  <div class="cmds">
-    <code>/help</code><code>/info</code><code>/context</code><code>/clear</code><code>/reset</code><code>/exit</code>
-    <code>/role</code><code>/trait</code><code>/character</code><code>/rename-char</code><code>/use</code>
-    <code>/call</code><code>/team</code><code>/goal</code>
-    <code>/provider</code><code>/models</code><code>/benchmark</code><code>/effort</code>
-    <code>/memory</code><code>/forget</code><code>/search-engine</code>
-  </div>
-</section>
-
-<section id="debito">
-  <h2><span class="n">13</span> Limiti noti e debito tecnico</h2>
-  <p class="sub">Onestà sullo stato, perché è ciò che serve per decidere dove andare.</p>
-  <div class="debt">
-    <article><b>23 <code>console.*</code> nel core e nei tool</b><p>Il confine dichiarato in <code>agentEvents.ts</code> non è rispettato. Irrilevante per la CLI, bloccante per qualunque altra interfaccia: quei messaggi finirebbero nel terminale del server, invisibili a chi guarda altrove.</p></article>
-    <article><b>Lo stato di sessione è globale</b><p><code>activeRole</code>, <code>activeTrait</code> e <code>activeCharacter</code> vivono in <code>tsuka.config.json</code>; il pin di effort è stato di processo. Con un utente e una sessione va bene; con due client concorrenti si sovrascrivono. È il vincolo principale per un'interfaccia web multi-scheda, e non ha nulla a che vedere con la grafica.</p></article>
-    <article><b>8 file di test non registrati</b><p>Alcuni richiedono un server o la rete, ma non tutti — e nel frattempo non proteggono da nulla.</p></article>
-    <article><b>L'effort non è propagato da tutti i chiamanti</b><p>Il default prudente <code>xhigh</code> rende la cosa sicura, ma è capacità non sfruttata.</p></article>
-    <article><b>Attenzione ai timestamp come chiave di cache</b><p>La risoluzione dell'orologio su Windows (~15 ms) ha già prodotto due difetti reali in questo codice: l'ordinamento della memoria, che per questo usa un contatore logico, e l'invalidazione dei profili, che ora confronta il contenuto. Se scrivi una cache invalidata su <code>mtime</code>, aspettati lo stesso problema.</p></article>
-  </div>
-</section>
-
-<section id="roadmap">
-  <h2><span class="n">14</span> Da implementare</h2>
-  <p class="sub">Lavoro specificato ma non ancora realizzato. Ogni voce esiste come task in <code>TASKS.md</code> con criteri di accettazione e fuori scope; qui c'è il perché, non il come.</p>
-
-  <div class="planned">
-    <header><span class="todo">Da implementare</span> <b>T8.15 — La divergenza va misurata contro la cascata</b></header>
-    <div class="inner">
-      <p>Correzione di un difetto della <em>specifica</em> di <code>/effort</code>, non della sua esecuzione. La divergenza era definita come «effort effettivo ≠ livello di riferimento», con il riferimento uguale al pin quando presente. Ma con un pin attivo l'effort effettivo <strong>è</strong> il pin per costruzione: la segnalazione non compare mai, proprio nel caso in cui serve — quando il pin sta zittendo il livello che ruolo o personaggio avrebbero chiesto.</p>
-      <p>Il confronto corretto è fra il pin e <strong>ciò che la cascata avrebbe prodotto senza pin</strong>, con un messaggio che nomina entrambi i termini: «Castoro chiederebbe <code>xhigh</code> (personaggio), pin attivo a <code>low</code>». Silenzio quando coincidono, per non diventare rumore a ogni turno.</p>
-    </div>
-  </div>
-
-  <div class="planned">
-    <header><span class="todo">Da implementare</span> <b>T8.16 — Rendere il catalogo effettivamente selezionabile</b></header>
-    <div class="inner">
-      <p>Il catalogo non ha buchi: ogni ruolo ha un personaggio, ogni tratto è usato. Il problema è la <strong>selezionabilità</strong>. Le descrizioni sono lunghe in media 85 caratteri, con punte di 54 — e l'orchestrator di <code>/goal</code> sceglie fra 24 candidati <em>solo</em> da quel campo.</p>
-      <p>Inoltre <strong>otto ruoli su sedici hanno due personaggi</strong>, e in nessun caso la descrizione dice in cosa i due differiscono: la scelta fra loro resta arbitraria. Il lavoro è riscrivere ogni <code>description</code> perché risponda a una domanda sola — <em>quando scegliere questo e quando no</em> — e rendere esplicito il criterio che separa le coppie.</p>
-      <p>Nessuna rinomina e nessuna cancellazione: i nomi sono referenziati da <code>teams/*.json</code>, dai preset e dalla memoria dell'utente.</p>
-    </div>
-  </div>
-
-  <div class="planned">
-    <header><span class="todo">Da implementare</span> <b>T8.17 — Suggerire la modalità di esecuzione</b></header>
-    <div class="inner">
-      <p>Oggi la scelta fra chat, <code>/team</code> e <code>/goal</code> è tutta a carico dell'utente. Una richiesta complessa scritta in chat viene eseguita da un agente solo, anche quando un team la farebbe meglio.</p>
-      <p>Il suggeritore valuta ogni messaggio e propone la modalità più adatta con il comando già pronto, <strong>indipendentemente dal fatto che l'utente abbia usato <code>/goal</code> o no</strong>. Suggerisce e prosegue: mai un prompt bloccante. Silenzio sui messaggi brevi, sui comandi slash e dentro i run già multi-agente.</p>
-      <p>Il punto critico è il costo: la classificazione va fatta con <code>reasoning_effort: none</code> e <code>max_tokens</code> strettissimo. Su un modello locale a 20 token/s, farla ai livelli normali aggiungerebbe minuti a ogni messaggio e renderebbe la funzione insopportabile.</p>
-    </div>
-  </div>
-
-  <div class="planned">
-    <header><span class="todo">Da implementare</span> <b>Chiudere i 23 <code>console.*</code> nel core</b></header>
-    <div class="inner">
-      <p>Instradarli su <code>AgentEvent</code> — basta un tipo <code>notice</code> — oppure su un sink iniettato. È il prerequisito comune a qualunque interfaccia diversa dalla CLI, ed è utile anche a quella attuale: oggi un messaggio di potatura della cronologia si stampa in mezzo allo streaming senza che il renderer ne sappia nulla.</p>
-      <p>Esiste già un aggancio pronto: <code>logBuffer.ts</code> sostituisce <code>console.log</code> con pattern install/restore per i blocchi paralleli. Lo stesso meccanismo può fare da ponte mentre la migrazione procede.</p>
-    </div>
-  </div>
-
-  <div class="planned">
-    <header><span class="todo">Da decidere</span> <b>Lo stato di sessione globale</b></header>
-    <div class="inner">
-      <p><code>activeRole</code>, <code>activeTrait</code> e <code>activeCharacter</code> vivono in <code>tsuka.config.json</code>; il pin di effort è stato di processo. Con un utente e una sessione va bene. Con due client concorrenti si sovrascrivono a vicenda.</p>
-      <p>È una <strong>decisione, non un bug</strong>: o si accetta «un server, una sessione», oppure quello stato deve uscire dalla configurazione ed entrare in un oggetto sessione. Va sciolta <em>prima</em> di scrivere una riga di frontend, perché non ha nulla a che vedere con la grafica.</p>
-    </div>
-  </div>
-
-  <div class="planned">
-    <header><span class="todo">Da implementare</span> <b>Rifiniture minori</b></header>
-    <div class="inner">
-      <ul>
-        <li><b>Propagare l'effort</b> a <code>loadSystemPrompt</code>/<code>notifyIfUnprofiled</code> dai chiamanti che ancora non lo fanno: il default prudente <code>xhigh</code> rende la cosa sicura, ma è capacità non sfruttata.</li>
-        <li><b>Gli 8 file di test non registrati</b> in <code>run_tests.ts</code>: alcuni richiedono un server o la rete, ma non tutti — e nel frattempo non proteggono da nulla.</li>
-        <li><b>Parametri di campionamento</b> mai impostati. Non si misurano: vanno ai valori raccomandati per la modalità in uso.</li>
-      </ul>
-    </div>
-  </div>
-</section>
-
-<section id="interfaccia">
-  <h2><span class="n">15</span> Verso una nuova interfaccia <span class="todo">In standby</span></h2>
-  <p class="sub">Valutazione di fattibilità archiviata per riferimento. <strong>La decisione è sospesa: per ora l'interfaccia resta la CLI.</strong> Questo capitolo esiste perché quando la si riprenderà il lavoro di analisi sia già fatto.</p>
-
-  <p>Tre cose renderebbero la migrazione più facile di quanto sembri, e due sono già nel codice senza che sia stato fatto apposta.</p>
-  <ul>
-    <li><b>I permessi sono già asincroni.</b> <code>checkPermission</code> ritorna una <code>Promise</code> e il ciclo la attende: sostituire il menu locale con un viaggio verso un altro client è una sostituzione dietro un confine che esiste già, non una riarchitettura. C'è anche già una coda che serializza le richieste concorrenti.</li>
-    <li><b>Gli eventi ci sono già.</b> <code>onChunk</code>, <code>onStats</code>, <code>onEvent</code>, <code>AbortSignal</code>: sono esattamente le quattro cose che un transport deve trasportare, canali <code>content</code> e <code>reasoning</code> già separati inclusi. L'Esc della CLI diventa un bottone che aborta lo stesso segnale.</li>
-    <li><b>Esiste già un modo di intercettare <code>console.log</code></b> (<code>logBuffer.ts</code>), utilizzabile come ponte temporaneo verso il transport.</li>
-  </ul>
-
-  <div class="note warn">
-    <span class="lbl">Il vincolo sulla cartella locale</span>
-    <p>Il browser <strong>non può dare a Node un percorso locale reale</strong>: la File System Access API è sandboxata e sostanzialmente solo Chromium. La selezione della cartella deve quindi avvenire lato server. L'aggancio esiste già: <code>getWorkspaceRoot()</code> legge <code>workspaceRoot</code> dalla configurazione con fallback su <code>process.cwd()</code>.</p>
-  </div>
-
-  <div class="note warn">
-    <span class="lbl">È una superficie RCE</span>
-    <p>Un server con accesso al filesystem e <code>execute_command</code> esposto su una porta è esecuzione di codice remoto. Va legato a <code>127.0.0.1</code> e protetto da token, mai su <code>0.0.0.0</code> «per comodità».</p>
-  </div>
-
-  <h3>L'ordine sensato</h3>
-  <div class="flow">
-    <div class="step"><div class="rail"><div class="dot">1</div><div class="line"></div></div><div class="body"><b>Estrarre una sessione headless</b><span>Crea l'agente, espone eventi, non stampa niente. La CLI attuale diventa il suo primo client: se continua a funzionare identica, l'estrazione è corretta. Nessuna UI, verificabile coi test esistenti.</span></div></div>
-    <div class="step"><div class="rail"><div class="dot">2</div><div class="line"></div></div><div class="body"><b>Chiudere i <code>console.*</code></b><span>Altrimenti in web finirebbero nel terminale del server, invisibili a chi guarda il browser.</span></div></div>
-    <div class="step"><div class="rail"><div class="dot">3</div><div class="line"></div></div><div class="body"><b>Transport su 127.0.0.1</b><span>SSE per il flusso in uscita, POST per i comandi, permessi come richiesta/risposta correlata da id.</span></div></div>
-    <div class="step"><div class="rail"><div class="dot">4</div><div class="line"></div></div><div class="body"><b>Frontend</b><span>A quel punto è la parte facile.</span></div></div>
-    <div class="step"><div class="rail"><div class="dot">5</div><div class="line"></div></div><div class="body"><b>Sessione e selettore di cartella</b><span>Dove si sconta la decisione sullo stato globale.</span></div></div>
-  </div>
-
-  <div class="note">
-    <span class="lbl">La conclusione che conta</span>
-    <p>Non stai scegliendo fra web e TUI: <strong>stai scegliendo di fare il transport</strong>. Fatto quello, un TUI diventa un secondo client che parla lo stesso protocollo e la CLI attuale resta viva come terzo. La fase 1 vale a prescindere — rende il core testabile senza terminale, e serve anche restando sulla CLI.</p>
-  </div>
-</section>
-
-<footer>
-  Lo stato aggiornato dei lavori è sempre in <code>TASKS.md</code>. Le regole di lavoro sul codice, in <code>AGENTS.md</code>.
-</footer>
-
-</main>
 </div>
 
 </body>
