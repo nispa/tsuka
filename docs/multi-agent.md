@@ -12,8 +12,11 @@ Instead of hardcoding a character prompt, TSUKA splits the agent personality int
 * **Trait (How they speak)**: Defined in `traits/*.json` (e.g., `grumpy`, `sensual`, `devils_advocate`). Determines the tone and stylistic directives.
 
 A **Character Preset** (`characters/*.json`) simply binds these two together under a custom name (`aiName`), such as:
-- **Falco**: `sysadmin` (Role) + `grumpy` (Trait) + `Falco` (Name).
-- **Pippo**: `developer` (Role) + `devils_advocate` (Trait) + `Pippo` (Name).
+- **La'an** (`laan.json`): `sysadmin` (Role) + `grumpy` (Trait) + `Laan` (Name).
+- **Geordi** (`geordi.json`): `developer` (Role) + `professional` (Trait) + `Geordi` (Name).
+
+A character may also unlock several roles (`"roles": [...]`, multi-skill): it then owns the
+tools of all of them, so a task spanning two crafts needs no handover.
 
 ---
 
@@ -23,7 +26,7 @@ The `/call` command starts a discussion round between multiple characters in the
 
 1. **Invocation**:
    - **Interactive Multiselect**: Type `/call` with no arguments to trigger a visual checkbox checklist. Use `Space` to select/deselect characters, and `Enter` to confirm.
-   - **Menzions**: Mention names directly using the `@` symbol (e.g., `/call @falco, @lola e @pippo`).
+   - **Menzions**: Mention names directly using the `@` symbol (e.g., `/call @laan, @deanna_troi and @geordi`).
 2. **Execution**:
    - The user inputs a discussion topic.
    - The CLI enters a loop of $N$ rounds. In each round, it swaps the system prompt to match the current speaker and prompts the LLM.
@@ -38,12 +41,12 @@ The `/call` command starts a discussion round between multiple characters in the
 The `/team` command launches an active multi-agent team workflow where characters use their tools on the workspace in sequential shifts:
 
 1. **Selecting a Team**:
-   - Type `/team` to select from preconfigured teams (e.g., `cyber_audit` consisting of `["falco", "piccione"]`).
+   - Type `/team` to select from preconfigured teams (e.g., `cyber_audit`, a `security_auditor` → `sysadmin` → `supervisor` chain).
 2. **Task Assignment**:
    - The user inputs a goal (e.g., *"Audit current ports and write a security report"*).
 3. **Sequential Shifts (Tool Handover)**:
-   - **Shift 1 (e.g., Falco)**: Falco runs first. He gets his role instructions, allowed tools, and the task. He executes system commands or diagnostics. Any file writes or command outputs are executed. When he finishes, he writes a final summary.
-   - **Shift 2 (e.g., Piccione)**: Piccione runs next. He inherits the **exact tool execution history and message log** of Falco. He sees which files Falco modified, reads the workspace, finds weaknesses, runs his own tools, and provides the final solution.
+   - **Shift 1 (the auditor)**: the first member runs with its role instructions, allowed tools and the task. It executes system commands or diagnostics; file writes and command outputs happen for real. When it finishes, it writes a final summary.
+   - **Shift 2 (the sysadmin)**: the next member inherits the **exact tool execution history and message log** of the previous shift. It sees which files were modified, reads the workspace, finds weaknesses, runs its own tools, and provides the final solution.
 4. **Shared Workspace & State**:
    - Because all agents operate in the same physical directory, file modifications made during previous shifts are immediately visible to the subsequent agents.
    - **Auditing**: All tool calls made by the team members (such as editing code or executing PowerShell scripts) are subject to the user's interactive permission checks (`[y/N]`) in real-time, giving you full control over the team's operations.
@@ -63,11 +66,12 @@ The `/goal` command dynamically assembles a team from **all available characters
 1. The orchestrator receives the goal and the full list of available characters with their roles/descriptions.
 2. It produces a plan in a structured format:
    ```
-   AGENTE: @wordsmith — Scrivi la sceneggiatura
+   AGENTE: @doctor — Scrivi la sceneggiatura
    PARALLELO:
-   AGENTE: @krea_master — Genera prompt Krea2 per ogni scena
-   AGENTE: @overseer — Revisiona il lavoro finale
+   AGENTE: @moriarty — Genera prompt Krea2 per ogni scena
+   AGENTE: @quark — Prepara i testi promozionali
    FINE PARALLELO
+   AGENTE: @pike — Revisiona il lavoro finale
    FINE
    ```
 3. `PARALLELO` blocks execute independent subtasks concurrently via `Promise.all`.
@@ -79,15 +83,15 @@ Each agent turn:
 1. **Context bar** (dual):
    - **Before** the agent: shows estimated context based on history + 2000 tok overhead for system prompt/tools. Uses real `promptTokens` from the previous agent if available.
      ```
-     Contesto prima di Wordsmith: ████░░░░░░░░░░░░░░░░ 17% (~11.2k / 65.536 tok)
+     Contesto prima di Doctor: ████░░░░░░░░░░░░░░░░ 17% (~11.2k / 65.536 tok)
      ```
    - **After** the agent: shows real peak prompt tokens measured from the LLM's last round:
      ```
-     Contesto reale (peak Wordsmith): ██████████████░░░░░░ 59% (~38.4k / 65.536 tok)
+     Contesto reale (peak Doctor): ██████████████░░░░░░ 59% (~38.4k / 65.536 tok)
      ```
 2. The agent runs with full tool access, streaming output live. **Each agent is instructed to inspect workspace files created by previous agents** (`list_dir`, `read_file`).
 3. **Reasoning** from `<think>` tags or native `reasoning_content` is displayed in dimmed gray.
-4. **No early stop on `STATO: COMPLETATO`**: the orchestrator's plan is executed fully — all steps run, including the final overseer/supervisor. Early completion flags are tracked but do not abort the plan.
+4. **No early stop on `STATO: COMPLETATO`**: the orchestrator's plan is executed fully — all steps run, including the final supervisor. Early completion flags are tracked but do not abort the plan.
 5. After completion, the agent's output is **condensed** only if longer than 1500 characters:
    - A meaningful summary (not a one-liner) is kept in the shared history
    - A fact is saved to persistent memory (`recall_memory` for full details)
@@ -99,9 +103,9 @@ At the end, per-agent and cumulative statistics with output/context/total tok br
 ```
 📊 RIEPILOGO STATS AGENTI
   Agente             Out tok    Ctx tok   Tot tok    Tempo    Velocità
-  Wordsmith             1234      15032     16266     12.3s   100.3 tok/s
+  Doctor             1234      15032     16266     12.3s   100.3 tok/s
   Krea Master            892      16780     17672      8.1s   110.1 tok/s
-  Overseer               456      17500     17956      4.2s   108.6 tok/s
+  Pike                   456      17500     17956      4.2s   108.6 tok/s
   TOTALE                2582      17500     51894     24.6s
 ```
 

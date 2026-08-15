@@ -1,0 +1,8 @@
+{
+  "name": "story_comedy",
+  "displayName": "🎭 Comedy & Story Squad (Doctor & Q)",
+  "description": "Il Dottore scrive la storia e i dialoghi teatrali, Q rifinisce le battute e il ritmo comico, Pike valida la coerenza e il messaggio.",
+  "members": ["doctor", "q", "pike"],
+  "orchestrator": "pike",
+  "mode": "round-robin"
+}

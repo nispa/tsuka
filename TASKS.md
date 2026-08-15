@@ -1261,6 +1261,117 @@ il default era 65536, sopra la finestra, e rendeva inefficaci sia `pruneHistory`
 | T9.2 | ✅ Fatto | Implementazione tool di protocollo SAFE `switch_skill` (`tools_schemas/switch_skill.json`, `src/tools/impl/switchSkill.ts`) per la commutazione di skill in-session. |
 | T9.3 | ✅ Fatto | Comando slash `/skill [nome]` in `src/cli/commands/persona.ts`, registrato in `commandMap` di `src/cli/index.ts`. |
 | T9.4 | ✅ Fatto | Suite di test `tests/test_multi_skill.ts` (7/7 PASS) e verifica regressione `tests/test_presets.ts` (138/138 PASS). |
+| T9.5 | ✅ Fatto | **Compact Agent Signatures & Context-Efficient Goal Orchestration**: generazione automatica firme sintetiche ad alto segnale per il catalogo orchestrator (`formatAgentSignature` in `src/cli/commands/goal.ts`, `signature?: string` in `CharacterConfig`). Abbattimento overhead prompt catalogo (budget < 60 tok/agente) a singola chiamata con supporto multi-skill e test dedicato G5 in `tests/test_goal_orchestrator.ts`. |
+| T9.6 | ✅ Fatto (rivisto in T9.7) | **Star Trek Roster Revamp, Nuovi Ruoli & Squad Blueprints**: Rebranding completo del catalogo personaggi sull'universo di Gene Roddenberry (TOS, TNG, DS9, VOY, SNW con Capitan Pike come supervisore/comandante e Deanna Troi come entertainer empatico). Aggiunti 3 nuovi ruoli specializzati (`game_designer`, `tech_writer`, `storyteller`) e nuove Squad predeterminate per GameDev, TechDocs, Story/Comedy. Catalog Squad Blueprint deterministico iniettato nel Goal Orchestrator prompt (`buildGoalOrchestratorPrompt`). Suite di test 42/42 (100%) PASS. |
+| T9.7 | ✅ Fatto | **Il roster è dati, i ruoli sono il contratto**: rimossi i nomi propri hard-coded da prompt, codice e test dopo la rinomina T9.6. Blueprint dell'orchestrator generati dai team installati (`buildTeamBlueprints`), risoluzione degli agenti anche per MESTIERE (`resolveCharacter` → ruolo), alias table eliminata, preset resi auto-consistenti (core+pack), fixture di test per ruolo (`tests/fixtures/roster.ts`) e nuove guardie `T7.4-install-*` in `tests/test_presets.ts`. 42/42 suite PASS. |
+| T9.8 | ✅ Fatto | **Robustezza di `spawn_agent` su modelli locali "pensanti"**: osservato in uso reale (run `/goal` su Qwen3.8-27B via llama-server), tre fallimenti collegati — (1) un membro copia il proprio compito assegnato pari pari in `spawn_agent`, sfora `MAX_TASK_LENGTH` e non recupera; (2) un turno che produce solo testo/ragionamento senza mai chiamare un tool termina silenziosamente come `'continue'`, scambiando una blackboard vuota per "nessun compito"; (3) un briefing lungo incollato inline nell'argomento `task` rompe la generazione JSON della tool call (500 lato server, `invalid string: missing closing quote`), bruciando l'intero turno. Fix: (a) `strategies/common.ts` — istruzione esplicita a non delegare l'intero compito assegnato, chiarito che una blackboard vuota è normale e non un pass per `FALLITO`; (b) `spawnAgent.ts` + `tools_schemas/spawn_agent.json` — nuovo parametro `briefingFile` (letto da disco via `resolveSafePath`, limite 12000 caratteri) per un briefing lungo passato come percorso invece che come stringa JSON inline; (c) `provider.ts` — `isMalformedToolCallJsonError` distingue un 500 di JSON malformato in tool call (glitch di campionamento) da un errore di comunicazione generico e lo ritenta (stesso conteggio di "mancata risposta"), invece di arrendersi al primo colpo. Test: `SA-f-*` in `tests/test_spawn_agent_context.ts`, nuova suite `tests/test_malformed_toolcall_retry.ts` (GM.1–GM.3). 43/43 suite PASS. |
+| T9.9 | ✅ Fatto | **`write_file`: scrittura a pezzi (`append`)**: `content` inline in un'unica chiamata è esposto allo stesso rischio di T9.8 — una stringa JSON lunga (un file di codice intero) può rompere la generazione della tool call su un modello locale, ed è il tool con cui si scrive la maggior parte del codice vero (più esposto di `spawn_agent`). Nuovo parametro opzionale `append: boolean` su `write_file` (`writeFile.ts` + `tools_schemas/write_file.json`): `false`/assente = comportamento invariato (sovrascrive); `true` = accoda al file esistente (lo crea se assente), per costruire un file lungo con più chiamate piccole. Normalizzato a mano (`args.append === true \|\| ...stringa "true"`) contro la trappola "la stringa `\"false\"` è truthy in JS". Schema aggiornato con la raccomandazione esplicita di dividere i file lunghi in più chiamate. Test: nuova suite `tests/test_write_file_append.ts` (WA.1–WA.4). |
+| T9.10 | ✅ Fatto | **Nudge quando un turno produce solo testo, senza mai agire**: osservato due volte in uso reale (`/goal` su Qwen3.8-27B, membri `Geordi` e `Paris`) — un turno che produce centinaia/migliaia di token di solo ragionamento, senza mai una tool call, termina il turno in `Agent.run()` alla prima risposta senza `toolCalls` (comportamento corretto per la chat normale, dove un testo puro è una risposta legittima) e viene scambiato per "nessun lavoro necessario" da `resolveTurnStatus` (fallback silenzioso a `'continue'`). Fix in `agent.ts`: nuovo parametro opzionale del costruttore `acceptTextOnlyIf?: (content) => boolean` — se fornito e la prima risposta di `run()` non ha tool call E il predicato rifiuta il testo, un nudge esplicito ("non hai chiamato nessun tool, agisci ora o chiudi il turno esplicitamente") prima di accettare la risposta com'è (un solo nudge per `run()`, mai un loop). Il nudge si applica SOLO se il turno non ha MAI chiamato un tool: un turno che ha già agito e poi chiude con una nota testuale libera non deve ripetere il marker. `strategies/common.ts` passa `hasAnyStatusMarker` (qualunque `STATO: COMPLETATO\|DA_CONTINUARE\|FALLITO`, non solo COMPLETATO) come predicato per i turni di membro `/team`-`/goal`; `spawn_agent`, senza un protocollo di stato paragonabile, resta `undefined` (comportamento invariato). Test: blocco T9.10 in `tests/test_team_modes.ts` (NA1–NA3). 44/44 suite PASS. |
+
+## T9.5 — Compact Agent Signatures & Context-Efficient Goal Orchestration
+
+**Dipende da:** T9.1, T9.2, T9.3 · **Sforzo:** medio · **Priorità:** alta · **Stato:** ✅ Completato
+
+### Problema
+Includere l'intero `role.systemPrompt` (paragrafi lunghi pensati per la fase esecutiva) e tutti i trait prompt per 27 personaggi nel prompt del Goal Orchestrator generava un overhead di ~4.500–5.000 token solo per l'elenco agenti. Per modelli locali compatti (9B–14B) questo saturava la finestra di attenzione, causando allucinazioni o difficoltà di pianificazione.
+
+### Soluzione Architetturale: Firme Sintetiche Determistiche (Compact Signatures)
+Invece di costringere l'LLM a un doppio round o ad auto-riassumere 27 prompt di sistema, TSUKA genera a runtime una **firma sintetica compatta ad altissimo segnale**:
+- **Formato**: `- @<name> (<aiName>): role=<roles> — <descrizione sintetica> | Tools: [<specific_tools>]`
+- **Filtro Ambient Tools**: Esclude i tool generici/ambientali (`save_memory`, `recall_memory`, `send_message`, `list_dir`, `read_file`, `browse_url`) evidenziando solo i tool che differenziano le capacità operative (es. `audit_code`, `execute_command`, `create_tool`, `edit_file`).
+- **Supporto Multi-Skill (T9.1)**: Aggrega automaticamente i ruoli (`roles: string[]`) e l'unione dei tool consentiti.
+- **Override Esplicito**: Supporta il campo opzionale `signature?: string` in `CharacterConfig` (`characters/*.json`) per firme personalizzate.
+
+### Risultati e Metriche di Accettazione
+- **Token footprint catalogo**: Budget medio misurato **~50–55 tok/agente** (invece di ~180 tok/agente).
+- **Latenza**: 1 singolo round LLM velocissimo per la formulazione del piano, senza raddoppio di round-trip.
+- **Test Suite**: Test `G5a-d` in `tests/test_goal_orchestrator.ts` (15/15 PASS) con verifica automatica del budget token su tutti i 27 personaggi reali e suite completa (42/42 suite PASS).
+
+## T9.6 — Star Trek Roster Revamp, Nuovi Ruoli & Squad Blueprints Deterministici
+
+**Dipende da:** T9.5 · **Sforzo:** medio · **Priorità:** alta · **Stato:** ✅ Completato
+
+### Contesto e Obiettivo
+Riorganizzazione organica dell'intero roster dei personaggi e delle squadre sull'universo di Star Trek (Gene Roddenberry) attraversando Next Generation, Serie Classica, Voyager, Deep Space Nine e Strange New Worlds (con il Capitano Christopher Pike nel ruolo di supervisore/comandante d'eccellenza e Deanna Troi nel ruolo di intrattenitrice/consigliere empatico). Creazione di 3 nuovi ruoli specializzati (Videogiochi, Documentazione Tecnica, Storie & Commedie) e implementazione di Squad Blueprints deterministici nel prompt del Goal Orchestrator.
+
+### Implementazione
+1. **Nuovi Ruoli Specializzati (`roles/*.json`)**:
+   - `game_designer.json`: Game loop, puzzle mechanics, retro/canvas game balancing.
+   - `tech_writer.json`: Documentazione tecnica, architettura software, README e guide API.
+   - `storyteller.json`: Narrativa creativa, commedie, sketch, dialoghi teatrali e storytelling.
+2. **Roster Personaggi Star Trek (`characters/*.json`)**:
+   - 27 personaggi della Flotta Stellare e dell'universo Trek coprono tutti i 21 ruoli (`pike`, `picard`, `kirk`, `geordi`, `data`, `spock`, `worf`, `paris`, `doctor`, `scotty`, `seven`, `tuvok`, `deanna_troi`, `q`, `una`, `laan`, `uhura`, `mccoy`, `quark`, `odo`, `dax`, `barclay`, `moriarty`, `ortegas`, `chapel`, `mbenga`, `torres`).
+   - Nessuna mappatura alias dei nomi storici: i vecchi character sono stati rimossi e non esistono più installazioni da preservare (vedi T9.7, che ha eliminato l'alias table introdotta qui).
+3. **Nuove Squad Specializzate (`teams/*.json`)**:
+   - `game_dev.json` (`@paris`, `@geordi`, `@pike`)
+   - `tech_docs.json` (`@geordi`, `@data`, `@pike`)
+   - `story_comedy.json` (`@doctor`, `@q`, `@pike`)
+   - `dev_security.json` (`@geordi`, `@worf`, `@pike`)
+   - `dev_ops.json` (`@scotty`, `@geordi`, `@pike`)
+   - `osint_recon.json` (`@spock`, `@seven`, `@pike`)
+   - `cyber_audit.json` (`@worf`, `@tuvok`, `@pike`)
+   - `creative_promo.json` (`@kirk`, `@deanna_troi`, `@pike`)
+   - `research_writer.json` (`@spock`, `@dax`, `@pike`)
+   - `legal_research.json` (`@spock`, `@deanna_troi`, `@pike`)
+4. **Squad Blueprint Catalog nel Goal Orchestrator**:
+   - `buildGoalOrchestratorPrompt` include l'elenco delle squadre preconfigurate con istruzioni di prioritizzazione. **Nota (T9.7)**: l'elenco era hard-coded nel prompt e citava agenti che il preset `core` non installa; ora è generato dai team realmente installati (`buildTeamBlueprints`).
+5. **Validazione e Preset**:
+   - Preset `core.json` e `packs/*.json` aggiornati e validati con 177/177 check in `tests/test_presets.ts`.
+   - Tutte le 42 suite di test di TSUKA (`npm test`) passano con successo (100% PASS).
+
+## T9.7 — Il roster è dati: nessun nome proprio nel codice
+
+**Dipende da:** T9.6 · **Sforzo:** medio · **Priorità:** alta · **Stato:** ✅ Completato
+
+### Problema
+La rinomina del roster (T9.6) aveva lasciato dietro di sé riferimenti ai nomi vecchi e
+nuovi nomi scritti a mano in punti che dovevano restare generici:
+- **preset incoerenti**: `core` installava i team `story_comedy` e `dev_security` senza
+  installare `q` e `worf`; `content` installava `creative_promo` senza `deanna_troi`;
+  `devops` installava `cyber_audit` senza `worf`; `tuvok` arrivava con la skill
+  `security_auditor` ma senza il file del ruolo;
+- **blueprint hard-coded** nel prompt dell'orchestrator, che citavano agenti non installati
+  (`parsePlan` li scartava, dimezzando il piano in silenzio);
+- **alias table** di 30 nomi storici in `src/cli/shared.ts`, con voci sbagliate
+  (`hard_edge` → un developer invece di un SEO) e una morta (`cold_steel` → `hemmer`, file
+  inesistente);
+- **test verdi per il motivo sbagliato**: `test_team_modes`, `test_protocol_parsing`,
+  `test_blackboard` usavano `falco`/`piccione`/`overseer` come fixture e passavano solo
+  grazie a quegli alias;
+- **trait didattico orfano**: `compliant` restava elencato nel pack `demo` senza nessun
+  character che lo usasse — l'esempio negativo sul voto non era più dimostrabile.
+
+### Soluzione: i nomi sono dati, i ruoli sono il contratto
+1. **Prompt derivati** — `buildTeamBlueprints(allCharacters)` genera i blueprint dai
+   `teams/*.json` installati, descritti come catene di RUOLI (`developer (@geordi) → …`);
+   catalogo, esempi e agente di fallback escono dal catalogo reale. Un solo concetto di
+   squadra: il team di `/team`, non un archetipo separato inventato nel prompt.
+2. **Risoluzione per mestiere** — `resolveCharacter` risolve nome file → `aiName` → RUOLO:
+   `@security_auditor` designa chi quel mestiere lo esercita. L'alias table è stata
+   rimossa: con il multi-skill (T9.1) un handle copre più mestieri e non serve un secondo
+   agente solo per raggiungere il tool di un altro ruolo.
+3. **Criterio di supervisione per ruolo** — la rilavorazione in `/goal` si innesca su
+   `rolesOf(char).includes('supervisor')`, non su un nome; le stringhe UI parlano di
+   "supervisore", non di "Overseer".
+4. **Preset auto-consistenti** — `core` installa anche `q` e `worf` (con i ruoli
+   `entertainer` e `security_auditor`); `content` installa `deanna_troi`; `demo` recupera
+   l'esempio didattico con `neelix` (`researcher` + trait `compliant`) e la nota che lo
+   spiega; `osint`/`devops` dichiarano i ruoli delle skill secondarie dei loro character.
+5. **Fixture di test per ruolo** — `tests/fixtures/roster.ts` (`agentWithRole`,
+   `distinctAgents`, `aiNameOf`): 11 suite non nominano più nessun personaggio; le fixture
+   puramente sintetiche (parser) usano nomi inventati e indipendenti dal catalogo.
+
+### Guardie aggiunte (`tests/test_presets.ts`)
+- `T7.4-install-*`: simula `core` e `core+<pack>` e verifica che ogni membro dei team
+  installati sia installato, e che ogni skill dichiarata abbia il suo file di ruolo;
+- `T7.1-demo-trait-incarnato-*`: un trait elencato nel pack didattico deve avere almeno un
+  character che lo incarna;
+- la copertura dei ruoli ora conta anche le skill secondarie del multi-skill.
+
+### Risultato
+`npx tsc --noEmit` pulito, 42/42 suite PASS. Documentazione allineata (README, README-it,
+`docs/multi-agent.md`, `docs/use-cases.md` con la tabella dei team generata dai file reali,
+`docs/security.md`, `AGENTS.md`); rimosso da `package.json` lo script morto `test:puzznic`.
 
 ---
 

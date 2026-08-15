@@ -1,8 +1,8 @@
 {
   "name": "legal_research",
-  "displayName": "⚖️💻 Team Ricerca & Compliance (AuditPro & Dev)",
-  "description": "AuditPro ricerca la conformità legale e le linee guida normative (GDPR) sul web, e Dev le implementa nel software.",
-  "members": ["audit_pro", "dev", "overseer"],
-  "orchestrator": "overseer",
-  "mode": "round-robin"
+  "displayName": "⚖️ Team Ricerca & Analisi (Spock & Deanna)",
+  "description": "Spock analizza le normative e i vincoli logici, Deanna Troi media e redige la sintesi, Pike valida la conformità finale.",
+  "members": ["spock", "deanna_troi", "pike"],
+  "orchestrator": "pike",
+  "mode": "pipeline"
 }

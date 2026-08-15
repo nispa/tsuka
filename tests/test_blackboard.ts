@@ -26,6 +26,13 @@ import { MockLLMProvider, mockToolCall } from './mocks/mockProvider';
 import { buildMockCtx } from './mocks/mockCtx';
 import { runRoundRobin } from '../src/cli/commands/team';
 import { Blackboard } from '../src/core/blackboard';
+import { distinctAgents, aiNameWithRole } from './fixtures/roster';
+
+// Agenti scelti per MESTIERE: la blackboard è condivisa fra ruoli diversi, e quale
+// personaggio li interpreti dipende dal catalogo installato.
+const [WRITER, READER] = distinctAgents('developer', 'architect');
+const WRITER_AI_NAME = aiNameWithRole('developer');
+
 
 let passed = 0;
 let failed = 0;
@@ -57,13 +64,13 @@ async function main() {
   let noteRunId = '';
   {
     const provider = new MockLLMProvider([
-      { toolCalls: [mockToolCall('post_note', { key: 'decisione-db', value: 'Uso SQLite per il db' })] }, // falco: scrive
-      { content: 'Nota lasciata.\nSTATO: DA_CONTINUARE' },                                                 // falco: chiude il turno (non completo)
-      { toolCalls: [mockToolCall('read_notes', {})] },                                                     // piccione: legge
-      { content: 'Vista la nota di falco.\nSTATO: COMPLETATO' },                                           // piccione: chiude
+      { toolCalls: [mockToolCall('post_note', { key: 'decisione-db', value: 'Uso SQLite per il db' })] }, // il primo agente: scrive
+      { content: 'Nota lasciata.\nSTATO: DA_CONTINUARE' },                                                 // il primo agente: chiude il turno (non completo)
+      { toolCalls: [mockToolCall('read_notes', {})] },                                                     // il secondo agente: legge
+      { content: 'Vista la nota di il primo agente.\nSTATO: COMPLETATO' },                                           // il secondo agente: chiude
     ]);
     const ctx = buildMockCtx(provider);
-    const team = { members: ['falco', 'piccione'] };
+    const team = { members: [WRITER, READER] };
     const interrupt = new GenerationInterrupt();
 
     // Stessa API usata da handleTeam (team.ts): un runId per workflow, la strategia
@@ -74,23 +81,23 @@ async function main() {
     );
 
     check('BB-a-1', r.completed === true && r.roundsDone === 1, `round-robin completato al round 1 (completed=${r.completed}, roundsDone=${r.roundsDone})`);
-    check('BB-a-2', provider.remaining === 0, 'copione consumato interamente: 2 chiamate per falco (post_note + STATO) + 2 per piccione (read_notes + STATO)');
+    check('BB-a-2', provider.remaining === 0, 'copione consumato interamente: 2 chiamate per il primo agente (post_note + STATO) + 2 per il secondo agente (read_notes + STATO)');
 
-    // callLog[3] = seconda chiamata LLM di piccione (dopo l'esecuzione di
+    // callLog[3] = seconda chiamata LLM di il secondo agente (dopo l'esecuzione di
     // read_notes): la history inviata al modello deve includere il messaggio
     // 'tool' con l'output di read_notes — è la prova che passa per il tool reale.
-    const piccioneSecondCall = provider.callLog[3];
-    const toolMsg = piccioneSecondCall?.messages.find((m: any) => m.role === 'tool' && m.name === 'read_notes');
-    check('BB-a-3', !!toolMsg, 'la seconda chiamata LLM di piccione include un messaggio tool read_notes nella history inviata al modello');
+    const readerSecondCall = provider.callLog[3];
+    const toolMsg = readerSecondCall?.messages.find((m: any) => m.role === 'tool' && m.name === 'read_notes');
+    check('BB-a-3', !!toolMsg, 'la seconda chiamata LLM di il secondo agente include un messaggio tool read_notes nella history inviata al modello');
     check(
       'BB-a-4',
       !!toolMsg && typeof toolMsg.content === 'string' && toolMsg.content.includes('Uso SQLite per il db'),
-      `il contenuto della nota scritta da falco compare nel risultato di read_notes letto da piccione (${JSON.stringify(toolMsg?.content)})`
+      `il contenuto della nota scritta da il primo agente compare nel risultato di read_notes letto da il secondo agente (${JSON.stringify(toolMsg?.content)})`
     );
     check(
       'BB-a-5',
-      !!toolMsg && typeof toolMsg.content === 'string' && /falco/i.test(toolMsg.content),
-      `l'autore della nota (Falco) è attribuito correttamente nel testo restituito da read_notes (${JSON.stringify(toolMsg?.content)})`
+      !!toolMsg && typeof toolMsg.content === 'string' && new RegExp(WRITER_AI_NAME, 'i').test(toolMsg.content),
+      `l'autore della nota (il primo agente) è attribuito correttamente nel testo restituito da read_notes (${JSON.stringify(toolMsg?.content)})`
     );
   }
 
@@ -108,12 +115,12 @@ async function main() {
 
     const { writeWorkflowLog } = await import('../src/cli/commands/workflowLog');
 
-    // Snapshot del run (a): la nota scritta da falco tramite lo stack reale sopra.
+    // Snapshot del run (a): la nota scritta da il primo agente tramite lo stack reale sopra.
     const snapshot = Blackboard.forRun(noteRunId).snapshot();
-    check('BB-b-pre', snapshot.length === 1 && snapshot[0].key === 'decisione-db', `snapshot del run (a) contiene la nota scritta da falco (${JSON.stringify(snapshot)})`);
+    check('BB-b-pre', snapshot.length === 1 && snapshot[0].key === 'decisione-db', `snapshot del run (a) contiene la nota scritta da il primo agente (${JSON.stringify(snapshot)})`);
 
     writeWorkflowLog({
-      team: { name: 'test-blackboard', displayName: 'Test Blackboard', members: ['falco', 'piccione'] },
+      team: { name: 'test-blackboard', displayName: 'Test Blackboard', members: [WRITER, READER] },
       task: 'decidi il database',
       completed: true,
       failed: false,
@@ -134,7 +141,7 @@ async function main() {
       'BB-b-3',
       !!report && report.blackboard[0]?.key === 'decisione-db' &&
         report.blackboard[0]?.value === 'Uso SQLite per il db' &&
-        report.blackboard[0]?.author?.toLowerCase() === 'falco',
+        report.blackboard[0]?.author?.toLowerCase() === WRITER_AI_NAME.toLowerCase(),
       `la nota nel JSON ha key/value/author corretti (${JSON.stringify(report?.blackboard)})`
     );
 
@@ -154,8 +161,8 @@ async function main() {
     ]);
     const ctxX = buildMockCtx(providerX);
     const ctxY = buildMockCtx(providerY);
-    const teamX = { members: ['falco'] };
-    const teamY = { members: ['piccione'] };
+    const teamX = { members: [WRITER] };
+    const teamY = { members: [READER] };
     const interruptX = new GenerationInterrupt();
     const interruptY = new GenerationInterrupt();
 
@@ -173,7 +180,7 @@ async function main() {
 
     check('BB-c-1', resX.completed === true && resY.completed === true, `entrambi i run completati indipendentemente (X=${resX.completed}, Y=${resY.completed})`);
 
-    // read_notes eseguito dentro il run Y (seconda chiamata LLM di piccione, indice
+    // read_notes eseguito dentro il run Y (seconda chiamata LLM di il secondo agente, indice
     // 1 nel SUO provider): non deve contenere la nota scritta nel run X.
     const yToolMsg = providerY.callLog[1]?.messages.find((m: any) => m.role === 'tool' && m.name === 'read_notes');
     check('BB-c-2', !!yToolMsg, 'la seconda chiamata LLM del run Y include il risultato di read_notes');

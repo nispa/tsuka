@@ -1,23 +1,28 @@
 {
   "name": "osint",
-  "displayName": "🕵️ OSINT — ricognizione open-source",
-  "description": "Pipeline a tre stadi per raccolta, verifica ed editing di informazioni pubblicamente disponibili: Volpe raccoglie, Gufo corrobora e scarta le affermazioni deboli, Argo compila il report finale con revisione etica/legale.",
+  "displayName": "🔍 OSINT — ricerca, verifica e reportistica",
+  "description": "Pipeline di intelligence e fact-checking: Spock e Sette di Nove per la raccolta fonti, Odo per la verifica scettica e Jadzia Dax per la redazione.",
   "roles": [
     "osint_researcher",
     "osint_verifier",
-    "osint_editor"
+    "osint_editor",
+    "researcher",
+    "data_analyst"
   ],
   "traits": [
     "laconic",
     "devils_advocate",
-    "professional"
+    "professional",
+    "reliable"
   ],
   "characters": [
-    "volpe",
-    "gufo",
-    "argo"
+    "spock",
+    "odo",
+    "dax",
+    "seven"
   ],
   "teams": [
-    "osint_recon"
+    "osint_recon",
+    "research_writer"
   ]
 }

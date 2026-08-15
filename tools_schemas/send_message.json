@@ -8,13 +8,16 @@
     "properties": {
       "target": {
         "type": "string",
-        "description": "Nome del destinatario (es. 'falco', 'piccione', '@overseer'). Il prefisso @ è opzionale."
+        "description": "Nome del destinatario come compare nell'elenco dei membri del run, oppure il ruolo che esercita. Il prefisso @ è opzionale."
       },
       "message": {
         "type": "string",
         "description": "Il contenuto del messaggio per il collega (max 1000 caratteri)."
       }
     },
-    "required": ["target", "message"]
+    "required": [
+      "target",
+      "message"
+    ]
   }
 }

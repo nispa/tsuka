@@ -1,8 +1,8 @@
 {
   "name": "cyber_audit",
-  "displayName": "🛡️🦅🐦 Team Cybersecurity (Falco & Piccione)",
-  "description": "Falco analizza il sistema ed effettua l'hardening, mentre Piccione esegue controlli pignoli per trovare vulnerabilità.",
-  "members": ["falco", "piccione", "overseer"],
-  "orchestrator": "overseer",
-  "mode": "round-robin"
+  "displayName": "🛡️ Cyber Audit Squad (Worf & Tuvok)",
+  "description": "Worf conduce i controlli di sicurezza attiva, Tuvok applica verifiche di sistema indipendenti, Pike valida le mitigazioni.",
+  "members": ["worf", "tuvok", "pike"],
+  "orchestrator": "pike",
+  "mode": "pipeline"
 }

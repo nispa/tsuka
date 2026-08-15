@@ -1,8 +1,8 @@
 {
   "name": "dev_security",
-  "displayName": "🛡️💻 Team Sviluppo & Sicurezza (Dev & Piccione)",
-  "description": "Dev scrive ed ottimizza il codice, mentre Piccione lo ispeziona per l'hardening e la cybersecurity.",
-  "members": ["dev", "piccione", "pipeline_pro", "overseer"],
-  "orchestrator": "overseer",
-  "mode": "round-robin"
+  "displayName": "🛡️💻 Team Sviluppo & Sicurezza (Geordi & Worf)",
+  "description": "Geordi scrive e ottimizza il software, Worf ispeziona il codice per l'hardening e la sicurezza, Pike supervisiona.",
+  "members": ["geordi", "worf", "pike"],
+  "orchestrator": "pike",
+  "mode": "pipeline"
 }

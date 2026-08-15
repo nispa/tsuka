@@ -1,5 +1,7 @@
 import { resolveSamplingParams, LLMProvider } from '../src/core/provider';
 import { loadCharacter, loadRole, resolveCreativity } from '../src/cli/shared';
+import { characterWithRole } from './fixtures/roster';
+
 
 let passed = 0;
 let failed = 0;
@@ -47,18 +49,18 @@ async function main() {
 
   // Test 5: Risoluzione della creatività nei ruoli e personaggi
   {
-    const devChar = loadCharacter('dev');
+    const devChar = characterWithRole('developer');
     const devRole = loadRole('developer');
     const copyRole = loadRole('copywriter');
-    const kreaChar = loadCharacter('krea_master');
+    const creativeChar = characterWithRole('game_designer');
 
     check('SP5a', devRole?.creativity === 'precise', "ruolo 'developer' dotato di creatività 'precise'");
     check('SP5b', copyRole?.creativity === 'creative', "ruolo 'copywriter' dotato di creatività 'creative'");
-    check('SP5c', devChar?.creativity === 'precise', "personaggio 'dev' dotato di creatività 'precise'");
-    check('SP5d', kreaChar?.creativity === 'creative', "personaggio 'krea_master' dotato di creatività 'creative'");
+    check('SP5c', resolveCreativity(devChar, devRole) === 'precise', `chi copre 'developer' (@${devChar.name}) lavora con creatività 'precise'`);
+    check('SP5d', resolveCreativity(creativeChar, loadRole('game_designer')) === 'creative', `chi copre 'game_designer' (@${creativeChar.name}) lavora con creatività 'creative'`);
 
     const resolvedDev = resolveCreativity(devChar, devRole);
-    check('SP5e', resolvedDev === 'precise', "resolveCreativity per dev restituisce 'precise'");
+    check('SP5e', resolvedDev === 'precise', `resolveCreativity per @${devChar.name} restituisce 'precise'`);
   }
 
   // Test 6: Inoltro dei parametri di campionamento a LLMProvider

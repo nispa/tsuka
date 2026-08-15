@@ -8,11 +8,15 @@
     "properties": {
       "task": {
         "type": "string",
-        "description": "Il compito specifico da assegnare al sub-agente. Limite: 2000 caratteri. Se non basta, NON accorciarlo (si perdono requisiti in silenzio): dividi in più chiamate a spawn_agent (una per compito autosufficiente), oppure — se il compito è davvero unitario — scrivi il briefing completo con write_file e passa qui il percorso del file."
+        "description": "Il compito specifico da assegnare al sub-agente, come testo inline breve. Limite: 2000 caratteri. Se non basta, NON accorciarlo (si perdono requisiti in silenzio): dividi in più chiamate a spawn_agent (una per compito autosufficiente), oppure usa 'briefingFile' per un briefing lungo. Se 'briefingFile' è presente, 'task' è opzionale e funge da introduzione breve davanti al contenuto del file."
+      },
+      "briefingFile": {
+        "type": "string",
+        "description": "Percorso di un file (scritto prima con write_file) che contiene il briefing completo per il sub-agente. Usalo per compiti lunghi o dettagliati invece di incollare tutto dentro 'task': un percorso è una stringa breve, facile da generare senza errori di formato; un briefing lungo incollato inline in 'task' rischia di rompere la generazione JSON della chiamata stessa. Limite: 12000 caratteri nel file."
       },
       "charName": {
         "type": "string",
-        "description": "Nome del personaggio predefinito da usare (es. 'falco', 'piccione'). Opzionale: se omesso, usa ruolo e tratto specificati."
+        "description": "Nome del personaggio predefinito da usare, come compare nel catalogo installato; in alternativa il ruolo/mestiere richiesto (es. 'security_auditor'). Opzionale: se omesso, usa ruolo e tratto specificati."
       },
       "roleName": {
         "type": "string",
@@ -24,10 +28,15 @@
       },
       "reasoningEffort": {
         "type": "string",
-        "enum": ["none", "low", "medium", "xhigh"],
+        "enum": [
+          "none",
+          "low",
+          "medium",
+          "xhigh"
+        ],
         "description": "Sforzo di ragionamento imposto al sub-agente per QUESTO compito, in override rispetto al personaggio/ruolo. Opzionale: se omesso, il sub-agente eredita la cascata normale (personaggio → ruolo → default). Abbassalo a 'none' o 'low' per compiti meccanici (applicare una modifica già nota, riformattare un file, estrarre campi da un testo): far ragionare a lungo un sub-agente su un compito meccanico è solo tempo perso. Lascialo a 'medium'/'xhigh' solo se il compito richiede davvero analisi o pianificazione."
       }
     },
-    "required": ["task"]
+    "required": []
   }
 }

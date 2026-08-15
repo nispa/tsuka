@@ -41,6 +41,23 @@ export function __setMaxGenerationMsForTest(ms: number): void {
 // che lento. 8k token è oltre quanto qualunque risposta normale raggiunge.
 const MAX_TOKENS_CEILING = 8192;
 
+/**
+ * T9.8: distingue un errore di JSON malformato nella tool call generata dal
+ * modello (glitch di campionamento, spesso non riproducibile al tentativo
+ * successivo) da un errore di comunicazione generico (server giù, rete,
+ * richiesta rifiutata) — solo il primo merita un retry immediato. Osservato in
+ * produzione con llama-server su un argomento stringa lungo: "Failed to parse
+ * tool call arguments as JSON: [json.exception.parse_error.101] ... invalid
+ * string: missing closing quote". Il pattern resta permissivo (non ancorato al
+ * messaggio esatto di un singolo backend) perché server OpenAI-compatible
+ * diversi (vLLM, ollama, llama-server) lo formulano in modo leggermente
+ * diverso, ma tutti nominano "tool call" insieme a "json"/"parse".
+ */
+function isMalformedToolCallJsonError(message: string): boolean {
+  const m = (message || '').toLowerCase();
+  return m.includes('tool call') && (m.includes('json') || m.includes('parse'));
+}
+
 // dotenv caricato dal punto di ingresso (cli/index.ts)
 
 export type { ChatRole };
@@ -416,6 +433,25 @@ export class LLMProvider implements ILLMProvider {
           throw new Error(
             `[Mancata risposta] Il modello '${this.currentModel}' non ha prodotto token dopo ${MAX_RETRIES} tentativi ` +
             `(timeout: ${FIRST_TOKEN_TIMEOUT_MS / 1000}s per tentativo).`
+          );
+        }
+
+        // T9.8: JSON malformato in una tool call — retry immediato (stesso giro di
+        // tentativi di "mancata risposta"), perché è tipicamente un glitch di
+        // campionamento che non si ripete al tentativo successivo, non un guasto
+        // persistente. Un tentativo già scaduto per timeout non arriva qui (i due
+        // rami sopra hanno già lanciato), quindi nessuna sovrapposizione.
+        if (isMalformedToolCallJsonError(error.message)) {
+          if (attempt < MAX_RETRIES) {
+            process.stdout.write('\n');
+            console.log(
+              chalk.yellow(`[Tentativo ${attempt}/${MAX_RETRIES}] Il server ha rifiutato una tool call con JSON malformato, riprovo...`)
+            );
+            continue;
+          }
+          throw new Error(
+            `[JSON malformato] Il modello '${this.currentModel}' ha generato ripetutamente (${MAX_RETRIES} tentativi) una tool call ` +
+            `con argomenti JSON non validi. Errore del server: ${error.message}`
           );
         }
 

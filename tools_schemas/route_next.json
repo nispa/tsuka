@@ -8,13 +8,16 @@
     "properties": {
       "agent": {
         "type": "string",
-        "description": "Nome del membro scelto per il prossimo turno (es. 'falco', '@piccione'), oppure 'FINE' se il compito è risolto."
+        "description": "Nome del membro scelto per il prossimo turno, come compare nell'elenco dei membri del team (con o senza '@'), oppure 'FINE' se il compito è risolto."
       },
       "reason": {
         "type": "string",
         "description": "Perché questo membro (o la fine del lavoro) è la scelta giusta a questo punto."
       }
     },
-    "required": ["agent", "reason"]
+    "required": [
+      "agent",
+      "reason"
+    ]
   }
 }

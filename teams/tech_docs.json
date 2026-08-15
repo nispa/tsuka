@@ -1,0 +1,8 @@
+{
+  "name": "tech_docs",
+  "displayName": "📜 TechDocs Squad (Geordi & Data)",
+  "description": "Geordi ispeziona la codebase e le funzioni, Data redige la documentazione tecnica e i diagrammi, Pike revisiona e valida la chiarezza.",
+  "members": ["geordi", "data", "pike"],
+  "orchestrator": "pike",
+  "mode": "pipeline"
+}

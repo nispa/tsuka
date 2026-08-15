@@ -176,7 +176,7 @@
         <ul>
           <li><b>Blackboard di Run (<code>blackboard.ts</code>)</b>: Stato condiviso in-memory di un singolo workflow basato su <code>AsyncLocalStorage</code>, accessibile via <code>post_note</code> e <code>read_notes</code>. Distrutto alla fine del run per non inquinare la memoria persistente.</li>
           <li><b>Workspace Paralleli (<code>parallelWorkspace.ts</code>)</b>: Ogni ramo di un blocco <code>PARALLELO</code> di <code>/goal</code> opera in una propria directory di staging isolata (<code>workspace/parallel-n/</code>), con fusione e rilevamento automatico dei conflitti al termine.</li>
-          <li><b>Run Controller (<code>loop.ts</code>)</b>: Controllore esecutivo con verifiche oggettive che innesca cicli di correzione guidati dall'Overseer.</li>
+          <li><b>Run Controller (<code>loop.ts</code>)</b>: Controllore esecutivo con verifiche oggettive che innesca cicli di correzione guidati dal supervisore.</li>
         </ul>
       </section>
 

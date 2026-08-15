@@ -91,6 +91,17 @@ export class Agent {
   // della cascata personaggio → ruolo → default config, calcolato dal chiamante
   // (vedi resolveReasoningEffort) — Agent non conosce character/role, solo l'esito.
   private reasoningEffort?: ReasoningEffort;
+  // T9.10: alcuni contesti (turno di membro /team-/goal) hanno un modo noto per
+  // riconoscere una risposta testuale LEGITTIMA come chiusura del turno (es. il
+  // marker "STATO: COMPLETATO/DA_CONTINUARE/FALLITO" del protocollo) — osservato
+  // in produzione con modelli locali "pensanti" (Qwen3 via llama-server): una
+  // risposta che è solo ragionamento, senza mai una tool call E senza quel
+  // marker, termina comunque il turno in run() (vedi sotto) e viene scambiata
+  // per "nessun lavoro necessario", sprecando l'intero turno.
+  // undefined ovunque non esiste questo concetto (chat normale in index.ts, o
+  // un sub-agente di spawn_agent senza un protocollo di stato): lì il testo
+  // puro resta sempre una risposta legittima, comportamento invariato.
+  private acceptTextOnlyIf?: (content: string) => boolean;
   // Caratteri dell'array `tools` inviato all'ultimo round (T8.9, "Ridurre il costo
   // fisso del prompt"): gli schemi dei tool viaggiano nella richiesta API esattamente
   // come i messaggi, ma pruneHistory/estimateMessagesTokens/compressHistory ne erano
@@ -110,7 +121,8 @@ export class Agent {
     maxHistoryMessages: number = 40,
     maxHistoryTokens: number = 65536,
     agentLabel?: string,
-    reasoningEffort?: ReasoningEffort
+    reasoningEffort?: ReasoningEffort,
+    acceptTextOnlyIf?: (content: string) => boolean
   ) {
     this.provider = provider;
     this.registry = registry;
@@ -120,6 +132,7 @@ export class Agent {
     this.maxHistoryTokens = Math.max(0, maxHistoryTokens);
     this.agentLabel = agentLabel;
     this.reasoningEffort = reasoningEffort;
+    this.acceptTextOnlyIf = acceptTextOnlyIf;
     this.clearHistory(systemPrompt);
   }
 
@@ -415,6 +428,16 @@ export class Agent {
     let toolRounds = 0;
     // Stats cumulative attraverso tutti i round LLM (tool loop)
     let cumStats = { durationMs: 0, tokenCount: 0, promptTokens: 0, totalTokens: 0 };
+    // T9.10: usati solo se acceptTextOnlyIf è definito — vedi il ramo "nessuna
+    // tool call" più sotto. Il nudge si applica SOLO se questo run() non ha MAI
+    // eseguito un tool finora: un turno che ha già agito (es. report_status via
+    // tool call) e poi chiude con una nota testuale libera non ripete per forza
+    // il marker — è un wrap-up legittimo, non il vicolo cieco che il nudge
+    // vuole intercettare. Un solo nudge in tutto: se anche dopo il nudge il
+    // modello non chiama nulla né produce testo accettabile, si accetta la
+    // risposta com'è (nessun loop infinito, nessuna seconda insistenza).
+    let everCalledTool = false;
+    let noToolNudgeUsed = false;
 
     while (!isDone) {
       // Interruzione utente arrivata tra un round e l'altro (es. durante i tool):
@@ -483,11 +506,37 @@ export class Agent {
           });
         }
 
-        // Se l'LLM non richiede nessun tool, il ciclo è terminato
+        // Se l'LLM non richiede nessun tool, il ciclo è terminato — a meno che
+        // il chiamante non abbia dato un modo per riconoscere una risposta
+        // testuale LEGITTIMA (T9.10, acceptTextOnlyIf) e questa risposta non lo
+        // sia: un turno di membro che produce solo ragionamento, senza mai una
+        // tool call né il marker di stato del protocollo, non ha ancora fatto
+        // il lavoro assegnato. Un solo nudge, poi si accetta comunque la
+        // risposta com'è: non è un modo per forzare il modello a oltranza, solo
+        // per dargli una seconda occasione esplicita di agire invece di
+        // scambiare un vicolo cieco per "nessun lavoro necessario".
         if (!toolCalls || toolCalls.length === 0) {
+          const textIsAcceptable = everCalledTool || !this.acceptTextOnlyIf || this.acceptTextOnlyIf(content || '');
+          if (!textIsAcceptable && !noToolNudgeUsed) {
+            noToolNudgeUsed = true;
+            // 'report_status' non è sempre fra i tool consentiti a questo agente:
+            // menzionarlo quando non c'è insegnerebbe una chiamata destinata a
+            // fallire per permesso negato.
+            const closingHint = this.allowedTools?.includes('report_status')
+              ? "chiama 'report_status' con lo stato corretto per chiudere il turno esplicitamente"
+              : 'scrivi un riepilogo testuale chiaro di cosa hai fatto (o perché non è stato possibile) per chiudere il turno';
+            this.messages.push({
+              role: 'user',
+              content: 'Non hai chiamato nessun tool in questa risposta. Se stavi pianificando, ora AGISCI: chiama il tool ' +
+                'giusto per farlo davvero (es. write_file, edit_file, execute_command). Se il compito è già completato o non ' +
+                `è possibile portarlo avanti, ${closingHint}.`
+            });
+            continue;
+          }
           isDone = true;
           break;
         }
+        everCalledTool = true;
 
         // Esegue le chiamate ai tool richieste dal modello
         for (const toolCall of toolCalls) {

@@ -30,7 +30,10 @@ async function run() {
   console.log("=== Testing Collaborative Team Workflow ===");
   const registry = await createDefaultRegistry();
   
-  const teamName = "cyber_audit";
+  // Primo team installato: il file è dati dell'utente, il test non ne fissa il nome.
+  const teamName = fs.readdirSync(path.resolve(process.cwd(), 'teams'))
+    .filter((f) => f.endsWith('.json'))
+    .map((f) => path.basename(f, '.json'))[0];
   const team = loadTeam(teamName);
   console.log(`\nTeam caricato: ${team.displayName}`);
   console.log(`- Descrizione: ${team.description}`);
@@ -46,7 +49,7 @@ async function run() {
   ];
   
   for (const mName of team.members) {
-    const char = loadCharacter(mName === "lola" ? "sensual_diva" : mName);
+    const char = loadCharacter(mName);
     const role = loadRole(char.role);
     const trait = loadTrait(char.trait);
     

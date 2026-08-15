@@ -1,16 +1,22 @@
 {
   "name": "core",
-  "displayName": "🎯 Core — un personaggio per competenza",
-  "description": "Set minimo installato di default da 'tsuka init --preset core': un character per ciascuna competenza distinta (nessun ruolo duplicato), pensato per coprire da solo i workflow più comuni di /goal e /team senza dover scegliere un pack.",
+  "displayName": "🎯 Core — Squad Star Trek essenziale",
+  "description": "Set minimo installato di default: un character per ciascuna competenza della Flotta Stellare, pensato per coprire i workflow di /goal e /team.",
   "roles": [
     "architect",
     "copywriter",
     "data_analyst",
     "developer",
     "devops_engineer",
+    "entertainer",
+    "game_designer",
+    "osint_researcher",
     "researcher",
+    "security_auditor",
+    "storyteller",
     "supervisor",
-    "sysadmin"
+    "sysadmin",
+    "tech_writer"
   ],
   "traits": [
     "blunt",
@@ -21,14 +27,25 @@
     "reliable"
   ],
   "characters": [
-    "castoro",
-    "overseer",
-    "dev",
-    "segugio",
-    "pipeline_pro",
-    "data_sage",
-    "wordsmith",
-    "piccione"
+    "una",
+    "kirk",
+    "mbenga",
+    "geordi",
+    "scotty",
+    "paris",
+    "seven",
+    "spock",
+    "doctor",
+    "pike",
+    "tuvok",
+    "data",
+    "q",
+    "worf"
   ],
-  "teams": []
+  "teams": [
+    "game_dev",
+    "tech_docs",
+    "story_comedy",
+    "dev_security"
+  ]
 }

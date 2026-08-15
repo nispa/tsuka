@@ -26,6 +26,7 @@ import {
   runBenchmark, getModelProfile, profileKey, BENCHMARK_VERSION, REASONING_EFFORT_LEVELS
 } from '../src/core/modelProfile';
 import { loadRole, loadCharacter, loadSystemPrompt } from '../src/cli/shared';
+import { listAvailableCharacters } from '../src/cli/shared';
 import { getBenchmarkTestsHash } from '../src/core/benchmarkTests';
 
 let passed = 0;
@@ -165,18 +166,24 @@ async function main() {
     check('RE.7b', translator.reasoningEffort === 'low', "role 'translator' → effort basso, esempio esplicito del task");
     check('RE.7c', entertainer.reasoningEffort === 'none', "role 'entertainer' → nessun ragionamento richiesto");
 
-    // Due personaggi sullo stesso ruolo (researcher): yes_lawyer ha un override di
-    // personaggio esplicito che lo differenzia da segugio (che eredita dal ruolo).
-    const researcherRole = loadRole('researcher') as any;
-    const segugio = loadCharacter('segugio') as any;
-    const yesLawyer = loadCharacter('yes_lawyer') as any;
-    const segugioEffort = resolveReasoningEffort(undefined, segugio, researcherRole, undefined);
-    const yesLawyerEffort = resolveReasoningEffort(undefined, yesLawyer, researcherRole, undefined);
-    check('RE.7d', yesLawyer.reasoningEffort === 'low', "il personaggio 'yes_lawyer' porta un override esplicito ('low')");
-    check('RE.7e',
-      segugioEffort !== yesLawyerEffort,
-      `stesso ruolo (researcher), effort risolto diverso fra personaggi: segugio='${segugioEffort}' vs yes_lawyer='${yesLawyerEffort}'`);
-    check('RE.7f', segugioEffort === researcherRole.reasoningEffort, "segugio (nessun override) eredita l'effort del ruolo");
+    // Cascata personaggio → ruolo, verificata su chi il catalogo installato mette
+    // a disposizione: un personaggio con override esplicito e uno senza.
+    const catalog = listAvailableCharacters() as any[];
+    const withOverride = catalog.find((c) => !!c.reasoningEffort);
+    const withoutOverride = catalog.find((c) => !c.reasoningEffort);
+    check('RE.7d', !!withOverride,
+      `almeno un personaggio porta un override esplicito di effort (@${withOverride?.name}: '${withOverride?.reasoningEffort}')`);
+    if (withOverride) {
+      check('RE.7e',
+        resolveReasoningEffort(undefined, withOverride, architect, undefined) === withOverride.reasoningEffort,
+        `l'override del personaggio (@${withOverride.name}) vince sul ruolo ('${architect.reasoningEffort}')`);
+    }
+    if (withoutOverride) {
+      const inheritedRole = loadRole(withoutOverride.role) as any;
+      check('RE.7f',
+        resolveReasoningEffort(undefined, withoutOverride, inheritedRole, undefined) === inheritedRole.reasoningEffort,
+        `senza override (@${withoutOverride.name}) si eredita l'effort del ruolo '${withoutOverride.role}'`);
+    }
   }
 
   // ── /benchmark spazza i 4 livelli e produce un profilo per livello, isolati fra loro ──

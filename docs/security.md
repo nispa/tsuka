@@ -18,10 +18,10 @@ Every tool registered in the registry declares a `RiskLevel`. The `PermissionMan
 
 ## 🛡️ Cybersecurity Specialist & Static Security Audit (`audit_code`)
 
-TSUKA includes a dedicated cybersecurity role (`security_auditor`) and preset character (`sentinel`):
+TSUKA includes a dedicated cybersecurity role (`security_auditor`), covered in the default catalog by `worf` (and as a secondary skill by `tuvok`):
 
 * **Defensive Static Analysis (`audit_code`)**: Automatically scans workspace source files for OWASP vulnerabilities, hardcoded API keys/secrets, insecure dynamic code execution (`eval`), SQL injection patterns, and weak hashing algorithms (MD5/SHA1).
-* **Remediation & Patching**: The `sentinel` agent proposes concrete defensive code fixes and hardening measures for the user to review.
+* **Remediation & Patching**: the `security_auditor` agent proposes concrete defensive code fixes and hardening measures for the user to review.
 * **Security Pack**: Enable security capabilities in any workspace via `tsuka init --pack security`.
 
 ---
