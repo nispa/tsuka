@@ -66,29 +66,43 @@ interface ParseResult {
   flatSteps: number;
 }
 
-const AGENTE_RE = /AGENTE:\s*@?(\w+)\s*[—–-]\s*(.*)/i;
+function normalizeCharName(name: string): string {
+  return (name || '').toLowerCase().replace(/[\s_\-]/g, '');
+}
 
-export function parsePlan(content: string, validNames: string[]): ParseResult {
+export function parsePlan(content: string, allCharacters: (CharacterConfig | string)[]): ParseResult {
   const groups: PlanGroup[] = [];
   const lines = content.split('\n');
+  const validMap = new Map<string, string>();
+  for (const item of allCharacters) {
+    if (typeof item === 'string') {
+      validMap.set(normalizeCharName(item), item);
+    } else if (item && typeof item === 'object') {
+      if (item.name) validMap.set(normalizeCharName(item.name), item.name);
+      if (item.aiName) validMap.set(normalizeCharName(item.aiName), item.name);
+    }
+  }
+
   let flatSteps = 0;
   let i = 0;
 
   while (i < lines.length) {
-    const line = lines[i].trim();
+    const rawLine = lines[i].trim();
+    // Pulisci markdown formatting (bullet, bold, numbers)
+    const line = rawLine.replace(/^(?:\d+\.|\*|-)\s*/, '').replace(/\*\*/g, '').trim();
 
     // Blocco parallelo
     if (/^PARALLELO/i.test(line)) {
       i++;
       const parallelSteps: PlanStep[] = [];
-      while (i < lines.length && !/^FINE\s*PARALLELO/i.test(lines[i].trim())) {
-        const step = parseAgentLine(lines, i);
+      while (i < lines.length) {
+        const subLine = lines[i].trim().replace(/^(?:\d+\.|\*|-)\s*/, '').replace(/\*\*/g, '').trim();
+        if (/^FINE\s*PARALLELO/i.test(subLine)) break;
+
+        const step = parseAgentLine(lines, i, validMap);
         if (step) {
-          const { name, task, consumed } = step;
-          if (validNames.includes(name)) {
-            parallelSteps.push({ agentName: name, task });
-          }
-          i += consumed;
+          parallelSteps.push({ agentName: step.realName, task: step.task });
+          i += step.consumed;
         } else {
           i++;
         }
@@ -106,18 +120,15 @@ export function parsePlan(content: string, validNames: string[]): ParseResult {
     }
 
     // Riga agente singolo
-    const step = parseAgentLine(lines, i);
+    const step = parseAgentLine(lines, i, validMap);
     if (step) {
-      const { name, task, consumed } = step;
-      if (validNames.includes(name)) {
-        groups.push({
-          mode: 'sequential',
-          steps: [{ agentName: name, task }],
-          label: name
-        });
-        flatSteps++;
-      }
-      i += consumed;
+      groups.push({
+        mode: 'sequential',
+        steps: [{ agentName: step.realName, task: step.task }],
+        label: step.realName
+      });
+      flatSteps++;
+      i += step.consumed;
     } else {
       i++;
     }
@@ -126,38 +137,73 @@ export function parsePlan(content: string, validNames: string[]): ParseResult {
   return { groups, flatSteps };
 }
 
-/** Parsa una riga AGENTE: e accumula le righe successive come task (multilinea). */
-export function parseAgentLine(lines: string[], startIdx: number): { name: string; task: string; consumed: number } | null {
-  const match = lines[startIdx].match(AGENTE_RE);
+function lookupValidName(name: string, validMap: Map<string, string> | (CharacterConfig | string)[]): string | null {
+  const normalized = normalizeCharName(name);
+  if (validMap instanceof Map) {
+    return validMap.get(normalized) || null;
+  }
+  if (Array.isArray(validMap)) {
+    for (const item of validMap) {
+      if (typeof item === 'string') {
+        if (normalizeCharName(item) === normalized) return item;
+      } else if (item && typeof item === 'object') {
+        if (item.name && normalizeCharName(item.name) === normalized) return item.name;
+        if (item.aiName && normalizeCharName(item.aiName) === normalized) return item.name;
+      }
+    }
+  }
+  return null;
+}
+
+/** Parsa una riga AGENTE: / AGENT: / @name tollerando markdown, numeri di lista e separatori vari. */
+export function parseAgentLine(
+  lines: string[],
+  startIdx: number,
+  validMap: Map<string, string> | (CharacterConfig | string)[]
+): { realName: string; task: string; consumed: number } | null {
+  const rawLine = lines[startIdx].trim();
+  // Pulizia prefissi markdown (es. "1. **AGENTE:** @dev — ...", "- AGENTE: dev: ...", "@dev - ...")
+  const cleanLine = rawLine
+    .replace(/^(?:\d+\.|\*|-)\s*/, '')
+    .replace(/\*\*/g, '')
+    .trim();
+
+  // Pattern flessibile:
+  // 1) Opzionale "AGENTE:" o "AGENT:"
+  // 2) @nome (con trattini/spazi/underscore ammessi)
+  // 3) Separatore: —, –, -, :, ->, => o |
+  // 4) Task descrittivo
+  const FLEXIBLE_RE = /^(?:AGENTE|AGENT)?:\s*@?([a-zA-Z0-9_\-\s]+?)\s*(?:[—–\-:]|->|=>|\|)\s*(.*)/i;
+  const AT_DIRECT_RE = /^@([a-zA-Z0-9_\-\s]+?)\s*(?:[—–\-:]|->|=>|\|)\s*(.*)/i;
+
+  let match = cleanLine.match(FLEXIBLE_RE);
+  if (!match) {
+    match = cleanLine.match(AT_DIRECT_RE);
+  }
+
   if (!match) return null;
-  const name = match[1].toLowerCase();
+
+  const rawName = match[1].trim();
+  const realName = lookupValidName(rawName, validMap);
+  if (!realName) return null;
+
   let task = match[2]?.trim() || '';
   let consumed = 1;
 
-  // Se il task è vuoto (task su riga successiva), accumula fino a prossimo AGENTE/FINE/PARALLELO
-  if (!task) {
+  // Se il task è vuoto o un separatore isolato, accumula le righe successive
+  if (!task || /^[—–\-:]\s*$/.test(task)) {
     const taskLines: string[] = [];
     for (let j = startIdx + 1; j < lines.length; j++) {
-      const next = lines[j].trim();
-      if (/^(AGENTE:|PARALLELO|FINE\b)/i.test(next)) break;
-      taskLines.push(next);
-      consumed++;
-    }
-    task = taskLines.filter(Boolean).join(' ').trim();
-  }
-  // Se il task termina con — (em-dash) ma il contenuto è sulla riga accanto
-  else if (/^[—–-]\s*$/.test(task)) {
-    const taskLines: string[] = [];
-    for (let j = startIdx + 1; j < lines.length; j++) {
-      const next = lines[j].trim();
-      if (/^(AGENTE:|PARALLELO|FINE\b)/i.test(next)) break;
-      taskLines.push(next);
+      const nextRaw = lines[j].trim();
+      const nextClean = nextRaw.replace(/^(?:\d+\.|\*|-)\s*/, '').replace(/\*\*/g, '').trim();
+      if (/^(?:AGENTE|AGENT)?:\s*@/i.test(nextClean) || /^PARALLELO/i.test(nextClean) || /^FINE\b/i.test(nextClean)) break;
+      taskLines.push(nextClean);
       consumed++;
     }
     task = taskLines.filter(Boolean).join(' ').trim();
   }
 
-  return { name, task, consumed };
+  return { realName, task, consumed };
 }
 
 function getCharDisplayName(allCharacters: CharacterConfig[], agentName: string): string {
@@ -284,11 +330,34 @@ export async function handleGoal(ctx: CommandCtx, arg: string): Promise<void> {
   }
 
   // Parsing del piano in gruppi
-  const { groups, flatSteps } = parsePlan(planText, validNames);
+  const { groups, flatSteps } = parsePlan(planText, allCharacters);
+
   if (groups.length === 0) {
-    CLITheme.warning('Nessun agente riconosciuto nel piano. Uso fallback round-robin su tutti i personaggi.');
+    CLITheme.warning('Nessun formato AGENTE: riconosciuto direttamente nel piano. Recupero agenti menzionati...');
+    
+    // Tentativo 1: Cerca personaggi menzionati nel testo della risposta
+    const mentionedNames = new Set<string>();
     for (const c of allCharacters) {
-      groups.push({ mode: 'sequential', steps: [{ agentName: c.name, task: `Contribuisci al goal: ${goal}` }], label: c.name });
+      const pattern = new RegExp(`@?\\b${c.name.replace(/_/g, '[_\\s-]?')}\\b`, 'i');
+      if (pattern.test(planText)) {
+        mentionedNames.add(c.name);
+      }
+    }
+
+    if (mentionedNames.size > 0) {
+      for (const name of mentionedNames) {
+        groups.push({ mode: 'sequential', steps: [{ agentName: name, task: `Esegui task correlato al goal: ${goal}` }], label: name });
+      }
+    } else {
+      // Tentativo 2: Fallback mirato su max 2 agenti (dev ed overseer, o i primi due)
+      CLITheme.warning('Nessun agente specifico rilevato: assegno il goal al team essenziale (dev + overseer).');
+      const devChar = allCharacters.find((c) => c.name === 'dev' || c.role === 'developer') || allCharacters[0];
+      const overseerChar = allCharacters.find((c) => c.name === 'overseer' || c.role === 'supervisor') || allCharacters[1] || allCharacters[0];
+      
+      groups.push({ mode: 'sequential', steps: [{ agentName: devChar.name, task: `Sviluppa e realizza l'obiettivo: ${goal}` }], label: devChar.name });
+      if (overseerChar && overseerChar.name !== devChar.name) {
+        groups.push({ mode: 'sequential', steps: [{ agentName: overseerChar.name, task: `Verifica e convalida il lavoro svolto` }], label: overseerChar.name });
+      }
     }
   }
 

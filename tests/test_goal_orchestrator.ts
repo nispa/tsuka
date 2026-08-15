@@ -10,7 +10,7 @@
  *
  * Esecuzione: npx tsx tests/test_goal_orchestrator.ts
  */
-import { handleGoal } from '../src/cli/commands/goal';
+import { handleGoal, parsePlan } from '../src/cli/commands/goal';
 import { ContextTracker } from '../src/core/contextTracker';
 import { MockLLMProvider } from './mocks/mockProvider';
 import { buildMockCtx } from './mocks/mockCtx';
@@ -114,6 +114,24 @@ async function main() {
       lastAssistant.role === 'assistant' && typeof lastAssistant.content === 'string' && /completato/i.test(lastAssistant.content),
       'il goal con rilavorazione si conclude con successo'
     );
+  }
+
+  // T4: Parsing flessibile — riconosce liste numerate, markdown bold e due punti
+  {
+    const mockChars: any[] = [
+      { name: 'dev', aiName: 'Dev', role: 'developer' },
+      { name: 'overseer', aiName: 'Overseer', role: 'supervisor' }
+    ];
+    const planMarkdown = `
+Ecco il piano per il progetto:
+1. **AGENTE:** @dev: Crea il gioco puzznic
+2. AGENT: overseer -> Verifica il codice
+FINE
+`;
+    const { groups, flatSteps } = parsePlan(planMarkdown, mockChars);
+    check('G4a', flatSteps === 2, `parsing flessibile rileva 2 step nonostante il formato markdown e due punti (trovati: ${flatSteps})`);
+    check('G4b', groups[0]?.steps[0]?.agentName === 'dev', `step 1 riconosce dev (trovato: ${groups[0]?.steps[0]?.agentName})`);
+    check('G4c', groups[1]?.steps[0]?.agentName === 'overseer', `step 2 riconosce overseer (trovato: ${groups[1]?.steps[0]?.agentName})`);
   }
 
   console.log(`\n=== Risultato: ${passed} passati, ${failed} falliti ===`);
