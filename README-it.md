@@ -252,8 +252,10 @@ Collaborazione sequenziale su uno spazio di lavoro condiviso:
 | `/character` | Carica un personaggio preset |
 | `/rename-char <nome>` | Rinomina l'`aiName` del personaggio attivo |
 | `/role` | Cambia ruolo agente (competenze/tool) |
+| `/skill [nome]` | Commuta la skill attiva per personaggi multi-skill |
 | `/trait` | Cambia tratto caratteriale agente |
-| `/effort [livello]` | Gestisce lo sforzo di ragionamento (`none`|`low`|`medium`|`xhigh`|`auto`|`ask`) |
+| `/effort [livello]` | Gestisce lo sforzo di ragionamento (`none`\|`low`\|`medium`\|`xhigh`\|`auto`\|`ask`) |
+| `/goal <obiettivo>` | Orchestratore dinamico di obiettivi — seleziona agenti, assegna task ed esegue autonomamente |
 | `/team` | Avvia un workflow collaborativo di team |
 | `/call [nomi]` | Avvia un dibattito multi-agente |
 | `/search-engine` | Cambia provider di ricerca (DuckDuckGo / Google / Tavily) |

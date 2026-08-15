@@ -286,6 +286,7 @@ Lets an organized group of agents actively collaborate on a task, executing writ
 | `/character` | Load a character preset |
 | `/rename-char <name>` | Rename the active character's `aiName` |
 | `/role` | Change agent role (skills/tools) |
+| `/skill [name]` | Switch active skill for multi-skilled characters |
 | `/trait` | Change agent personality trait |
 | `/effort [level]` | Manage reasoning effort (`none`\|`low`\|`medium`\|`xhigh`\|`auto`\|`ask`) |
 | `/goal <objective>` | Dynamic goal orchestrator — selects agents, assigns tasks, coordinates execution autonomously |
