@@ -3,16 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>L'Incredibile Spedizione di TSUKA — di Achille Campanile</title>
-    <meta name="description" content="L'incredibile ed assurda commedia teatrale sul funzionamento dell'harness agentico TSUKA, con Prompt Master per Krea2, LTX v2.5 e MiniMax H3, Dev al codice ed Audit Pro alla compliance.">
+    <title>L'Incredibile Processo agli Agenti di TSUKA — Commedia Didattica di Achille Campanile</title>
+    <meta name="description" content="Commedia teatrale didattica ed assurda in stile Achille Campanile che spiega il funzionamento dell'harness agentico TSUKA v0.2.0: ciclo ReAct, ragionamento, creatività, sicurezza e multi-agente.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Fira+Code:wght@400;600&family=Inter:ital,wght@0,300;0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg-dark: #0a0b10;
-            --bg-card: #121624;
-            --bg-card-hover: #1a2035;
+            --bg-dark: #090a0f;
+            --bg-card: #111523;
+            --bg-card-hover: #182035;
             --border-gold: rgba(245, 158, 11, 0.3);
             --border-purple: rgba(192, 132, 252, 0.3);
             --border-cyan: rgba(56, 189, 248, 0.3);
@@ -45,8 +45,8 @@
             line-height: 1.8;
             overflow-x: hidden;
             background-image: 
-                radial-gradient(circle at 10% 20%, rgba(245, 158, 11, 0.05) 0%, transparent 40%),
-                radial-gradient(circle at 90% 70%, rgba(192, 132, 252, 0.05) 0%, transparent 40%),
+                radial-gradient(circle at 10% 20%, rgba(245, 158, 11, 0.04) 0%, transparent 40%),
+                radial-gradient(circle at 90% 70%, rgba(192, 132, 252, 0.04) 0%, transparent 40%),
                 radial-gradient(circle at 50% 50%, rgba(56, 189, 248, 0.03) 0%, transparent 50%);
             background-attachment: fixed;
         }
@@ -57,15 +57,15 @@
         }
 
         sidebar {
-            width: 340px;
-            background: rgba(14, 18, 30, 0.95);
+            width: 320px;
+            background: rgba(13, 16, 26, 0.95);
             backdrop-filter: blur(16px);
             border-right: 1px solid rgba(245, 158, 11, 0.15);
             position: fixed;
             top: 0;
             bottom: 0;
             left: 0;
-            padding: 2rem 1.5rem;
+            padding: 2rem 1.25rem;
             overflow-y: auto;
             z-index: 100;
         }
@@ -89,44 +89,43 @@
             justify-content: center;
             font-family: var(--font-title);
             font-weight: 900;
-            font-size: 1.5rem;
+            font-size: 1.4rem;
             color: #000;
-            box-shadow: 0 0 20px rgba(245, 158, 11, 0.4);
+            box-shadow: 0 0 20px rgba(245, 158, 11, 0.3);
         }
 
         .brand-text h1 {
             font-family: var(--font-title);
-            font-size: 1.15rem;
+            font-size: 1.1rem;
             color: #fff;
             letter-spacing: 1px;
         }
 
-        .brand-text span {
-            font-size: 0.72rem;
+        .brand-text p {
+            font-size: 0.75rem;
             color: var(--accent-gold);
             text-transform: uppercase;
-            letter-spacing: 2px;
-            font-weight: 600;
+            letter-spacing: 1px;
         }
 
-        .nav-links {
+        .nav-menu {
             list-style: none;
             display: flex;
             flex-direction: column;
-            gap: 0.4rem;
+            gap: 0.5rem;
         }
 
         .nav-item a {
             display: flex;
             align-items: center;
             gap: 0.75rem;
-            padding: 0.6rem 0.85rem;
+            padding: 0.75rem 1rem;
             color: var(--text-muted);
             text-decoration: none;
             border-radius: 8px;
-            font-size: 0.85rem;
+            font-size: 0.9rem;
             font-weight: 500;
-            transition: all 0.25s ease;
+            transition: all 0.2s ease;
             border: 1px solid transparent;
         }
 
@@ -137,710 +136,438 @@
             transform: translateX(4px);
         }
 
-        .nav-item a.active {
-            color: var(--accent-gold);
-            font-weight: 600;
-        }
-
-        .nav-chapter-num {
-            font-family: var(--font-code);
-            font-size: 0.75rem;
-            color: var(--accent-purple);
+        .nav-item .icon {
+            font-size: 1.1rem;
         }
 
         main {
-            margin-left: 340px;
+            margin-left: 320px;
             flex: 1;
-            padding: 3rem 4rem 6rem 4rem;
-            max-width: 1200px;
+            padding: 3rem 4rem;
+            max-width: 1100px;
         }
 
         .hero {
-            position: relative;
-            padding: 4rem 3.5rem;
-            border-radius: 24px;
-            background: linear-gradient(135deg, rgba(26, 20, 45, 0.95), rgba(15, 23, 42, 0.9));
+            text-align: center;
+            padding: 3rem 2rem;
+            background: linear-gradient(180deg, rgba(18, 22, 36, 0.8) 0%, rgba(9, 10, 15, 0.4) 100%);
             border: 1px solid var(--border-gold);
-            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
             margin-bottom: 4rem;
-            overflow: hidden;
+            position: relative;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
         }
 
-        .hero::before {
-            content: '🎭';
-            position: absolute;
-            top: -20px;
-            right: -20px;
-            font-size: 15rem;
-            opacity: 0.04;
-            pointer-events: none;
+        .hero-subtitle {
+            font-family: var(--font-title);
+            color: var(--accent-gold);
+            font-size: 1rem;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            margin-bottom: 0.5rem;
+        }
+
+        .hero-title {
+            font-family: var(--font-title);
+            font-size: 2.5rem;
+            font-weight: 900;
+            background: linear-gradient(135deg, #fff 30%, var(--accent-gold) 70%, var(--accent-purple) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 1rem;
+            line-height: 1.2;
+        }
+
+        .hero-author {
+            font-style: italic;
+            color: var(--text-muted);
+            font-size: 1.1rem;
+            margin-bottom: 1.5rem;
         }
 
         .hero-badge {
             display: inline-flex;
             align-items: center;
             gap: 0.5rem;
-            padding: 0.4rem 1.1rem;
-            background: rgba(245, 158, 11, 0.15);
-            border: 1px solid rgba(245, 158, 11, 0.4);
+            padding: 0.4rem 1.2rem;
+            background: rgba(192, 132, 252, 0.1);
+            border: 1px solid var(--border-purple);
             border-radius: 50px;
-            color: var(--accent-gold);
-            font-size: 0.8rem;
-            font-weight: 700;
-            letter-spacing: 1.5px;
-            text-transform: uppercase;
-            margin-bottom: 1.5rem;
-        }
-
-        .hero h1 {
-            font-family: var(--font-title);
-            font-size: 2.8rem;
-            line-height: 1.25;
-            color: #fff;
-            margin-bottom: 1rem;
-            background: linear-gradient(to right, #ffffff, var(--accent-gold), var(--accent-purple));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-
-        .hero p.subtitle {
-            font-family: var(--font-title);
-            font-size: 1.2rem;
             color: var(--accent-purple);
-            font-style: italic;
-            margin-bottom: 1.5rem;
+            font-size: 0.85rem;
+            font-weight: 600;
         }
 
-        .hero p.desc {
-            font-size: 1.05rem;
-            color: var(--text-muted);
-            max-width: 800px;
-            margin-bottom: 2rem;
-        }
-
-        .facts-strip {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
-            gap: 1px;
-            background: rgba(255, 255, 255, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 12px;
-            overflow: hidden;
-            margin-top: 2rem;
-        }
-
-        .fact-box {
-            background: rgba(0, 0, 0, 0.4);
-            padding: 0.85rem 1rem;
-            text-align: center;
-        }
-
-        .fact-box b {
-            display: block;
-            font-family: var(--font-title);
-            font-size: 1.4rem;
-            color: var(--accent-gold);
-        }
-
-        .fact-box span {
-            font-size: 0.72rem;
-            color: var(--text-muted);
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-
-        .dramatis-personae {
-            background: rgba(0, 0, 0, 0.4);
+        .act-card {
+            background: var(--bg-card);
             border: 1px solid rgba(255, 255, 255, 0.08);
             border-radius: 16px;
-            padding: 1.5rem;
-            margin-top: 2rem;
+            padding: 2.5rem;
+            margin-bottom: 3rem;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            transition: border-color 0.3s ease;
         }
 
-        .dramatis-personae h3 {
-            font-family: var(--font-title);
-            color: var(--accent-gold);
-            font-size: 1.1rem;
-            margin-bottom: 1rem;
-            text-transform: uppercase;
-            letter-spacing: 1px;
+        .act-card:hover {
+            border-color: rgba(245, 158, 11, 0.3);
         }
 
-        .personae-list {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-            gap: 1rem;
-            font-size: 0.9rem;
-        }
-
-        .personae-item {
-            background: rgba(255, 255, 255, 0.02);
-            padding: 0.75rem 1rem;
-            border-radius: 10px;
-            border-left: 3px solid var(--accent-purple);
-        }
-
-        .personae-item strong {
-            color: #fff;
-            display: block;
-            margin-bottom: 0.2rem;
-        }
-
-        .scene {
-            margin-bottom: 5rem;
-            scroll-margin-top: 2rem;
-        }
-
-        .scene-header {
+        .act-header {
             display: flex;
             align-items: center;
-            gap: 1.25rem;
-            margin-bottom: 1.75rem;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
             padding-bottom: 1rem;
             border-bottom: 1px solid rgba(255, 255, 255, 0.08);
         }
 
-        .scene-badge {
-            width: 52px;
-            height: 52px;
+        .act-number {
+            font-family: var(--font-title);
+            font-size: 0.9rem;
+            font-weight: 900;
+            color: var(--accent-gold);
             background: rgba(245, 158, 11, 0.1);
-            border: 1px solid var(--accent-gold);
-            border-radius: 14px;
+            padding: 0.3rem 0.8rem;
+            border-radius: 6px;
+            border: 1px solid var(--border-gold);
+        }
+
+        .act-title {
+            font-family: var(--font-title);
+            font-size: 1.6rem;
+            color: #fff;
+        }
+
+        .dialogue {
+            display: flex;
+            flex-direction: column;
+            gap: 1.25rem;
+            margin-top: 1.5rem;
+        }
+
+        .speaker-line {
+            display: flex;
+            gap: 1rem;
+            align-items: flex-start;
+        }
+
+        .avatar {
+            width: 42px;
+            height: 42px;
+            border-radius: 10px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-family: var(--font-code);
-            font-weight: 700;
-            color: var(--accent-gold);
-            font-size: 1.15rem;
-            box-shadow: 0 0 20px rgba(245, 158, 11, 0.2);
+            font-size: 1.2rem;
+            flex-shrink: 0;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
         }
 
-        .scene-title h2 {
-            font-family: var(--font-title);
-            font-size: 1.75rem;
-            color: #fff;
-            line-height: 1.2;
-        }
+        .avatar.dev { background: rgba(56, 189, 248, 0.15); border: 1px solid var(--border-cyan); }
+        .avatar.sentinel { background: rgba(52, 211, 153, 0.15); border: 1px solid rgba(52, 211, 153, 0.3); }
+        .avatar.krea { background: rgba(192, 132, 252, 0.15); border: 1px solid var(--border-purple); }
+        .avatar.overseer { background: rgba(245, 158, 11, 0.15); border: 1px solid var(--border-gold); }
+        .avatar.author { background: rgba(251, 113, 133, 0.15); border: 1px solid rgba(251, 113, 133, 0.3); }
 
-        .scene-title .sub {
-            font-size: 0.82rem;
-            color: var(--accent-cyan);
-            font-family: var(--font-code);
-            letter-spacing: 1px;
-        }
-
-        .dialogue-box {
-            background: var(--bg-card);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            border-radius: 16px;
-            padding: 2rem;
-            margin: 2rem 0;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
-        }
-
-        .stage-direction {
-            font-style: italic;
-            color: var(--accent-purple);
-            font-size: 0.92rem;
-            margin: 1rem 0;
-            padding-left: 1rem;
-            border-left: 2px solid var(--accent-purple);
-        }
-
-        .line {
-            margin-bottom: 1.25rem;
-            font-size: 1.02rem;
-        }
-
-        .speaker {
-            font-family: var(--font-title);
-            font-weight: 700;
-            color: var(--accent-gold);
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            margin-right: 0.5rem;
-        }
-
-        .speaker.utente { color: var(--accent-cyan); }
-        .speaker.dev { color: var(--accent-emerald); }
-        .speaker.overseer { color: var(--accent-rose); }
-        .speaker.segugio { color: var(--accent-cyan); }
-        .speaker.audit { color: var(--accent-gold); }
-        .speaker.promptmaster { color: #e879f9; }
-        .speaker.guardiano { color: var(--accent-cyan); }
-
-        .tragedia-2-battute {
-            background: rgba(251, 113, 133, 0.05);
-            border: 1px dashed var(--accent-rose);
+        .speech-bubble {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.06);
             border-radius: 12px;
-            padding: 1.5rem;
-            margin: 1.5rem 0;
+            padding: 1rem 1.25rem;
+            flex: 1;
         }
 
-        .tragedia-2-battute h4 {
+        .speaker-name {
             font-family: var(--font-title);
-            color: var(--accent-rose);
-            font-size: 1rem;
-            margin-bottom: 0.75rem;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-
-        .tech-note {
-            background: rgba(56, 189, 248, 0.06);
-            border: 1px solid var(--border-cyan);
-            border-radius: 14px;
-            padding: 1.5rem;
-            margin: 1.75rem 0;
-        }
-
-        .tech-note h4 {
-            font-family: var(--font-title);
-            color: var(--accent-cyan);
-            font-size: 1.05rem;
-            margin-bottom: 0.5rem;
+            font-size: 0.95rem;
+            font-weight: 700;
+            margin-bottom: 0.25rem;
             display: flex;
             align-items: center;
             gap: 0.5rem;
         }
 
-        .tech-note p {
-            font-size: 0.93rem;
+        .speaker-name .tag {
+            font-family: var(--font-code);
+            font-size: 0.75rem;
+            font-weight: 400;
+            padding: 0.1rem 0.4rem;
+            border-radius: 4px;
+            background: rgba(255, 255, 255, 0.05);
             color: var(--text-muted);
         }
 
-        pre {
-            background: #060810;
-            padding: 1.25rem;
-            border-radius: 10px;
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            font-family: var(--font-code);
-            font-size: 0.88rem;
-            color: #e2e8f0;
-            overflow-x: auto;
-            margin: 1rem 0;
+        .didactic-box {
+            background: linear-gradient(135deg, rgba(56, 189, 248, 0.05) 0%, rgba(192, 132, 252, 0.05) 100%);
+            border: 1px dashed rgba(56, 189, 248, 0.3);
+            border-radius: 12px;
+            padding: 1.25rem 1.5rem;
+            margin: 1.5rem 0;
+        }
+
+        .didactic-title {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-family: var(--font-title);
+            color: var(--accent-cyan);
+            font-size: 1rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
         }
 
         code {
             font-family: var(--font-code);
-            color: var(--accent-cyan);
-            background: rgba(56, 189, 248, 0.1);
-            padding: 2px 6px;
-            border-radius: 4px;
-            font-size: 0.88em;
-        }
-
-        .tab-container {
-            margin: 2rem 0;
-            background: var(--bg-card);
-            border-radius: 16px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            overflow: hidden;
-        }
-
-        .tab-buttons {
-            display: flex;
             background: rgba(0, 0, 0, 0.4);
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        .tab-btn {
-            flex: 1;
-            padding: 1rem;
-            background: none;
-            border: none;
-            color: var(--text-muted);
-            font-family: var(--font-body);
-            font-weight: 600;
-            font-size: 0.88rem;
-            cursor: pointer;
-            transition: all 0.25s ease;
-        }
-
-        .tab-btn:hover {
-            color: #fff;
-            background: rgba(255, 255, 255, 0.03);
-        }
-
-        .tab-btn.active {
+            padding: 0.15rem 0.4rem;
+            border-radius: 4px;
             color: var(--accent-gold);
-            border-bottom: 2px solid var(--accent-gold);
-            background: rgba(245, 158, 11, 0.05);
+            font-size: 0.85em;
         }
 
-        .tab-content {
-            padding: 1.75rem;
-            display: none;
-        }
-
-        .tab-content.active {
-            display: block;
-        }
-
-        @media (max-width: 1024px) {
-            sidebar { display: none; }
-            main { margin-left: 0; padding: 2rem 1.5rem; }
-            .hero h1 { font-size: 2.2rem; }
+        footer {
+            text-align: center;
+            padding: 3rem 0;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            border-top: 1px solid rgba(255, 255, 255, 0.08);
+            margin-top: 4rem;
         }
     </style>
 </head>
 <body>
 
 <div class="container">
-
-    <!-- Sidebar Nav -->
     <sidebar>
         <div class="brand">
-            <div class="brand-icon">AC</div>
+            <div class="brand-icon">⚔️</div>
             <div class="brand-text">
-                <h1>CAMPANILE</h1>
-                <span>Teatro Agentico TSUKA</span>
+                <h1>TSUKA v0.2.0</h1>
+                <p>Commedia Didattica</p>
             </div>
         </div>
-        <ul class="nav-links">
-            <li class="nav-item"><a href="#quadro1" class="active"><span class="nav-chapter-num">01</span> Modello Mentale & Vestaglia</a></li>
-            <li class="nav-item"><a href="#quadro2"><span class="nav-chapter-num">02</span> I 23 Console.log di Contrabbandi</a></li>
-            <li class="nav-item"><a href="#quadro3"><span class="nav-chapter-num">03</span> Prompt Master & I Modelli GenAI</a></li>
-            <li class="nav-item"><a href="#quadro4"><span class="nav-chapter-num">04</span> 21 Tool, Tier & Permessi</a></li>
-            <li class="nav-item"><a href="#quadro5"><span class="nav-chapter-num">05</span> Il Governo del Contesto</a></li>
-            <li class="nav-item"><a href="#quadro6"><span class="nav-chapter-num">06</span> La Cascata dell'Effort</a></li>
-            <li class="nav-item"><a href="#quadro7"><span class="nav-chapter-num">07</span> Il Fischietto & Le 5 Modalità</a></li>
-            <li class="nav-item"><a href="#quadro8"><span class="nav-chapter-num">08</span> Staging Parallelo & Conflitti</a></li>
-            <li class="nav-item"><a href="#quadro9"><span class="nav-chapter-num">09</span> I Tre Cassetti del Comò</a></li>
+        <ul class="nav-menu">
+            <li class="nav-item"><a href="#prologo" class="active"><span class="icon">🎭</span> Prologo — Il Ciclo & i Timer</a></li>
+            <li class="nav-item"><a href="#atto1"><span class="icon">🎨</span> Atto I — Le Tre Creatività</a></li>
+            <li class="nav-item"><a href="#atto2"><span class="icon">🛡️</span> Atto II — L'Ispettore Sentinel</a></li>
+            <li class="nav-item"><a href="#atto3"><span class="icon">📋</span> Atto III — Lavagne e Parallelismo</a></li>
+            <li class="nav-item"><a href="#epilogo"><span class="icon">📜</span> Epilogo — La Morale</a></li>
         </ul>
     </sidebar>
 
-    <!-- Main Content -->
     <main>
+        <div class="hero">
+            <div class="hero-subtitle">Teatro dell'Assurdo & Ingegneria Agentica</div>
+            <h1 class="hero-title">L'Incredibile Processo agli Agenti di TSUKA</h1>
+            <div class="hero-author">Commedia Didattica in Quattro Atti e un Prologo — nello stile irreprensibile di Achille Campanile</div>
+            <div class="hero-badge">✨ Spiegazione didattica dell'Architettura v0.2.0</div>
+        </div>
 
-        <!-- Hero Header -->
-        <section class="hero">
-            <div class="hero-badge">🎭 Commedia Umoristica & Architettura Software</div>
-            <h1>L'Incredibile Spedizione di TSUKA</h1>
-            <p class="subtitle">ovvero: Prompt Master per Krea 2, LTX v2.5 e MiniMax H3</p>
-            <p class="desc">Commedia surreale basata fedelmente sull'analisi tecnica di <code>architettura.html</code>. Nove quadri con Dev lo sviluppatore metodico, il nuovo personaggio esperto Prompt Master per modelli generativi, Audit Pro alla compliance e i 23 console.log, scritta alla maniera di Achille Campanile.</p>
+        <!-- PROLOGO -->
+        <section id="prologo" class="act-card">
+            <div class="act-header">
+                <span class="act-number">PROLOGO</span>
+                <h2 class="act-title">Dei Modelli che Pensano Troppo e delle Orecchie del Terminale</h2>
+            </div>
             
-            <div class="facts-strip">
-                <div class="fact-box"><b>21</b><span>TOOL</span></div>
-                <div class="fact-box"><b>19</b><span>MODULI CORE</span></div>
-                <div class="fact-box"><b>16</b><span>RUOLI</span></div>
-                <div class="fact-box"><b>9</b><span>TRATTI</span></div>
-                <div class="fact-box"><b>25</b><span>PERSONAGGI</span></div>
-                <div class="fact-box"><b>7</b><span>TEAM</span></div>
-                <div class="fact-box"><b>5</b><span>MODALITÀ</span></div>
-            </div>
+            <p><em>La scena si svolge nel vuoto pneumatico della memoria RAM. In mezzo alla sala c'è un grande orologio a pendolo che fa tick-tack a velocità sregolata. L'Autore passeggia in vestaglia con una tazza di camomilla.</em></p>
 
-            <div class="dramatis-personae">
-                <h3>Personaggi del Dramma:</h3>
-                <div class="personae-list">
-                    <div class="personae-item">
-                        <strong>IL SIGNOR UTENTE (L'Evocatore)</strong>
-                        Gentiluomo in vestaglia da camera che batte tasti sul REPL ed attende miracoli.
+            <div class="dialogue">
+                <div class="speaker-line">
+                    <div class="avatar author">✒️</div>
+                    <div class="speech-bubble">
+                        <div class="speaker-name" style="color: var(--accent-rose)">L'AUTORE (Campanile) <span class="tag">Interruzione della Quarta Parete</span></div>
+                        Signori miei, è un grande guaio quando un modello di intelligenza artificiale si mette a pensare. Se non pensa, dite che è uno stolto. Se pensa troppo, si incanta per sette minuti sulle preposizioni articolate lasciando il terminale nel silenzio più desolante. Per fortuna TSUKA ha inventato il timer a orologio per la generazione!
                     </div>
-                    <div class="personae-item">
-                        <strong>DEV (Lo Sviluppatore Metodico)</strong>
-                        Sviluppatore software preciso e professionale (<code>role: developer</code>, <code>trait: professional</code>): legge il codice prima di toccarlo, zero fumo.
-                    </div>
-                    <div class="personae-item">
-                        <strong>PROMPT MASTER (L'Architetto di AI Generativa)</strong>
-                        Specialista GenAI (<code>role: genai_prompt_designer</code>, <code>trait: creative</code>): adatta la sintassi e la regia visiva/video per Krea 2, LTX Video v2.5 e MiniMax Hailuo H3.
-                    </div>
-                    <div class="personae-item">
-                        <strong>AUDIT PRO (L'Ispettore Inesorabile)</strong>
-                        Ricercatore di Compliance ed Audit (<code>role: researcher</code>, <code>trait: reliable</code>): analizza normative (GDPR) e vincoli senza mai cedere alla compiacenza.
-                    </div>
-                    <div class="personae-item">
-                        <strong>SEGUGIO (L'Investigatore Laconico)</strong>
-                        Researcher con Tratto Laconic. Risponde a quesiti epocali con una sola sillaba.
-                    </div>
-                    <div class="personae-item">
-                        <strong>OVERSEER (Il Generale Pignolo)</strong>
-                        Garante della qualità col monocolo che fischia con <code>route_next</code> ad ogni battuta.
+                </div>
+
+                <div class="speaker-line">
+                    <div class="avatar dev">💻</div>
+                    <div class="speech-bubble">
+                        <div class="speaker-name" style="color: var(--accent-cyan)">DEV <span class="tag">role: developer | creativity: precise</span></div>
+                        Esatto! Il parametro <code>llmTimeoutMs</code> (predefinito a 120.000 millisecondi) fa sì che se il modello si incanta a produrre pensieri infiniti, lo svizzero timer interrompe la chiamata con garbo, senza inventare una "mancata risposta" ma dichiarando: <em>"Il modello stava rispondendo, ma ha superato il tempo massimo!"</em>.
                     </div>
                 </div>
             </div>
-        </section>
 
-        <!-- Quadro I -->
-        <section id="quadro1" class="scene">
-            <div class="scene-header">
-                <div class="scene-badge">01</div>
-                <div class="scene-title">
-                    <h2>Quadro Primo: Il Modello Mentale e la Vestaglia</h2>
-                    <div class="sub">SEZIONE 01 & 10: IL CICLO REACT IN AGENT.TS & DISCOVERY.TS</div>
-                </div>
-            </div>
-
-            <div class="dialogue-box">
-                <div class="stage-direction">(Un salotto borghese un po' polveroso. Il Signor Utente, in vestaglia e ciabatte di velluto, digita `npm run dev`. `discovery.ts` avvia la scansione e trova un modello GGUF già caricato in RAM su Unsloth a `:8888`.)</div>
-
-                <div class="line"><span class="speaker utente">IL SIGNOR UTENTE:</span> Ma guarda. Dice: <em>"Modello in RAM rilevato"</em>. Chissà se è un complimento per la mia memoria o se si riferisce al computer. Chi comanda qui dentro?</div>
-
-                <div class="line"><span class="speaker dev">DEV:</span> (Apparendo con una tastiera meccanica ed un paio di occhiali da ingegnere) Comanda l'Harness, egregio Signore! Sono <strong>Dev</strong>, lo sviluppatore software! Più il flusso è deciso dal codice TypeScript e meno dal modello LLM, meglio rende il modello locale! Il modello sceglie il contenuto; l'Harness sceglie il contesto, i tool ammessi e quando fermarsi!</div>
-
-                <div class="line"><span class="speaker utente">IL SIGNOR UTENTE:</span> E se il modello decide di parlare a vanvera per tre giorni di seguito?</div>
-
-                <div class="line"><span class="speaker overseer">OVERSEER:</span> Impossibile! In <code>src/core/agent.ts</code> vige la guardia dura: <code>MAX_TOOL_ROUNDS = 15</code> round consecutivi di tool per singola richiesta! Al quindicesimo giro scatta la tagliola!</div>
-            </div>
-
-            <div class="tech-note">
-                <h4><span>⚡</span> Dal documento di architettura (§01 & §10):</h4>
-                <p>TSUKA usa l'SDK ufficiale OpenAI verso Unsloth (<code>:8888</code>), Ollama (<code>:11434</code>) o OpenRouter. <code>discovery.ts</code> rileva all'avvio il modello già presente in RAM per evitare ricaricamenti. <code>Agent.run()</code> applica il limite invalicabile <code>MAX_TOOL_ROUNDS = 15</code>.</p>
+            <div class="didactic-box">
+                <div class="didactic-title">💡 Concetto Didattico — Il Ciclo ReAct & I Timer a Orologio</div>
+                <p>TSUKA implementa il ciclo <strong>ReAct</strong> (Reason + Act). Durante ogni turno, l'agente può emettere pensieri ed invocare tool. Per evitare blocchi indefiniti, TSUKA applica due livelli di sicurezza:</p>
+                <ul style="margin-left: 1.5rem; margin-top: 0.5rem;">
+                    <li><code>FIRST_TOKEN_TIMEOUT_MS</code> (120s): scatta se il server LLM non risponde col primo token.</li>
+                    <li><code>llmTimeoutMs</code> (configurabile in <code>tsuka.config.json</code>): timer a orologio continuo che copre l'intera durata della generazione compreso il pensiero (<code>&lt;think&gt;</code> tags), senza mai azzerarsi al primo token.</li>
+                </ul>
             </div>
         </section>
 
-        <!-- Quadro II -->
-        <section id="quadro2" class="scene">
-            <div class="scene-header">
-                <div class="scene-badge">02</div>
-                <div class="scene-title">
-                    <h2>Quadro Secondo: Lo Scandalo dei 23 Console.log</h2>
-                    <div class="sub">SEZIONE 02 & 13: STRATI ARCHITETTURALI & DEBITO TECNICO</div>
+        <!-- ATTO I -->
+        <section id="atto1" class="act-card">
+            <div class="act-header">
+                <span class="act-number">ATTO I</span>
+                <h2 class="act-title">Il Ballo delle Skill ed i Tre Ristoranti della Creatività</h2>
+            </div>
+
+            <p><em>Entra Krea Master indossando un pennello sproporzionato ed una parrucca barocca, seguito da Dev che tiene in mano una riga ed un calibro di precisione.</em></p>
+
+            <div class="dialogue">
+                <div class="speaker-line">
+                    <div class="avatar krea">🖌️</div>
+                    <div class="speech-bubble">
+                        <div class="speaker-name" style="color: var(--accent-purple)">KREA MASTER <span class="tag">role: krea_prompt_engineer | creativity: creative</span></div>
+                        Mio caro Dev, l'arte richiede estro! Quando dipingo i miei prompt visivi con <code>creativity: "creative"</code>, TSUKA imposta sottobanco una temperatura di <code>0.95</code> ed un <code>presence_penalty: 0.3</code>! La mia mente vola libera tra sfumature e dettagli cromatici indimenticabili!
+                    </div>
+                </div>
+
+                <div class="speaker-line">
+                    <div class="avatar dev">💻</div>
+                    <div class="speech-bubble">
+                        <div class="speaker-name" style="color: var(--accent-cyan)">DEV <span class="tag">role: developer | creativity: precise</span></div>
+                        Sia mai! Quando scrivo codice in TypeScript voglio <code>creativity: "precise"</code> (temperatura <code>0.2</code>, <code>top_p: 0.8</code>). Se un programmatore diventa poetico, i punti e virgola volano via come rondini a primavera e la build fallisce miseramente!
+                    </div>
+                </div>
+
+                <div class="speaker-line">
+                    <div class="avatar author">✒️</div>
+                    <div class="speech-bubble">
+                        <div class="speaker-name" style="color: var(--accent-rose)">L'AUTORE <span class="tag">Achille Campanile</span></div>
+                        Voi vedete la bellezza della cascata di TSUKA: non serve costringere gli umani a memorizzare cifre decimali barbari come <code>0.734</code>. Basta usare le tre parole della saggezza: <code>precise</code>, <code>balanced</code> e <code>creative</code>! Inoltre, con l'architettura Multi-Skill (<code>/skill</code>), un personaggio può cambiare al volo la propria competenza senza perdere la propria anima!
+                    </div>
                 </div>
             </div>
 
-            <div class="dialogue-box">
-                <div class="stage-direction">(Entra l'Overseer sventolando un verbale di perquisizione.)</div>
-
-                <div class="line"><span class="speaker overseer">OVERSEER:</span> Scandalo! Tradimento del confine architetturale! <code>agentEvents.ts</code> aveva stabilito solennemente che il <code>core/</code> non dovesse stampare direttamente sul terminale! E invece ho sorpreso <strong>23 <code>console.log</code> di contrabbando</strong> nascosti dentro <code>core/</code> e <code>tools/</code>!</div>
-
-                <div class="line"><span class="speaker utente">IL SIGNOR UTENTE:</span> E che male c'è se si divertono a stampare due righe in console?</div>
-
-                <div class="line"><span class="speaker overseer">OVERSEER:</span> Male grandissimo, Signore! Per la CLI attuale non cambia nulla, ma se un domani volessimo collegare un'interfaccia Web o una TUI, quei 23 log finirebbero nel terminale del server, invisibili a chi guarda il browser! È un debito tecnico che andrà instradato su <code>AgentEvent</code>!</div>
+            <div class="didactic-box">
+                <div class="didactic-title">💡 Concetto Didattico — Cascata di Creatività & Multi-Skill</div>
+                <p>I parametri di campionamento LLM in TSUKA seguono una cascata di risoluzione trasparente:</p>
+                <p style="text-align: center; margin: 0.5rem 0; font-family: var(--font-code); color: var(--accent-gold);">
+                    Personaggio (characters/*.json) ➔ Ruolo Attivo (roles/*.json) ➔ Configurazione globale (tsuka.config.json)
+                </p>
+                <p>I preset sintetici vengono tradotti automaticamente da <code>resolveSamplingParams()</code>:</p>
+                <ul style="margin-left: 1.5rem; margin-top: 0.5rem;">
+                    <li><code>precise</code>: <code>temperature: 0.2</code>, <code>top_p: 0.8</code> (Sviluppo, Audit, Logica).</li>
+                    <li><code>balanced</code>: <code>temperature: 0.7</code>, <code>top_p: 0.9</code> (Coordinamento, Ricerca, General).</li>
+                    <li><code>creative</code>: <code>temperature: 0.95</code>, <code>top_p: 0.95</code>, <code>presence_penalty: 0.3</code> (Copywriting, Prompt Design).</li>
+                </ul>
             </div>
         </section>
 
-        <!-- Quadro III -->
-        <section id="quadro3" class="scene">
-            <div class="scene-header">
-                <div class="scene-badge">03</div>
-                <div class="scene-title">
-                    <h2>Quadro Terzo: Prompt Master ed i Modelli Generativi (Krea2, LTX v2.5, MiniMax H3)</h2>
-                    <div class="sub">SEZIONE 04: IL NUOVO PERSONAGGIO PROMPT_MASTER & IL RUOLO GENAI_PROMPT_DESIGNER</div>
+        <!-- ATTO II -->
+        <section id="atto2" class="act-card">
+            <div class="act-header">
+                <span class="act-number">ATTO II</span>
+                <h2 class="act-title">L'Ispettore Sentinel ed il Segreto nel Solaio</h2>
+            </div>
+
+            <p><em>Entra Sentinel coperto da un mantello blindato ed armato di una lente d'ingrandimento gigante. Si avvicina a Dev e gli soffia sul collo.</em></p>
+
+            <div class="dialogue">
+                <div class="speaker-line">
+                    <div class="avatar sentinel">🛡️</div>
+                    <div class="speech-bubble">
+                        <div class="speaker-name" style="color: var(--accent-emerald)">SENTINEL <span class="tag">role: security_auditor | tool: audit_code</span></div>
+                        Alt! Chi va là? Ho fiutato una chiave API hardcoded a riga 42 ed un uso sconsiderato di <code>eval()</code> nell'aria! Eseguo immediatamente il tool <code>audit_code</code>!
+                    </div>
+                </div>
+
+                <div class="speaker-line">
+                    <div class="avatar dev">💻</div>
+                    <div class="speech-bubble">
+                        <div class="speaker-name" style="color: var(--accent-cyan)">DEV <span class="tag">role: developer</span></div>
+                        Ma era solo un test di prova, caro Sentinel!
+                    </div>
+                </div>
+
+                <div class="speaker-line">
+                    <div class="avatar sentinel">🛡️</div>
+                    <div class="speech-bubble">
+                        <div class="speaker-name" style="color: var(--accent-emerald)">SENTINEL <span class="tag">role: security_auditor</span></div>
+                        I test di prova sono i nascondigli preferiti delle vulnerabilità OWASP! Il tool <code>audit_code</code> è di livello <code>SAFE</code>: scansiona in un baleno il workspace senza chiedere permesso all'utente, isola le criticità e propone la relativa remediation di sicurezza difensiva! Se invece volessi eseguire comandi di shell <code>DANGEROUS</code>, il <code>PermissionManager</code> chiederebbe sempre l'approvazione umana <code>[y/N]</code>!
+                    </div>
                 </div>
             </div>
 
-            <div class="dialogue-box">
-                <div class="stage-direction">(Entra Prompt Master, tenendo in mano uno script da regista cinematografico ed una lente da direttore della fotografia.)</div>
-
-                <div class="line"><span class="speaker utente">IL SIGNOR UTENTE:</span> Buongiorno, signore. E lei di che cosa si occupa nei team?</div>
-
-                <div class="line"><span class="speaker promptmaster">PROMPT MASTER:</span> Nei team di programmazione o di audit non entro affatto! I team servono per il codice e per le normative! Io vengo evocato standalone dall'Evocatore quando serve una sceneggiatura o un prompt per l'AI Generativa!</div>
-
-                <div class="line"><span class="speaker utente">IL SIGNOR UTENTE:</span> E quali modelli conosce?</div>
-
-                <div class="line"><span class="speaker promptmaster">PROMPT MASTER:</span> Conosco le sintassi sacre dei principali modelli:
-                    <br>🎥 <strong>LTX Video v2.5</strong>: Scrivo la prosa a 6 elementi (Shot, Scene, Action, Character, Audio) con movimenti di camera rigorosamente <em>ancorati</em> (e.g. <code>push in until the subject's face fills the frame</code>) per evitare che la scena si scomponga!
-                    <br>🎬 <strong>MiniMax Hailuo / H3</strong>: Uso la formula sequenziale con i comandi camera tra parentesi quadre <code>[Push in]</code>, <code>[Truck left]</code> e le doppie parentesi <code>((elemento))</code> per le priorità visive!
-                    <br>🖼️ <strong>Krea 2</strong>: Costruisco prompt ad alta fedeltà con lenti specifiche (85mm, f/1.8), illuminazione cinematografica volumetrica e palette colori!</div>
-
-                <div class="line"><span class="speaker dev">DEV:</span> (Dalla sua scrivania) E soprattutto non prova più a trasformare un bug di TypeScript in un render 8K photorealistic! Ognuno fa il suo mestiere!</div>
+            <div class="didactic-box">
+                <div class="didactic-title">💡 Concetto Didattico — Modello di Sicurezza a 3 Livelli & Audit Code</div>
+                <p>TSUKA adotta un motore di autorizzazione con l'utente sempre al centro (User-in-the-loop):</p>
+                <ul style="margin-left: 1.5rem; margin-top: 0.5rem;">
+                    <li><strong>SAFE</strong> (<code>read_file</code>, <code>grep_search</code>, <code>audit_code</code>, <code>web_search</code>): Esecuzione immediata e trasparente.</li>
+                    <li><strong>RESTRICTED</strong> (<code>write_file</code>, <code>edit_file</code>, <code>delete_file</code>): Richiede approvazione <code>[y/N/sempre]</code>.</li>
+                    <li><strong>DANGEROUS</strong> (<code>execute_command</code>): Richiede <strong>sempre</strong> approvazione manuale esplicita <code>[y/N]</code> (nessun bypass di sessione).</li>
+                </ul>
             </div>
         </section>
 
-        <!-- Quadro IV -->
-        <section id="quadro4" class="scene">
-            <div class="scene-header">
-                <div class="scene-badge">04</div>
-                <div class="scene-title">
-                    <h2>Quadro Quarto: 21 Tool, Tier Pruning e i Tre Cerchi</h2>
-                    <div class="sub">SEZIONE 05 & 11: TOOL REGISTRY, TIER PRUNING & PERMISSION MANAGER</div>
+        <!-- ATTO III -->
+        <section id="atto3" class="act-card">
+            <div class="act-header">
+                <span class="act-number">ATTO III</span>
+                <h2 class="act-title">La Grande Lavagna del Workflow e la Rotazione dei Modelli</h2>
+            </div>
+
+            <p><em>Entra Overseer spingendo una lavagna mobile ricoperta di appunti e note adesive.</em></p>
+
+            <div class="dialogue">
+                <div class="speaker-line">
+                    <div class="avatar overseer">🧭</div>
+                    <div class="speech-bubble">
+                        <div class="speaker-name" style="color: var(--accent-gold)">OVERSEER <span class="tag">role: supervisor | reasoningEffort: xhigh</span></div>
+                        Silenzio in classe! Quando lavoriamo in modalità <code>/team</code> o <code>/goal</code>, gli agenti usano i tool <code>post_note</code> e <code>read_notes</code> per scrivere sulla <strong>Blackboard di Run</strong>! È uno stato condiviso di un singolo workflow che muore alla fine del run, senza inquinare la memoria globale!
+                    </div>
+                </div>
+
+                <div class="speaker-line">
+                    <div class="avatar author">✒️</div>
+                    <div class="speech-bubble">
+                        <div class="speaker-name" style="color: var(--accent-rose)">L'AUTORE <span class="tag">Achille Campanile</span></div>
+                        E se due agenti devono lavorare in parallelo nei blocchi <code>PARALLELO</code> di <code>/goal</code>?
+                    </div>
+                </div>
+
+                <div class="speaker-line">
+                    <div class="avatar overseer">🧭</div>
+                    <div class="speech-bubble">
+                        <div class="speaker-name" style="color: var(--accent-gold)">OVERSEER <span class="tag">role: supervisor</span></div>
+                        Ogni ramo parallelo lavora in una cartella di staging isolata (<code>workspace/parallel-n/</code>)! A fine blocco i file vengono fusi con rilevamento automatico dei conflitti! E nel backlog futuro (task <code>T10.1</code>), TSUKA sceglierà perfino da solo quale modello LLM assegnare ad ogni compito basandosi sulle misure reali di <code>models_profile.json</code>!
+                    </div>
                 </div>
             </div>
 
-            <div class="dialogue-box">
-                <div class="stage-direction">(Un Guardiano in livrea sbarra il passo a Dev con una lanterna Gialla RESTRICTED.)</div>
-
-                <div class="line"><span class="speaker guardiano">GUARDIANO DEI PERMESSI:</span> ALT! <code>edit_file</code> è un tool <strong>RESTRICTED</strong>! Chiedo il permesso all'Evocatore tramite <code>checkPermission</code>! E siccome ci sono più agenti in parallelo, vi metto nella Coda dei Permessi serializzata per non rompere l'interfaccia!</div>
-
-                <div class="line"><span class="speaker utente">IL SIGNOR UTENTE:</span> Ma quanti sono questi utensili in tutto?</div>
-
-                <div class="line"><span class="speaker overseer">OVERSEER:</span> Ventuno tool in totale! Ognuno diviso fra schema in <code>tools_schemas/</code> e codice in <code>src/tools/impl/</code>! Ma prima di mostrarli al modello, applico <strong>Tre Filtri in Cascata</strong>:
-                    <br>1. Tool ammessi dal Ruolo attuario.
-                    <br>2. Tier del modello (Small, Medium, Large) misurato dal <code>/benchmark</code>.
-                    <br>3. <code>requiredTier</code> dichiarato nello schema del tool!</div>
-            </div>
-
-            <div class="tragedia-2-battute">
-                <h4>Tragedia Agentica in due battute (n. 1):</h4>
-                <p><strong>AGENTE (Small Tier):</strong> "Voglio creare un nuovo strumento con `create_tool` nella sandbox `vm`!"</p>
-                <p><strong>TOOL REGISTRY:</strong> "Negato: Il tuo modello è Small. Non hai l'autorizzazione per la fucina alchemica."</p>
+            <div class="didactic-box">
+                <div class="didactic-title">💡 Concetto Didattico — Isolation, Blackboard & Dynamic Model Routing</div>
+                <p>TSUKA risolve la gestione del contesto e la concorrenza con tre pilastri:</p>
+                <ul style="margin-left: 1.5rem; margin-top: 0.5rem;">
+                    <li><strong>Blackboard di Run (T6.2)</strong>: Stato di run isolato con <code>AsyncLocalStorage</code> (non inquina <code>MemoryStore</code>).</li>
+                    <li><strong>Parallel Staging Workspaces (T3.2)</strong>: Isolamento filesystem per branch paralleli con rilevamento conflitti.</li>
+                    <li><strong>Dynamic Model Auto-Routing (T10.1 Backlog)</strong>: Selezione automatica del modello più economico ed efficace da <code>models_profile.json</code>.</li>
+                </ul>
             </div>
         </section>
 
-        <!-- Quadro V -->
-        <section id="quadro5" class="scene">
-            <div class="scene-header">
-                <div class="scene-badge">05</div>
-                <div class="scene-title">
-                    <h2>Quadro Quinto: Il Governo del Contesto e la Paginazione</h2>
-                    <div class="sub">SEZIONE 07: CAPFORCONTEXT, PRUNEHISTORY & COMPRESSHISTORY</div>
-                </div>
+        <!-- EPILOGO -->
+        <section id="epilogo" class="act-card">
+            <div class="act-header">
+                <span class="act-number">EPILOGO</span>
+                <h2 class="act-title">Congedo dell'Autore e Morale della Favola Agentica</h2>
             </div>
 
-            <div class="dialogue-box">
-                <div class="stage-direction">(Dev tenta di inserire un file di trecentomila righe dentro la memoria dell'agente.)</div>
-
-                <div class="line"><span class="speaker overseer">OVERSEER:</span> FERMO! Interviene <code>capForContext</code> all'ingresso! Tronca il risultato oltre il tetto di 4000 token, tenendo testa e coda e scrivendo una nota su come recuperare il resto!</div>
-
-                <div class="line"><span class="speaker utente">IL SIGNOR UTENTE:</span> E se l'agente rimane al buio senza il pezzo di mezzo?</div>
-
-                <div class="line"><span class="speaker overseer">OVERSEER:</span> Niente affatto! <code>read_file</code> possiede i parametri <code>offset</code> e <code>limit</code>! Il troncamento è una <em>paginazione elegibile</em>, non un vicolo cieco! E se la cronologia cresce ancora durante il lavoro, scattano prima <code>pruneHistory()</code> e poi <code>compressHistory()</code> al 75% della capienza!</div>
+            <div class="dialogue">
+                <div class="speaker-line">
+                    <div class="avatar author">✒️</div>
+                    <div class="speech-bubble">
+                        <div class="speaker-name" style="color: var(--accent-rose)">L'AUTORE (Achille Campanile) <span class="tag">Congedo Finale</span></div>
+                        Ed eccoci giunti al sipario, miei cari lettori. La morale di questa commedia agentica è semplice: un buon harness non è quello che affida tutto al caso o al capriccio di un modello parlato, ma quello che **governa con rigore e poesia** il contesto, il tempo, i permessi, la creatività e la sicurezza del codice.
+                        <br><br>
+                        Ora che TSUKA v0.2.0 è pronto, pulito e testato al 100%, non vi resta che digitare <code>tsuka</code> e godervi lo spettacolo!
+                    </div>
+                </div>
             </div>
         </section>
 
-        <!-- Quadro VI -->
-        <section id="quadro6" class="scene">
-            <div class="scene-header">
-                <div class="scene-badge">06</div>
-                <div class="scene-title">
-                    <h2>Quadro Sesto: La Cascata dell'Effort e la Tragedia del Tempo</h2>
-                    <div class="sub">SEZIONE 08: REASONING EFFORT, EFFORTCONTROL & BENCHMARK</div>
-                </div>
-            </div>
-
-            <div class="dialogue-box">
-                <div class="stage-direction">(Dev rimane pietrificato per tre minuti prima di emettere una singola riga di codice.)</div>
-
-                <div class="line"><span class="speaker utente">IL SIGNOR UTENTE:</span> Tre minuti di attesa! Ma ha dovuto ricalcolare la relatività ristretta?</div>
-
-                <div class="line"><span class="speaker overseer">OVERSEER:</span> Ha emesso 3.200 token di solo ragionamento (<code>reasoning_tokens</code>) per decidere se chiamare <code>edit_file</code>! Il problema sui modelli locali non è il contesto, è <strong>quanto il modello pensa</strong>! Per questo abbiamo inventato la <strong>Cascata dell'Effort</strong>:
-                    <br><code>pin globale (/effort) → override del chiamante → personaggio → ruolo → default di config</code></div>
-
-                <div class="line"><span class="speaker utente">IL SIGNOR UTENTE:</span> E se abbasso l'effort da <code>xhigh</code> a <code>low</code>?</div>
-
-                <div class="line"><span class="speaker overseer">OVERSEER:</span> Risparmia 150 secondi a chiamata! Ma attenzione: l'effort decide anche <strong>quali tool il modello vede</strong>, perché il tier viene cercato alla chiave <code>modello@effort</code>!</div>
-            </div>
-        </section>
-
-        <!-- Quadro VII -->
-        <section id="quadro7" class="scene">
-            <div class="scene-header">
-                <div class="scene-badge">07</div>
-                <div class="scene-title">
-                    <h2>Quadro Settimo: Il Fischietto ed il Team di Compliance</h2>
-                    <div class="sub">SEZIONE 09: CHAT, /CALL, /TEAM LEGAL_RESEARCH, /GOAL, SPAWN_AGENT</div>
-                </div>
-            </div>
-
-            <div class="tab-container">
-                <div class="tab-buttons">
-                    <button class="tab-btn active" onclick="switchTab(event, 'm-chat')">1. Chat</button>
-                    <button class="tab-btn" onclick="switchTab(event, 'm-call')">2. /call</button>
-                    <button class="tab-btn" onclick="switchTab(event, 'm-team')">3. /team legal_research</button>
-                    <button class="tab-btn" onclick="switchTab(event, 'm-goal')">4. /goal</button>
-                    <button class="tab-btn" onclick="switchTab(event, 'm-spawn')">5. spawn_agent</button>
-                </div>
-
-                <div id="m-chat" class="tab-content active">
-                    <p><strong>Chat Singola:</strong> Un solo personaggio attivo nel REPL (es. <code>Prompt Master</code> per sceneggiature GenAI o <code>Dev</code> per il codice).</p>
-                </div>
-                <div id="m-call" class="tab-content">
-                    <p><strong>Dibattito (/call):</strong> Più personaggi attorno ad un tavolo. 2 round di confronto senza tool per analizzare un problema da più punti di vista.</p>
-                </div>
-                <div id="m-team" class="tab-content">
-                    <p><strong>Team Ricerca & Compliance (/team legal_research):</strong> Formazione con <strong>Audit Pro</strong>, <strong>Dev</strong> ed <strong>Overseer</strong>! Audit Pro esamina la conformità GDPR e di licenza senza compiacenze, Dev implementa le verifiche nel codice e l'Overseer supervisiona la qualità!</p>
-                </div>
-                <div id="m-goal" class="tab-content">
-                    <p><strong>Goal Dinamico (/goal):</strong> L'orchestratore analizza i 25 personaggi e compila un piano d'azione in mini-DSL con blocchi sequenziali e paralleli.</p>
-                </div>
-                <div id="m-spawn" class="tab-content">
-                    <p><strong>Sub-Agente (spawn_agent):</strong> Un agente in corso d'opera delega un sotto-compito circoscritto ad un agente temporaneo di tier Medium+.</p>
-                </div>
-            </div>
-
-            <div class="tech-note">
-                <h4><span>📌</span> La regola fondamentale del multi-agente:</h4>
-                <p>In <code>/team</code>, <code>/goal</code> e <code>spawn_agent</code> <strong>ogni turno è un Agente nuovo di zecca</strong> creato da zero senza ereditare la cronologia! Il coordinamento passa unicamente dai file e dalla Lavagna di Run, salvando la finestra di contesto!</p>
-            </div>
-        </section>
-
-        <!-- Quadro VIII -->
-        <section id="quadro8" class="scene">
-            <div class="scene-header">
-                <div class="scene-badge">08</div>
-                <div class="scene-title">
-                    <h2>Quadro Ottavo: Staging Parallelo e Gestione Conflitti</h2>
-                    <div class="sub">SEZIONE 09: PARALLELWORKSPACE.TS & LOGBUFFER.TS</div>
-                </div>
-            </div>
-
-            <div class="dialogue-box">
-                <div class="stage-direction">(Il salotto si sdoppia in due dimensioni parallele. Nella prima Segugio modifica un file; nella seconda Dev modifica lo stesso file.)</div>
-
-                <div class="line"><span class="speaker utente">IL SIGNOR UTENTE:</span> AIUTO! Stanno modificando la stessa materia in due stanze diverse! Distruggeranno il sorgente!</div>
-
-                <div class="line"><span class="speaker overseer">OVERSEER:</span> Falso allarme! Ogni branch del blocco <code>PARALLELO</code> lavora in una cartella di staging isolata (<code>workspace/parallel-1/</code>) via <code>withWorkspaceOverride</code>! I loro log di console sono trattenuti in ampolle isolate (<code>logBuffer.ts</code>)!</div>
-
-                <div class="line"><span class="speaker utente">IL SIGNOR UTENTE:</span> E cosa succede quando fusi le due dimensioni al termine del blocco?</div>
-
-                <div class="line"><span class="speaker overseer">OVERSEER:</span> Se due branch hanno modificato lo stesso file con contenuto diverso, <code>parallelWorkspace.ts</code> segnala il conflitto e **non copia il file**! La workspace principale resta intatta ed inviolata!</div>
-            </div>
-        </section>
-
-        <!-- Quadro IX -->
-        <section id="quadro9" class="scene">
-            <div class="scene-header">
-                <div class="scene-badge">09</div>
-                <div class="scene-title">
-                    <h2>Quadro Nono: I Tre Cassetti del Comò della Memoria</h2>
-                    <div class="sub">SEZIONE 06: CRONOLOGIA, BLACKBOARD & MEMORYSTORE</div>
-                </div>
-            </div>
-
-            <div class="dialogue-box">
-                <div class="stage-direction">(Un comò con tre capienti cassetti svetta al centro della scena.)</div>
-
-                <div class="line"><span class="speaker utente">IL SIGNOR UTENTE:</span> Facciamo chiarezza una volta per tutte su dove finiscono le informazioni!</div>
-
-                <div class="line"><span class="speaker dev">DEV:</span> 
-                    <br>1. <strong>Cronologia (History)</strong>: Ciò che è stato <em>detto</em> nel turno. Vive in memoria di processo e viene compressa.
-                    <br>2. <strong>Lavagna (Blackboard - <code>blackboard.ts</code>)</strong>: Lo stato condiviso di <em>QUESTO run</em>. Scritta con <code>post_note</code> e letta con <code>read_notes</code> via <code>AsyncLocalStorage</code>. Muore in un <code>finally</code> a fine run!
-                    <br>3. <strong>Memoria Persistente (<code>memory/memory.json</code>)</strong>: Ciò che vale <em>dopo e oltre la sessione</em>. Divisa per scope di workspace o globale, con eviction a punteggio (kind fatto/decisione/lezione/run), recupero morfologico senza dipendenze e ricordi fissati inamovibili (<code>pinned</code>)!</div>
-            </div>
-
-            <div class="stage-direction" style="text-align:center; font-size:1.1rem; color:var(--accent-gold); margin-top:3rem;">
-                (Tutti i personaggi s'inchinano. Dev torna al terminale, Prompt Master alle sue sceneggiature cinematografiche per Krea 2, LTX v2.5 e MiniMax H3, ed Audit Pro alla sua checklist di compliance.)
-                <br><strong>FINE DELLA COMMEDIA TECNICA</strong>
-            </div>
-        </section>
-
+        <footer>
+            <p><strong>TSUKA v0.2.0</strong> — Framework Multi-Agent in TypeScript</p>
+            <p>Commedia Teatrale Didattica in stile Achille Campanile — Documentazione Ufficiale</p>
+        </footer>
     </main>
 </div>
-
-<script>
-    function switchTab(evt, tabId) {
-        const tabBtns = document.querySelectorAll('.tab-btn');
-        const tabContents = document.querySelectorAll('.tab-content');
-
-        tabBtns.forEach(btn => btn.classList.remove('active'));
-        tabContents.forEach(content => content.classList.remove('active'));
-
-        evt.currentTarget.classList.add('active');
-        document.getElementById(tabId).classList.add('active');
-    }
-
-    window.addEventListener('scroll', () => {
-        const scenes = document.querySelectorAll('.scene');
-        const navLinks = document.querySelectorAll('.nav-item a');
-
-        let current = '';
-        scenes.forEach(scene => {
-            const sceneTop = scene.offsetTop;
-            if (pageYOffset >= sceneTop - 150) {
-                current = scene.getAttribute('id');
-            }
-        });
-
-        navLinks.forEach(link => {
-            link.classList.remove('active');
-            if (link.getAttribute('href') === '#' + current) {
-                link.classList.add('active');
-            }
-        });
-    });
-</script>
 
 </body>
 </html>
