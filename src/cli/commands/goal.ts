@@ -137,7 +137,8 @@ export function parsePlan(content: string, allCharacters: (CharacterConfig | str
   return { groups, flatSteps };
 }
 
-function lookupValidName(name: string, validMap: Map<string, string> | (CharacterConfig | string)[]): string | null {
+function lookupValidName(name: string, validMap?: Map<string, string> | (CharacterConfig | string)[]): string | null {
+  if (!validMap) return name;
   const normalized = normalizeCharName(name);
   if (validMap instanceof Map) {
     return validMap.get(normalized) || null;
@@ -159,8 +160,8 @@ function lookupValidName(name: string, validMap: Map<string, string> | (Characte
 export function parseAgentLine(
   lines: string[],
   startIdx: number,
-  validMap: Map<string, string> | (CharacterConfig | string)[]
-): { realName: string; task: string; consumed: number } | null {
+  validMap?: Map<string, string> | (CharacterConfig | string)[]
+): { realName: string; name: string; task: string; consumed: number } | null {
   const rawLine = lines[startIdx].trim();
   // Pulizia prefissi markdown (es. "1. **AGENTE:** @dev — ...", "- AGENTE: dev: ...", "@dev - ...")
   const cleanLine = rawLine
@@ -203,7 +204,7 @@ export function parseAgentLine(
     task = taskLines.filter(Boolean).join(' ').trim();
   }
 
-  return { realName, task, consumed };
+  return { realName, name: realName, task, consumed };
 }
 
 function getCharDisplayName(allCharacters: CharacterConfig[], agentName: string): string {
