@@ -1,0 +1,16 @@
+{
+  "name": "read_notes",
+  "description": "Legge le note lasciate dai colleghi sulla blackboard condivisa del run corrente (team o goal). Usalo all'inizio del tuo turno per vedere decisioni prese, artefatti prodotti o punti aperti dai colleghi precedenti in QUESTO run.",
+  "requiredTier": "small",
+  "riskLevel": "SAFE",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "prefix": {
+        "type": "string",
+        "description": "Se specificato, mostra solo le note la cui chiave inizia con questo prefisso (case-insensitive). Omesso: mostra tutte le note del run."
+      }
+    },
+    "required": []
+  }
+}

@@ -253,6 +253,7 @@ Collaborazione sequenziale su uno spazio di lavoro condiviso:
 | `/rename-char <nome>` | Rinomina l'`aiName` del personaggio attivo |
 | `/role` | Cambia ruolo agente (competenze/tool) |
 | `/trait` | Cambia tratto caratteriale agente |
+| `/effort [livello]` | Gestisce lo sforzo di ragionamento (`none`|`low`|`medium`|`xhigh`|`auto`|`ask`) |
 | `/team` | Avvia un workflow collaborativo di team |
 | `/call [nomi]` | Avvia un dibattito multi-agente |
 | `/search-engine` | Cambia provider di ricerca (DuckDuckGo / Google / Tavily) |
@@ -334,15 +335,15 @@ npx tsx tests/test_self_authoring.ts
 npx tsx tests/test_platform.ts
 ```
 
-Stato attuale: **11 suite di test, 50+ assertion — tutti verdi**.
+Stato attuale: **43 suite di test, 200+ assertion — tutti verdi**.
 
 ## 📚 Documentazione
 
 | Risorsa | Descrizione |
 |---------|-------------|
 | [Documentazione tecnica](docs/README.md) | Architettura, workflow multi-agente, sicurezza |
-| [HISTORY.md](HISTORY.md) | Changelog cronologico completo di tutti gli interventi |
-| [OPTIMIZATION_PLAN.md](OPTIMIZATION_PLAN.md) | Il piano di ottimizzazione in 5 fasi (completato) con backlog futuro |
+| [HISTORY.md](archive/HISTORY.md) | Changelog cronologico completo degli interventi (archiviato) |
+| [OPTIMIZATION_PLAN.md](archive/OPTIMIZATION_PLAN.md) | Il piano di ottimizzazione in 5 fasi completato (archiviato) |
 
 ## 🤝 Contribuire
 

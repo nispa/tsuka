@@ -1,5 +1,6 @@
 import { Tool } from '../registry';
 import { ConfigManager, CONFIG_PATH } from '../../core/config';
+import { capForContext } from '../../core/contextBudget';
 import * as fs from 'fs';
 
 // dotenv caricato dal punto di ingresso (cli/index.ts)
@@ -153,12 +154,20 @@ export const webSearchTool: Tool = {
     const configManager = getSharedConfigManager();
     const provider = configManager.getWebSearchProvider();
 
+    let result: string;
     if (provider === 'tavily') {
-      return searchTavily(args.query);
+      result = await searchTavily(args.query);
     } else if (provider === 'google') {
-      return searchGoogle(args.query);
+      result = await searchGoogle(args.query);
     } else {
-      return searchDuckDuckGo(args.query);
+      result = await searchDuckDuckGo(args.query);
     }
+
+    // T8.8: normalmente pochi risultati brevi, ma un motore può restituire snippet
+    // molto lunghi (es. Tavily con contenuto esteso) — stesso tetto degli altri tool.
+    return capForContext(result, undefined, {
+      label: `i risultati di ricerca per "${args.query}"`,
+      recoveryHint: `Restringi la query di web_search, oppure usa browse_url sull'URL più promettente tra i risultati.`
+    });
   }
 };

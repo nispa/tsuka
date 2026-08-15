@@ -47,6 +47,9 @@ async function main() {
   fs.unlinkSync(tmpFile);
 
   // --- M2: i tool sono auto-scoperti dal registry e funzionano ---
+  // I tool passano dal singleton MemoryStore.getInstance(), che in questa suite (lanciata
+  // da tests/run_tests.ts) punta a un file temporaneo via TSUKA_MEMORY_FILE (T6.5) — non
+  // alla memoria reale dell'app home. Nessun backup/ripristino manuale necessario.
   const registry = await createDefaultRegistry();
   const perm: any = { checkPermission: async () => true };
   const names = registry.listForLLM('gpt-4o').map((t) => t.function.name);
@@ -59,10 +62,10 @@ async function main() {
   const emptyRes = await registry.executeTool('save_memory', { content: '   ' }, perm);
   check('M2c', !emptyRes.success, 'contenuto vuoto rifiutato con errore');
 
-  // Pulizia: svuota la memoria reale usata dai tool (singleton su memory/memory.json)
+  // Pulizia: il file temporaneo (TSUKA_MEMORY_FILE, T6.5) viene rimosso per intero da
+  // tests/run_tests.ts a fine suite — qui basta svuotare i fatti scritti da questo test
+  // per non lasciarli in giro per le suite successive che condividono lo stesso file.
   MemoryStore.getInstance().clear();
-  const memDir = path.resolve(process.cwd(), 'memory');
-  if (fs.existsSync(memDir)) fs.rmSync(memDir, { recursive: true, force: true });
 
   console.log(`\n=== Risultato: ${passed} passati, ${failed} falliti ===`);
   process.exit(failed > 0 ? 1 : 0);

@@ -4,7 +4,7 @@
  */
 import * as fs from 'fs';
 import * as path from 'path';
-import { hasCompletionMarker } from '../src/cli/commands/team';
+import { hasCompletionMarker, hasUnanimousApproval } from '../src/cli/commands/team';
 import { ConfigManager } from '../src/core/config';
 import { Agent } from '../src/core/agent';
 import { ToolRegistry } from '../src/tools/registry';
@@ -84,6 +84,31 @@ async function main() {
     'ultimo messaggio seminato sempre rintracciabile dopo pruning (indexOf)');
   check('TM.3b', afterPrune.slice(afterPrune.indexOf(lastSeeded) + 1).length === 0,
     'slice post-seme vuota prima del run (invariante corretta)');
+
+  // --- hasUnanimousApproval ---
+  check('TM.4a', hasUnanimousApproval([
+    { role: 'user', content: 'Bene. VOTO: APPROVO' },
+    { role: 'user', content: 'OK. VOTO: APPROVO' },
+  ]), 'tutti approvano → true');
+
+  check('TM.4b', !hasUnanimousApproval([
+    { role: 'user', content: 'Bene. VOTO: APPROVO' },
+    { role: 'user', content: 'No. VOTO: MODIFICARE' },
+  ]), 'un modificare → false');
+
+  check('TM.4c', !hasUnanimousApproval([
+    { role: 'assistant', content: 'VOTO: APPROVO' },
+  ]), 'solo assistant ignorato (deve essere user)');
+
+  check('TM.4d', hasUnanimousApproval([
+    { role: 'user', content: 'Lavoro fatto. VOTO: APPROVO\nAltro testo' },
+    { role: 'user', content: 'voto: approvo' },
+  ]), 'case-insensitive');
+
+  check('TM.4e', !hasUnanimousApproval([
+    { role: 'user', content: 'nessun voto qui' },
+    { role: 'user', content: 'neanche qui' },
+  ]), 'nessun voto → false');
 
   console.log(`\n=== Risultato: ${passed} passati, ${failed} falliti ===`);
   process.exit(failed > 0 ? 1 : 0);

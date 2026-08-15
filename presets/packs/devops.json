@@ -1,0 +1,22 @@
+{
+  "name": "devops",
+  "displayName": "⚙️ DevOps — infrastruttura e sicurezza",
+  "description": "Personaggi per automazione, hardening e audit di sistema: Pipeline Pro per CI/CD e deploy, Falco e Piccione per cybersecurity (uno esegue l'hardening, l'altro fa da controllo pignolo e indipendente).",
+  "roles": [
+    "devops_engineer",
+    "sysadmin"
+  ],
+  "traits": [
+    "reliable",
+    "grumpy",
+    "devils_advocate"
+  ],
+  "characters": [
+    "pipeline_pro",
+    "falco",
+    "piccione"
+  ],
+  "teams": [
+    "cyber_audit"
+  ]
+}

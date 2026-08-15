@@ -1,0 +1,23 @@
+{
+  "name": "osint",
+  "displayName": "🕵️ OSINT — ricognizione open-source",
+  "description": "Pipeline a tre stadi per raccolta, verifica ed editing di informazioni pubblicamente disponibili: Volpe raccoglie, Gufo corrobora e scarta le affermazioni deboli, Argo compila il report finale con revisione etica/legale.",
+  "roles": [
+    "osint_researcher",
+    "osint_verifier",
+    "osint_editor"
+  ],
+  "traits": [
+    "laconic",
+    "devils_advocate",
+    "professional"
+  ],
+  "characters": [
+    "volpe",
+    "gufo",
+    "argo"
+  ],
+  "teams": [
+    "osint_recon"
+  ]
+}

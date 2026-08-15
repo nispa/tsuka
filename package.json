@@ -1,6 +1,6 @@
 {
   "name": "tsuka",
-  "version": "1.0.0",
+  "version": "0.2.0",
   "description": "TSUKA — TypeScript Unified Kit for Agents: multi-agent CLI harness",
   "main": "dist/cli/index.js",
   "bin": {

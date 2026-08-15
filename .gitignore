@@ -4,3 +4,7 @@ dist/
 *.log
 memory/
 .tsuka_history
+output/*
+!output/.gitkeep
+workflow_logs/
+puzznic/

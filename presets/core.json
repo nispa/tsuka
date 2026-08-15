@@ -1,0 +1,34 @@
+{
+  "name": "core",
+  "displayName": "🎯 Core — un personaggio per competenza",
+  "description": "Set minimo installato di default da 'tsuka init --preset core': un character per ciascuna competenza distinta (nessun ruolo duplicato), pensato per coprire da solo i workflow più comuni di /goal e /team senza dover scegliere un pack.",
+  "roles": [
+    "architect",
+    "copywriter",
+    "data_analyst",
+    "developer",
+    "devops_engineer",
+    "researcher",
+    "supervisor",
+    "sysadmin"
+  ],
+  "traits": [
+    "blunt",
+    "creative",
+    "devils_advocate",
+    "laconic",
+    "professional",
+    "reliable"
+  ],
+  "characters": [
+    "castoro",
+    "overseer",
+    "dev",
+    "segugio",
+    "pipeline_pro",
+    "data_sage",
+    "wordsmith",
+    "piccione"
+  ],
+  "teams": []
+}

@@ -10,9 +10,19 @@ Every tool registered in the registry declares a `RiskLevel`. The `PermissionMan
 
 | Risk Level | Description | Examples | Execution Behavior |
 | :--- | :--- | :--- | :--- |
-| **`SAFE`** | Read-only operations, internet queries, and basic system checks. | `read_file`, `list_dir`, `grep_search`, `web_search`, `browse_url`, `get_ps_info` | Executed instantly without interrupting the user. |
+| **`SAFE`** | Read-only operations, static security auditing, internet queries, and basic system checks. | `read_file`, `list_dir`, `grep_search`, `audit_code`, `web_search`, `browse_url`, `get_ps_info` | Executed instantly without interrupting the user. |
 | **`RESTRICTED`** | Actions that modify the user's workspace files or agent configurations. | `write_file`, `edit_file`, `delete_file`, `create_role` | Prompts the user: `[y/N/sempre]`. Selecting `sempre` (always) grants authorization for all workspace file edits for the rest of the session. |
 | **`DANGEROUS`** | Actions that execute arbitrary code, modify system files, or open ports. | `execute_command` (PowerShell command executor) | **Always prompts** the user `[y/N]` before execution. Session bypass is disabled. |
+
+---
+
+## 🛡️ Cybersecurity Specialist & Static Security Audit (`audit_code`)
+
+TSUKA includes a dedicated cybersecurity role (`security_auditor`) and preset character (`sentinel`):
+
+* **Defensive Static Analysis (`audit_code`)**: Automatically scans workspace source files for OWASP vulnerabilities, hardcoded API keys/secrets, insecure dynamic code execution (`eval`), SQL injection patterns, and weak hashing algorithms (MD5/SHA1).
+* **Remediation & Patching**: The `sentinel` agent proposes concrete defensive code fixes and hardening measures for the user to review.
+* **Security Pack**: Enable security capabilities in any workspace via `tsuka init --pack security`.
 
 ---
 

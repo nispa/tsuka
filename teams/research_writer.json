@@ -2,5 +2,7 @@
   "name": "research_writer",
   "displayName": "🔍🎭 Team Ricerca & Copywriting (Ugo & Lola)",
   "description": "L'avvocato Ugo Cozzoli effettua le ricerche legali/web e Lola redige report accattivanti con un tono vivace.",
-  "members": ["yes_lawyer", "sensual_diva", "overseer"]
+  "members": ["yes_lawyer", "sensual_diva", "overseer"],
+  "orchestrator": "overseer",
+  "mode": "round-robin"
 }

@@ -1,6 +1,10 @@
 {
   "name": "dev_ops",
-  "displayName": "💻🦅 Team DevOps & Hardening (Pippo & Falco)",
-  "description": "Pippo sviluppa il codice dell'applicazione e Falco esegue l'hardening e la configurazione dei servizi di sistema.",
-  "members": ["pippo", "falco", "pipeline_pro", "overseer"]
+  "displayName": "💻🦅 Team DevOps & Hardening (Dev & Falco)",
+  "description": "Dev sviluppa il codice dell'applicazione e Falco esegue l'hardening e la configurazione dei servizi di sistema.",
+  "members": ["dev", "falco", "pipeline_pro", "overseer"],
+  "orchestrator": "overseer",
+  "mode": "orchestrated",
+  "discussionRounds": 1,
+  "voting": true
 }

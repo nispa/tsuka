@@ -49,10 +49,13 @@ l'utente fissa un cursore fermo per 30 secondi.
 ### Tappa 2 — Il ciclo agentico (function calling)
 *File: `src/core/agent.ts`*
 
-È il cuore di qualsiasi harness, e sta in ~40 righe: un loop che (1) invia la cronologia con
-l'elenco dei tool, (2) se il modello risponde con `tool_calls` li esegue tutti, (3) appende i
-risultati come messaggi `role: "tool"` e (4) ripete, finché il modello risponde con solo testo.
-Due guardie imparate sul campo:
+È il cuore di qualsiasi harness: un loop che (1) invia la cronologia con l'elenco dei tool,
+(2) se il modello risponde con `tool_calls` li esegue tutti, (3) appende i risultati come
+messaggi `role: "tool"` e (4) ripete, finché il modello risponde con solo testo. Nella sua
+forma minima sta in poche decine di righe; in TSUKA `Agent.run()` è cresciuto a ~150 righe
+via via che si sono aggiunti eventi per la UI, statistiche cumulative e la calibrazione
+dinamica del rapporto caratteri/token (Tappa 5) — la logica di base resta comunque quella
+appena descritta. Due guardie imparate sul campo:
 - **`MAX_TOOL_ROUNDS`**: un modello piccolo può entrare in loop di tool infiniti e bruciare
   token per sempre. Serve un limite duro con messaggio esplicito.
 - **Coerenza `tool_call`/`tool`**: l'API rifiuta cronologie dove un `tool_calls` resta senza
@@ -74,23 +77,35 @@ del modello vengono validati contro lo schema: i modelli piccoli sbagliano spess
 Ogni tool dichiara un livello di rischio: `SAFE` (esegue e basta), `RESTRICTED` (chiede
 conferma), `DANGEROUS` (chiede sempre, es. `execute_command`). È la stessa filosofia
 "user-in-the-loop" di Claude Code. Complementi: la **jail del workspace** (i file tool possono
-essere confinati in una root configurata), i **limiti di I/O** (file max 5MB, output comandi
-troncato) e il **filtro delle env var sensibili** (mai far arrivare `*_API_KEY` nel contesto
-del modello: finirebbe nei log del provider).
+essere confinati in una root configurata), i **limiti di I/O** (lettura file troncata a 5MB,
+output di `execute_command` troncato a 50KB — due limiti distinti, non lo stesso numero) e il
+**filtro delle env var sensibili** (regex su `KEY|SECRET|TOKEN|PASSWORD|CREDENTIAL|AUTH`: mai
+far arrivare una API key nel contesto del modello, finirebbe nei log del provider).
 
 ### Tappa 5 — Gestione del contesto
 *File: `src/core/agent.ts` (pruneHistory), `src/core/thinkParser.ts`, `src/core/memory.ts`*
 
 La context window è la risorsa scarsa. Tre meccanismi:
-- **Pruning a doppio criterio**: massimo numero di messaggi *e* budget di token stimati
-  (~3,5 caratteri/token) — il secondo protegge dal caso "3 messaggi ma uno contiene un file
-  da 2MB". Il taglio non lascia mai messaggi `tool` orfani (vedi Tappa 2).
+- **Pruning a doppio criterio**: massimo numero di messaggi *e* budget di token stimati — il
+  secondo protegge dal caso "3 messaggi ma uno contiene un file da 2MB". La stima usa un
+  rapporto caratteri/token che parte da un seed (3,5, tarato sull'inglese) e si **auto-calibra
+  a runtime**: media mobile verso il rapporto osservato sull'`usage.prompt_tokens` reale
+  restituito dall'API a ogni round. Il taglio non lascia mai messaggi `tool` orfani (vedi Tappa 2).
 - **Reasoning fuori dalla cronologia**: i blocchi `<think>` dei modelli reasoning vengono
   separati in streaming (`ThinkTagParser`) e mostrati all'utente ma **mai rimandati al
   modello**: sarebbero token sprecati a ogni giro successivo.
 - **Memoria persistente**: un archivio JSON di fatti (`memory/memory.json`) iniettato in forma
   compatta nel system prompt e interrogabile con un tool (`recall_memory`). Sopravvive al
-  riavvio: è la differenza tra una sessione e un collaboratore.
+  riavvio: è la differenza tra una sessione e un collaboratore. Ogni fatto porta uno `scope`
+  (slug della workspace, o `'globale'`): un agente vede solo i fatti della propria workspace
+  più quelli globali — così due progetti diversi non si inquinano a vicenda pur condividendo
+  lo stesso archivio. L'iniezione nel prompt non prende più semplicemente gli *ultimi* fatti,
+  ma i più *pertinenti* al compito corrente (`formatRelevant`, scoring per keyword su
+  `search()`: OR — più parole della query trovate, più il fatto sale — non AND rigido, che con
+  query di più parole tornava quasi sempre zero risultati). Oltre il tetto di 200 fatti,
+  l'espulsione non è più FIFO ma a punteggio: combina categoria (`kind`: gli scarti di run
+  cadono per primi, le lezioni durature per ultime), quante volte il fatto è stato
+  recuperato e quanto di recente — un fatto `pinned` non viene mai espulso.
 
 ### Tappa 6 — La UI: streaming, status, markdown (senza framework TUI)
 *File: `src/cli/stream.ts`, `src/cli/statusline.ts`, `src/cli/markdown.ts`*
@@ -102,16 +117,79 @@ pannello markdown renderizzato. Il markdown "live" su input incompleto è instab
 finale no. Tutto l'ANSI è condizionato a `isTTY`: in pipe l'output resta testo pulito — regola
 d'oro per qualunque CLI.
 
-### Tappa 7 — Multi-agente: personas e collaborazione
-*File: `roles/`, `traits/`, `characters/`, `teams/`, `src/cli/commands/{call,team}.ts`*
+### Tappa 7 — Da un agente a N agenti coordinati
+*File: `roles/`, `traits/`, `characters/`, `teams/`, `src/cli/commands/{call.ts,team.ts,goal.ts,strategies/}`, `src/core/blackboard.ts`*
 
 Un "agente" qui è solo un system prompt assemblato da pezzi JSON dichiarativi:
 **ruolo** (competenze + tool consentiti) × **tratto** (personalità) × **personaggio**
-(preset nominato). Sopra si costruiscono i workflow: `/call` (conferenza-dibattito tra
-personaggi) e `/team` (round iterativi con cronologia condivisa). La lezione più importante
-del `/team`: non fidarsi mai della *sensazione* di completamento — serve un **protocollo
-deterministico** (ogni membro chiude con `STATO: COMPLETATO` o `STATO: DA_CONTINUARE`,
-rilevato via regex ancorata a inizio riga) per decidere se fermarsi.
+(preset nominato). Sopra si costruiscono i workflow: `/call` (conferenza-dibattito, nessun
+tool) e `/team` (round iterativi con cronologia condivisa e accesso pieno ai tool).
+
+**Quattro strategie per `/team`**, ognuna nel proprio file sotto `strategies/`; `team.ts`
+è solo un dispatcher che carica il team, sceglie la strategia e delega (~130 righe):
+
+| Strategia | File | Come decide il turno successivo |
+|---|---|---|
+| round-robin | `strategies/roundRobin.ts` | giro fisso tra i membri, si ferma quando uno dichiara COMPLETATO |
+| orchestrated | `strategies/orchestrated.ts` | un membro "orchestrator" decide dinamicamente chi lavora, invece del giro fisso |
+| pipeline | `strategies/pipeline.ts` | catena di montaggio, un solo passaggio lineare |
+| hybrid | `strategies/hybrid.ts` | non un `mode` a sé: round di discussione + voto che round-robin/orchestrated inseriscono dopo ogni round se `discussionRounds > 0` |
+
+Utility condivise tra le quattro (turno di un membro, protocollo di stato, seeding della
+history) vivono in `strategies/common.ts`.
+
+**Non fidarsi mai della *sensazione* di completamento**: serve un protocollo deterministico
+per decidere se fermarsi, chi lavora dopo, come si vota. Prima iterazione: marker testuale
+ancorato a inizio riga (`STATO: COMPLETATO`/`DA_CONTINUARE`/`FALLITO`, `AGENTE: @nome`,
+`VOTO: APPROVO`) via regex — fragile con modelli piccoli: `tests/test_protocol_parsing.ts`
+documenta i casi reali che rompono il match (marker in grassetto markdown, spazio prima dei
+due punti, nomi multi-parola). Iterazione successiva: tre tool call dedicate — `report_status`,
+`route_next`, `cast_vote` (`src/tools/impl/`) — come meccanismo primario. Ordine di decisione
+identico per tutte e tre: **tool call → regex esistente → default**, con ogni caduta di
+livello sotto `tool_call` segnalata (riga gialla in UI + voce in `protocolLog` nei
+`workflow_logs/`), mai silenziosa.
+
+**Il problema della concorrenza in `/goal`**: i blocchi `PARALLELO` (`Promise.all` in
+`goal.ts`) fanno emergere ciò che il round-robin sequenziale non ha mai dovuto affrontare —
+più agenti attivi nello stesso istante, che condividono lo stesso `PermissionManager` e lo
+stesso workspace. Due fix mirati, entrambi basati su primitive *scoped* invece che su stato
+globale mutabile (con la concorrenza reale di `Promise.all`, una variabile globale si
+contamina tra branch):
+- **Permessi**: `PermissionManager` accoda internamente le richieste che generano un prompt
+  interattivo (promise-chain, non un lock) — un prompt alla volta, con l'agente richiedente
+  indicato quando ce n'è più di uno.
+- **Workspace**: ogni branch scrive isolato in una cartella di staging temporanea — jail
+  attivata via `AsyncLocalStorage` (`withWorkspaceOverride`), non una variabile globale — e
+  unita alla workspace reale solo a fine blocco. Un path scritto in modo diverso da branch
+  diversi è un conflitto elencato all'utente, mai una sovrascrittura silenziosa.
+
+**Una lavagna per il run, non solo una cronologia (`blackboard.ts`)**: la history condivisa
+(`teamMessages`) e la memoria persistente (`MemoryStore`) non bastano a coprire un terzo
+bisogno — uno stato *di questo run* (decisioni prese, artefatti prodotti, punti aperti) che
+gli agenti possono aggiornare esplicitamente senza aspettare che finisca nella sintesi
+condensata della history, e che non deve sopravvivere al run come farebbe un fatto in
+memoria. Due tool, `post_note`/`read_notes`, offerti nello stesso punto di `report_status`
+(quindi in ogni turno di team/goal, mai nella chat normale). L'isolamento riusa la stessa
+lezione della concorrenza qui sopra — `AsyncLocalStorage`, non una variabile globale — ma con
+una granularità diversa e istruttiva: i branch di UN blocco `PARALLELO` condividono la stessa
+blackboard (sono lo stesso run, è quello che li rende una lavagna comune), mentre run
+*diversi* (due `/goal` in `Promise.all`, come nel test di isolamento) ne hanno una a testa.
+Muore col run: nessuna scrittura in `MemoryStore`, l'unica traccia che resta è lo `snapshot()`
+incluso nel workflow log.
+
+**I test col mock come documentazione eseguibile**: `MockLLMProvider` (`tests/mocks/`)
+scripta le risposte di un "modello" senza rete né LLM reale. `test_team_modes.ts` (25 casi)
+verifica ognuna delle quattro strategie su due rami — "il modello usa la tool call" e "il
+modello scrive solo testo" (fallback + segnalazione) — inclusa la chiusura di un gap reale
+(`STATO: FALLITO` non era gestito da nessuna parte finché non è arrivato `report_status`).
+`test_permission_queue.ts` dimostra la serializzazione dei prompt paralleli;
+`test_parallel_workspace.ts` dimostra isolamento e merge dei workspace, sia a livello di
+funzione pura sia end-to-end con due agenti mock che scrivono file veri via `write_file`;
+`test_blackboard.ts` dimostra un agente che legge, nel proprio turno, la nota scritta da un
+altro nel turno precedente (sull'output reale di `read_notes`, non sulla classe `Blackboard`
+chiamata a mano) e due run in `Promise.all` che non si vedono le note a vicenda.
+Sono la specifica più affidabile del comportamento multi-agente — più del codice stesso: se
+un comportamento cambia e il test relativo no, uno dei due è sbagliato.
 
 ### Tappa 8 — Adattività al modello: tier misurato, non indovinato
 *File: `src/core/modelProfile.ts`, `getModelTier` in `src/tools/registry.ts`*
@@ -119,9 +197,10 @@ rilevato via regex ancorata a inizio riga) per decidere se fermarsi.
 Un harness per modelli locali ha un problema che Claude Code non ha: i modelli variano da 1B
 a 70B e un 9B sommerso da 20 tool sbaglia tutto. Primo approccio: euristica sul nome
 ("9b" → small → meno tool). Ma le euristiche mentono: il **capability fingerprinting**
-(`/benchmark`) esegue 3 test oggettivi (instruction following, JSON, function calling) e
-salva un profilo *misurato* — un caso reale: un 9B stimato "small" dall'euristica è risultato
-"large" ai test. Regola generale: **misura, non indovinare**.
+(`/benchmark`) esegue test oggettivi su 3 categorie — instruction following, JSON, function
+calling (5 casi in `benchmarks/*.json`) — e salva un profilo *misurato* — un caso reale: un
+9B stimato "small" dall'euristica è risultato "large" ai test. Regola generale:
+**misura, non indovinare**.
 
 ### Tappa 9 — Self-extension: l'agente scrive i propri tool
 *File: `src/tools/impl/createTool.ts`*
@@ -164,7 +243,9 @@ significa config duplicati e memoria persa a ogni cartella.
 | **Tier gating dei tool** | I modelli piccoli vedono solo i tool che possono gestire: meno confusione, meno errori |
 | **Self-authoring** (`create_tool`) | L'agente estende l'harness a runtime, in sandbox e con versioning |
 | **Personas componibili** (ruolo × tratto × personaggio) | Identità degli agenti interamente dichiarativa in JSON |
-| **Protocollo STATO nei team** | Completamento dei workflow deciso da un marker deterministico, non dalla prosa |
+| **Protocollo di coordinamento a tool call** | `report_status`/`route_next`/`cast_vote` come meccanismo primario, marker testuale (`STATO:`/`AGENTE:`/`VOTO:`) come fallback esplicito — mai una decisione silenziosa |
+| **Isolamento dei branch paralleli** | `PermissionManager` in coda + workspace di staging per branch (`AsyncLocalStorage`), non stato globale mutabile: la concorrenza reale di `Promise.all` in `/goal` non contamina un agente con l'altro |
+| **Blackboard di run** | `post_note`/`read_notes` su uno stato condiviso *del solo run corrente* (`AsyncLocalStorage`, non memoria persistente): i branch di uno stesso `PARALLELO` la condividono, run diversi in `Promise.all` no |
 | **Memoria condivisa cross-agente** | Tutti gli agenti (chat, /call, /team) leggono/scrivono lo stesso archivio persistente |
 | **UI streaming senza framework TUI** | Erase/repaint ANSI a mano, vincolo CommonJS: dimostra che non serve Ink |
 | **Windows-first, cross-platform** | PowerShell nativo primario, `/bin/sh` POSIX come porting (`src/core/platform.ts`) — l'opposto della norma |

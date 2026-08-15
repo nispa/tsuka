@@ -1,0 +1,20 @@
+{
+  "name": "send_message",
+  "description": "Invia un messaggio a un altro agente del team. Il messaggio viene accodato e consegnato all'inizio del turno successivo del destinatario. Usalo per chiedere informazioni, coordinare il lavoro o segnalare risultati a un collega. Il mittente viene registrato automaticamente.",
+  "requiredTier": "small",
+  "riskLevel": "SAFE",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "target": {
+        "type": "string",
+        "description": "Nome del destinatario (es. 'falco', 'piccione', '@overseer'). Il prefisso @ è opzionale."
+      },
+      "message": {
+        "type": "string",
+        "description": "Il contenuto del messaggio per il collega (max 1000 caratteri)."
+      }
+    },
+    "required": ["target", "message"]
+  }
+}

@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { Tool } from '../registry';
 import { resolveSafePath, isBinaryFile } from './utils';
+import { capForContext } from '../../core/contextBudget';
 
 // Salta file più grandi di questo limite durante la ricerca grep (ogni file)
 const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
@@ -53,6 +54,14 @@ export const grepSearchTool: Tool = {
       return `Nessun risultato trovato per "${args.query}" in '${args.path || '.'}'.`;
     }
 
-    return `Trovati ${matches.length} risultati per "${args.query}":\n${matches.join('\n')}`;
+    const body = `Trovati ${matches.length} risultati per "${args.query}":\n${matches.join('\n')}`;
+
+    // T8.8: il limite di ${maxMatches} righe non basta da solo — anche poche righe possono
+    // saturare il tetto se sono molto lunghe (es. minified/log a riga unica). Tetto in token
+    // applicato all'uscita, come per gli altri tool a output non delimitato.
+    return capForContext(body, undefined, {
+      label: `i risultati di grep_search per "${args.query}"`,
+      recoveryHint: `Restringi la ricerca con un termine più specifico o con "path" su una sottocartella.`
+    });
   }
 };

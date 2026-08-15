@@ -2,6 +2,7 @@ import { spawn } from 'child_process';
 import chalk from 'chalk';
 import { Tool } from '../registry';
 import { getShellConfig } from '../../core/platform';
+import { capForContext } from '../../core/contextBudget';
 
 // Timeout massimo di esecuzione per un comando (evita blocchi infiniti dell'agente)
 const COMMAND_TIMEOUT_MS = 120_000;
@@ -32,8 +33,12 @@ export const executeCommandTool: Tool = {
         shellConfig.kill(child);
         console.log(chalk.red(`\n[Comando interrotto: superato il timeout di ${COMMAND_TIMEOUT_MS / 1000}s]`));
         resolve(
-          `${combinedOutput}\n[ERRORE: il comando è stato interrotto dopo ${COMMAND_TIMEOUT_MS / 1000} secondi di attesa. ` +
-          `Probabilmente era bloccato o in attesa di input.]`
+          capForContext(
+            `${combinedOutput}\n[ERRORE: il comando è stato interrotto dopo ${COMMAND_TIMEOUT_MS / 1000} secondi di attesa. ` +
+            `Probabilmente era bloccato o in attesa di input.]`,
+            undefined,
+            { label: `l'output del comando '${args.command}' (interrotto per timeout)` }
+          )
         );
       }, COMMAND_TIMEOUT_MS);
 
@@ -66,10 +71,19 @@ export const executeCommandTool: Tool = {
             `mostrati solo gli ultimi ~${MAX_OUTPUT_BYTES / 1024}KB]\n` + parts.join('\n');
         }
 
+        // T8.8: il limite in byte sopra resta la guardia superiore; qui si applica in più
+        // il tetto in token (più stretto) condiviso da tutti i tool, perché anche 50KB
+        // possono da soli saturare la finestra di un modello locale.
+        const capOptions = {
+          label: `l'output del comando '${args.command}'`,
+          recoveryHint: `Rilancia execute_command con un comando più mirato (es. filtrando con findstr/grep, ` +
+            `oppure leggendo solo il file di log risultante con read_file e offset/limit).`
+        };
+
         if (code === 0) {
-          resolve(resultOutput || '[Comando eseguito con successo, nessun output prodotto]');
+          resolve(capForContext(resultOutput, undefined, capOptions) || '[Comando eseguito con successo, nessun output prodotto]');
         } else {
-          resolve(`${resultOutput}\n[Il processo è terminato con codice di errore: ${code}]`);
+          resolve(capForContext(`${resultOutput}\n[Il processo è terminato con codice di errore: ${code}]`, undefined, capOptions));
         }
       });
 

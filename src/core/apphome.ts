@@ -22,6 +22,15 @@ import * as path from 'path';
  * questo modulo, valido sia in dev con tsx (src/core/) sia dopo la build
  * (dist/core/).
  */
+import * as fs from 'fs';
+
+/**
+ * Home dell'applicazione vs workspace — distinzione chiave per il comando globale.
+ *
+ * Risoluzione gerarchica dell'homePath:
+ * 1. Se nella workspace corrente esiste la cartella `.tsuka/`, le risorse vengono cercate lì.
+ * 2. Altrimenti ricade sulla App Home (variabile TSUKA_HOME o due livelli sopra questo modulo).
+ */
 export function getAppHome(): string {
   const env = process.env.TSUKA_HOME;
   if (env && env.trim().length > 0) {
@@ -30,7 +39,16 @@ export function getAppHome(): string {
   return path.resolve(__dirname, '..', '..');
 }
 
-/** Risolve un percorso dentro la home dell'app. */
+/** Risolve un percorso dentro la home dell'app o la cartella .tsuka/ del workspace. */
 export function homePath(...segments: string[]): string {
+  try {
+    const wsRoot = process.cwd();
+    if (wsRoot) {
+      const localTsukaPath = path.join(wsRoot, '.tsuka', ...segments);
+      if (fs.existsSync(localTsukaPath)) {
+        return localTsukaPath;
+      }
+    }
+  } catch {}
   return path.join(getAppHome(), ...segments);
 }

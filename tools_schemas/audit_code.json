@@ -1,0 +1,14 @@
+{
+  "name": "audit_code",
+  "description": "Performs a defensive static code analysis on the workspace to detect hardcoded secrets, dangerous functions (e.g. eval, insecure SQL queries), and potential security risks.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "targetPath": {
+        "type": "string",
+        "description": "Relative path to a file or directory within the workspace to scan (defaults to '.' for entire workspace)."
+      }
+    },
+    "required": []
+  }
+}

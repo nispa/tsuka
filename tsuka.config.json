@@ -11,13 +11,14 @@
     },
     "unsloth": {
       "baseUrl": "http://127.0.0.1:8888/v1",
-      "model": "HauhauCS/Qwen3.5-9B-Uncensored-HauhauCS-Aggressive"
+      "model": "unsloth/Qwen3.8-27B-GGUF"
     }
   },
+  "maxHistoryTokens": 30000,
   "webSearch": {
     "provider": "duckduckgo"
   },
   "activeRole": "developer",
   "activeTrait": "creative",
-  "activeCharacter": "krea_master"
+  "activeCharacter": "castoro"
 }

@@ -1,5 +1,6 @@
 {
-  "activeProvider": "ollama",
+  "_legacy": "File storico, non piu' letto: da quando esiste tsuka.config.json (CONFIG_PATH) questo file viene ignorato del tutto. Resta tracciato in git solo per il ramo di migrazione una tantum (rinomina harness.config.json -> tsuka.config.json) di chi aggiorna da una versione precedente al rename del progetto (Tsuka, ex Harness) — vedi src/core/config.ts, costanti LEGACY_CONFIG_PATH/CONFIG_PATH e il ramo di migrazione subito sotto. Modificare questo file non ha alcun effetto sulla configurazione attiva.",
+  "activeProvider": "unsloth",
   "providers": {
     "ollama": {
       "baseUrl": "http://localhost:11434/v1",
@@ -8,6 +9,10 @@
     "openrouter": {
       "baseUrl": "https://openrouter.ai/api/v1",
       "model": "meta-llama/llama-3.3-70b-instruct"
+    },
+    "unsloth": {
+      "baseUrl": "http://127.0.0.1:8888/v1",
+      "model": "default"
     }
   },
   "webSearch": {
@@ -15,5 +20,5 @@
   },
   "activeRole": "developer",
   "activeTrait": "professional",
-  "activeCharacter": "falco"
+  "activeCharacter": "custom"
 }

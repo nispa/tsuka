@@ -1,6 +1,6 @@
 {
   "name": "read_file",
-  "description": "Legge il contenuto di un file di testo. Permette anche di leggere solo un intervallo di righe specifico (1-based, inclusive).",
+  "description": "Legge il contenuto di un file di testo. Permette anche di leggere solo un intervallo di righe specifico, con startLine/endLine oppure con offset/limit. Un file grande viene comunque limitato a un tetto di contesto: la risposta include sempre come recuperare il resto (offset/limit successivi o grep_search).",
   "parameters": {
     "type": "object",
     "properties": {
@@ -15,6 +15,14 @@
       "endLine": {
         "type": "integer",
         "description": "La riga finale in cui terminare la lettura (1-indexed, inclusiva, opzionale)."
+      },
+      "offset": {
+        "type": "integer",
+        "description": "La riga da cui iniziare a leggere (1-indexed, opzionale). Alternativa a startLine, pensata per la paginazione: usala insieme a limit per chiedere la porzione successiva di un file troppo grande."
+      },
+      "limit": {
+        "type": "integer",
+        "description": "Il numero di righe da leggere a partire da offset (opzionale, default: fino a fine file)."
       }
     },
     "required": ["path"]

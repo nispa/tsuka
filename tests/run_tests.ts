@@ -9,9 +9,21 @@
 
 import { spawnSync } from 'child_process';
 import * as path from 'path';
+import * as fs from 'fs';
+import * as os from 'os';
 import chalk from 'chalk';
 
 const testsDir = __dirname;
+
+// T6.5: isola la memoria condivisa reale dell'utente dalla suite di test. Le suite che
+// esercitano /goal e Agent col mock scrivono davvero fatti via MemoryStore.getInstance()
+// (goal.ts, agent.ts) — senza questo, npm test sporca memory/memory.json. Un solo punto di
+// isolamento: TSUKA_MEMORY_FILE punta a un file in una cartella temporanea, letto da
+// MemoryStore quando non si passa un filePath esplicito (src/core/memory.ts). Le suite
+// girano come child process (spawnSync eredita process.env di default), quindi basta
+// impostarla qui prima del loop. Cartella ripulita alla fine, qualunque sia l'esito.
+const testMemoryDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tsuka-test-memory-'));
+process.env.TSUKA_MEMORY_FILE = path.join(testMemoryDir, 'memory.json');
 
 const suites = [
   'test_think_parser.ts',
@@ -19,6 +31,7 @@ const suites = [
   'test_phase1_fixes.ts',
   'test_phase2_fixes.ts',
   'test_memory.ts',
+  'test_memory_scope.ts',
   'test_phase3_fixes.ts',
   'test_fingerprinting.ts',
   'test_benchmark_dsl.ts',
@@ -31,6 +44,30 @@ const suites = [
   'test_tier_pruning.ts',
   'test_characters.ts',
   'test_traits.ts',
+  'test_presets.ts',
+  'test_workspace_jail.ts',
+  'test_mock_provider.ts',
+  'test_protocol_parsing.ts',
+  'test_token_calibration.ts',
+  'test_team_modes.ts',
+  'test_goal_orchestrator.ts',
+  'test_permission_queue.ts',
+  'test_parallel_workspace.ts',
+  'test_blackboard.ts',
+  'test_context_budget.ts',
+  'test_spawn_agent_context.ts',
+  'test_memory_phase3.ts',
+  'test_reasoning_effort.ts',
+  'test_effort_propagation.ts',
+  'test_generation_timeout.ts',
+  'test_spawn_agent_reasoning_effort.ts',
+  'test_prompt_overhead.ts',
+  'test_effort_command.ts',
+  'test_multi_skill.ts',
+  'test_loop.ts',
+  'test_init.ts',
+  'test_sampling_params.ts',
+  'test_security_agent.ts'
 ];
 
 let passed = 0;
@@ -72,4 +109,11 @@ for (const suite of suites) {
 }
 
 console.log(chalk.bold(`\n=== Risultato: ${chalk.green(passed)} suite OK, ${chalk.red(failed)} fallite ===`));
+
+// Pulizia della cartella di memoria temporanea (T6.5): non deve restare nulla nel
+// filesystem dopo la corsa, successo o fallimento che sia.
+try {
+  fs.rmSync(testMemoryDir, { recursive: true, force: true });
+} catch {}
+
 process.exit(failed > 0 ? 1 : 0);

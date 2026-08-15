@@ -1,13 +1,158 @@
 import { OpenAI } from 'openai';
 import chalk from 'chalk';
 import { ThinkTagParser, stripThinkBlocks, StreamChannel } from './thinkParser';
+import { ChatMessage, ChatRole, ToolCall } from './types';
 
 const FIRST_TOKEN_TIMEOUT_MS = 120_000; // 2 minuti di attesa per il primo token
 const MAX_RETRIES = 3;                  // tentativi prima di dichiarare "mancata risposta"
 
+// ── T8.11: timeout a orologio sull'intera generazione ──
+// FIRST_TOKEN_TIMEOUT_MS si azzera al primo token: da lì in poi, prima di questo
+// task, la generazione era illimitata (unica uscita: Esc dell'utente). Questo
+// secondo timer NON si azzera mai — copre l'intera durata di un tentativo,
+// pensiero incluso — e riusa lo stesso attemptAbort già armato per il primo
+// timer. Variabile (non const) con setter dedicato: è l'unico modo per un test
+// di non dover davvero aspettare 5 minuti reali per esercitare il ramo di
+// timeout (vedi tests/test_generation_timeout.ts). Non va in tsuka.config.json
+// di proposito (fuori proprietà file, vedi TASKS.md): resta una costante di
+// modulo affiancata a FIRST_TOKEN_TIMEOUT_MS.
+let MAX_GENERATION_MS = 120_000; // 2 minuti di default, configurabile tramite tsuka.config.json (llmTimeoutMs)
+
+/**
+ * Configura il timeout a orologio sull'intera generazione LLM (T8.16).
+ */
+export function setLlmTimeoutMs(ms: number): void {
+  if (ms >= 1000) {
+    MAX_GENERATION_MS = ms;
+  }
+}
+
+/**
+ * Solo per i test (T8.11/T8.16): permette di abbassare la soglia del timeout
+ * sull'intera generazione senza attese reali.
+ */
+export function __setMaxGenerationMsForTest(ms: number): void {
+  MAX_GENERATION_MS = ms;
+}
+
+// T8.11: soffitto vero e generoso sui token generati per singolo tentativo —
+// non un valore "da tarare". Con un modello che ragiona deve coprire pensiero
+// + risposta: se troppo stretto tronca una tool call a metà JSON, che è peggio
+// che lento. 8k token è oltre quanto qualunque risposta normale raggiunge.
+const MAX_TOKENS_CEILING = 8192;
+
 // dotenv caricato dal punto di ingresso (cli/index.ts)
 
-export class LLMProvider {
+export type { ChatRole };
+// Alias storico: ChatMessageLike === ChatMessage (src/core/types.ts, T4.1). Nome
+// mantenuto per compatibilità con gli importatori esistenti (es. tests/mocks/).
+export type ChatMessageLike = ChatMessage;
+
+export type ReasoningEffort = 'none' | 'low' | 'medium' | 'xhigh';
+
+export type CreativityLevel = 'precise' | 'balanced' | 'creative' | 'low' | 'medium' | 'high';
+
+export interface SamplingParams {
+  temperature?: number;
+  topP?: number;
+  presencePenalty?: number;
+  frequencyPenalty?: number;
+}
+
+/**
+ * Opzioni di chat non legate ai messaggi (T8.10/T8.17):
+ * - reasoningEffort: sforzo di ragionamento per modelli reasoning ('none'|'low'|'medium'|'xhigh')
+ * - creativity: preset sintetico umano per lo stile del campionamento ('precise'|'balanced'|'creative')
+ * - parametri di campionamento numerici (temperature, topP, presencePenalty, frequencyPenalty)
+ */
+export interface ChatOptions extends SamplingParams {
+  reasoningEffort?: ReasoningEffort;
+  creativity?: CreativityLevel;
+}
+
+export function resolveSamplingParams(options?: ChatOptions): {
+  temperature?: number;
+  top_p?: number;
+  presence_penalty?: number;
+  frequency_penalty?: number;
+} {
+  if (!options) return {};
+
+  let temperature = options.temperature;
+  let top_p = options.topP;
+  let presence_penalty = options.presencePenalty;
+  let frequency_penalty = options.frequencyPenalty;
+
+  if (options.creativity) {
+    switch (options.creativity) {
+      case 'precise':
+      case 'low':
+        temperature = temperature ?? 0.2;
+        top_p = top_p ?? 0.8;
+        break;
+      case 'creative':
+      case 'high':
+        temperature = temperature ?? 0.95;
+        top_p = top_p ?? 0.95;
+        presence_penalty = presence_penalty ?? 0.3;
+        break;
+      case 'balanced':
+      case 'medium':
+      default:
+        temperature = temperature ?? 0.7;
+        top_p = top_p ?? 0.9;
+        break;
+    }
+  }
+
+  const result: {
+    temperature?: number;
+    top_p?: number;
+    presence_penalty?: number;
+    frequency_penalty?: number;
+  } = {};
+  if (temperature !== undefined) result.temperature = temperature;
+  if (top_p !== undefined) result.top_p = top_p;
+  if (presence_penalty !== undefined) result.presence_penalty = presence_penalty;
+  if (frequency_penalty !== undefined) result.frequency_penalty = frequency_penalty;
+  return result;
+}
+
+export interface ChatStats {
+  durationMs: number;
+  tokenCount: number;
+  tokensPerSecond: number;
+  promptTokens: number;
+  totalTokens: number;
+}
+
+export interface ChatResponse {
+  content: string;
+  toolCalls?: ToolCall[];
+  stats?: ChatStats;
+}
+
+/**
+ * Contratto minimo usato da Agent e dai comandi CLI. Estratto da LLMProvider per
+ * permettere implementazioni alternative (es. MockLLMProvider nei test) senza
+ * toccare il comportamento del provider reale: LLMProvider la implementa e basta.
+ */
+export interface ILLMProvider {
+  chatWithTools(
+    messages: ChatMessage[],
+    tools?: any[],
+    onChunk?: (chunk: string, channel?: StreamChannel) => void,
+    signal?: AbortSignal,
+    options?: ChatOptions
+  ): Promise<ChatResponse>;
+  getCurrentModel(): string;
+  setCurrentModel(model: string): void;
+  getBaseUrl(): string;
+  listModels(): Promise<string[]>;
+  reconfigure(baseUrl: string, apiKey: string, defaultModel: string): void;
+}
+
+export class LLMProvider implements ILLMProvider {
   private client: OpenAI;
   private currentModel: string;
   private baseUrl: string;
@@ -83,11 +228,12 @@ export class LLMProvider {
    * (richiesto esplicitamente via stream_options), con fallback su stima.
    */
   async chatWithTools(
-    messages: Array<{ role: 'system' | 'user' | 'assistant' | 'tool'; content: string | null; tool_calls?: any[]; tool_call_id?: string; name?: string }>,
+    messages: ChatMessage[],
     tools?: any[],
     onChunk?: (chunk: string, channel?: StreamChannel) => void,
-    signal?: AbortSignal
-  ): Promise<{ content: string; toolCalls?: any[]; stats?: { durationMs: number; tokenCount: number; tokensPerSecond: number } }> {
+    signal?: AbortSignal,
+    options?: ChatOptions
+  ): Promise<ChatResponse> {
     const startTime = Date.now();
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
@@ -95,6 +241,7 @@ export class LLMProvider {
 
       const attemptAbort = new AbortController();
       let timedOut = false;
+      let generationTimedOut = false; // T8.11: timeout sull'INTERA generazione (il modello stava rispondendo)
 
       const onUserAbort = () => attemptAbort.abort();
       if (signal) {
@@ -107,6 +254,15 @@ export class LLMProvider {
         attemptAbort.abort();
       }, FIRST_TOKEN_TIMEOUT_MS);
 
+      // T8.11: secondo timer, MAI azzerato all'arrivo del primo token (a differenza
+      // di firstTokenTimer, azzerato più sotto). Stesso attemptAbort: interrompe la
+      // richiesta in corso esattamente come fa il timeout sul primo token, ma qui il
+      // modello stava producendo output — il messaggio d'errore in catch lo distingue.
+      const generationTimer = setTimeout(() => {
+        generationTimedOut = true;
+        attemptAbort.abort();
+      }, MAX_GENERATION_MS);
+
       try {
         const response = await this.client.chat.completions.create({
           model: this.currentModel,
@@ -114,7 +270,16 @@ export class LLMProvider {
           tools: tools,
           tool_choice: tools && tools.length > 0 ? 'auto' : undefined,
           stream: !!onChunk,
-          ...(onChunk ? { stream_options: { include_usage: true } } : {})
+          ...(onChunk ? { stream_options: { include_usage: true } } : {}),
+          // T8.11: soffitto vero, non un limite da tarare — vedi MAX_TOKENS_CEILING.
+          max_tokens: MAX_TOKENS_CEILING,
+          // T8.10: senza questo parametro il modello gira sui propri default (per
+          // alcuni modelli locali, xhigh — il massimo sforzo anche per un banale
+          // read_file). SDK OpenAI tipizza reasoning_effort solo low/medium/high:
+          // 'none'/'xhigh' sono livelli aggiuntivi supportati dai provider locali,
+          // quindi il cast `as any` qui è necessario, non un ripiego.
+          ...(options?.reasoningEffort ? { reasoning_effort: options.reasoningEffort as any } : {}),
+          ...resolveSamplingParams(options)
         }, { signal: attemptAbort.signal });
 
         const isStreaming = onChunk && (Symbol.asyncIterator in response || (response as any)[Symbol.asyncIterator]);
@@ -122,7 +287,7 @@ export class LLMProvider {
 
         if (isStreaming) {
           let fullText = '';
-          const toolCallsAccumulator: any[] = [];
+          const toolCallsAccumulator: ToolCall[] = [];
           let chunkCount = 0;
           let usage: any = null;
           let receivedFirstToken = false;
@@ -184,6 +349,8 @@ export class LLMProvider {
 
           const durationMs = Date.now() - startTime;
           const tokenCount = usage?.completion_tokens ?? chunkCount;
+          const promptTokens = usage?.prompt_tokens ?? 0;
+          const totalTokens = usage?.total_tokens ?? (promptTokens + tokenCount);
           const tokensPerSecond = durationMs > 0 ? (tokenCount / (durationMs / 1000)) : 0;
 
           return {
@@ -192,7 +359,9 @@ export class LLMProvider {
             stats: {
               durationMs,
               tokenCount,
-              tokensPerSecond: parseFloat(tokensPerSecond.toFixed(1))
+              tokensPerSecond: parseFloat(tokensPerSecond.toFixed(1)),
+              promptTokens,
+              totalTokens
             }
           };
         } else {
@@ -203,6 +372,8 @@ export class LLMProvider {
 
           const charPerToken = 3.5;
           const tokenCount = nonStreamResponse.usage?.completion_tokens ?? Math.round(content.length / charPerToken);
+          const promptTokens = nonStreamResponse.usage?.prompt_tokens ?? 0;
+          const totalTokens = nonStreamResponse.usage?.total_tokens ?? (promptTokens + tokenCount);
           const tokensPerSecond = durationMs > 0 ? (tokenCount / (durationMs / 1000)) : 0;
 
           return {
@@ -211,12 +382,28 @@ export class LLMProvider {
             stats: {
               durationMs,
               tokenCount,
-              tokensPerSecond: parseFloat(tokensPerSecond.toFixed(1))
+              tokensPerSecond: parseFloat(tokensPerSecond.toFixed(1)),
+              promptTokens,
+              totalTokens
             }
           };
         }
       } catch (error: any) {
         if (signal?.aborted) break;
+
+        // T8.11: controllato PRIMA di timedOut — il modello stava generando (ha già
+        // superato il timeout sul primo token, altrimenti sarebbe quest'ultimo a
+        // scattare per primo), quindi il messaggio va distinto da "mancata risposta"
+        // (che diagnosticherebbe il problema sbagliato: qui non è silenzio, è lentezza).
+        // Interruzione definitiva, senza retry: un tentativo che ha già occupato
+        // MAX_GENERATION_MS non va ripetuto da capo, raddoppiando l'attesa in silenzio.
+        if (generationTimedOut) {
+          throw new Error(
+            `[Timeout generazione] Il modello '${this.currentModel}' stava rispondendo ma ha superato il limite di ` +
+            `${MAX_GENERATION_MS / 1000}s per l'intera generazione: interrotto. Non è una mancata risposta — il ` +
+            `modello stava producendo output quando è scattato il timeout.`
+          );
+        }
 
         if (timedOut) {
           if (attempt < MAX_RETRIES) {
@@ -234,7 +421,10 @@ export class LLMProvider {
 
         throw new Error(`Errore di comunicazione con il modello '${this.currentModel}': ${error.message}`);
       } finally {
+        // T8.11: entrambi i timer ripuliti qui, incondizionatamente — copre ogni
+        // uscita dal try (successo, errore, abort utente), non solo il percorso felice.
         clearTimeout(firstTokenTimer);
+        clearTimeout(generationTimer);
         if (signal) signal.removeEventListener('abort', onUserAbort);
       }
     }

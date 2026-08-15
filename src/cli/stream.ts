@@ -39,6 +39,8 @@ interface GenStats {
   durationMs: number;
   tokenCount: number;
   tokensPerSecond: number;
+  promptTokens?: number;
+  totalTokens?: number;
 }
 
 const ARGS_MAX_LEN = 60;
@@ -100,6 +102,7 @@ export class StreamRenderer {
   private fullText = '';       // tutto il contenuto della risposta
   private stats: GenStats | null = null;
   private begun = false;
+  private reasoningMode = false;
 
   constructor(opts: StreamRenderOptions) {
     this.opts = opts;
@@ -117,7 +120,23 @@ export class StreamRenderer {
         this.reasoningTail = (this.reasoningTail + text).replace(/\s+/g, ' ').slice(-160);
       }
       this.status.update({ tokens: this.tokens, hint: this.reasoningTail });
+      this.reasoningMode = true;
+      // Mostra il pensiero a schermo in grigio dimmed, come opencode
+      if (!this.streaming) {
+        this.status.stop();
+        this.streaming = true;
+        this.printHeader();
+      }
+      process.stdout.write(chalk.dim(chalk.gray(text)));
+      this.trackText(text);
       return;
+    }
+
+    // Se stavamo mostrando reasoning e arriva content, separiamo con newline
+    if (this.reasoningMode) {
+      this.reasoningMode = false;
+      process.stdout.write('\n');
+      this.trackText('\n');
     }
 
     this.tokens++;
@@ -186,8 +205,10 @@ export class StreamRenderer {
 
     if (this.stats) {
       const durationSec = (this.stats.durationMs / 1000).toFixed(2);
+      const ctx = this.stats.promptTokens ?? 0;
+      const total = this.stats.totalTokens ?? (ctx + this.stats.tokenCount);
       console.log(
-        chalk.gray(`[Velocità: ${chalk.yellow(this.stats.tokensPerSecond)} tok/s | Totale: ${chalk.cyan(this.stats.tokenCount)} token | Tempo: ${chalk.cyan(durationSec)}s]`)
+        chalk.gray(`[Out: ${chalk.cyan(this.stats.tokenCount)} tok | Ctx: ${chalk.cyan(ctx)} tok | Tot: ${chalk.cyan(total)} tok | ${chalk.yellow(this.stats.tokensPerSecond)} tok/s | ${chalk.cyan(durationSec)}s]`)
       );
     }
   }

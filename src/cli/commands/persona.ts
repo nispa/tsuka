@@ -122,3 +122,50 @@ export async function handleTrait(ctx: CommandCtx, _arg: string): Promise<void> 
     CLITheme.success(`Attitudine dell'agente cambiata a: ${chalk.green(traitObj.displayName)} (Selezionato stile manuale)`);
   }
 }
+
+export async function handleSkill(ctx: CommandCtx, arg: string): Promise<void> {
+  const activeCharName = ctx.configManager.getActiveCharacter();
+  const charObj = activeCharName !== 'custom' ? ctx.loadCharacter(activeCharName) : null;
+  const availableRoles = (charObj?.roles && charObj.roles.length > 0)
+    ? charObj.roles
+    : (charObj?.role ? [charObj.role] : [ctx.configManager.getActiveRole()]);
+
+  if (arg) {
+    const targetSkill = arg.trim().toLowerCase();
+    if (!availableRoles.includes(targetSkill) && activeCharName !== 'custom') {
+      CLITheme.error(`Skill '${targetSkill}' non presente tra quelle sbloccate per ${charObj?.displayName || activeCharName} (Skill sbloccate: ${availableRoles.join(', ')}).`);
+      return;
+    }
+    ctx.configManager.setActiveRole(targetSkill);
+    if (charObj) {
+      charObj.activeRole = targetSkill;
+    }
+    ctx.agent.current = ctx.recreateAgent();
+    CLITheme.success(`Skill attiva per l'agente commutata su: ${chalk.green(targetSkill)}.`);
+    return;
+  }
+
+  console.log();
+  const currentSkill = charObj?.activeRole || charObj?.role || ctx.configManager.getActiveRole();
+  const selectedSkill = await InteractiveMenu.select<string>(
+    `Seleziona la skill/ruolo da attivare per ${charObj?.displayName || 'l\'agente'} (usa le frecce):`,
+    availableRoles.map((r) => {
+      const rObj = ctx.loadRole(r);
+      return {
+        title: `${rObj.displayName} - ${rObj.description}${r === currentSkill ? ' (attiva)' : ''}`,
+        value: r
+      };
+    }),
+    currentSkill
+  );
+
+  if (selectedSkill) {
+    ctx.configManager.setActiveRole(selectedSkill);
+    if (charObj) {
+      charObj.activeRole = selectedSkill;
+    }
+    ctx.agent.current = ctx.recreateAgent();
+    CLITheme.success(`Skill attiva per l'agente commutata su: ${chalk.green(selectedSkill)}.`);
+  }
+}
+

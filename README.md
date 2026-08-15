@@ -30,7 +30,8 @@
 | 🧠 **Persistent shared memory** | Facts survive restarts, shared across all agents and sessions |
 | 🛡️ **3-tier permissions** | SAFE / RESTRICTED / DANGEROUS — user always in control |
 | 🖥️ **Cross-platform** | Windows (PowerShell) primary; Linux/macOS (`/bin/sh`) experimental |
-| 🤝 **Multi-agent workflows** | Conference debates (`/call`) and collaborative teams (`/team`) |
+| 🤝 **Multi-agent workflows** | Conference debates (`/call`), collaborative teams (`/team`), and dynamic goal orchestrator (`/goal`) |
+| 🧠 **Context-aware execution** | Live reasoning display, per-agent token/timing stats (output/context/total), dual context bar (estimated + real peak from LLM), automatic history condensation between turns |
 
 ## 📋 Table of Contents
 
@@ -131,7 +132,11 @@ The tier profile is saved to `models_profile.json`. `getModelTier()` uses the me
 
 Every `web_search` / `browse_url` call deterministically extracts and prints URLs to the console. The model cannot hallucinate sources — they're displayed *by the framework*.
 
-### 5. Persistent Shared Memory 🧠
+### 5. Live Reasoning Display 🧠
+
+When a model emits `<think>` tags or native `reasoning_content` (e.g., DeepSeek R1), TSUKA displays the reasoning live in **dimmed gray** — just like opencode. Reasoning streams in real time alongside the status token counter, then content continues in white.
+
+### 6. Persistent Shared Memory 🧠
 
 All agents share `memory/memory.json`, **persisting across sessions**:
 
@@ -148,7 +153,7 @@ Prompt  ← formatForPrompt()    ← memory/memory.json  (auto-injected)
 
 Chat history is also configuratively pruned (`maxHistoryMessages` in `tsuka.config.json`, default 40) without breaking tool_call/tool pairs.
 
-### 6. Tool Self-Authoring (`create_tool`) 🛠️
+### 7. Tool Self-Authoring (`create_tool`) 🛠️
 
 Agents can write **brand-new tools** in JavaScript at runtime:
 
@@ -172,7 +177,7 @@ create_tool({
 
 ⚠️ Generated tools cannot be `DANGEROUS` and cannot overwrite core `.ts` tools.
 
-### 7. Server Auto-Discovery at Startup 📡
+### 8. Server Auto-Discovery at Startup 📡
 
 At launch, TSUKA doesn't blindly trust the configured provider — it scans ([`src/core/discovery.ts`](src/core/discovery.ts)):
 
@@ -184,7 +189,7 @@ The loaded model is detected per server family: Unsloth Studio marks it with `"l
 
 If no server responds, the REPL still starts — switch manually with `/provider`.
 
-### 8. Cross-Platform 🖥️
+### 9. Cross-Platform 🖥️
 
 Abstracted by [`src/core/platform.ts`](src/core/platform.ts):
 
@@ -197,6 +202,34 @@ Abstracted by [`src/core/platform.ts`](src/core/platform.ts):
 Sensitive env vars (`KEY`, `SECRET`, `TOKEN`, `PASSWORD`...) are filtered on all platforms.
 
 ## 👥 Multi-Agent Workflows
+
+### Dynamic Goal Orchestrator (`/goal`)
+
+The `/goal` command dynamically assembles a team from **all available characters** to accomplish an objective:
+
+```powershell
+/goal Crea una sceneggiatura e per ogni scena genera il prompt Krea2. Salva in cr.txt
+```
+
+1. **Planning phase**: the orchestrator LLM analyses the goal, selects the best-suited agents and assigns tasks — optionally with `PARALLELO` blocks for independent subtasks.
+2. **Execution phase**: all planned steps execute in order — including the overseer/supervisor (no early stop on `STATO: COMPLETATO`). Each agent's task instructions explicitly tell them to **inspect workspace files** created by previous agents.
+3. **Context management**: after each agent turn, long assistant messages are condensed (keeping a 1500-char meaningful summary, not a one-liner) and a fact is saved to persistent memory. A **dual context bar** shows estimated context before the agent runs and the **real peak prompt tokens** measured from the LLM response after it completes.
+4. **Stats summary**: at the end, a per-agent breakdown with output tokens, context tokens, total tokens, time and speed:
+
+```
+📊 RIEPILOGO STATS AGENTI
+  Agente             Out tok    Ctx tok   Tot tok    Tempo    Velocità
+  Wordsmith             1234      15032     16266     12.3s   100.3 tok/s
+  Krea Master            892      16780     17672      8.1s   110.1 tok/s
+  Overseer               456      17500     17956      4.2s   108.6 tok/s
+  TOTALE                2582      17500     51894     24.6s
+```
+
+- **Out tok**: cumulative output (completion) tokens across all LLM rounds in that agent's turn
+- **Ctx tok**: peak prompt tokens (context window size) measured from the last LLM round
+- **Tot tok**: estimated total (ctx + out) for that agent
+
+The orchestrator also supports `PARALLELO` blocks for independent subtasks executed concurrently via `Promise.all`.
 
 ### Conference Debate (`/call`)
 
@@ -254,6 +287,8 @@ Lets an organized group of agents actively collaborate on a task, executing writ
 | `/rename-char <name>` | Rename the active character's `aiName` |
 | `/role` | Change agent role (skills/tools) |
 | `/trait` | Change agent personality trait |
+| `/effort [level]` | Manage reasoning effort (`none`\|`low`\|`medium`\|`xhigh`\|`auto`\|`ask`) |
+| `/goal <objective>` | Dynamic goal orchestrator — selects agents, assigns tasks, coordinates execution autonomously |
 | `/team` | Start a collaborative team workflow |
 | `/call [names]` | Start a multi-agent conference debate |
 | `/search-engine` | Change search provider (DuckDuckGo / Google / Tavily) |
@@ -335,15 +370,15 @@ npx tsx tests/test_self_authoring.ts
 npx tsx tests/test_platform.ts
 ```
 
-Current status: **11 test suites, 50+ assertions — all green**.
+Current status: **43 test suites, 200+ assertions — all green**.
 
 ## 📚 Documentation
 
 | Resource | Description |
 |----------|-------------|
 | [Technical docs](docs/README.md) | Architecture, multi-agent workflows, security |
-| [HISTORY.md](HISTORY.md) | Full chronological changelog of all codebase interventions |
-| [OPTIMIZATION_PLAN.md](OPTIMIZATION_PLAN.md) | The 5-phase optimization plan (completed) with future backlog |
+| [HISTORY.md](archive/HISTORY.md) | Full chronological changelog of all codebase interventions (archived) |
+| [OPTIMIZATION_PLAN.md](archive/OPTIMIZATION_PLAN.md) | The 5-phase optimization plan (completed) |
 
 ## 🤝 Contributing
 

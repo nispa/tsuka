@@ -1,0 +1,15 @@
+{
+  "name": "security",
+  "displayName": "🛡️ Security — cybersecurity, audit e vulnerabilità",
+  "description": "Pack dedicato alla sicurezza applicativa, audit del codice ed ethical hacking con il personaggio Sentinel ed il ruolo security_auditor.",
+  "roles": [
+    "security_auditor"
+  ],
+  "traits": [
+    "reliable"
+  ],
+  "characters": [
+    "sentinel"
+  ],
+  "teams": []
+}

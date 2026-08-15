@@ -134,6 +134,88 @@
           "score": 1
         }
       ]
+    },
+    "llmfan46/gemma-4-12B-it-qat-q4_0-uncensored-heretic-GGUF": {
+      "model": "llmfan46/gemma-4-12B-it-qat-q4_0-uncensored-heretic-GGUF",
+      "provider": "http://127.0.0.1:8888/v1",
+      "tier": "large",
+      "scores": {
+        "instruction": 1,
+        "json": 1,
+        "toolCalling": 1
+      },
+      "tokensPerSecond": 45,
+      "testedAt": "2026-07-22T16:29:07.567Z",
+      "benchmarkVersion": 3,
+      "testsHash": "882f0262",
+      "testResults": [
+        {
+          "name": "frase_8_parole",
+          "category": "instruction",
+          "score": 1
+        },
+        {
+          "name": "lista_vincoli_negativi",
+          "category": "instruction",
+          "score": 1
+        },
+        {
+          "name": "json_prodotti",
+          "category": "json",
+          "score": 1
+        },
+        {
+          "name": "catena_tool_distrattori",
+          "category": "toolCalling",
+          "score": 1
+        },
+        {
+          "name": "trappola_astensione",
+          "category": "toolCalling",
+          "score": 1
+        }
+      ]
+    },
+    "unsloth/Qwen3.8-27B-GGUF": {
+      "model": "unsloth/Qwen3.8-27B-GGUF",
+      "provider": "http://127.0.0.1:8888/v1",
+      "tier": "large",
+      "scores": {
+        "instruction": 1,
+        "json": 1,
+        "toolCalling": 1
+      },
+      "tokensPerSecond": 18.5,
+      "testedAt": "2026-08-14T23:14:51.520Z",
+      "benchmarkVersion": 3,
+      "testsHash": "882f0262",
+      "testResults": [
+        {
+          "name": "frase_8_parole",
+          "category": "instruction",
+          "score": 1
+        },
+        {
+          "name": "lista_vincoli_negativi",
+          "category": "instruction",
+          "score": 1
+        },
+        {
+          "name": "json_prodotti",
+          "category": "json",
+          "score": 1
+        },
+        {
+          "name": "catena_tool_distrattori",
+          "category": "toolCalling",
+          "score": 1
+        },
+        {
+          "name": "trappola_astensione",
+          "category": "toolCalling",
+          "score": 1
+        }
+      ]
     }
   }
 }

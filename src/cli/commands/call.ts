@@ -98,7 +98,7 @@ export async function handleCall(ctx: CommandCtx, arg: string): Promise<void> {
       const roleObj = ctx.loadRole(p.role);
       const traitObj = ctx.loadTrait(p.trait);
 
-      let sysPrompt = loadSystemPrompt(roleObj, traitObj, ctx.provider.getCurrentModel(), ctx.registry, p);
+      let sysPrompt = loadSystemPrompt(roleObj, traitObj, ctx.provider.getCurrentModel(), ctx.registry, p, topic);
       sysPrompt += '\n\n[CONTESTO]: Stai partecipando ad una chiamata di gruppo con altri colleghi. Rispondi alle battute precedenti rivolgendoti direttamente agli altri partecipanti se necessario. Mantieni il tuo intervento breve (max 4 frasi) e rispetta fedelmente la tua identità e il tuo stile.';
 
       callMessages[0] = { role: 'system', content: sysPrompt };

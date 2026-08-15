@@ -1,0 +1,20 @@
+{
+  "name": "switch_skill",
+  "description": "Cambia la skill (ruolo) equipaggiata dell'agente attivo durante il lavoro. Usalo per attivare un diverso insieme di competenze e tool per le prossime fasi della missione (es. passare da 'architect' a 'developer').",
+  "requiredTier": "small",
+  "riskLevel": "SAFE",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "skill": {
+        "type": "string",
+        "description": "Nome del ruolo/skill da attivare (deve essere tra quelli sbloccati per il personaggio attivo)."
+      },
+      "reason": {
+        "type": "string",
+        "description": "Motivazione operativa per il cambio di skill."
+      }
+    },
+    "required": ["skill"]
+  }
+}

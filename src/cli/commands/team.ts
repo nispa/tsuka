@@ -2,27 +2,34 @@ import prompts from 'prompts';
 import chalk from 'chalk';
 import { CommandCtx } from './types';
 import { CLITheme, InteractiveMenu } from '../ui';
-import { StreamRenderer } from '../stream';
 import { GenerationInterrupt } from '../interrupt';
-import { loadSystemPrompt, resolveCharacter } from '../shared';
-import { Agent } from '../../core/agent';
+import { ChatMessage } from '../../core/types';
+import { TeamStrategy, ProtocolLogEntry, TurnStats, seedTeamMessages, runMemberTurn, hasCompletionMarker } from './strategies/common';
+import { runRoundRobin, roundRobinStrategy } from './strategies/roundRobin';
+import { runOrchestrated, orchestratedStrategy, parseOrchestratorDecision, hasDoneSignal } from './strategies/orchestrated';
+import { runPipeline, pipelineStrategy } from './strategies/pipeline';
+import { runDiscussionRound, hasUnanimousApproval } from './strategies/hybrid';
+import { writeWorkflowLog } from './workflowLog';
+import { Blackboard } from '../../core/blackboard';
 
 /**
- * Rileva il protocollo di stato nei messaggi generati in un turno:
- * un membro dichiara il compito risolto scrivendo "STATO: COMPLETATO".
- * Il marker deve stare a inizio riga (come richiesto dal protocollo): una
- * semplice citazione a metà frase ("non scriverò STATO: COMPLETATO") non conta.
- * Vengono considerati solo i messaggi assistant (ignorati tool e system).
+ * Dispatcher di `/team` (T4.2, PLANNING-QUALITA.md): carica il team JSON, sceglie la
+ * `TeamStrategy` in base a `team.mode` e delega. Le 4 modalità vivono in `strategies/`
+ * (roundRobin/orchestrated/pipeline/hybrid.ts); utility condivise (`runMemberTurn`,
+ * protocollo di stato, seeding history) in `strategies/common.ts`. Ri-esportate qui
+ * sotto per compatibilità con i chiamanti esistenti (goal.ts, tests/).
  */
-export function hasCompletionMarker(messages: any[]): boolean {
-  return messages.some(
-    (m) => m.role === 'assistant' && typeof m.content === 'string' && /(^|\n)\s*STATO:\s*COMPLETATO/i.test(m.content)
-  );
-}
+export {
+  runRoundRobin, runOrchestrated, runPipeline, runDiscussionRound,
+  runMemberTurn, hasCompletionMarker, hasUnanimousApproval,
+  parseOrchestratorDecision, hasDoneSignal
+};
+export type { TurnStats, ProtocolLogEntry };
+
+// ── Entry point ──
 
 export async function handleTeam(ctx: CommandCtx, arg: string): Promise<void> {
   const availableTeams = ctx.listAvailableItems('teams', ctx.loadTeam);
-
   if (availableTeams.length === 0) {
     CLITheme.warning('Nessun team configurato trovato nella cartella teams/.');
     return;
@@ -33,10 +40,7 @@ export async function handleTeam(ctx: CommandCtx, arg: string): Promise<void> {
     console.log();
     const selected = await InteractiveMenu.select<string>(
       'Seleziona il team collaborativo da attivare (usa le frecce):',
-      availableTeams.map((t: any) => ({
-        title: `${t.displayName} - ${t.description}`,
-        value: t.name,
-      })),
+      availableTeams.map((t) => ({ title: `${t.displayName} - ${t.description}`, value: t.name })),
       availableTeams[0].name
     );
     if (!selected) return;
@@ -55,7 +59,6 @@ export async function handleTeam(ctx: CommandCtx, arg: string): Promise<void> {
     name: 'task',
     message: chalk.cyan.bold('Descrivi il compito da assegnare al Team ❯'),
   });
-
   const task = taskResp.task?.trim();
   if (!task) {
     CLITheme.warning('Operazione annullata: nessun compito specificato.');
@@ -63,132 +66,75 @@ export async function handleTeam(ctx: CommandCtx, arg: string): Promise<void> {
   }
 
   const maxRounds = ctx.configManager.getTeamMaxRounds();
-
+  const modeLabel = team.mode === 'orchestrated' ? 'Orchestrato' : team.mode === 'pipeline' ? 'Pipeline' : 'Round-robin';
+  const hybridInfo = (team.discussionRounds ?? 0) > 0 ? ` + ${team.discussionRounds} discussione/i per round` : '';
   console.log(chalk.bold('\n🚀 [AVVIO WORKFLOW COLLABORATIVO DI TEAM]'));
   console.log(`Team:        ${chalk.green(team.displayName)}`);
+  console.log(`Modalità:    ${chalk.cyan(modeLabel)}${hybridInfo}`);
   console.log(`Membri:      ${team.members.map((m: string) => chalk.cyan(m)).join(', ')}`);
+  if (team.orchestrator && team.mode === 'orchestrated') {
+    console.log(`Orchestrator: ${chalk.magenta(team.orchestrator)}`);
+  }
   console.log(`Obiettivo:   "${chalk.yellow(task)}"`);
   console.log(`Round max:   ${chalk.cyan(maxRounds)} (stop anticipato a compito risolto)\n`);
 
   // Cronologia condivisa tra tutti i membri e tutti i round
-  const teamMessages: any[] = [
-    { role: 'system', content: '' },
-    { role: 'user', content: `COMPITO DI GRUPPO DA RISOLVERE: "${task}"` }
-  ];
-
-  let completed = false;
-  let roundsDone = 0;
+  const teamMessages: ChatMessage[] = seedTeamMessages(task);
 
   // Esc interrompe l'intero workflow
   const interrupt = new GenerationInterrupt();
   interrupt.arm();
 
-  outer:
-  for (let round = 1; round <= maxRounds; round++) {
-    roundsDone = round;
-    console.log(chalk.bold.yellow(`\n═══ ROUND ${round}/${maxRounds} ═══`));
+  // Traccia il meccanismo di decisione (tool call/regex/fallback) di ogni turno,
+  // membro/orchestrator/voto: confluisce nel workflow log (T2.1, PLANNING-QUALITA.md)
+  const turnLog: ProtocolLogEntry[] = [];
+  const strategy: TeamStrategy = team.mode === 'pipeline'
+    ? pipelineStrategy
+    : team.mode === 'orchestrated' && team.orchestrator
+    ? orchestratedStrategy
+    : roundRobinStrategy;
 
-    for (const memberName of team.members) {
-      const memberChar = resolveCharacter(memberName);
-      if (!memberChar) {
-        CLITheme.warning(`Membro del team '${memberName}' non trovato. Saltato.`);
-        continue;
-      }
-
-      const roleObj = ctx.loadRole(memberChar.role);
-      const traitObj = ctx.loadTrait(memberChar.trait);
-
-      console.log(chalk.bold.blue(`\n[TURNO DI LAVORO: ${memberChar.displayName}]`));
-      console.log(chalk.gray(`Ruolo: ${roleObj.displayName} | Attitudine: ${traitObj.displayName}`));
-
-      let sysPrompt = loadSystemPrompt(roleObj, traitObj, ctx.provider.getCurrentModel(), ctx.registry, memberChar);
-      sysPrompt += `\n\n[CONTESTO COLLABORATIVO]: Stai lavorando in team per risolvere il compito: "${task}".
-        Questo è il tuo turno di lavoro attivo (round ${round}/${maxRounds}). Analizza il compito e quanto fatto dai colleghi in precedenza (ispezionando i file del workspace e la cronologia se necessario).
-        Esegui i tool a tua disposizione (es. lettura, scrittura o modifica file, ricerche, comandi) per avanzare nel lavoro o completarlo.
-        Al termine delle esecuzioni, scrivi una sintesi testuale per spiegare cosa hai fatto e cosa deve fare il prossimo collega (se applicabile). Mantieni fedelmente la tua personalità.
-
-PROTOCOLLO STATO LAVORI (obbligatorio): termina SEMPRE il tuo intervento con una riga finale esatta, in questo formato:
-- "STATO: COMPLETATO" — solo se il compito di gruppo è stato risolto definitivamente e non servono altri turni di lavoro;
-- "STATO: DA_CONTINUARE" — se serve ancora lavoro tuo o dei colleghi.
-Non dichiarare COMPLETATO se non hai verificato concretamente (con i tool) che il lavoro è finito.`;
-
-      const tempAgent = new Agent(
-        ctx.provider,
-        ctx.registry,
-        ctx.permissionManager,
-        sysPrompt,
-        roleObj.allowedTools,
-        ctx.configManager.getMaxHistoryMessages(),
-        ctx.configManager.getMaxHistoryTokens()
-      );
-
-      // Semina la cronologia condivisa (saltando il placeholder system)
-      for (let i = 1; i < teamMessages.length; i++) {
-        tempAgent.getMessages().push(teamMessages[i]);
-      }
-      // Riferimento all'ultimo messaggio seminato: robusto anche se pruneHistory()
-      // rimuove messaggi durante il run (prima si usava slice(length) e si perdevano messaggi)
-      const lastSeeded = tempAgent.getMessages()[tempAgent.getMessages().length - 1];
-
-      // Streaming con status "Thinking…", tool call compatti e pannello markdown finale
-      const renderer = new StreamRenderer({ headerName: memberChar.aiName });
-      renderer.begin();
-      try {
-        const promptAttivazione = round === 1
-          ? `Tocca a te, ${memberChar.aiName}. Lavora sul compito ed esegui i tuoi tool.`
-          : `Il compito non è ancora completato (round ${round}). Riprendi da dove è arrivato il team e porta avanti il lavoro, ${memberChar.aiName}.`;
-        await tempAgent.run(
-          promptAttivazione,
-          (chunk, channel) => renderer.onDelta(chunk, channel ?? 'content'),
-          (stats) => renderer.setStats(stats),
-          // rearm: i prompt di autorizzazione disattivano il raw mode alla chiusura,
-          // riattivarlo a ogni evento mantiene Esc/Ctrl+X funzionanti per tutto il run
-          (ev) => { renderer.onAgentEvent(ev); interrupt.rearm(); },
-          interrupt.signal
-        );
-        if (interrupt.aborted) {
-          renderer.abort();
-          CLITheme.warning('Workflow di team interrotto (Esc).');
-          break outer;
-        }
-        renderer.finish();
-        console.log();
-      } catch (err: any) {
-        renderer.abort();
-        if (interrupt.aborted) {
-          CLITheme.warning('Workflow di team interrotto (Esc).');
-          break outer;
-        }
-        CLITheme.error(`Errore nel turno di ${memberChar.aiName}: ${err.message}`);
-      }
-
-      // Estrae i nuovi messaggi generati dal turno (dopo l'ultimo seminato)
-      const msgs = tempAgent.getMessages();
-      const seededIdx = msgs.indexOf(lastSeeded);
-      const newMessages = seededIdx >= 0 ? msgs.slice(seededIdx + 1) : msgs.slice(teamMessages.length);
-      teamMessages.push(...newMessages);
-      CLITheme.printDivider();
-
-      // Controllo deterministico del protocollo di stato
-      if (hasCompletionMarker(newMessages)) {
-        completed = true;
-        console.log(chalk.green.bold(`\n✔ ${memberChar.aiName} ha dichiarato il compito COMPLETATO.`));
-        break outer;
-      }
-    }
+  // Blackboard del run (T6.2, TASKS.md — FASE 2): stato condiviso di QUESTO
+  // workflow, letto/scritto dai membri via post_note/read_notes (runMemberTurn,
+  // strategies/common.ts). Isolata dai run concorrenti via AsyncLocalStorage
+  // (src/core/blackboard.ts) — stesso meccanismo di withWorkspaceOverride.
+  const runId = Blackboard.newRunId();
+  let completed = false, failed = false, roundsDone = 0;
+  // Snapshot preso nel percorso di successo, prima che il finally liberi la
+  // blackboard: se strategy.run lancia, resta [] ma non importa — l'eccezione
+  // salta comunque il writeWorkflowLog qui sotto, come già faceva prima di T6.2.
+  let blackboardSnapshot: ReturnType<Blackboard['snapshot']> = [];
+  try {
+    const result = await Blackboard.withRun(runId, () =>
+      strategy.run({ ctx, team, task, maxRounds, interrupt, teamMessages, turnLog })
+    );
+    completed = result.completed;
+    roundsDone = result.roundsDone;
+    failed = !!result.failed;
+    blackboardSnapshot = Blackboard.forRun(runId).snapshot();
+  } finally {
+    interrupt.disarm();
+    // La blackboard muore col run: liberata sempre, anche se strategy.run lancia
+    // — non deve sopravvivere al workflow che l'ha creata.
+    Blackboard.endRun(runId);
   }
 
-  interrupt.disarm();
   console.log(chalk.bold('🚀 [FINE WORKFLOW COLLABORATIVO DI TEAM]\n'));
+  writeWorkflowLog({ team, task, completed, failed, roundsDone, teamMessages, turnLog, blackboard: blackboardSnapshot });
 
   const finalReport = completed
     ? `Il team collaborativo (${team.members.join(', ')}) ha COMPLETATO il compito: "${task}" in ${roundsDone} round.
     Puoi analizzare i file del workspace per verificare il risultato o chiedere dettagli sul processo svolto.`
+    : failed
+    ? `Il team collaborativo (${team.members.join(', ')}) ha dichiarato il compito FALLITO dopo ${roundsDone} round: "${task}".
+    Un membro ha segnalato di non riuscire a risolverlo con i mezzi a disposizione: verifica i file del workspace e valuta se rilanciare con istruzioni diverse.`
     : `Il team collaborativo (${team.members.join(', ')}) ha lavorato ${maxRounds} round sul compito: "${task}" senza dichiararlo completato.
     Il lavoro sul workspace potrebbe essere parziale: ti consiglio di verificare i file e, se serve, rilanciare il team con istruzioni più specifiche.`;
 
   if (completed) {
     CLITheme.success(`Compito risolto dal team in ${roundsDone} round.`);
+  } else if (failed) {
+    CLITheme.error(`Il team ha dichiarato il compito FALLITO dopo ${roundsDone} round.`);
   } else {
     CLITheme.warning(`Limite di ${maxRounds} round raggiunto senza completamento dichiarato.`);
   }

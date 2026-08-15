@@ -213,12 +213,13 @@ function formatScore(score: number): string {
 
 function printProfile(p: ModelProfile): void {
   const tierColor = p.tier === 'large' ? chalk.green : p.tier === 'medium' ? chalk.yellow : chalk.red;
-  console.log(`  Modello:     ${chalk.cyan(p.model)}`);
+  console.log(`  Effort:      ${chalk.magenta(p.reasoningEffort)}`);
   console.log(`  Tier misurato: ${tierColor(p.tier.toUpperCase())}`);
   console.log(`  ├─ Instruction following: ${formatScore(p.scores.instruction)}`);
   console.log(`  ├─ Output JSON:           ${formatScore(p.scores.json)}`);
   console.log(`  ├─ Tool calling:          ${formatScore(p.scores.toolCalling)}`);
-  console.log(`  └─ Velocità:              ${chalk.cyan(p.tokensPerSecond + ' tok/s')}`);
+  console.log(`  ├─ Velocità:              ${chalk.cyan(p.tokensPerSecond + ' tok/s')}`);
+  console.log(`  └─ Token di completamento medi: ${chalk.cyan(p.avgCompletionTokens)}`);
   if (p.testResults && p.testResults.length > 0) {
     console.log(chalk.gray(`  Test eseguiti (${p.testResults.length}, da benchmarks/):`));
     for (const t of p.testResults) {
@@ -248,7 +249,7 @@ export async function handleBenchmark(ctx: CommandCtx, arg: string): Promise<voi
       CLITheme.warning('Nessun modello disponibile sul server.');
       return;
     }
-    CLITheme.warning(`Il benchmark di ${targets.length} modelli richiede 3 chiamate LLM per modello: può durare diversi minuti.`);
+    CLITheme.warning(`Il benchmark di ${targets.length} modelli richiede più chiamate LLM per modello (l'intero set di test × 4 livelli di reasoning_effort): può durare diversi minuti.`);
   } else {
     targets = [arg];
   }
@@ -259,18 +260,25 @@ export async function handleBenchmark(ctx: CommandCtx, arg: string): Promise<voi
     const spinner = CLITheme.createSpinner(`Benchmark di '${model}'...`);
     spinner.start();
     try {
-      const profile = await runBenchmark(ctx.provider, model, (step) => {
+      const { profiles, recommendedEffort } = await runBenchmark(ctx.provider, model, (step) => {
         spinner.text = chalk.cyan(`Benchmark di '${model}' — ${step}`);
       });
-      spinner.succeed(chalk.green(`Benchmark completato per '${model}'`));
-      printProfile(profile);
+      spinner.succeed(chalk.green(`Benchmark completato per '${model}' (${profiles.length} livelli di reasoning_effort)`));
+      for (const profile of profiles) {
+        printProfile(profile);
+        console.log();
+      }
+      if (recommendedEffort) {
+        console.log(chalk.bold(`  🎯 Raccomandazione: ${chalk.magenta(recommendedEffort)}`) +
+          chalk.gray(' — il livello più basso che raggiunge il tier più alto misurato.'));
+      }
       console.log();
     } catch (err: any) {
       spinner.fail(chalk.red(`Benchmark fallito per '${model}': ${err.message}`));
     }
   }
 
-  CLITheme.success('Profilo salvato in models_profile.json. Il tier dei tool ora usa le capacità MISURATE del modello.');
+  CLITheme.success('Profili salvati in models_profile.json (uno per livello di reasoning_effort). Il tier dei tool ora usa le capacità MISURATE del modello, alla condizione in cui gira davvero.');
 
   // Ricrea l'agente: il system prompt e i tool disponibili possono cambiare col nuovo tier
   ctx.agent.current = ctx.recreateAgent();

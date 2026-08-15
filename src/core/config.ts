@@ -26,18 +26,20 @@ export interface AppConfig {
   activeCharacter: string;
   maxHistoryMessages?: number;
   maxHistoryTokens?: number;
+  maxToolResultTokens?: number;
   workspaceRoot?: string;
+  memoryMaxChars?: number;
+  /** Ultimo livello della cascata di reasoning_effort (T8.10): usato solo se né
+   *  il personaggio né il ruolo attivo specificano "reasoningEffort". Valori
+   *  validi: 'none' | 'low' | 'medium' | 'xhigh' (vedi src/core/provider.ts). */
+  reasoningEffort?: string;
+  /** Timeout a orologio sull'intera generazione LLM in ms (T8.16). Default: 120000. */
+  llmTimeoutMs?: number;
+  /** Preset di creatività predefinito ('precise' | 'balanced' | 'creative' | 'low' | 'medium' | 'high'). */
+  creativity?: string;
 }
 
-const LEGACY_CONFIG_PATH = homePath('harness.config.json');
 export const CONFIG_PATH = homePath('tsuka.config.json');
-
-// Migrazione legacy: rinomina harness.config.json → tsuka.config.json al primo avvio
-if (!fs.existsSync(CONFIG_PATH) && fs.existsSync(LEGACY_CONFIG_PATH)) {
-  try {
-    fs.renameSync(LEGACY_CONFIG_PATH, CONFIG_PATH);
-  } catch {}
-}
 
 export class ConfigManager {
   private config!: AppConfig;
@@ -224,6 +226,23 @@ export class ConfigManager {
   }
 
   /**
+   * Tetto di contesto per un SINGOLO risultato di tool (T8.8), in token stimati
+   * (~3,5 caratteri/token, stessa convenzione di `Agent.charsPerToken`). Più stretto
+   * dei limiti di sicurezza in byte già esistenti in ogni tool (5MB per read_file/
+   * grep_search, 50KB per execute_command), che restano invariati come guardia
+   * superiore: qui si taglia PRIMA che il risultato entri in cronologia, perché la
+   * potatura di `Agent` interviene solo dopo che il messaggio è già stato costruito.
+   * Default: 4000. Configurabile con "maxToolResultTokens" in tsuka.config.json (min 256).
+   */
+  getMaxToolResultTokens(): number {
+    const value = this.config.maxToolResultTokens;
+    if (typeof value === 'number' && Number.isFinite(value) && value >= 256) {
+      return Math.floor(value);
+    }
+    return 4000;
+  }
+
+  /**
    * Numero massimo di round (giri completi di tutti i membri) in un workflow /team.
    * Il team si ferma prima se un membro dichiara STATO: COMPLETATO.
    * Default: 3. Configurabile con "teamMaxRounds" in tsuka.config.json.
@@ -238,20 +257,72 @@ export class ConfigManager {
 
   /**
    * Root del workspace per la jail di sicurezza dei file tool.
-   * Se impostata, tutti i path di write/edit/delete/list_dir/grep_search/read_file
-   * sono vincolati a questa directory (o sue sottocartelle).
-   * Se null/undefined, il comportamento attuale è preservato (nessuna restrizione).
+   * Tutti i path di write/edit/delete/list_dir/grep_search/read_file sono vincolati
+   * a questa directory (o sue sottocartelle).
+   *
+   * Default (nessun "workspaceRoot" in tsuka.config.json): la cwd del processo —
+   * coerente con la distinzione app home / workspace di apphome.ts, dove il workspace
+   * è "la cartella da cui il comando viene lanciato". Non un path fisso nel config
+   * condiviso, altrimenti l'uso come comando globale (`tsuka` da un'altra cartella)
+   * resterebbe agganciato alla prima cartella di installazione.
+   * Esplicitare "workspaceRoot" nel config sovrascrive il default (es. per restringere
+   * a una sottocartella specifica indipendentemente da dove si lancia il comando).
    */
-  getWorkspaceRoot(): string | null {
+  getWorkspaceRoot(): string {
     const root = this.config.workspaceRoot;
     if (typeof root === 'string' && root.trim().length > 0) {
-      const resolved = path.resolve(root.trim());
-      if (fs.existsSync(resolved)) {
-        return resolved;
-      }
-      // La directory non esiste ma il vincolo è esplicito: torniamo il path comunque
-      return resolved;
+      return path.resolve(root.trim());
     }
-    return null;
+    return process.cwd();
+  }
+
+  /**
+   * Tetto in caratteri della sezione di memoria iniettata nel system prompt
+   * (T8.3), sia dal fallback per recenza (`formatForPrompt`) sia dall'iniezione
+   * per rilevanza (`formatRelevant`) di `MemoryStore`. Prima era fisso a 600.
+   * Default: 600. Configurabile con "memoryMaxChars" in tsuka.config.json (min 100).
+   */
+  getMemoryMaxChars(): number {
+    const value = this.config.memoryMaxChars;
+    if (typeof value === 'number' && Number.isFinite(value) && value >= 100) {
+      return Math.floor(value);
+    }
+    return 600;
+  }
+
+  /**
+   * Ultimo livello della cascata di reasoning_effort (T8.10, TASKS.md): override
+   * chiamante → personaggio → ruolo → QUESTO default. undefined se non impostato
+   * (nessun default silenzioso a un valore fisso: senza "reasoningEffort" in
+   * tsuka.config.json e senza che personaggio/ruolo lo specifichino, il
+   * comportamento resta quello di sempre — decide il modello).
+   * Configurabile con "reasoningEffort" in tsuka.config.json ('none'|'low'|'medium'|'xhigh').
+   */
+  getDefaultReasoningEffort(): 'none' | 'low' | 'medium' | 'xhigh' | undefined {
+    const value = this.config.reasoningEffort;
+    return value === 'none' || value === 'low' || value === 'medium' || value === 'xhigh' ? value : undefined;
+  }
+
+  /**
+   * Timeout a orologio sull'intera generazione LLM in millisecondi (T8.16).
+   * Default: 120000 ms (2 minuti). Configurabile con "llmTimeoutMs" in tsuka.config.json.
+   */
+  getLlmTimeoutMs(): number {
+    const value = this.config.llmTimeoutMs;
+    if (typeof value === 'number' && Number.isFinite(value) && value >= 1000) {
+      return Math.floor(value);
+    }
+    return 120000;
+  }
+
+  /**
+   * Preset di creatività predefinito ('precise' | 'balanced' | 'creative' | 'low' | 'medium' | 'high').
+   */
+  getDefaultCreativity(): 'precise' | 'balanced' | 'creative' | 'low' | 'medium' | 'high' | undefined {
+    const value = this.config.creativity?.toLowerCase();
+    if (value === 'precise' || value === 'balanced' || value === 'creative' || value === 'low' || value === 'medium' || value === 'high') {
+      return value as any;
+    }
+    return undefined;
   }
 }

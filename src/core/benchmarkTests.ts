@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
 import { homePath } from './apphome';
-import type { LLMProvider } from './provider';
+import type { ILLMProvider, ChatOptions } from './provider';
 
 /**
  * Benchmark guidato da file: i test di capability fingerprinting vivono in
@@ -241,19 +241,28 @@ function escapeRegex(s: string): string {
 export interface BenchRunOutcome {
   score: number; // 0..1
   tokensPerSecond?: number;
+  /** Media dei token di completamento sui passi eseguiti (T8.10): a differenza di
+   *  tokensPerSecond, questa metrica rileva l'over-thinking — a effort più alto la
+   *  velocità di generazione può restare identica, ma i token emessi per arrivare
+   *  alla stessa risposta sono molti di più. undefined se nessun passo ha girato. */
+  avgCompletionTokens?: number;
 }
 
 /**
  * Esegue un singolo test contro il provider: passi in sequenza, con i
  * risultati tool dichiarati nel test restituiti alla tool call del passo
  * precedente. Punteggio = somma pesata dei check superati / peso totale.
+ * `chatOptions` (T8.10) viaggia invariato ad ogni passo: serve al chiamante
+ * (runBenchmark) per far girare l'intero test a un dato livello di reasoning_effort.
  */
-export async function runBenchTest(provider: LLMProvider, test: BenchTest): Promise<BenchRunOutcome> {
+export async function runBenchTest(provider: ILLMProvider, test: BenchTest, chatOptions?: ChatOptions): Promise<BenchRunOutcome> {
   const steps = normalizeSteps(test);
   const messages: any[] = [];
   let gained = 0;
   let total = 0;
   let tokensPerSecond: number | undefined;
+  let completionTokensSum = 0;
+  let completionTokensCount = 0;
   let prevToolCall: any = null;
   let chainBroken = false;
 
@@ -275,8 +284,12 @@ export async function runBenchTest(provider: LLMProvider, test: BenchTest): Prom
       });
     }
 
-    const r = await provider.chatWithTools(messages, test.tools && test.tools.length > 0 ? test.tools : undefined);
+    const r = await provider.chatWithTools(messages, test.tools && test.tools.length > 0 ? test.tools : undefined, undefined, undefined, chatOptions);
     tokensPerSecond ??= r.stats?.tokensPerSecond;
+    if (typeof r.stats?.tokenCount === 'number') {
+      completionTokensSum += r.stats.tokenCount;
+      completionTokensCount++;
+    }
     prevToolCall = r.toolCalls?.[0] ?? null;
     if (!prevToolCall && r.content) {
       messages.push({ role: 'assistant', content: r.content });
@@ -289,5 +302,9 @@ export async function runBenchTest(provider: LLMProvider, test: BenchTest): Prom
     }
   }
 
-  return { score: total > 0 ? gained / total : 0, tokensPerSecond };
+  return {
+    score: total > 0 ? gained / total : 0,
+    tokensPerSecond,
+    avgCompletionTokens: completionTokensCount > 0 ? completionTokensSum / completionTokensCount : undefined
+  };
 }

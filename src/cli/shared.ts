@@ -1,6 +1,11 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { homePath } from '../core/apphome';
+import { TeamConfig } from '../core/types';
+
+// TeamConfig vive in core/types.ts (T4.1, PLANNING-QUALITA.md): riesportato qui per
+// compatibilità con gli importatori esistenti (cli/index.ts, cli/commands/types.ts).
+export type { TeamConfig };
 
 export interface RoleConfig {
   name: string;
@@ -8,6 +13,8 @@ export interface RoleConfig {
   description: string;
   systemPrompt: string;
   allowedTools: string[];
+  reasoningEffort?: string;
+  creativity?: string;
 }
 
 export interface TraitConfig {
@@ -21,16 +28,13 @@ export interface CharacterConfig {
   name: string;
   displayName: string;
   aiName: string;
-  role: string;
+  role?: string;        // Legacy: 1 ruolo
+  roles?: string[];     // Multi-skill: lista ruoli/skill sbloccate
+  activeRole?: string;  // Skill correntemente equipaggiata
   trait: string;
   description: string;
-}
-
-export interface TeamConfig {
-  name: string;
-  displayName: string;
-  description: string;
-  members: string[];
+  reasoningEffort?: string;
+  creativity?: string;
 }
 
 // ── Helpers di caricamento JSON ──
@@ -77,32 +81,62 @@ export function listAvailableItems<T>(dirName: string, loadFn: (name: string) =>
 
 // ── Caricamento ruoli, tratti, personaggi, team ──
 
-export function loadRole(roleName: string): RoleConfig {
+export function loadRole(roleName?: string): RoleConfig {
+  if (!roleName) {
+    return {
+      name: 'developer',
+      displayName: '💻 Sviluppatore Software',
+      description: 'Focused on programming and workspace management.',
+      systemPrompt: 'You are an expert Software Engineer. Analyze, write, and modify code in the workspace.',
+      allowedTools: ['read_file', 'write_file', 'edit_file', 'list_dir']
+    };
+  }
   const role = loadJsonFile<RoleConfig>(homePath('roles', `${roleName}.json`));
   if (role) return role;
   return {
     name: 'developer',
     displayName: '💻 Sviluppatore Software',
-    description: 'Focalizzato su programmazione e workspace.',
-    systemPrompt: 'Sei un Ingegnere del Software esperto. Il tuo compito è analizzare, scrivere e modificare codice nel workspace.',
+    description: 'Focused on programming and workspace management.',
+    systemPrompt: 'You are an expert Software Engineer. Analyze, write, and modify code in the workspace.',
     allowedTools: ['read_file', 'write_file', 'edit_file', 'list_dir']
   };
 }
 
-export function loadTrait(traitName: string): TraitConfig {
+export function loadTrait(traitName?: string): TraitConfig {
+  if (!traitName) {
+    return {
+      name: 'professional',
+      displayName: '👔 Professionale / Standard',
+      description: 'Sober, clear, balanced tone focused on technical facts.',
+      prompt: 'Professional, balanced, sober tone. Technical details and precise data only. No personal comments or emotional digressions.'
+    };
+  }
   const trait = loadJsonFile<TraitConfig>(homePath('traits', `${traitName}.json`));
   if (trait) return trait;
   return {
     name: 'professional',
     displayName: '👔 Professionale / Standard',
-    description: 'Tono sobrio, chiaro ed equilibrato.',
-    prompt: 'Adotta un tono di risposta strettamente professionale, equilibrato e sobrio. Evita divagazioni emotive.'
+    description: 'Sober, clear, balanced tone focused on technical facts.',
+    prompt: 'Professional, balanced, sober tone. Technical details and precise data only. No personal comments or emotional digressions.'
   };
 }
 
 export function loadCharacter(charName: string): CharacterConfig | null {
   if (charName === 'custom') return null;
-  return loadJsonFile<CharacterConfig>(homePath('characters', `${charName}.json`));
+  const charData = loadJsonFile<CharacterConfig>(homePath('characters', `${charName}.json`));
+  if (!charData) return null;
+
+  // Inizializzazione Multi-Skill per retro-compatibilità
+  if (Array.isArray(charData.roles) && charData.roles.length > 0) {
+    if (!charData.activeRole || !charData.roles.includes(charData.activeRole)) {
+      charData.activeRole = charData.roles[0];
+    }
+  } else if (charData.role) {
+    charData.roles = [charData.role];
+    charData.activeRole = charData.role;
+  }
+  charData.role = charData.activeRole || charData.role || (charData.roles && charData.roles[0]) || 'developer';
+  return charData;
 }
 
 export function loadTeam(teamName: string): TeamConfig | null {
@@ -123,6 +157,26 @@ export function resolveCharacter(nameOrAiName: string): CharacterConfig | null {
   return null;
 }
 
+import type { CreativityLevel } from '../core/provider';
+
+/**
+ * Risolve il livello di creatività (campionamento) seguendo la cascata:
+ * personaggio -> ruolo attivo -> default di configurazione.
+ */
+export function resolveCreativity(
+  character: CharacterConfig | null | undefined,
+  role: RoleConfig | null | undefined,
+  configDefault?: CreativityLevel
+): CreativityLevel | undefined {
+  if (character?.creativity) {
+    return character.creativity.toLowerCase() as CreativityLevel;
+  }
+  if (role?.creativity) {
+    return role.creativity.toLowerCase() as CreativityLevel;
+  }
+  return configDefault;
+}
+
 // ── Assemblaggio System Prompt ──
 
 import { MemoryStore } from '../core/memory';
@@ -135,36 +189,66 @@ export function loadSystemPrompt(
   trait: TraitConfig,
   modelName: string,
   registry?: ToolRegistry,
-  character?: CharacterConfig | null
+  character?: CharacterConfig | null,
+  taskText?: string,
+  // T8.12 (coda di T8.10): effort con cui il modello girerà davvero, per elencare nel
+  // prompt lo stesso set di tool che Agent.run() renderà poi eseguibile (vedi agent.ts).
+  // Opzionale e in coda per non rompere le chiamate esistenti: omesso, registry.listForLLM
+  // ricade sul default prudente di getModelTier (comportamento identico a prima).
+  effort?: ReasoningEffort
 ): string {
   let prompt = '';
 
   if (character) {
-    prompt += `Il tuo nome è ${character.aiName}. Rispondi sempre presentandoti, esprimendoti o agendo con il nome di ${character.aiName}.\n\n`;
+    prompt += `You are ${character.aiName}. Always respond, express yourself, and act as ${character.aiName}.\n\n`;
   }
 
   prompt += role.systemPrompt;
-  prompt += `\n\nAttitudine e stile comunicativo da adottare obbligatoriamente:\n${trait.prompt}`;
-  prompt += `\n\nLinee guida generali per l'Agente:
-- REGOLA FONDAMENTALE: se esiste un tool adatto al compito richiesto (es. browse_url per leggere un sito web, web_search per cercare online, read_file per leggere un file), usalo SEMPRE. Non rispondere MAI con script o codice testuale per compiti che un tool disponibile può svolgere direttamente.
-- Quando scrivi o modifichi file nel workspace, fallo in modo incrementale per quanto possibile.
-- Sii prudente: esegui comandi shell di sistema solo quando strettamente necessario per la richiesta e non coperti da altri tool.
-- Se devi fare ricerche su internet o navigare indirizzi web, cita sempre le fonti informative utili.`;
+  prompt += `\n\nPersonality and communication style:\n${trait.prompt}`;
+  prompt += `\n\nGeneral agent guidelines:
+- Always use the appropriate tool when one exists (browse_url for web pages, web_search for online searches, read_file for files, etc.). Never output code or text when a tool can do it.
+- Write/edit files incrementally when possible.
+- Be cautious: only run system shell commands when strictly necessary and no other tool covers the task.
+- Cite sources when doing web research or browsing URLs.`;
 
-  const memorySection = MemoryStore.getInstance().formatForPrompt();
+  // Iniezione della memoria (T6.1): se è disponibile un testo di task, la sezione
+  // è basata sulla rilevanza al compito corrente (formatRelevant) invece che
+  // semplicemente sui fatti più recenti; formatForPrompt() resta il fallback.
+  //
+  // Filtro per agente in lettura (T8.2): attivo solo quando è noto un `character.aiName`
+  // (l'identità dell'agente che sta per ricevere questo prompt) — un agente vede i propri
+  // fatti più quelli condivisibili per costruzione (lezione/decisione) di chiunque altro,
+  // escluso lo scarto di run altrui. Senza character (es. chat "custom" senza personaggio),
+  // nessun filtro: comportamento identico a prima.
+  const trimmedTask = (taskText || '').trim();
+  const memorySources = character?.aiName ? [character.aiName] : undefined;
+  const memorySection = trimmedTask
+    ? MemoryStore.getInstance().formatRelevant(trimmedTask, 10, undefined, memorySources)
+    : MemoryStore.getInstance().formatForPrompt(10, undefined, memorySources);
   if (memorySection) {
-    prompt += `\n\nMemoria condivisa persistente (fatti salvati da te e dagli altri agenti, validi anche oltre questa sessione):\n${memorySection}`;
+    prompt += `\n\nPersistent shared memory (facts from you and other agents, valid beyond this session):\n${memorySection}`;
   }
 
   if (registry) {
-    const tools = registry.listForLLM(modelName, role.allowedTools);
+    const tools = registry.listForLLM(modelName, role.allowedTools, effort);
     if (tools.length > 0) {
-      prompt += `\n\nStrumenti (tool) utilizzabili in questa sessione:\n`;
-      for (const t of tools) {
-        prompt += `- **${t.function.name}**: ${t.function.description}\n`;
+      // T8.9 (Ridurre il costo fisso del prompt): i tool viaggiano già come array
+      // `tools` nella richiesta API (provider.ts) — per un modello con function
+      // calling nativo MISURATO come affidabile (hasNativeFunctionCalling,
+      // registry.ts), riscriverli qui come elenco testuale è puro spreco di
+      // contesto pagato a ogni chiamata. Per qualunque altro caso (nessun profilo,
+      // o profilo sotto soglia) l'elenco resta: comportamento identico a prima,
+      // rete di sicurezza per un modello di cui non sappiamo se legge bene l'array.
+      if (!hasNativeFunctionCalling(modelName, effort)) {
+        prompt += `\n\nAvailable tools:\n`;
+        for (const t of tools) {
+          prompt += `- **${t.function.name}**: ${t.function.description}\n`;
+        }
       }
+      // Nota d'uso su save_memory/recall_memory: NON è un elenco di tool, va
+      // conservata a prescindere dall'elenco testuale sopra (Fuori scope di T8.9).
       if (tools.some((t: any) => t.function.name === 'save_memory')) {
-        prompt += `\nNota: hai una memoria condivisa persistente. Usa **save_memory** per fatti importanti da conservare oltre la sessione e **recall_memory** per ritrovarli.`;
+        prompt += `\nNote: you have persistent shared memory. Use **save_memory** for important facts to keep across sessions and **recall_memory** to retrieve them.`;
       }
     }
   }
@@ -175,18 +259,24 @@ export function loadSystemPrompt(
 import chalk from 'chalk';
 import { CLITheme } from './ui';
 import { getModelProfile } from '../core/modelProfile';
-import { getModelTier } from '../tools/registry';
+import { getModelTier, hasNativeFunctionCalling } from '../tools/registry';
+import type { ReasoningEffort } from '../core/provider';
 
 /**
  * Avvisa se il modello attivo non ha un profilo di capacità misurato
  * (models_profile.json): in tal caso il tier dei tool è stimato con
  * l'euristica sul nome e può nascondere tool al modello. Suggerisce /benchmark.
  * Chiamata all'avvio e a ogni cambio di modello o provider.
+ *
+ * `effort` (T8.12, coda di T8.10): livello con cui il modello girerà, per verificare
+ * la presenza del profilo alla chiave giusta ("modello@effort", vedi modelProfile.ts)
+ * invece che sempre a 'xhigh'. Opzionale e in coda: omesso, comportamento identico a
+ * prima (default prudente 'xhigh' dentro getModelProfile/getModelTier).
  */
-export function notifyIfUnprofiled(model: string): void {
+export function notifyIfUnprofiled(model: string, effort?: ReasoningEffort): void {
   if (!model) return;
-  if (getModelProfile(model)) return;
-  const estimated = getModelTier(model);
+  if (getModelProfile(model, effort)) return;
+  const estimated = getModelTier(model, effort);
   CLITheme.warning(
     `Modello non ancora profilato: tier stimato dal nome = '${estimated}' (i tool di tier superiore restano nascosti).`
   );

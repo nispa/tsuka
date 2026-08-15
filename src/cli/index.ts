@@ -4,21 +4,24 @@ import prompts from 'prompts';
 import chalk from 'chalk';
 import * as fs from 'fs';
 import * as path from 'path';
-import { LLMProvider } from '../core/provider';
+import { LLMProvider, setLlmTimeoutMs } from '../core/provider';
 import { homePath } from '../core/apphome';
 import { ConfigManager } from '../core/config';
 import { scanProviders } from '../core/discovery';
 import { MemoryStore } from '../core/memory';
 import { createDefaultRegistry } from '../tools/index';
 import { PermissionManager } from '../safety/permissions';
-import { Agent } from '../core/agent';
+import { Agent, resolveReasoningEffort } from '../core/agent';
 import { getModelProfile } from '../core/modelProfile';
+import { withEffortPin, confirmEffortDivergence } from '../core/effortControl';
+import type { ReasoningEffort } from '../core/provider';
 import { CLITheme, InteractiveMenu } from './ui';
 import { StreamRenderer } from './stream';
 import { StatusLine } from './statusline';
 import { askInput, setCompletionSource } from './input';
 import { lockRawMode } from './rawlock';
 import { GenerationInterrupt } from './interrupt';
+import { ContextTracker } from '../core/contextTracker';
 import {
   RoleConfig, TraitConfig, CharacterConfig, TeamConfig,
   loadJsonFile, listAvailableItems, listAvailableCharacters, resolveCharacter,
@@ -27,10 +30,15 @@ import {
 import { CommandCtx } from './commands/types';
 import { handleExit, handleInfo, handleReset } from './commands/session';
 import { handleProvider, handleModels, handleUse, handleSearchEngine, handleBenchmark } from './commands/provider';
-import { handleCharacter, handleRenameChar, handleRole, handleTrait } from './commands/persona';
+import { handleCharacter, handleRenameChar, handleRole, handleTrait, handleSkill } from './commands/persona';
 import { handleMemory } from './commands/memory';
+import { handleContext } from './commands/session';
 import { handleCall } from './commands/call';
 import { handleTeam } from './commands/team';
+import { handleGoal } from './commands/goal';
+import { handleEffort } from './commands/effort';
+
+import { handleInitCmd } from './initCmd';
 
 // Re-esporta interfacce per retrocompatibilità
 export { RoleConfig, TraitConfig, CharacterConfig, TeamConfig };
@@ -49,6 +57,12 @@ process.on('SIGINT', () => {
 });
 
 async function main() {
+  const cliArgs = process.argv.slice(2);
+  if (cliArgs.length > 0 && cliArgs[0] === 'init') {
+    const success = await handleInitCmd(cliArgs.slice(1));
+    process.exit(success ? 0 : 1);
+  }
+
   // Blocca il raw mode per tutta la sessione: evita il wedge dell'input su
   // Windows causato dai passaggi raw→cooked di readline/prompts (vedi rawlock.ts)
   lockRawMode();
@@ -57,6 +71,10 @@ async function main() {
 
   // Inizializza gestori e registri
   const configManager = new ConfigManager();
+  setLlmTimeoutMs(configManager.getLlmTimeoutMs());
+
+
+
   const permissionManager = new PermissionManager();
   const registry = await createDefaultRegistry();
 
@@ -77,7 +95,15 @@ async function main() {
     const role = loadRole(roleName);
     const trait = loadTrait(traitName);
     const model = provider.getCurrentModel();
-    
+
+    // T8.10: cascata override chiamante (nessuno, qui — è la chat normale) →
+    // personaggio → ruolo → default di tsuka.config.json.
+    const cascadedEffort = resolveReasoningEffort(undefined, char, role, configManager.getDefaultReasoningEffort());
+    // T8.14: il pin globale (/effort, in memoria di processo) si applica SOPRA
+    // questa cascata — resolveReasoningEffort resta invariata, il pin vince solo
+    // se presente (withEffortPin torna cascadedEffort quando non c'è pin).
+    const reasoningEffort = withEffortPin(cascadedEffort);
+
     return new Agent(
       provider,
       registry,
@@ -85,7 +111,9 @@ async function main() {
       loadSystemPrompt(role, trait, model, registry, char),
       role.allowedTools,
       configManager.getMaxHistoryMessages(),
-      configManager.getMaxHistoryTokens()
+      configManager.getMaxHistoryTokens(),
+      undefined,
+      reasoningEffort
     );
   };
 
@@ -187,19 +215,22 @@ async function main() {
 
   // Mappa dei comandi: ogni handler riceve il contesto e l'argomento
   const commandMap: Record<string, (ctx: CommandCtx, arg: string) => Promise<void>> = {
-    '/exit':       handleExit,
     '/provider':   handleProvider,
     '/models':     handleModels,
     '/use':        handleUse,
-    '/character':  handleCharacter,
-    '/rename-char':handleRenameChar,
-    '/team':       handleTeam,
     '/call':       handleCall,
+    '/team':       handleTeam,
+    '/goal':       handleGoal,
+    '/character':  handleCharacter,
+    '/rename-char': handleRenameChar,
     '/role':       handleRole,
     '/trait':      handleTrait,
+    '/skill':      handleSkill,
     '/search-engine': handleSearchEngine,
     '/benchmark':  handleBenchmark,
     '/memory':     handleMemory,
+    '/context':    handleContext,
+    '/effort':     handleEffort,
   };
 
   // Autocompletamento con Tab: nomi comando + argomenti dinamici.
@@ -207,12 +238,13 @@ async function main() {
   setCompletionSource({
     commands: [...new Set([
       ...Object.keys(commandMap),
-      '/clear', '/help', '/reset', '/info', '/memory', '/forget',
+      '/clear', '/help', '/reset', '/info', '/memory', '/forget', '/context',
     ])].sort(),
     argumentsFor: (command) => {
       if (command === '/use' || command === '/benchmark') return commandCtx.availableModels.current;
       if (command === '/provider') return configManager.getProviderNames();
       if (command === '/forget') return ['all'];
+      if (command === '/effort') return ['none', 'low', 'medium', 'xhigh', 'auto', 'ask'];
       return [];
     },
   });
@@ -333,6 +365,29 @@ async function main() {
      const activeCharObj = loadCharacter(charName);
      const agentHeaderName = activeCharObj ? activeCharObj.aiName : 'Tsuka';
 
+     // T8.14: rende visibile (o chiede conferma, in modalità ask) quando l'effort
+     // di questo turno diverge dal livello di riferimento (pin, o default di
+     // configurazione se non c'è pin). SOLO qui: è l'unico punto della chat
+     // interattiva vera — /team, /goal e i figli di spawn_agent passano invece
+     // da logEffortDivergence (mai un prompt, vincolo esplicito del task).
+     const turnEffortOverride: ReasoningEffort | undefined = await confirmEffortDivergence(
+       agentHeaderName,
+       agent.getReasoningEffort(),
+       configManager.getDefaultReasoningEffort(),
+       async (effective, reference) => {
+         console.log();
+         const decision = await InteractiveMenu.select<'yes' | 'no'>(
+           `Questo turno girerebbe a effort '${effective ?? 'nessuno'}' (riferimento: '${reference ?? 'nessuno'}'). Procedere?`,
+           [
+             { title: `Procedi con '${effective ?? 'nessuno'}'`, value: 'yes' },
+             { title: `Usa il riferimento '${reference ?? 'nessuno'}' solo per questo turno`, value: 'no' }
+           ],
+           'yes'
+         );
+         return decision === 'yes';
+       }
+     );
+
      // Streaming live con status line animata; a fine risposta il renderer
     // sostituisce lo stream grezzo con il pannello markdown definitivo.
     // Esc interrompe la generazione e torna al prompt (Ctrl+C esce).
@@ -340,15 +395,23 @@ async function main() {
     const interrupt = new GenerationInterrupt();
     interrupt.arm();
     renderer.begin();
+
+    // Accumula stats per context tracker
+    let agentRunStats: any = null;
+
     try {
        await agent.run(
          trimmedInput,
          (chunk, channel) => renderer.onDelta(chunk, channel ?? 'content'),
-         (stats) => renderer.setStats(stats),
+         (stats) => { renderer.setStats(stats); agentRunStats = stats; },
          // rearm: i prompt di autorizzazione disattivano il raw mode alla chiusura,
          // riattivarlo a ogni evento mantiene Esc/Ctrl+X funzionanti per tutto il run
          (ev) => { renderer.onAgentEvent(ev); interrupt.rearm(); },
-         interrupt.signal
+         interrupt.signal,
+         // Override SOLO per questo turno se l'utente ha rifiutato in modalità
+         // ask (torna sempre agent.getReasoningEffort() quando non c'è
+         // divergenza o l'ask mode è spenta: nessun comportamento nuovo).
+         turnEffortOverride !== agent.getReasoningEffort() ? turnEffortOverride : undefined
        );
        if (interrupt.aborted) {
          // Conserva in cronologia l'eventuale risposta parziale già streammata
@@ -362,6 +425,25 @@ async function main() {
          renderer.finish();
        }
        console.log();
+
+       // Traccia l'attività nel context tracker
+       try {
+         if (agentRunStats) {
+           ContextTracker.getInstance().addEntry({
+             timestamp: new Date().toISOString(),
+             agentName: agentHeaderName,
+             tokenCount: agentRunStats.tokenCount ?? 0,
+             promptTokens: agentRunStats.promptTokens ?? 0,
+             action: trimmedInput.length > 80 ? trimmedInput.slice(0, 80) + '…' : trimmedInput
+           });
+         }
+       } catch {}
+
+       // Compressione automatica se il contesto supera la soglia
+       try {
+         await agent.compressHistory(0.75);
+       } catch {}
+
      } catch (error: any) {
       renderer.abort();
       console.log();

@@ -1,0 +1,7 @@
+{
+  "name": "osint_recon",
+  "displayName": "🕵️🦊🦉👁️ Team OSINT (Volpe, Gufo & Argo)",
+  "description": "Volpe raccoglie informazioni pubbliche sul target da fonti aperte, Gufo verifica e scarta le affermazioni deboli o non corroborate, Argo compila il report finale con revisione etica/legale prima della consegna.",
+  "members": ["volpe", "gufo", "argo"],
+  "mode": "pipeline"
+}

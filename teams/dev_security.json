@@ -1,6 +1,8 @@
 {
   "name": "dev_security",
-  "displayName": "🛡️💻 Team Sviluppo & Sicurezza (Pippo & Salvo)",
-  "description": "Pippo scrive ed ottimizza il codice, mentre Salvo lo ispeziona per l'hardening e la cybersecurity.",
-  "members": ["pippo", "salvo", "pipeline_pro", "overseer"]
+  "displayName": "🛡️💻 Team Sviluppo & Sicurezza (Dev & Piccione)",
+  "description": "Dev scrive ed ottimizza il codice, mentre Piccione lo ispeziona per l'hardening e la cybersecurity.",
+  "members": ["dev", "piccione", "pipeline_pro", "overseer"],
+  "orchestrator": "overseer",
+  "mode": "round-robin"
 }

@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import { homePath } from '../core/apphome';
 import { RiskLevel, PermissionManager } from '../safety/permissions';
 import { getModelProfile } from '../core/modelProfile';
+import type { ReasoningEffort } from '../core/provider';
 
 /**
  * Contesto opzionale passato all'esecuzione dei tool (es. accesso al registry
@@ -9,6 +10,13 @@ import { getModelProfile } from '../core/modelProfile';
  */
 export interface ToolExecutionContext {
   registry?: ToolRegistry;
+  provider?: any;
+  permissionManager?: PermissionManager;
+  /** Etichetta di chi ha richiesto il tool (es. aiName del personaggio), se
+   * disponibile (T6.2, TASKS.md — FASE 2): stesso valore già usato per i prompt
+   * di permesso RESTRICTED/DANGEROUS (T3.1). Usata da post_note per attribuire
+   * l'autore della nota senza un registro globale mutabile. */
+  requesterLabel?: string;
 }
 
 export interface Tool {
@@ -26,9 +34,18 @@ export interface ToolResult {
  * Determina la fascia di capacità di un modello.
  * Se esiste un profilo misurato (capability fingerprinting in models_profile.json),
  * usa quello; altrimenti ricade sull'euristica basata sul nome (es. 9b, 27b, 70b).
+ *
+ * `effort` (T8.12, coda di T8.10): livello di reasoning_effort con cui il modello
+ * sta GIRANDO ora, lo stesso già risolto da `resolveReasoningEffort` in agent.ts —
+ * va propagato, non ricalcolato qui. Determina QUALE profilo per-livello leggere
+ * (i profili sono indicizzati "modello@effort", vedi modelProfile.ts): un modello
+ * profilato a 'xhigh' e girato a 'medium' non deve ricevere il tier misurato a
+ * 'xhigh'. Se l'effort non è noto al chiamante, `getModelProfile` ricade da solo
+ * sul default prudente 'xhigh' (l'errore giusto da fare: assumere lo scenario più
+ * costoso, non il più comodo).
  */
-export function getModelTier(modelName: string): 'small' | 'medium' | 'large' {
-  const profile = getModelProfile(modelName);
+export function getModelTier(modelName: string, effort?: ReasoningEffort): 'small' | 'medium' | 'large' {
+  const profile = getModelProfile(modelName, effort);
   if (profile) {
     return profile.tier;
   }
@@ -57,6 +74,31 @@ export function getModelTier(modelName: string): 'small' | 'medium' | 'large' {
 
   // Di fallback per i modelli non identificati
   return 'small';
+}
+
+/**
+ * Soglia di `scores.toolCalling` (capability fingerprinting, `modelProfile.ts`) sopra
+ * la quale un modello è considerato affidabile nel function calling nativo dell'API
+ * (T8.9): stessa soglia già richiesta da `computeTier` per il tier 'large' (la fascia
+ * per cui il progetto si fida della catena di tool). Non riusiamo direttamente il tier
+ * perché qui conta un solo asse — la capacità di produrre tool_calls validi tramite
+ * l'array `tools` — non anche `instruction`/`json` come per `computeTier`.
+ */
+const NATIVE_FUNCTION_CALLING_THRESHOLD = 0.9;
+
+/**
+ * Il modello ha function calling nativo misurato come affidabile (T8.9,
+ * "Ridurre il costo fisso del prompt", TASKS.md)? Usata per decidere se
+ * `loadSystemPrompt` (shared.ts) deve ancora scrivere l'elenco testuale "Available
+ * tools": per un modello che sa già leggere l'array `tools` della richiesta API,
+ * quell'elenco è puro spreco di contesto ripetuto a ogni chiamata.
+ * Nessun profilo misurato (o sotto soglia) → false: prudente, comportamento
+ * identico a prima (l'elenco testuale resta come rete di sicurezza per un modello
+ * di cui non sappiamo se sa usare bene l'array `tools`).
+ */
+export function hasNativeFunctionCalling(modelName: string, effort?: ReasoningEffort): boolean {
+  const profile = getModelProfile(modelName, effort);
+  return !!profile && profile.scores.toolCalling >= NATIVE_FUNCTION_CALLING_THRESHOLD;
 }
 
 export interface ToolSchemaData {
@@ -184,8 +226,11 @@ export class ToolRegistry {
    * Ritorna i soli tool adatti alla taglia dell'LLM corrente e consentiti dal ruolo attivo.
    * @param modelName Nome del modello corrente per determinarne il Tier (small, medium, large).
    * @param allowedTools Lista dei tool consentiti dal ruolo attivo. Se assente, abilita tutti i tool registrati.
+   * @param effort Reasoning_effort con cui il modello sta girando (T8.12): propagato a
+   *   `getModelTier` per leggere il profilo misurato al livello giusto invece di ricadere
+   *   sempre sull'euristica del nome. Assente → `getModelTier` assume il default prudente.
    */
-  listForLLM(modelName: string, allowedTools?: string[]): Array<{
+  listForLLM(modelName: string, allowedTools?: string[], effort?: ReasoningEffort): Array<{
     type: 'function';
     function: {
       name: string;
@@ -193,7 +238,7 @@ export class ToolRegistry {
       parameters: any;
     };
   }> {
-    const modelTier = getModelTier(modelName);
+    const modelTier = getModelTier(modelName, effort);
     const result: Array<{
       type: 'function';
       function: { name: string; description: string; parameters: any };
@@ -236,7 +281,7 @@ export class ToolRegistry {
     return result;
   }
 
-  async executeTool(name: string, args: any, permissionManager: PermissionManager): Promise<ToolResult> {
+  async executeTool(name: string, args: any, permissionManager: PermissionManager, provider?: any, requesterLabel?: string): Promise<ToolResult> {
     const tool = this.tools.get(name);
     if (!tool) {
       return {
@@ -274,7 +319,7 @@ export class ToolRegistry {
       details = `Eliminazione di ${args.path}`;
     }
 
-    const isApproved = await permissionManager.checkPermission(name, details, tool.riskLevel);
+    const isApproved = await permissionManager.checkPermission(name, details, tool.riskLevel, requesterLabel);
     if (!isApproved) {
       return {
         success: false,
@@ -283,7 +328,7 @@ export class ToolRegistry {
     }
 
     try {
-      const output = await tool.execute(args, { registry: this });
+      const output = await tool.execute(args, { registry: this, provider, permissionManager, requesterLabel });
       return {
         success: true,
         output: output

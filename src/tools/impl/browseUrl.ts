@@ -1,4 +1,5 @@
 import { Tool } from '../registry';
+import { capForContext } from '../../core/contextBudget';
 
 function htmlToMarkdown(html: string): string {
   let clean = html.replace(/<script[\s\S]*?<\/script>/gi, '');
@@ -84,12 +85,17 @@ export const browseUrlTool: Tool = {
         markdown = text;
       }
 
-      const maxLength = 12000;
-      if (markdown.length > maxLength) {
-        return `${markdown.substring(0, maxLength)}\n\n... (contenuto troncato, ulteriori ${markdown.length - maxLength} caratteri omessi) ...`;
+      if (!markdown) {
+        return '[La pagina visitata non contiene testo utile]';
       }
 
-      return markdown || '[La pagina visitata non contiene testo utile]';
+      // T8.8: il tetto in token sostituisce il taglio ad-hoc precedente (era in caratteri,
+      // senza indicazione di come recuperare il resto).
+      return capForContext(markdown, undefined, {
+        label: `la pagina '${targetUrl}'`,
+        recoveryHint: `Non è possibile paginare browse_url: prova a cercare la sezione che serve con web_search, ` +
+          `o visita un URL più specifico della stessa pagina se disponibile (es. un'ancora o una sotto-pagina).`
+      });
     } catch (error: any) {
       if (error?.name === 'AbortError') {
         throw new Error(`Timeout: la pagina '${targetUrl}' non ha risposto entro ${FETCH_TIMEOUT_MS / 1000} secondi.`);
