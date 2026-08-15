@@ -70,6 +70,7 @@ export interface CharacterConfig {
   activeRole?: string;  // Skill correntemente equipaggiata
   trait: string;
   description: string;
+  signature?: string;   // Firma sintetica opzionale per l'orchestrator
   reasoningEffort?: string;
 }
 

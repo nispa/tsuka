@@ -67,8 +67,13 @@ function main() {
   check('T7.1-roles-exist', roleNames.length > 0, `roles/ contiene ${roleNames.length} file`);
   check('T7.1-characters-exist', characterNames.length > 0, `characters/ contiene ${characterNames.length} file`);
 
+  // Il conteggio include le skill secondarie (multi-skill T9.1): un ruolo coperto solo
+  // come skill sbloccata è comunque assegnabile, purché qualcuno lo possieda.
+  const declaredRoles = (c: any): string[] =>
+    (Array.isArray(c.roles) && c.roles.length > 0 ? c.roles : [c.role]).filter(Boolean);
+
   for (const roleName of roleNames) {
-    const users = characters.filter((c) => c.role === roleName).map((c) => c.file);
+    const users = characters.filter((c) => declaredRoles(c).includes(roleName)).map((c) => c.file);
     check(
       `T7.1-role-coverage-${roleName}`,
       users.length > 0,
@@ -156,10 +161,26 @@ function main() {
     );
     check(
       'T7.1-demo-contains-expected',
-      ['compliant', 'sensual'].every((t) => (demoManifest!.traits || []).includes(t)) &&
-        ['sensual_diva', 'yes_lawyer'].every((c) => (demoManifest!.characters || []).includes(c)),
-      `pack demo contiene i traits 'compliant'/'sensual' e i characters 'sensual_diva'/'yes_lawyer'`
+      ['sensual', 'compliant'].every((t) => (demoManifest!.traits || []).includes(t)) &&
+        ['deanna_troi', 'q'].every((c) => (demoManifest!.characters || []).includes(c)),
+      `pack demo contiene i trait 'sensual'/'compliant' e i characters 'deanna_troi'/'q'`
     );
+
+    // L'esempio didattico vive solo se un personaggio incarna il tratto dannoso:
+    // un trait elencato nel manifest ma senza nessuno che lo usi non insegna nulla
+    // (è successo con la rinomina del roster, che aveva rimosso l'unico 'compliant').
+    for (const traitName of demoManifest.traits || []) {
+      const users = (demoManifest.characters || [])
+        .filter((c) => assetExists('characters', c))
+        .filter((c) => loadJson('characters', c).trait === traitName);
+      check(
+        `T7.1-demo-trait-incarnato-${traitName}`,
+        users.length > 0,
+        users.length > 0
+          ? `il trait '${traitName}' del pack demo è incarnato da: ${users.join(', ')}`
+          : `il trait '${traitName}' è elencato nel pack demo ma NESSUN suo character lo usa: l'esempio didattico non è dimostrabile`
+      );
+    }
   } else {
     check('T7.1-demo-manifest-present', false, 'presets/packs/demo.json non trovato');
   }
@@ -185,6 +206,63 @@ function main() {
         assetExists('characters', teamData.orchestrator),
         `team '${teamName}': l'orchestrator '${teamData.orchestrator}' esiste in characters/`
       );
+    }
+  }
+
+  // --- 6) Simulazione delle installazioni reali: core da solo e core+pack (T7.4) ---
+  // `tsuka init` copia alla lettera i nomi elencati nei manifest (initCmd.ts,
+  // copyCategoryAssets), senza risolvere dipendenze: un team che cita un membro
+  // non installato gira in silenzio con meno agenti, e una skill il cui role non è
+  // stato copiato non è equipaggiabile con /skill. I pack si installano SOPRA il
+  // core, quindi la verifica è sull'unione core+pack, non sul pack isolato.
+  if (coreManifest) {
+    const packNames = listJsonNames('presets/packs');
+    const installs: { label: string; manifests: PresetManifest[] }[] = [
+      { label: 'core', manifests: [coreManifest] },
+      ...packNames.map((p) => ({
+        label: `core+${p}`,
+        manifests: [coreManifest!, loadJson('presets/packs', p) as PresetManifest]
+      }))
+    ];
+
+    for (const { label, manifests } of installs) {
+      const chars = new Set(manifests.flatMap((m) => m.characters || []));
+      const roles = new Set(manifests.flatMap((m) => m.roles || []));
+      const traits = new Set(manifests.flatMap((m) => m.traits || []));
+      const teams = new Set(manifests.flatMap((m) => m.teams || []));
+
+      for (const teamName of teams) {
+        if (!assetExists('teams', teamName)) continue; // già segnalato sopra
+        const teamData = loadJson('teams', teamName);
+        const missing = ([...(teamData.members || []), teamData.orchestrator] as (string | undefined)[])
+          .filter((m): m is string => !!m)
+          .filter((m) => !chars.has(m));
+        check(
+          `T7.4-install-${label}-team-${teamName}`,
+          missing.length === 0,
+          missing.length === 0
+            ? `installazione '${label}': il team '${teamName}' ha tutti i suoi membri installati`
+            : `installazione '${label}': il team '${teamName}' cita ${missing.join(', ')} che il preset NON installa`
+        );
+      }
+
+      for (const charName of chars) {
+        if (!assetExists('characters', charName)) continue; // già segnalato sopra
+        const charData = loadJson('characters', charName);
+        const missingRoles = declaredRoles(charData).filter((r: string) => !roles.has(r));
+        check(
+          `T7.4-install-${label}-skills-${charName}`,
+          missingRoles.length === 0,
+          missingRoles.length === 0
+            ? `installazione '${label}': '${charName}' ha su disco tutti i role delle sue skill`
+            : `installazione '${label}': '${charName}' dichiara la skill ${missingRoles.join(', ')} ma il preset NON installa quel role`
+        );
+        check(
+          `T7.4-install-${label}-trait-${charName}`,
+          !charData.trait || traits.has(charData.trait),
+          `installazione '${label}': il trait '${charData.trait}' di '${charName}' è installato`
+        );
+      }
     }
   }
 

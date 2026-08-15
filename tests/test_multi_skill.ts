@@ -7,6 +7,8 @@ import { loadCharacter, loadRole, loadTrait, loadSystemPrompt } from '../src/cli
 import { Agent } from '../src/core/agent';
 import { switchSkillTool } from '../src/tools/impl/switchSkill';
 import { CharacterConfig } from '../src/core/types';
+import { agentWithRole } from './fixtures/roster';
+
 
 let passed = 0;
 let failed = 0;
@@ -25,13 +27,14 @@ function main() {
   console.log('=== Test Architettura Multi-Skill ===\n');
 
   // --- 1) Retro-compatibilità caricamento personaggi ---
-  const legacyChar = loadCharacter('dev');
-  check('MS-1-legacy-character-loaded', legacyChar !== null, "Personaggio 'dev' caricato con successo");
+  const devName = agentWithRole('developer');
+  const legacyChar = loadCharacter(devName);
+  check('MS-1-legacy-character-loaded', legacyChar !== null, `Personaggio che copre 'developer' (@${devName}) caricato con successo`);
   if (legacyChar) {
     check(
       'MS-2-legacy-roles-populated',
-      Array.isArray(legacyChar.roles) && legacyChar.roles.length > 0 && legacyChar.activeRole === 'developer',
-      `Legacy character 'dev' ha roles=[${legacyChar.roles?.join(', ')}] e activeRole='${legacyChar.activeRole}'`
+      Array.isArray(legacyChar.roles) && legacyChar.roles.length > 0 && legacyChar.activeRole === legacyChar.roles[0],
+      `Character '${devName}' ha roles=[${legacyChar.roles?.join(', ')}] e activeRole='${legacyChar.activeRole}'`
     );
   }
 

@@ -10,11 +10,21 @@ import { PermissionManager } from '../../safety/permissions';
 import { Blackboard } from '../../core/blackboard';
 import { homePath } from '../../core/apphome';
 import { withEffortPin, logEffortDivergence } from '../../core/effortControl';
+import { resolveSafePath } from './utils';
 
 // Limite del briefing passato al sub-agente (T8.7): NON va alzato — è la finestra
 // di contesto del modello locale a non reggere briefing più lunghi. Il limite
 // resta un vincolo tenuto; solo il messaggio d'errore cambia (vedi sotto).
 const MAX_TASK_LENGTH = 2000;
+// Limite del briefing letto da 'briefingFile' (T9.8): più permissivo di
+// MAX_TASK_LENGTH perché qui il testo arriva da disco, non da un argomento JSON
+// che il modello chiamante deve generare e chiudere correttamente — il fallimento
+// che MAX_TASK_LENGTH previene (JSON malformato/troncato su stringhe lunghe,
+// osservato in produzione con modelli locali via llama-server) non si applica: il
+// tool legge il file, il modello passa solo un percorso breve. Il tetto resta
+// comunque finito perché il testo finisce per intero nel system prompt del
+// sub-agente, quindi pesa sulla SUA finestra di contesto.
+const MAX_BRIEFING_FILE_LENGTH = 12000;
 // Limite del valore ritornato al padre (T8.5): sintesi breve + percorso, non il
 // resoconto integrale (che finisce su file, vedi sotto).
 const MAX_RETURN_LENGTH = 3000;
@@ -27,22 +37,56 @@ const VALID_REASONING_EFFORTS: ReasoningEffort[] = ['none', 'low', 'medium', 'xh
 export const spawnAgentTool: Tool = {
   name: 'spawn_agent',
   riskLevel: 'SAFE',
-  execute: async (args: { task: string; roleName?: string; traitName?: string; charName?: string; reasoningEffort?: string }, context?: ToolExecutionContext) => {
-    const task = (args.task || '').trim();
-    if (!task) throw new Error("Specificare un compito per il sub-agente (parametro 'task').");
-    if (task.length > MAX_TASK_LENGTH) {
-      // T8.7: la lunghezza è il sintomo, non il problema — un briefing che non sta
-      // in 2000 caratteri non è un compito, sono più compiti. L'errore prescrive
-      // la riparazione corretta e vieta esplicitamente quella sbagliata
-      // (accorciare = buttare requisiti in silenzio, il sub-agente lavorerebbe
-      // comunque, ma sul compito sbagliato, senza che nessuno se ne accorga).
-      throw new Error(
-        `Compito troppo lungo: ${task.length} caratteri (limite ${MAX_TASK_LENGTH}). ` +
-        `NON accorciarlo per farlo stare nel limite: significa eliminare requisiti in silenzio. ` +
-        `Due uscite legittime: ` +
-        `(a) se il compito è in realtà più compiti, dividilo in più chiamate a 'spawn_agent', una per compito, ciascuna autosufficiente; ` +
-        `(b) se è davvero un compito unitario, scrivi il briefing completo con 'write_file' e passa qui il percorso del file (es. task: "Esegui il compito descritto in briefing.md").`
-      );
+  execute: async (args: { task?: string; briefingFile?: string; roleName?: string; traitName?: string; charName?: string; reasoningEffort?: string }, context?: ToolExecutionContext) => {
+    const inlineTask = (args.task || '').trim();
+    const briefingFileArg = (args.briefingFile || '').trim();
+
+    // T9.8: un briefing lungo letto da FILE, non incollato inline nell'argomento
+    // JSON — il chiamante scrive il testo con 'write_file' e passa qui solo il
+    // percorso (stringa breve, banale da chiudere correttamente in JSON). Evita
+    // alla radice il fallimento osservato in produzione: un modello locale che
+    // genera una stringa JSON lunga e dettagliata per 'task' rompe il parsing
+    // (JSON troncato/non chiuso) lato harness o lato server — un percorso non ha
+    // questo problema. 'task', se presente insieme a briefingFile, resta come
+    // introduzione breve davanti al contenuto del file.
+    let task: string;
+    if (briefingFileArg) {
+      const fullPath = resolveSafePath(briefingFileArg);
+      if (!fs.existsSync(fullPath)) {
+        throw new Error(`Il file di briefing '${briefingFileArg}' non esiste. Scrivilo prima con 'write_file'.`);
+      }
+      if (fs.statSync(fullPath).isDirectory()) {
+        throw new Error(`Il percorso '${briefingFileArg}' è una directory, non un file di briefing.`);
+      }
+      let briefingContent = fs.readFileSync(fullPath, 'utf-8').trim();
+      if (!briefingContent) {
+        throw new Error(`Il file di briefing '${briefingFileArg}' è vuoto.`);
+      }
+      if (briefingContent.length > MAX_BRIEFING_FILE_LENGTH) {
+        throw new Error(
+          `Il file di briefing '${briefingFileArg}' è troppo lungo: ${briefingContent.length} caratteri ` +
+          `(limite ${MAX_BRIEFING_FILE_LENGTH}). Il testo intero finisce nel prompt del sub-agente: se non basta, ` +
+          `è più di un compito — dividilo in più chiamate a 'spawn_agent', ciascuna con il proprio briefing autosufficiente.`
+        );
+      }
+      task = inlineTask ? `${inlineTask}\n\n${briefingContent}` : briefingContent;
+    } else {
+      task = inlineTask;
+      if (!task) throw new Error("Specificare un compito per il sub-agente ('task', oppure 'briefingFile' per un briefing lungo).");
+      if (task.length > MAX_TASK_LENGTH) {
+        // T8.7: la lunghezza è il sintomo, non il problema — un briefing che non sta
+        // in 2000 caratteri non è un compito, sono più compiti. L'errore prescrive
+        // la riparazione corretta e vieta esplicitamente quella sbagliata
+        // (accorciare = buttare requisiti in silenzio, il sub-agente lavorerebbe
+        // comunque, ma sul compito sbagliato, senza che nessuno se ne accorga).
+        throw new Error(
+          `Compito troppo lungo: ${task.length} caratteri (limite ${MAX_TASK_LENGTH}). ` +
+          `NON accorciarlo per farlo stare nel limite: significa eliminare requisiti in silenzio. ` +
+          `Due uscite legittime: ` +
+          `(a) se il compito è in realtà più compiti, dividilo in più chiamate a 'spawn_agent', una per compito, ciascuna autosufficiente; ` +
+          `(b) se è davvero un compito unitario, scrivi il briefing completo con 'write_file' e passalo qui con 'briefingFile' (percorso del file), non incollato in 'task'.`
+        );
+      }
     }
 
     // T8.13: override di effort per il singolo sub-agente — livello "chiamante"

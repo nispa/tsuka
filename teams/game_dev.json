@@ -1,0 +1,8 @@
+{
+  "name": "game_dev",
+  "displayName": "🎮 GameDev Squad (Paris & Geordi)",
+  "description": "Tom Paris progetta le logiche e i puzzle del gioco, Geordi sviluppa il motore e il rendering, Pike esegue il playtesting e la validazione.",
+  "members": ["paris", "geordi", "pike"],
+  "orchestrator": "pike",
+  "mode": "pipeline"
+}

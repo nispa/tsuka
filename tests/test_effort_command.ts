@@ -60,6 +60,13 @@ import {
 } from '../src/core/modelProfile';
 import { getBenchmarkTestsHash } from '../src/core/benchmarkTests';
 import { homePath } from '../src/core/apphome';
+import { agentWithRole, aiNameOf } from './fixtures/roster';
+
+
+// Agente risolto per mestiere: la cascata dell'effort si verifica sul RUOLO.
+const DEV = agentWithRole('developer');
+const DEV_AI = aiNameOf(DEV);
+
 
 let passed = 0;
 let failed = 0;
@@ -272,7 +279,7 @@ async function main() {
         { content: 'Fatto.\nSTATO: COMPLETATO' }
       ]);
       const ctx = buildMockCtx(provider);
-      const team = { members: ['dev'] }; // developer → reasoningEffort 'medium' (roles/developer.json)
+      const team = { members: [DEV] }; // developer → reasoningEffort 'medium' (roles/developer.json)
       const interrupt = new GenerationInterrupt();
 
       const { result, logs } = await captureLogs(() =>
@@ -285,13 +292,13 @@ async function main() {
       check('F.1a', result.completed === true, 'il turno di team si completa normalmente (nessun blocco)');
       check('F.1b',
         provider.callLog[0]?.options?.reasoningEffort === 'medium',
-        `il personaggio 'dev' (ruolo developer) gira davvero a 'medium' (ricevuto: ${JSON.stringify(provider.callLog[0]?.options)})`
+        `chi copre 'developer' (@${DEV}) gira davvero a 'medium' (ricevuto: ${JSON.stringify(provider.callLog[0]?.options)})`
       );
       // Config reale di questo repo non ha "reasoningEffort" (verificato in
       // tsuka.config.json): il default è quindi undefined, quindi 'medium'
       // diverge dal riferimento → una riga di log deve comparire.
       check('F.1c',
-        logs.some((l) => /\[Effort\]/.test(l) && /Dev/i.test(l)),
+        logs.some((l) => /\[Effort\]/.test(l) && new RegExp(DEV_AI, 'i').test(l)),
         `ask mode attiva ma contesto /team: la divergenza produce una riga di log, non un prompt (righe: ${JSON.stringify(logs)})`
       );
     } finally {
@@ -310,7 +317,7 @@ async function main() {
         { content: 'Fatto.\nSTATO: COMPLETATO' }
       ]);
       const ctx = buildMockCtx(provider);
-      const team = { members: ['dev'] };
+      const team = { members: [DEV] };
       const interrupt = new GenerationInterrupt();
 
       const { logs } = await captureLogs(() =>

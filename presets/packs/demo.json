@@ -1,22 +1,23 @@
 {
   "name": "demo",
-  "displayName": "🎓 Demo — tratti dannosi come esempio didattico",
-  "description": "Personaggi che mostrano cosa succede con tratti comunicativi controproducenti in un team multi-agente. Non installati di default: vanno scelti esplicitamente per la lezione che offrono.",
-  "note": "Questo pack esiste per la spina didattica del progetto (docs/guida-didattica.md), non come default consigliato. 'compliant' (trait) e i character 'yes_lawyer'/'sensual_diva' che lo usano sono un esempio volutamente negativo: un membro accondiscendente in un round di voto (strategies/hybrid.ts, discussionRounds + voting) rende l'unanimità priva di significato, perché il votante approva a prescindere invece di valutare. Usare questo pack per mostrare il problema (es. in un team con voting:true e confrontare l'esito con un votante 'reliable'/'devils_advocate'), non per comporre un team di produzione.",
+  "displayName": "🎓 Demo — tratti comunicativi come esempio didattico",
+  "description": "Personaggi che mostrano l'effetto di stili comunicativi estremi in un team multi-agente: Neelix (accondiscendente), Deanna Troi (empatica/persuasiva) e Q (istrionico).",
+  "note": "Questo pack esiste per la spina didattica del progetto (docs/guida-didattica.md), non come default consigliato. Il trait 'compliant' e il character 'neelix' che lo usa sono un esempio volutamente negativo: un membro accondiscendente in un round di voto (strategies/hybrid.ts, discussionRounds + voting) rende l'unanimità priva di significato, perché il votante approva a prescindere invece di valutare. Usare questo pack per mostrare il problema (es. in un team con voting:true, confrontando l'esito con un votante 'reliable'/'devils_advocate'), non per comporre un team di produzione.",
   "roles": [
     "researcher",
     "entertainer"
   ],
   "traits": [
     "compliant",
-    "sensual"
+    "sensual",
+    "creative"
   ],
   "characters": [
-    "yes_lawyer",
-    "sensual_diva"
+    "neelix",
+    "deanna_troi",
+    "q"
   ],
   "teams": [
-    "creative_promo",
-    "research_writer"
+    "creative_promo"
   ]
 }

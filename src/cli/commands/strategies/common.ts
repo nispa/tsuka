@@ -71,6 +71,20 @@ export function hasCompletionMarker(messages: ChatMessage[]): boolean {
   );
 }
 
+/**
+ * Riconosce una risposta testuale come chiusura LEGITTIMA di un turno di
+ * membro (T9.10), anche senza tool call: un qualunque marker di stato del
+ * protocollo (non solo COMPLETATO — anche DA_CONTINUARE/FALLITO sono chiusure
+ * esplicite valide del turno, distinte da testo che non dichiara nulla).
+ * Usata come `acceptTextOnlyIf` di Agent per distinguere "il membro ha
+ * concluso con un marker testuale" (fallback sanzionato del protocollo) da
+ * "il membro ha solo ragionato e non ha detto né fatto nulla" (il vicolo
+ * cieco osservato in produzione con modelli locali "pensanti").
+ */
+export function hasAnyStatusMarker(content: string): boolean {
+  return /(^|\n)\s*STATO:\s*(COMPLETATO|DA_CONTINUARE|FALLITO)/i.test(content || '');
+}
+
 // ── Protocollo a tool call (T2.1, PLANNING-QUALITA.md) ──
 // Coordinamento a tool strutturate invece che a marker testuali liberi (STATO:/
 // AGENTE:/VOTO:), che con modelli piccoli falliscono su grassetto markdown, spazi
@@ -167,7 +181,7 @@ export async function runMemberTurn(
   let sysPrompt = loadSystemPrompt(roleObj, traitObj, ctx.provider.getCurrentModel(), ctx.registry, memberChar, task);
   sysPrompt += `\n\n[COLLABORATIVE CONTEXT]: You are working on a team task: "${task}".
     This is your active work turn (round ${round}/${maxRounds}). Analyze the task and what previous colleagues did (inspect workspace files and history if needed).
-    Use your tools (read, write, edit, search, commands) to advance or complete the work.
+    Use your tools (read, write, edit, search, commands) to advance or complete the work YOURSELF. 'spawn_agent' is for splitting off an INDEPENDENT sub-task while you keep working on the rest — never for handing off this entire assigned task verbatim: that is not delegation, it is skipping your turn. If spawn_agent rejects your call for being too long, that is a signal to do the work directly, not to retry the same call.
     After execution, write a text summary explaining what you did and what the next colleague should do (if applicable). Stay faithful to your personality.
 
 WORK STATUS PROTOCOL (mandatory): ALWAYS end your intervention by calling the 'report_status' tool with your status, a summary, and (if useful) a hint for the next colleague. If for any reason you cannot call the tool, fall back to writing exactly one of these lines instead:
@@ -175,8 +189,9 @@ WORK STATUS PROTOCOL (mandatory): ALWAYS end your intervention by calling the 'r
 - "STATO: DA_CONTINUARE" — if more work is needed from you or colleagues;
 - "STATO: FALLITO" — if the task cannot be solved with the means available.
 Do NOT declare COMPLETATO unless you have concretely verified (with tools) that the work is finished.
+Do NOT declare FALLITO just because the blackboard or a tool call was empty/unhelpful: your task is the one stated above, not whatever the blackboard contains. Only use FALLITO when you attempted the actual work with your tools and it could not be done.
 
-SHARED BLACKBOARD (optional): this run has a shared blackboard, separate from the message history. Use 'read_notes' at the start of your turn to see decisions, artifacts or open points colleagues left for THIS run, and 'post_note' to leave your own before finishing — it is NOT persistent memory, it disappears when the run ends.`;
+SHARED BLACKBOARD (optional): this run has a shared blackboard, separate from the message history. Use 'read_notes' at the start of your turn to see decisions, artifacts or open points colleagues left for THIS run, and 'post_note' to leave your own before finishing — it is NOT persistent memory, it disappears when the run ends. An EMPTY blackboard is normal (e.g. you are the first to work, or no shared context was needed) — it is not a reason to skip your task.`;
 
   // Tool di protocollo (report_status, post_note, read_notes) sempre disponibili
   // nei turni di team/goal, anche se il ruolo attivo non li elenca: qui non sono
@@ -202,7 +217,11 @@ SHARED BLACKBOARD (optional): this run has a shared blackboard, separate from th
     ctx.configManager.getMaxHistoryMessages(),
     ctx.configManager.getMaxHistoryTokens(),
     memberChar.aiName,
-    reasoningEffort
+    reasoningEffort,
+    // T9.10: un turno di membro DEVE agire o dichiarare esplicitamente lo stato
+    // (il prompt sopra lo richiede) — una risposta senza tool call E senza
+    // marker di stato ottiene un nudge esplicito prima che il turno finisca.
+    hasAnyStatusMarker
   );
 
   // Imposta il nome mittente per eventuali messaggi (tool send_message)

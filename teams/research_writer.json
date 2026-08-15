@@ -1,8 +1,8 @@
 {
   "name": "research_writer",
-  "displayName": "🔍🎭 Team Ricerca & Copywriting (Ugo & Lola)",
-  "description": "L'avvocato Ugo Cozzoli effettua le ricerche legali/web e Lola redige report accattivanti con un tono vivace.",
-  "members": ["yes_lawyer", "sensual_diva", "overseer"],
-  "orchestrator": "overseer",
-  "mode": "round-robin"
+  "displayName": "📚 Research & Writing Squad (Spock & Dax)",
+  "description": "Spock raccoglie e analizza le fonti con metodo scientifico e Jadzia Dax scrive il report esecutivo finale.",
+  "members": ["spock", "dax", "pike"],
+  "orchestrator": "pike",
+  "mode": "pipeline"
 }

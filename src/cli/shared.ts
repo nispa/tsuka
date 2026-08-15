@@ -33,6 +33,7 @@ export interface CharacterConfig {
   activeRole?: string;  // Skill correntemente equipaggiata
   trait: string;
   description: string;
+  signature?: string;   // Firma sintetica opzionale per l'orchestrator
   reasoningEffort?: string;
   creativity?: string;
 }
@@ -121,6 +122,11 @@ export function loadTrait(traitName?: string): TraitConfig {
   };
 }
 
+/** Chiave di confronto per i nomi: minuscolo e senza separatori (`Deanna_Troi` → `deannatroi`). */
+function normalizeName(name: string): string {
+  return (name || '').toLowerCase().replace(/[\s_\-]/g, '');
+}
+
 export function loadCharacter(charName: string): CharacterConfig | null {
   if (charName === 'custom') return null;
   const charData = loadJsonFile<CharacterConfig>(homePath('characters', `${charName}.json`));
@@ -147,14 +153,38 @@ export function listAvailableCharacters(): CharacterConfig[] {
   return listAvailableItems('characters', loadCharacter);
 }
 
+/** Team effettivamente installati in `teams/` (dipende dal preset scelto a `tsuka init`). */
+export function listAvailableTeams(): TeamConfig[] {
+  return listAvailableItems('teams', loadTeam);
+}
+
+/**
+ * Risolve un riferimento a un agente, dal più specifico al più generico:
+ * nome file → nome visibile (aiName) → MESTIERE (ruolo).
+ *
+ * L'ultimo livello è il punto: si può chiamare un agente per la competenza che
+ * serve (`@security_auditor`) invece che per nome proprio. Il nome è solo
+ * l'handle di chi quel mestiere lo esercita — e con il multi-skill (T9.1) lo
+ * stesso handle risponde a più mestieri, evitando un passaggio di consegne
+ * fatto solo per raggiungere il tool di un altro ruolo.
+ */
 export function resolveCharacter(nameOrAiName: string): CharacterConfig | null {
   const direct = loadCharacter(nameOrAiName);
   if (direct) return direct;
-  const target = nameOrAiName.toLowerCase();
-  for (const charObj of listAvailableCharacters()) {
-    if (charObj.aiName.toLowerCase() === target) return charObj;
+
+  const target = normalizeName(nameOrAiName);
+  if (!target) return null;
+
+  const catalog = listAvailableCharacters();
+  for (const charObj of catalog) {
+    if (normalizeName(charObj.aiName) === target || normalizeName(charObj.name) === target) return charObj;
   }
-  return null;
+
+  // Ultimo livello: il riferimento è un mestiere. Preferisce chi ce l'ha come
+  // ruolo attivo, poi chi lo possiede fra le skill sbloccate (multi-skill).
+  const byActiveRole = catalog.find((c) => normalizeName(c.role || '') === target);
+  if (byActiveRole) return byActiveRole;
+  return catalog.find((c) => (c.roles || []).some((r) => normalizeName(r) === target)) || null;
 }
 
 import type { CreativityLevel } from '../core/provider';

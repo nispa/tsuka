@@ -32,7 +32,7 @@ Tutti **sequenziali** (turn-based, non a sciame):
 | **Conferenza** (`/call`) | `src/cli/commands/call.ts` | Nessuno | 2 round, trascrizione condivisa |
 | **Team collaborativo** (`/team`) | `src/cli/commands/team.ts` | Pieno | Round configurabili, history condivisa, protocollo `STATO: COMPLETATO/DA_CONTINUARE` |
 
-Il pattern `/team` crea Agent freschi a ogni turno, semina la history condivisa, e verifica lo stato dichiarato dal membro per early stop. L'`overseer` (membro supervisore) è in tutti i team come quality gate.
+Il pattern `/team` crea Agent freschi a ogni turno, semina la history condivisa, e verifica lo stato dichiarato dal membro per early stop. Ogni team si chiude con un membro dal ruolo `supervisor` come quality gate: il criterio è il MESTIERE, non un nome proprio (`goal.ts` innesca la rilavorazione su `rolesOf(char).includes('supervisor')`).
 
 **Protocollo a tool call (T2.1)**: il coordinamento tra membri non si basa più solo su marker testuali liberi (`STATO: COMPLETATO`, `AGENTE: @nome`, `VOTO: APPROVO`) — con modelli piccoli quei marker falliscono su grassetto markdown, spazi extra, nomi multi-parola. Tre tool di protocollo (`riskLevel: SAFE`, disponibili solo nei contesti giusti, non nella chat normale) sostituiscono il testo libero:
 - `report_status(status, summary, next_hint?)` — chiude un turno di membro/pipeline (`COMPLETATO`/`DA_CONTINUARE`/`FALLITO`);
@@ -52,7 +52,7 @@ Ordine di decisione per ogni turno, identico per i tre: **tool call → regex es
 - Auto-discovery: scansiona `src/tools/impl/*.ts` all'avvio
 - Doppio filtro: **ruolo** (allowedTools) × **tier modello** (small/medium/large)
 - Tier misurato da `/benchmark` (capability fingerprinting), fallback su euristica dal nome (es. 9b → small, 70b → large)
-- 22 tool implementati (incluso `send_message`, `report_status`, `route_next`, `cast_vote`, `post_note`, `read_notes`, `audit_code`), schema JSON in `tools_schemas/`
+- 23 tool implementati (incluso `send_message`, `report_status`, `route_next`, `cast_vote`, `post_note`, `read_notes`, `audit_code`), schema JSON in `tools_schemas/`
 
 ### Character system
 
@@ -62,24 +62,31 @@ Tripla stratificazione ortogonale:
 - **Character** (`characters/*.json`): preset nome + role + trait
 
 **Copertura dei ruoli (T7.1)**: `/goal` sceglie fra i *character*, non fra i role — un role
-senza nessun character che lo usi è un role che `/goal` non potrà mai assegnare. 24 character
-coprono tutti i 16 role, incluso `developer` (character `dev`, trait `professional`), `security_auditor` (character `sentinel`, trait `reliable`) e un
-`researcher` non accondiscendente (character `segugio`, trait `laconic` — l'unico altro
-character sul ruolo `researcher` è `yes_lawyer`, trait `compliant`, tenuto apposta come
-esempio didattico). Verificato da `tests/test_presets.ts`: per ogni file in `roles/` deve
-esistere almeno un character che lo usa.
+senza nessun character che lo usi è un role che `/goal` non potrà mai assegnare. 28 character
+coprono tutti i 21 role (contando anche le skill secondarie del multi-skill), inclusi un
+`researcher` laconico e uno `compliant` (`neelix`) tenuto apposta come esempio didattico.
+Verificato da `tests/test_presets.ts`: per ogni file in `roles/` deve esistere almeno un
+character che lo usa.
+
+**I nomi sono dati, i ruoli sono il contratto**: il roster in `characters/` è rinominabile
+dall'utente, quindi nessun nome proprio va scritto nel codice, nei prompt o nei test. Il
+prompt dell'orchestrator (`buildGoalOrchestratorPrompt`) genera catalogo ed esempi dai
+character installati e i blueprint dai team installati (`buildTeamBlueprints`);
+`resolveCharacter` risolve anche per mestiere (`@security_auditor` → chi lo esercita); i test
+prendono gli agenti da `tests/fixtures/roster.ts` (`agentWithRole`, `distinctAgents`).
 
 **Preset (`presets/`)**: manifest JSON che *elencano* nomi di roles/traits/characters/teams
 già presenti su disco — non spostano né cancellano file, quindi comporli non rompe nulla.
 Pensati per essere letti da `tsuka init` (`src/cli/initCmd.ts`, T7.2) per copiare il sottoinsieme scelto nella cartella `.tsuka/` del workspace (`tsuka init [--preset core|full] [--pack <nome,...>] [--force]`). `homePath` (`src/core/apphome.ts`) risponde con risoluzione gerarchica: predilige `.tsuka/` nel workspace corrente se presente, altrimenti ricade sull'app home predefinita.
-- `presets/core.json` — set minimo di default: 7 character, uno per competenza distinta,
-  nessun ruolo duplicato (`overseer`, `dev`, `segugio`, `pipeline_pro`, `data_sage`,
-  `wordsmith`, `piccione`).
+- `presets/core.json` — set minimo di default: 14 character, uno per competenza distinta,
+  nessun ruolo duplicato, più i team che quei character sanno comporre.
 - `presets/packs/{osint,content,devops,security,demo}.json` — set aggiuntivi opzionali per dominio
-  (`--pack <nome,...>`). Il pack `demo` è l'eccezione: raccoglie deliberatamente i tratti
-  dannosi (`compliant`, `sensual_diva`/`yes_lawyer`) come esempio didattico di cosa succede
-  a un voto (`strategies/hybrid.ts`) con un membro accondiscendente — non è un default
-  consigliato, ed è documentato come tale nel campo `note` del manifest.
+  (`--pack <nome,...>`). I pack si installano SOPRA il core: un pack può quindi citare un
+  team i cui membri arrivano dal core, ma non membri che nessuno dei due installa
+  (verificato da `T7.4-install-*` in `tests/test_presets.ts`). Il pack `demo` è l'eccezione:
+  raccoglie deliberatamente i tratti dannosi (`compliant`, character `neelix`) come esempio
+  didattico di cosa succede a un voto (`strategies/hybrid.ts`) con un membro accondiscendente
+  — non è un default consigliato, ed è documentato come tale nel campo `note` del manifest.
 - Schema di un manifest: `{ name, displayName?, description?, roles: string[], traits:
   string[], characters: string[], teams: string[], note?: string }`. Ogni nome deve
   corrispondere a un file esistente nella cartella omonima; per `core.json`, ogni character
@@ -145,13 +152,13 @@ harness/
 │   ├── tools/
 │   │   ├── index.ts                 # Tool auto-discoverer
 │   │   ├── registry.ts              # ToolRegistry, getModelTier
-│   │   └── impl/                    # 19 tool implementazioni
+│   │   └── impl/                    # 23 tool implementazioni
 │   └── safety/
 │       └── permissions.ts           # PermissionManager (coda prompt per esecuzione parallela)
-├── characters/                      # 23 preset JSON
-├── roles/                           # 15 ruoli JSON
+├── characters/                      # 28 preset JSON
+├── roles/                           # 21 ruoli JSON
 ├── traits/                          # 9 tratti JSON
-├── teams/                           # 7 team JSON
+├── teams/                           # 10 team JSON
 ├── presets/                         # T7.1: manifest core.json + packs/*.json per `tsuka init`
 ├── tools_schemas/                   # JSON Schema per Function Calling
 ├── benchmarks/                      # 5 test JSON per fingerprinting
@@ -174,7 +181,7 @@ harness/
   "webSearch":      { "provider": "duckduckgo" },
   "activeRole":     "developer",
   "activeTrait":    "creative",
-  "activeCharacter":"krea_master"
+  "activeCharacter":"geordi"
 }
 ```
 
@@ -230,11 +237,11 @@ TS strict, ES2022, CommonJS, `tsx` per dev.
 - **Streaming**: provider supporta stream con `onChunk`, `thinkParser` per `<think>` tags. StreamRenderer gestisce UI mostrando il ragionamento in grigio dimmed (stile opencode) e il contenuto in bianco.
 - **Server auto-discovery**: all'avvio scansiona provider, priorità a modello già caricato in RAM. Fallback su qualsiasi server locale vivo.
 - **Self-authoring tool**: agenti possono creare tool JS via `create_tool`, sandbox `vm` + blocklist, hot-registrati.
-- **Orchestrated team mode**: se un team ha `"mode": "orchestrated"` e `"orchestrator": "overseer"`, l'orchestrator decide dinamicamente chi lavora a ogni turno (`AGENTE: @nome` / `FINE`).
+- **Orchestrated team mode**: se un team ha `"mode": "orchestrated"` e un `orchestrator` con ruolo `supervisor`, l'orchestrator decide dinamicamente chi lavora a ogni turno (`AGENTE: @nome` / `FINE`).
 - **Goal orchestrator (`/goal`)**: seleziona DINAMICAMENTE gli agenti da TUTTI i personaggi disponibili, assegna compiti e coordina l'esecuzione. Supporta blocchi `PARALLELO` per sotto-compiti indipendenti eseguiti con `Promise.all`.
   - **Condensed history**: dopo ogni turno, l'output dell'agente viene condensato solo se >1500 char, mantenendo un summary significativo (non un one-liner). I dettagli vengono salvati in memoria persistente.
   - **Context bar duale**: prima dell'agente mostra stima (usa prompt tokens reali dell'agente precedente se disponibili). Dopo l'agente mostra il peak reale (`promptTokens`) misurato dall'ultimo round LLM.
-  - **Nessun early break**: il piano dell'orchestrator viene eseguito completamente — tutti gli step vengono eseguiti incluso l'overseer finale. `STATO: COMPLETATO` non interrompe il piano.
+  - **Nessun early break**: il piano dell'orchestrator viene eseguito completamente — tutti gli step vengono eseguiti inclusa la revisione finale del supervisore. `STATO: COMPLETATO` non interrompe il piano.
   - **Task instructions**: ogni agente riceve istruzioni esplicite di ispezionare i file del workspace creati dagli agenti precedenti (`list_dir`, `read_file`).
   - **Stats summary**: a fine goal mostra Out tok / Ctx tok / Tot tok / Tempo / Velocità per ogni agente + totali cumulativi.
   - **Workspace isolati nel blocco PARALLELO (T3.2)**: ogni branch scrive in una cartella di staging propria (`workspace/parallel-<n>/` sotto l'app home, `src/core/parallelWorkspace.ts`), attivata come jail temporanea via `withWorkspaceOverride` (AsyncLocalStorage, `src/tools/impl/utils.ts`) — non nella workspace reale. A fine blocco i file vengono uniti: stesso path con contenuto diverso tra branch → conflitto segnalato, nessuna sovrascrittura silenziosa (il file principale, anche se preesistente, resta intatto). Output console bufferizzato per branch (`src/core/logBuffer.ts`) e flushato in ordine a fine blocco, con uno spinner unico nel frattempo — le scritture concorrenti non si interfogliano più.
@@ -243,7 +250,7 @@ TS strict, ES2022, CommonJS, `tsx` per dev.
 - **Hybrid mode**: se un team ha `discussionRounds > 0`, dopo ogni round di lavoro si tiene una discussione stile `/call` (senza tool). Con `voting: true` i membri votano `APPROVO/MODIFICARE/RIFIUTO` — se tutti approvano, il task è completato.
 - **Sub-agent spawning**: tool `spawn_agent(task, charName?)` per creare agenti temporanei durante un turno di lavoro. Richiede tier MEDIUM.
 - **Pipeline mode**: se un team ha `"mode": "pipeline"`, gli agenti lavorano in sequenza lineare (catena di montaggio), ognuno perfeziona l'output del precedente. Supporta l'integrazione di `RunController` (`src/core/loop.ts`): se una stazione o il team specifica un `acceptance` (es. exit 0 di un comando shell, file esistente, JSON valido), la stazione esegue un loop di verifica e correzione guidato dalle issue.
-- **RunController & Rilavorazione Overseer (T6.3 & T6.4)**: `src/core/loop.ts` implementa il controllore di ciclo esecutivo con verifiche oggettive e detect anti-stallo (`no_progress`). In `/goal`, se l'overseer finale evidenzia difetti nel codice o nei requisiti, innesca automaticamente un ciclo di rilavorazione guidato dal feedback dell'overseer sullo step precedente, risolvendo il gap "Nessun early break".
+- **RunController & rilavorazione guidata dal supervisore (T6.3 & T6.4)**: `src/core/loop.ts` implementa il controllore di ciclo esecutivo con verifiche oggettive e detect anti-stallo (`no_progress`). In `/goal`, se il supervisore finale evidenzia difetti nel codice o nei requisiti, innesca automaticamente un ciclo di rilavorazione guidato dal suo feedback sullo step precedente, risolvendo il gap "Nessun early break".
 - **maxRoundsPerMember**: limita i turni per singolo membro in modalità round-robin.
 - **Workflow logs**: ogni workflow `/team` salva un report JSON in `workflow_logs/`.
 - **Condensed history**: la cronologia condivisa salva solo i messaggi assistant (sintesi), non i tool output grezzi, risparmiando contesto.

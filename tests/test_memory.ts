@@ -28,11 +28,11 @@ async function main() {
 
   // --- M1: salvataggio e persistenza tra "sessioni" (nuova istanza = nuovo avvio) ---
   const store1 = new MemoryStore(tmpFile, 5);
-  store1.addFact('La porta 22 è chiusa sul server', 'Falco');
+  store1.addFact('La porta 22 è chiusa sul server', 'Agente-A');
   store1.addFact('Il progetto usa TypeScript strict', 'Pippo');
   const store2 = new MemoryStore(tmpFile, 5); // simula una nuova sessione
   check('M1a', store2.count() === 2, `fatti persistiti e ricaricati da nuova istanza (${store2.count()})`);
-  check('M1b', store2.search('porta').length === 1 && store2.search('porta')[0].source === 'Falco', 'ricerca per keyword con sorgente');
+  check('M1b', store2.search('porta').length === 1 && store2.search('porta')[0].source === 'Agente-A', 'ricerca per keyword con sorgente');
 
   // --- M1c: limite FIFO ---
   for (let i = 0; i < 5; i++) store2.addFact(`fatto numero ${i}`, 'test');

@@ -73,8 +73,8 @@ async function main() {
 
     const pm = new PermissionManager();
 
-    const p1 = pm.checkPermission('write_file', 'file A', 'RESTRICTED', 'Falco');
-    const p2 = pm.checkPermission('write_file', 'file B', 'RESTRICTED', 'Piccione');
+    const p1 = pm.checkPermission('write_file', 'file A', 'RESTRICTED', 'Agente-A');
+    const p2 = pm.checkPermission('write_file', 'file B', 'RESTRICTED', 'Agente-B');
 
     // Lascia scorrere i microtask: senza la coda, entrambe le chiamate a
     // InteractiveMenu.select partirebbero già ora (selectCalls sarebbe 2).
@@ -100,9 +100,9 @@ async function main() {
     (InteractiveMenu as any).select = async () => 'yes';
     const pm = new PermissionManager();
 
-    const { logs } = await captureLogs(() => pm.checkPermission('delete_file', 'x.txt', 'RESTRICTED', 'Overseer'));
+    const { logs } = await captureLogs(() => pm.checkPermission('delete_file', 'x.txt', 'RESTRICTED', 'Agente-C'));
 
-    check('PQ2', logs.some((l) => l.includes('Overseer')), 'il nome del richiedente compare nel log del prompt RESTRICTED');
+    check('PQ2', logs.some((l) => l.includes('Agente-C')), 'il nome del richiedente compare nel log del prompt RESTRICTED');
 
     InteractiveMenu.select = originalSelect;
   }
@@ -136,8 +136,8 @@ async function main() {
     };
 
     const pm = new PermissionManager();
-    const p1 = pm.checkPermission('write_file', 'file A', 'RESTRICTED', 'Falco');
-    const p2 = pm.checkPermission('write_file', 'file B', 'RESTRICTED', 'Piccione');
+    const p1 = pm.checkPermission('write_file', 'file A', 'RESTRICTED', 'Agente-A');
+    const p2 = pm.checkPermission('write_file', 'file B', 'RESTRICTED', 'Agente-B');
 
     await nextTick();
     d1.resolve('always');

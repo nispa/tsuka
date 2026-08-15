@@ -31,6 +31,14 @@ import * as os from 'os';
 import { MockLLMProvider, mockToolCall } from './mocks/mockProvider';
 import { InteractiveMenu } from '../src/cli/ui';
 
+// I branch paralleli sono etichettati con il nome dell'agente: qui contano i RUOLI
+// coinvolti, non chi li interpreta nel catalogo installato. La fixture va importata
+// DINAMICAMENTE come gli altri moduli che leggono la home (vedi nota in testa):
+// un import statico caricherebbe apphome prima che TSUKA_HOME sia impostato.
+let FIRST = '';
+let SECOND = '';
+
+
 let passed = 0;
 let failed = 0;
 
@@ -86,6 +94,9 @@ async function main() {
     fs.cpSync(path.join(projectRoot, dir), path.join(tmpHome, dir), { recursive: true });
   }
 
+  const { distinctAgents } = await import('./fixtures/roster');
+  [FIRST, SECOND] = distinctAgents('developer', 'architect');
+
   // ── Parte 1: mergeParallelWorkspaces isolato (senza LLM/tool) ─────────────
 
   {
@@ -94,7 +105,7 @@ async function main() {
 
     // M1: due branch scrivono file distinti → entrambi finiscono nel merge
     {
-      const branches = createParallelBranches(['Falco', 'Piccione']);
+      const branches = createParallelBranches([FIRST, SECOND]);
       fs.writeFileSync(path.join(branches[0].root, 'a.txt'), 'Contenuto A');
       fs.writeFileSync(path.join(branches[1].root, 'b.txt'), 'Contenuto B');
 
@@ -119,7 +130,7 @@ async function main() {
     {
       // Il file NON esiste ancora nella workspace principale: deve restare così.
       const target = path.join(tmpMain, 'conflict.txt');
-      const branches = createParallelBranches(['Falco', 'Piccione']);
+      const branches = createParallelBranches([FIRST, SECOND]);
       fs.writeFileSync(path.join(branches[0].root, 'conflict.txt'), 'Versione 1');
       fs.writeFileSync(path.join(branches[1].root, 'conflict.txt'), 'Versione 2');
 
@@ -129,7 +140,7 @@ async function main() {
       check(
         'M2b',
         result.conflicts.length === 1 && result.conflicts[0].relativePath === 'conflict.txt' &&
-          result.conflicts[0].labels.sort().join(',') === 'Falco,Piccione',
+          result.conflicts[0].labels.sort().join(',') === [FIRST, SECOND].sort().join(','),
         `conflitto segnalato con i branch coinvolti (${JSON.stringify(result.conflicts)})`
       );
       check('M2c', !fs.existsSync(target), 'il file NON viene creato nella workspace principale in caso di conflitto');
@@ -137,7 +148,7 @@ async function main() {
 
     // M3: stesso path scritto da più branch ma con contenuto IDENTICO → non è un conflitto, si unisce
     {
-      const branches = createParallelBranches(['Falco', 'Piccione']);
+      const branches = createParallelBranches([FIRST, SECOND]);
       fs.writeFileSync(path.join(branches[0].root, 'same.txt'), 'Uguale per tutti');
       fs.writeFileSync(path.join(branches[1].root, 'same.txt'), 'Uguale per tutti');
 
@@ -151,7 +162,7 @@ async function main() {
     {
       const target = path.join(tmpMain, 'preexisting.txt');
       fs.writeFileSync(target, 'Originale');
-      const branches = createParallelBranches(['Falco', 'Piccione']);
+      const branches = createParallelBranches([FIRST, SECOND]);
       fs.writeFileSync(path.join(branches[0].root, 'preexisting.txt'), 'Tentativo 1');
       fs.writeFileSync(path.join(branches[1].root, 'preexisting.txt'), 'Tentativo 2');
 
@@ -178,7 +189,7 @@ async function main() {
   {
     ContextTracker.getInstance().clear();
     const provider = new MockLLMProvider([
-      { content: 'PARALLELO:\nAGENTE: @falco — Scrivi file A\nAGENTE: @piccione — Scrivi file B\nFINE PARALLELO\nFINE' }, // piano
+      { content: `PARALLELO:\nAGENTE: @${FIRST} — Scrivi file A\nAGENTE: @${SECOND} — Scrivi file B\nFINE PARALLELO\nFINE` }, // piano
       { toolCalls: [mockToolCall('write_file', { path: 'a.txt', content: 'Contenuto A' })] },
       { toolCalls: [mockToolCall('write_file', { path: 'b.txt', content: 'Contenuto B' })] },
       { content: 'Fatto.\nSTATO: COMPLETATO' },
@@ -214,9 +225,9 @@ async function main() {
     fs.writeFileSync(preexisting, 'Originale prima del parallelo');
 
     const provider = new MockLLMProvider([
-      { content: 'PARALLELO:\nAGENTE: @falco — Scrivi conflitto\nAGENTE: @piccione — Scrivi conflitto\nFINE PARALLELO\nFINE' },
-      { toolCalls: [mockToolCall('write_file', { path: 'conflict.txt', content: 'Versione di Falco' })] },
-      { toolCalls: [mockToolCall('write_file', { path: 'conflict.txt', content: 'Versione di Piccione' })] },
+      { content: `PARALLELO:\nAGENTE: @${FIRST} — Scrivi conflitto\nAGENTE: @${SECOND} — Scrivi conflitto\nFINE PARALLELO\nFINE` },
+      { toolCalls: [mockToolCall('write_file', { path: 'conflict.txt', content: `Versione di ${FIRST}` })] },
+      { toolCalls: [mockToolCall('write_file', { path: 'conflict.txt', content: `Versione di ${SECOND}` })] },
       { content: 'Fatto.\nSTATO: COMPLETATO' },
       { content: 'Fatto.\nSTATO: COMPLETATO' },
     ]);

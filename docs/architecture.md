@@ -7,8 +7,8 @@
 > Questo file descrive **come funziona il sistema**. Per le regole di lavoro sul codice vedi
 > `AGENTS.md`; per lo stato dei lavori e il debito aperto vedi `TASKS.md`.
 
-**In numeri:** 22 tool · 22 comandi REPL · 19 moduli core · 16 ruoli · 9 tratti ·
-24 personaggi · 7 team · 43 suite di test.
+**In numeri:** 23 tool · 22 comandi REPL · 20 moduli core · 21 ruoli · 9 tratti ·
+28 personaggi · 10 team · 42 suite di test.
 
 ---
 
@@ -94,7 +94,7 @@ sottoinsiemi installabili — `core` copre una competenza distinta per personagg
 
 ## 5. Il sistema dei tool
 
-**21 tool**, con una separazione netta:
+**23 tool**, con una separazione netta:
 
 - **schema** in `tools_schemas/<nome>.json` — descrizione, parametri JSON Schema,
   `requiredTier`, `riskLevel`. Modificabile a caldo (cache invalidata su mtime).
@@ -353,7 +353,7 @@ accettazione e fuori scope; qui c'è il perché, non il come.
 | | Voce | In una riga |
 |---|---|---|
 | **DA IMPLEMENTARE** | **T8.15** — divergenza contro la cascata | Con un pin attivo l'effort effettivo *è* il pin, quindi la segnalazione non compare mai proprio quando serve: va confrontato il pin con ciò che la cascata avrebbe prodotto. |
-| **DA IMPLEMENTARE** | **T8.16** — catalogo selezionabile | Descrizioni da ~85 caratteri su cui `/goal` sceglie fra 24 personaggi; otto ruoli hanno due personaggi e nessuna descrizione dice cosa li separa. |
+| **DA IMPLEMENTARE** | **T8.16** — catalogo selezionabile | Descrizioni da ~85 caratteri su cui `/goal` sceglie fra 28 personaggi; più ruoli hanno due personaggi e nessuna descrizione dice cosa li separa. |
 | **DA IMPLEMENTARE** | **T8.17** — suggeritore di modalità | Proporre chat / `/team` / `/goal` in base alla richiesta, con classificazione a `reasoning_effort: none` per non aggiungere minuti a ogni messaggio. |
 | **DA IMPLEMENTARE** | I 23 `console.*` nel core | Instradarli su `AgentEvent` o su un sink iniettato; `logBuffer.ts` offre già l'aggancio. |
 | **DA DECIDERE** | Stato di sessione globale | `activeRole`/`activeTrait`/`activeCharacter` in configurazione, pin di effort di processo: con due client concorrenti si sovrascrivono. È una decisione, non un bug. |

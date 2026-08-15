@@ -17,6 +17,13 @@ import {
   hasDoneSignal
 } from '../src/cli/commands/team';
 import { parsePlan, parseAgentLine } from '../src/cli/commands/goal';
+import { distinctAgents, aiNameWithRole } from './fixtures/roster';
+
+// Il parser di protocollo va verificato sui RUOLI: quale personaggio li interpreti
+// dipende dal catalogo installato, che l'utente può rinominare.
+const [WORKER, SECOND, LEAD] = distinctAgents('sysadmin', 'security_auditor', 'supervisor');
+const WORKER_AI_NAME = aiNameWithRole('sysadmin');
+
 
 let passed = 0;
 let failed = 0;
@@ -126,48 +133,48 @@ async function main() {
 
   check(
     'P18',
-    parseOrchestratorDecision('AGENTE: @falco', ['falco'])?.agent === 'falco',
+    parseOrchestratorDecision(`AGENTE: @${WORKER}`, [WORKER])?.agent === WORKER,
     'formato standard "AGENTE: @nome" → riconosciuto'
   );
 
   check(
     'P19',
-    parseOrchestratorDecision('agente:falco', ['falco'])?.agent === 'falco',
+    parseOrchestratorDecision(`agente:${WORKER}`, [WORKER])?.agent === WORKER,
     'minuscolo e senza spazi/@ → riconosciuto (case-insensitive, @ opzionale)'
   );
 
   check(
     'P20',
-    parseOrchestratorDecision('**AGENTE: @falco**', ['falco'])?.agent === 'falco',
+    parseOrchestratorDecision(`**AGENTE: @${WORKER}**`, [WORKER])?.agent === WORKER,
     'markdown grassetto attorno al marker → riconosciuto (qui non c\'è ancoraggio a inizio riga)'
   );
 
   check(
     'P21',
-    parseOrchestratorDecision('Scelgo io chi deve continuare il lavoro', ['falco']) === null,
+    parseOrchestratorDecision('Scelgo io chi deve continuare il lavoro', [WORKER]) === null,
     'nessun marker "AGENTE:" presente → null (fallback a round-robin lato chiamante)'
   );
 
   // Fallback per aiName: il modello scrive il nome "umano" del personaggio invece
-  // del nome tecnico del membro. yes_lawyer.json ha aiName "Peppe" (characters/yes_lawyer.json).
+  // del nome tecnico del membro (aiName preso dal catalogo installato, non scritto qui).
   check(
     'P22',
-    parseOrchestratorDecision('AGENTE: @Peppe', ['yes_lawyer'])?.agent === 'yes_lawyer',
-    'aiName single-word ("Peppe") risolto correttamente al nome tecnico del membro via resolveCharacter'
+    parseOrchestratorDecision(`AGENTE: @${WORKER_AI_NAME}`, [WORKER])?.agent === WORKER,
+    `aiName single-word ("${WORKER_AI_NAME}") risolto correttamente al nome tecnico del membro via resolveCharacter`
   );
 
-  // TODO T2.1: cold_steel.json ha aiName "Cold Steel" (due parole). La regex
-  // cattura solo \w+ dopo @, quindi si ferma a "Cold" e la risoluzione fallisce:
-  // un aiName multi-parola non è mai recuperabile da questo parser.
+  // TODO T2.1: la regex cattura solo \w+ dopo @, quindi su un aiName con spazio si
+  // ferma alla prima parola e la risoluzione fallisce. Nome sintetico apposta: il
+  // gap è del parser, non di un personaggio particolare del catalogo.
   check(
     'P23',
-    parseOrchestratorDecision('AGENTE: @Cold Steel', ['cold_steel']) === null,
-    '[GAP T2.1] aiName multi-parola ("Cold Steel") NON viene risolto oggi: la regex si ferma alla prima parola'
+    parseOrchestratorDecision('AGENTE: @Nome Composto', ['nome_composto']) === null,
+    '[GAP T2.1] aiName multi-parola ("Nome Composto") NON viene risolto oggi: la regex si ferma alla prima parola'
   );
 
   check(
     'P24',
-    parseOrchestratorDecision('AGENTE: @sconosciuto', ['falco']) === null,
+    parseOrchestratorDecision('AGENTE: @sconosciuto', [WORKER]) === null,
     'nome che non corrisponde a nessun membro valido e nessun aiName → null'
   );
 
@@ -175,7 +182,7 @@ async function main() {
   console.log('\n--- parsePlan / parseAgentLine ---');
 
   {
-    const r = parsePlan('AGENTE: @falco — Analizza il server\nFINE', ['falco']);
+    const r = parsePlan(`AGENTE: @${WORKER} — Analizza il server\nFINE`, [WORKER]);
     check(
       'P25',
       r.flatSteps === 1 && r.groups.length === 1 && r.groups[0].mode === 'sequential' &&
@@ -186,14 +193,14 @@ async function main() {
 
   {
     const plan =
-      'AGENTE: @piccione — Cerca vulnerabilità note\n' +
+      `AGENTE: @${SECOND} — Cerca vulnerabilità note\n` +
       'PARALLELO:\n' +
-      'AGENTE: @falco — Analizza le policy di sicurezza\n' +
+      `AGENTE: @${WORKER} — Analizza le policy di sicurezza\n` +
       'AGENTE: @pippo — Prepara script di hardening\n' +
       'FINE PARALLELO\n' +
-      'AGENTE: @overseer — Revisiona il lavoro\n' +
+      `AGENTE: @${LEAD} — Revisiona il lavoro\n` +
       'FINE';
-    const r = parsePlan(plan, ['piccione', 'falco', 'pippo', 'overseer']);
+    const r = parsePlan(plan, [SECOND, WORKER, 'pippo', LEAD]);
     const modes = r.groups.map((g) => g.mode);
     check(
       'P26',
@@ -204,8 +211,8 @@ async function main() {
 
   {
     // Task sulla riga successiva (dash finale senza contenuto): accumula fino al prossimo marker.
-    const plan = 'AGENTE: @falco —\nAnalizza il server\ncontrolla le porte aperte\nFINE';
-    const r = parsePlan(plan, ['falco']);
+    const plan = `AGENTE: @${WORKER} —\nAnalizza il server\ncontrolla le porte aperte\nFINE`;
+    const r = parsePlan(plan, [WORKER]);
     check(
       'P27',
       r.groups[0]?.steps[0]?.task === 'Analizza il server controlla le porte aperte',
@@ -216,11 +223,11 @@ async function main() {
   {
     // Nome agente non nella lista valida: oggi lo step viene scartato SENZA alcuna
     // segnalazione — esattamente la "degradazione silenziosa" che T2.1 deve rendere visibile.
-    const plan = 'AGENTE: @fantasma — Task inventato\nAGENTE: @falco — Task reale\nFINE';
-    const r = parsePlan(plan, ['falco']);
+    const plan = `AGENTE: @fantasma — Task inventato\nAGENTE: @${WORKER} — Task reale\nFINE`;
+    const r = parsePlan(plan, [WORKER]);
     check(
       'P28',
-      r.flatSteps === 1 && r.groups[0].steps[0].agentName === 'falco',
+      r.flatSteps === 1 && r.groups[0].steps[0].agentName === WORKER,
       '[GAP T2.1] agente non valido scartato silenziosamente, nessun log/warning emesso'
     );
   }
@@ -228,15 +235,15 @@ async function main() {
   {
     // Preambolo narrativo del modello prima del piano vero: righe non riconosciute
     // vengono saltate senza errori.
-    const plan = 'Ecco il mio piano dettagliato per raggiungere l\'obiettivo:\n\nAGENTE: @falco — Task\nFINE';
-    const r = parsePlan(plan, ['falco']);
+    const plan = `Ecco il mio piano dettagliato per raggiungere l'obiettivo:\n\nAGENTE: @${WORKER} — Task\nFINE`;
+    const r = parsePlan(plan, [WORKER]);
     check('P29', r.flatSteps === 1, 'testo narrativo prima del piano → ignorato, piano comunque estratto');
   }
 
   {
     // Trattino normale invece di em-dash: la classe [—–-] include anche '-'.
-    const r = parseAgentLine(['AGENTE: @falco - Task con trattino ASCII normale'], 0);
-    check('P30', r?.name === 'falco' && r?.task === 'Task con trattino ASCII normale', 'trattino ASCII "-" al posto dell\'em-dash → riconosciuto');
+    const r = parseAgentLine([`AGENTE: @${WORKER} - Task con trattino ASCII normale`], 0);
+    check('P30', r?.name === WORKER && r?.task === 'Task con trattino ASCII normale', 'trattino ASCII "-" al posto dell\'em-dash → riconosciuto');
   }
 
   {
@@ -244,11 +251,11 @@ async function main() {
     // incluso un successivo AGENTE sequenziale che avrebbe dovuto essere separato.
     const plan =
       'PARALLELO:\n' +
-      'AGENTE: @falco — Task A\n' +
+      `AGENTE: @${WORKER} — Task A\n` +
       'AGENTE: @pippo — Task B\n' +
-      'AGENTE: @overseer — Task C (doveva essere sequenziale dopo)\n' +
+      `AGENTE: @${LEAD} — Task C (doveva essere sequenziale dopo)\n` +
       'FINE';
-    const r = parsePlan(plan, ['falco', 'pippo', 'overseer']);
+    const r = parsePlan(plan, [WORKER, 'pippo', LEAD]);
     check(
       'P31',
       r.groups.length === 1 && r.groups[0].mode === 'parallel' && r.groups[0].steps.length === 3,
@@ -256,7 +263,7 @@ async function main() {
     );
   }
 
-  check('P32', parsePlan('', ['falco']).flatSteps === 0, 'contenuto vuoto → nessuno step, nessun crash');
+  check('P32', parsePlan('', [WORKER]).flatSteps === 0, 'contenuto vuoto → nessuno step, nessun crash');
 
   console.log(`\n=== Risultato: ${passed} passati, ${failed} falliti ===`);
   process.exit(failed > 0 ? 1 : 0);

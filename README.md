@@ -124,9 +124,9 @@ The tier profile is saved to `models_profile.json`. `getModelTier()` uses the me
 
 | Tier | Available Tools | Excluded |
 |------|----------------|----------|
-| **SMALL** | 12 tools (read, write, diagnostics, web, memory) | `execute_command`, `create_tool` |
-| **MEDIUM** | 14 tools | — |
-| **LARGE** | 14 tools | — |
+| **SMALL** | 20 tools (read, write, diagnostics, web, memory, protocol) | `execute_command`, `create_tool`, `spawn_agent` |
+| **MEDIUM** | 23 tools | — |
+| **LARGE** | 23 tools | — |
 
 ### 4. Objective Web Source Tracking
 
@@ -212,16 +212,16 @@ The `/goal` command dynamically assembles a team from **all available characters
 ```
 
 1. **Planning phase**: the orchestrator LLM analyses the goal, selects the best-suited agents and assigns tasks — optionally with `PARALLELO` blocks for independent subtasks.
-2. **Execution phase**: all planned steps execute in order — including the overseer/supervisor (no early stop on `STATO: COMPLETATO`). Each agent's task instructions explicitly tell them to **inspect workspace files** created by previous agents.
+2. **Execution phase**: all planned steps execute in order — including the supervisor (no early stop on `STATO: COMPLETATO`). Each agent's task instructions explicitly tell them to **inspect workspace files** created by previous agents.
 3. **Context management**: after each agent turn, long assistant messages are condensed (keeping a 1500-char meaningful summary, not a one-liner) and a fact is saved to persistent memory. A **dual context bar** shows estimated context before the agent runs and the **real peak prompt tokens** measured from the LLM response after it completes.
 4. **Stats summary**: at the end, a per-agent breakdown with output tokens, context tokens, total tokens, time and speed:
 
 ```
 📊 RIEPILOGO STATS AGENTI
   Agente             Out tok    Ctx tok   Tot tok    Tempo    Velocità
-  Wordsmith             1234      15032     16266     12.3s   100.3 tok/s
+  Doctor             1234      15032     16266     12.3s   100.3 tok/s
   Krea Master            892      16780     17672      8.1s   110.1 tok/s
-  Overseer               456      17500     17956      4.2s   108.6 tok/s
+  Pike                   456      17500     17956      4.2s   108.6 tok/s
   TOTALE                2582      17500     51894     24.6s
 ```
 
@@ -236,7 +236,7 @@ The orchestrator also supports `PARALLELO` blocks for independent subtasks execu
 Start a multi-voice discussion on any topic:
 
 ```powershell
-/call @falco, @lola and @pippo          # Mention participants directly
+/call @laan, @deanna_troi and @geordi   # Mention participants directly
 /call                                    # Interactive multiselect checklist
 ```
 
@@ -295,6 +295,7 @@ Lets an organized group of agents actively collaborate on a task, executing writ
 | `/search-engine` | Change search provider (DuckDuckGo / Google / Tavily) |
 | `/memory` | List persistent memories |
 | `/forget <id\|all>` | Delete specific memories or wipe all |
+| `/context` | Show history token usage against the context budget |
 | `/reset` | Reset history + security approvals |
 | `/info` | Show session info (provider, model, role, trait) |
 | `/clear` | Clear terminal |
@@ -328,7 +329,7 @@ npm run dev
 /benchmark
 
 # 4. Start chatting or:
-/call @falco, @lola
+/call @laan, @deanna_troi
 ```
 
 ### Production Build

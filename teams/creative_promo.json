@@ -1,8 +1,8 @@
 {
   "name": "creative_promo",
-  "displayName": "📣⚖️ Team Ricerca & Copywriting (Peppe & Lola)",
-  "description": "Peppe analizza i fatti normativi e Lola scrive un testo promozionale ed accattivante pronto per la pubblicazione.",
-  "members": ["yes_lawyer", "sensual_diva", "overseer"],
-  "orchestrator": "overseer",
+  "displayName": "📣 Team Creativo & Promo (Kirk & Deanna)",
+  "description": "Kirk imposta la strategia d'impatto e Deanna Troi scrive un testo promozionale accattivante e persuasivo pronto per la pubblicazione.",
+  "members": ["kirk", "deanna_troi", "pike"],
+  "orchestrator": "pike",
   "mode": "round-robin"
 }

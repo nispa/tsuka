@@ -1,17 +1,21 @@
 {
   "name": "write_file",
-  "description": "Crea un nuovo file o sovrascrive completamente un file esistente con il contenuto fornito.",
+  "description": "Crea un nuovo file o sovrascrive completamente un file esistente con il contenuto fornito. Per file lunghi (codice, HTML, dati) preferisci più chiamate piccole invece di una sola con tutto il contenuto: una singola stringa molto lunga in un unico argomento rischia di rompere la generazione della tool call stessa. Scrivi una prima porzione, poi continua con 'append': true per le successive.",
   "requiredTier": "small",
   "parameters": {
     "type": "object",
     "properties": {
       "path": {
         "type": "string",
-        "description": "Il percorso relativo o assoluto del file da creare/sovrascrivere."
+        "description": "Il percorso relativo o assoluto del file da creare/sovrascrivere/accodare."
       },
       "content": {
         "type": "string",
-        "description": "Il contenuto completo da scrivere nel file."
+        "description": "Il contenuto da scrivere. Senza 'append' (o con append:false) sostituisce l'intero file: usalo per la prima porzione di un file lungo, o per un file che sta comodamente in una sola chiamata. Tieni ogni singola chiamata ragionevolmente breve (poche centinaia di righe al massimo): se il contenuto totale è più lungo, dividilo in più chiamate."
+      },
+      "append": {
+        "type": "boolean",
+        "description": "Se true, accoda 'content' alla fine del file invece di sovrascriverlo (crea il file se non esiste ancora, come la prima chiamata). Usalo per le porzioni SUCCESSIVE alla prima quando costruisci un file lungo a pezzi."
       }
     },
     "required": ["path", "content"]

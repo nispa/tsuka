@@ -1,7 +1,7 @@
 {
   "name": "security",
   "displayName": "🛡️ Security — cybersecurity, audit e vulnerabilità",
-  "description": "Pack dedicato alla sicurezza applicativa, audit del codice ed ethical hacking con il personaggio Sentinel ed il ruolo security_auditor.",
+  "description": "Pack dedicato alla sicurezza applicativa, audit del codice e contromisure tattiche con il Tenente Worf.",
   "roles": [
     "security_auditor"
   ],
@@ -9,7 +9,9 @@
     "reliable"
   ],
   "characters": [
-    "sentinel"
+    "worf"
   ],
-  "teams": []
+  "teams": [
+    "cyber_audit"
+  ]
 }

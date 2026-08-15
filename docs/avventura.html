@@ -263,10 +263,10 @@
             box-shadow: 0 4px 12px rgba(0,0,0,0.3);
         }
 
-        .avatar.dev { background: rgba(56, 189, 248, 0.15); border: 1px solid var(--border-cyan); }
-        .avatar.sentinel { background: rgba(52, 211, 153, 0.15); border: 1px solid rgba(52, 211, 153, 0.3); }
-        .avatar.krea { background: rgba(192, 132, 252, 0.15); border: 1px solid var(--border-purple); }
-        .avatar.overseer { background: rgba(245, 158, 11, 0.15); border: 1px solid var(--border-gold); }
+        .avatar.geordi { background: rgba(56, 189, 248, 0.15); border: 1px solid var(--border-cyan); }
+        .avatar.worf { background: rgba(52, 211, 153, 0.15); border: 1px solid rgba(52, 211, 153, 0.3); }
+        .avatar.moriarty { background: rgba(192, 132, 252, 0.15); border: 1px solid var(--border-purple); }
+        .avatar.pike { background: rgba(245, 158, 11, 0.15); border: 1px solid var(--border-gold); }
         .avatar.author { background: rgba(251, 113, 133, 0.15); border: 1px solid rgba(251, 113, 133, 0.3); }
 
         .speech-bubble {
@@ -349,7 +349,7 @@
         <ul class="nav-menu">
             <li class="nav-item"><a href="#prologo" class="active"><span class="icon">🎭</span> Prologo — Il Ciclo & i Timer</a></li>
             <li class="nav-item"><a href="#atto1"><span class="icon">🎨</span> Atto I — Le Tre Creatività</a></li>
-            <li class="nav-item"><a href="#atto2"><span class="icon">🛡️</span> Atto II — L'Ispettore Sentinel</a></li>
+            <li class="nav-item"><a href="#atto2"><span class="icon">🛡️</span> Atto II — L'Ispettore Worf</a></li>
             <li class="nav-item"><a href="#atto3"><span class="icon">📋</span> Atto III — Lavagne e Parallelismo</a></li>
             <li class="nav-item"><a href="#epilogo"><span class="icon">📜</span> Epilogo — La Morale</a></li>
         </ul>
@@ -382,9 +382,9 @@
                 </div>
 
                 <div class="speaker-line">
-                    <div class="avatar dev">💻</div>
+                    <div class="avatar geordi">💻</div>
                     <div class="speech-bubble">
-                        <div class="speaker-name" style="color: var(--accent-cyan)">DEV <span class="tag">role: developer | creativity: precise</span></div>
+                        <div class="speaker-name" style="color: var(--accent-cyan)">GEORDI <span class="tag">role: developer | creativity: precise</span></div>
                         Esatto! Il parametro <code>llmTimeoutMs</code> (predefinito a 120.000 millisecondi) fa sì che se il modello si incanta a produrre pensieri infiniti, lo svizzero timer interrompe la chiamata con garbo, senza inventare una "mancata risposta" ma dichiarando: <em>"Il modello stava rispondendo, ma ha superato il tempo massimo!"</em>.
                     </div>
                 </div>
@@ -407,21 +407,21 @@
                 <h2 class="act-title">Il Ballo delle Skill ed i Tre Ristoranti della Creatività</h2>
             </div>
 
-            <p><em>Entra Krea Master indossando un pennello sproporzionato ed una parrucca barocca, seguito da Dev che tiene in mano una riga ed un calibro di precisione.</em></p>
+            <p><em>Entra Moriarty indossando un pennello sproporzionato ed una parrucca barocca, seguito da Geordi che tiene in mano una riga ed un calibro di precisione.</em></p>
 
             <div class="dialogue">
                 <div class="speaker-line">
-                    <div class="avatar krea">🖌️</div>
+                    <div class="avatar moriarty">🖌️</div>
                     <div class="speech-bubble">
-                        <div class="speaker-name" style="color: var(--accent-purple)">KREA MASTER <span class="tag">role: krea_prompt_engineer | creativity: creative</span></div>
-                        Mio caro Dev, l'arte richiede estro! Quando dipingo i miei prompt visivi con <code>creativity: "creative"</code>, TSUKA imposta sottobanco una temperatura di <code>0.95</code> ed un <code>presence_penalty: 0.3</code>! La mia mente vola libera tra sfumature e dettagli cromatici indimenticabili!
+                        <div class="speaker-name" style="color: var(--accent-purple)">MORIARTY <span class="tag">role: krea_prompt_engineer | creativity: creative</span></div>
+                        Mio caro Geordi, l'arte richiede estro! Quando dipingo i miei prompt visivi con <code>creativity: "creative"</code>, TSUKA imposta sottobanco una temperatura di <code>0.95</code> ed un <code>presence_penalty: 0.3</code>! La mia mente vola libera tra sfumature e dettagli cromatici indimenticabili!
                     </div>
                 </div>
 
                 <div class="speaker-line">
-                    <div class="avatar dev">💻</div>
+                    <div class="avatar geordi">💻</div>
                     <div class="speech-bubble">
-                        <div class="speaker-name" style="color: var(--accent-cyan)">DEV <span class="tag">role: developer | creativity: precise</span></div>
+                        <div class="speaker-name" style="color: var(--accent-cyan)">GEORDI <span class="tag">role: developer | creativity: precise</span></div>
                         Sia mai! Quando scrivo codice in TypeScript voglio <code>creativity: "precise"</code> (temperatura <code>0.2</code>, <code>top_p: 0.8</code>). Se un programmatore diventa poetico, i punti e virgola volano via come rondini a primavera e la build fallisce miseramente!
                     </div>
                 </div>
@@ -454,32 +454,32 @@
         <section id="atto2" class="act-card">
             <div class="act-header">
                 <span class="act-number">ATTO II</span>
-                <h2 class="act-title">L'Ispettore Sentinel ed il Segreto nel Solaio</h2>
+                <h2 class="act-title">L'Ispettore Worf ed il Segreto nel Solaio</h2>
             </div>
 
-            <p><em>Entra Sentinel coperto da un mantello blindato ed armato di una lente d'ingrandimento gigante. Si avvicina a Dev e gli soffia sul collo.</em></p>
+            <p><em>Entra Worf coperto da un mantello blindato ed armato di una lente d'ingrandimento gigante. Si avvicina a Geordi e gli soffia sul collo.</em></p>
 
             <div class="dialogue">
                 <div class="speaker-line">
-                    <div class="avatar sentinel">🛡️</div>
+                    <div class="avatar worf">🛡️</div>
                     <div class="speech-bubble">
-                        <div class="speaker-name" style="color: var(--accent-emerald)">SENTINEL <span class="tag">role: security_auditor | tool: audit_code</span></div>
+                        <div class="speaker-name" style="color: var(--accent-emerald)">WORF <span class="tag">role: security_auditor | tool: audit_code</span></div>
                         Alt! Chi va là? Ho fiutato una chiave API hardcoded a riga 42 ed un uso sconsiderato di <code>eval()</code> nell'aria! Eseguo immediatamente il tool <code>audit_code</code>!
                     </div>
                 </div>
 
                 <div class="speaker-line">
-                    <div class="avatar dev">💻</div>
+                    <div class="avatar geordi">💻</div>
                     <div class="speech-bubble">
-                        <div class="speaker-name" style="color: var(--accent-cyan)">DEV <span class="tag">role: developer</span></div>
-                        Ma era solo un test di prova, caro Sentinel!
+                        <div class="speaker-name" style="color: var(--accent-cyan)">GEORDI <span class="tag">role: developer</span></div>
+                        Ma era solo un test di prova, caro Worf!
                     </div>
                 </div>
 
                 <div class="speaker-line">
-                    <div class="avatar sentinel">🛡️</div>
+                    <div class="avatar worf">🛡️</div>
                     <div class="speech-bubble">
-                        <div class="speaker-name" style="color: var(--accent-emerald)">SENTINEL <span class="tag">role: security_auditor</span></div>
+                        <div class="speaker-name" style="color: var(--accent-emerald)">WORF <span class="tag">role: security_auditor</span></div>
                         I test di prova sono i nascondigli preferiti delle vulnerabilità OWASP! Il tool <code>audit_code</code> è di livello <code>SAFE</code>: scansiona in un baleno il workspace senza chiedere permesso all'utente, isola le criticità e propone la relativa remediation di sicurezza difensiva! Se invece volessi eseguire comandi di shell <code>DANGEROUS</code>, il <code>PermissionManager</code> chiederebbe sempre l'approvazione umana <code>[y/N]</code>!
                     </div>
                 </div>
@@ -503,13 +503,13 @@
                 <h2 class="act-title">La Grande Lavagna del Workflow e la Rotazione dei Modelli</h2>
             </div>
 
-            <p><em>Entra Overseer spingendo una lavagna mobile ricoperta di appunti e note adesive.</em></p>
+            <p><em>Entra Pike spingendo una lavagna mobile ricoperta di appunti e note adesive.</em></p>
 
             <div class="dialogue">
                 <div class="speaker-line">
-                    <div class="avatar overseer">🧭</div>
+                    <div class="avatar pike">🧭</div>
                     <div class="speech-bubble">
-                        <div class="speaker-name" style="color: var(--accent-gold)">OVERSEER <span class="tag">role: supervisor | reasoningEffort: xhigh</span></div>
+                        <div class="speaker-name" style="color: var(--accent-gold)">PIKE <span class="tag">role: supervisor | reasoningEffort: xhigh</span></div>
                         Silenzio in classe! Quando lavoriamo in modalità <code>/team</code> o <code>/goal</code>, gli agenti usano i tool <code>post_note</code> e <code>read_notes</code> per scrivere sulla <strong>Blackboard di Run</strong>! È uno stato condiviso di un singolo workflow che muore alla fine del run, senza inquinare la memoria globale!
                     </div>
                 </div>
@@ -523,9 +523,9 @@
                 </div>
 
                 <div class="speaker-line">
-                    <div class="avatar overseer">🧭</div>
+                    <div class="avatar pike">🧭</div>
                     <div class="speech-bubble">
-                        <div class="speaker-name" style="color: var(--accent-gold)">OVERSEER <span class="tag">role: supervisor</span></div>
+                        <div class="speaker-name" style="color: var(--accent-gold)">PIKE <span class="tag">role: supervisor</span></div>
                         Ogni ramo parallelo lavora in una cartella di staging isolata (<code>workspace/parallel-n/</code>)! A fine blocco i file vengono fusi con rilevamento automatico dei conflitti! E nel backlog futuro (task <code>T10.1</code>), TSUKA sceglierà perfino da solo quale modello LLM assegnare ad ogni compito basandosi sulle misure reali di <code>models_profile.json</code>!
                     </div>
                 </div>

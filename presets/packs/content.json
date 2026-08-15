@@ -1,28 +1,31 @@
 {
   "name": "content",
   "displayName": "✍️ Content — copy, SEO, social, traduzione",
-  "description": "Personaggi per la produzione di contenuti: copywriting persuasivo, ottimizzazione SEO, social media management e traduzione. Ogni ruolo ha due varianti di tratto (schietta/laconica vs creativa/professionale) tra cui scegliere.",
+  "description": "Personaggi Star Trek per produzione di contenuti: copywriting persuasivo (Kirk, McCoy), SEO (Quark), social (Ortegas, Chapel) e traduzione universale (Uhura).",
   "roles": [
     "copywriter",
     "seo_specialist",
     "social_media_manager",
-    "translator"
+    "translator",
+    "entertainer"
   ],
   "traits": [
     "blunt",
     "creative",
-    "laconic",
-    "professional"
+    "professional",
+    "reliable",
+    "sensual"
   ],
   "characters": [
-    "wordsmith",
-    "straight_shooter",
-    "seo_wizard",
-    "hard_edge",
-    "social_guru",
-    "ground_control",
-    "polyglot",
-    "no_bull"
+    "kirk",
+    "mccoy",
+    "quark",
+    "ortegas",
+    "chapel",
+    "uhura",
+    "deanna_troi"
   ],
-  "teams": []
+  "teams": [
+    "creative_promo"
+  ]
 }

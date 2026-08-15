@@ -6,13 +6,14 @@ import { GenerationInterrupt } from '../interrupt';
 import { MemoryStore } from '../../core/memory';
 import { ContextTracker } from '../../core/contextTracker';
 import { runMemberTurn, TurnStats } from './team';
-import { CharacterConfig } from '../shared';
 import { ChatMessage, PlanStep } from '../../core/types';
 import { runLoop } from '../../core/loop';
 import { createParallelBranches, mergeParallelWorkspaces } from '../../core/parallelWorkspace';
 import { installLogBuffering, runWithLogBuffer, flushLogBuffer } from '../../core/logBuffer';
 import { withWorkspaceOverride } from '../../tools/impl/utils';
 import { Blackboard } from '../../core/blackboard';
+import { withEffortPin } from '../../core/effortControl';
+import { loadRole, listAvailableTeams, CharacterConfig } from '../shared';
 
 interface PlanGroup {
   mode: 'sequential' | 'parallel';
@@ -20,24 +21,124 @@ interface PlanGroup {
   label: string;
 }
 
-function buildGoalOrchestratorPrompt(allCharacters: CharacterConfig[], goal: string): string {
+/** Mestieri (ruoli/skill) coperti da un personaggio: multi-skill se presenti, altrimenti il ruolo singolo. */
+function rolesOf(c: CharacterConfig): string[] {
+  if (c.roles && c.roles.length > 0) return c.roles;
+  return c.role ? [c.role] : [];
+}
+
+/**
+ * Genera la firma sintetica compatta di un agente per il catalogo dell'orchestrator.
+ * Include nome, ruolo/skills, descrizione operativa ad alto segnale e tool essenziali.
+ */
+export function formatAgentSignature(c: CharacterConfig): string {
+  if (c.signature && typeof c.signature === 'string' && c.signature.trim()) {
+    return `- @${c.name} (${c.aiName || c.name}): ${c.signature.trim()}`;
+  }
+
+  const roleNames = rolesOf(c);
+
+  const allTools = new Set<string>();
+  const roleSummaries: string[] = [];
+
+  // Tool generici/omnipresenti che non differenziano la specializzazione
+  const AMBIENT_TOOLS = new Set(['save_memory', 'recall_memory', 'send_message', 'list_dir', 'read_file', 'browse_url']);
+
+  for (const rName of roleNames) {
+    const role = loadRole(rName);
+    if (role) {
+      if (role.description) roleSummaries.push(role.description);
+      (role.allowedTools || []).forEach((t) => allTools.add(t));
+    }
+  }
+
+  let desc = (c.description || roleSummaries.join('; ') || 'No description').split('\n')[0].trim();
+  if (desc.length > 85) {
+    desc = desc.slice(0, 82).trim() + '...';
+  }
+
+  const specificTools = Array.from(allTools).filter((t) => !AMBIENT_TOOLS.has(t));
+  const displayTools = specificTools.length > 0 ? specificTools : Array.from(allTools);
+  const toolsStr = displayTools.length > 0 ? ` | Tools: [${displayTools.join(', ')}]` : '';
+  const rolesLabel = roleNames.length > 0 ? `role=${roleNames.join(',')}` : 'general';
+
+  return `- @${c.name} (${c.aiName || c.name}): ${rolesLabel} — ${desc}${toolsStr}`;
+}
+
+/**
+ * Blueprint dei team, letti da quelli REALMENTE installati (`teams/*.json`,
+ * dipende dal preset scelto a `tsuka init`) e descritti per MESTIERE.
+ *
+ * Un solo concetto di squadra: il team è quello di `/team`, non un archetipo
+ * separato inventato nel prompt. Due vincoli, entrambi deliberati:
+ * - derivato, mai hard-coded: un elenco fisso citerebbe agenti che l'utente non ha
+ *   installato, e l'orchestrator pianificherebbe con @nomi che `parsePlan` deve poi
+ *   scartare (piano silenziosamente dimezzato);
+ * - il team è una catena di RUOLI, non di personaggi: il modello sceglie la
+ *   competenza, l'@handle designa solo CHI la esercita — e con il multi-skill
+ *   (T9.1) un handle può coprire più mestieri, evitando il passaggio di consegne
+ *   fatto solo per raggiungere il tool di un altro ruolo.
+ * Un team è incluso solo se almeno 2 dei suoi membri esistono nel catalogo.
+ */
+export function buildTeamBlueprints(allCharacters: CharacterConfig[]): string {
+  const byName = new Map(allCharacters.map((c) => [c.name, c]));
+  const lines: string[] = [];
+
+  for (const team of listAvailableTeams()) {
+    const members = (team.members || [])
+      .map((m) => byName.get(m))
+      .filter((c): c is CharacterConfig => !!c);
+    if (members.length < 2) continue;
+
+    const crew = members
+      .map((c) => `${rolesOf(c).join('+') || 'general'} (@${c.name})`)
+      .join(' → ');
+
+    let desc = (team.description || team.displayName || '').split('\n')[0].trim();
+    if (desc.length > 110) desc = desc.slice(0, 107).trim() + '...';
+
+    lines.push(`- [${team.name.toUpperCase()}] ${crew}${desc ? ` — ${desc}` : ''}`);
+  }
+
+  return lines.join('\n');
+}
+
+export function buildGoalOrchestratorPrompt(allCharacters: CharacterConfig[], goal: string): string {
   const charList = allCharacters
-    .map((c) => {
-      const roleDesc = c.description || 'no description';
-      return `- @${c.name} (${c.aiName}): role ${c.role} — ${roleDesc}`;
-    })
+    .map(formatAgentSignature)
     .join('\n');
+
+  const blueprints = buildTeamBlueprints(allCharacters);
+  const blueprintBlock = blueprints
+    ? `INSTALLED TEAMS (role chains — reuse one when the goal matches):\n${blueprints}\n\n`
+    : '';
+  const blueprintRule = blueprints
+    ? '1. Reason by CRAFT: list the roles the goal requires, then reuse the team whose role chain matches, or compose your own from AVAILABLE AGENTS.\n'
+    : '1. Reason by CRAFT: list the roles the goal requires, then pick the agents that cover them.\n';
+
+  // Esempio costruito sul catalogo reale: un esempio con @nomi non installati
+  // insegnerebbe al modello a pianificare con agenti inesistenti.
+  const supervisor = allCharacters.find((c) => rolesOf(c).includes('supervisor'));
+  const workers = allCharacters.filter((c) => c !== supervisor).slice(0, 3);
+  const ex = (i: number, fallback: string) => {
+    const c = workers[i];
+    return c ? `@${c.name}` : `@${fallback}`;
+  };
+  const exReviewer = supervisor ? `@${supervisor.name}` : ex(3, 'reviewer');
 
   return `You are the TSUKA Goal Orchestrator. Plan a dynamic agent team to achieve a goal.
 
-AVAILABLE AGENTS:
+${blueprintBlock}AVAILABLE AGENTS (for custom or fallback composition):
 ${charList}
 
 GOAL: "${goal}"
 
-Analyze the goal and select the best agents. For each, specify a concrete task.
-If some tasks are INDEPENDENT (can run concurrently), wrap them in a PARALLELO block.
-If the goal is trivial (simple question, answer, info), respond with just FINE.
+INSTRUCTIONS:
+${blueprintRule}2. An agent listed with several roles (role=a,b) owns the tools of ALL of them: prefer ONE such agent over two specialists when the tasks are adjacent — it avoids a handoff whose only purpose is reaching another role's tool.
+3. The @handle is just how you address the agent that holds the craft: use ONLY the @names listed above, any other name is discarded.
+4. For each selected agent, specify a concrete task.
+5. If some tasks are INDEPENDENT (can run concurrently), wrap them in a PARALLELO block.
+6. If the goal is trivial (simple question, answer, info), respond with just FINE.
 
 RESPONSE FORMAT:
 AGENTE: @name — Task
@@ -49,12 +150,12 @@ AGENTE: @name3 — Task3 (after parallel tasks)
 FINE
 
 Example with parallel tasks:
-AGENTE: @piccione — Search for known vulnerabilities in current server version
+AGENTE: ${ex(0, 'agent1')} — First step of the work
 PARALLELO:
-AGENTE: @falco — Analyze current security policies on the system
-AGENTE: @pippo — Prepare hardening and backup scripts
+AGENTE: ${ex(1, 'agent2')} — Independent step A
+AGENTE: ${ex(2, 'agent3')} — Independent step B
 FINE PARALLELO
-AGENTE: @overseer — Review the work
+AGENTE: ${exReviewer} — Review and validate the work
 FINE
 
 If no team is needed:
@@ -163,7 +264,7 @@ export function parseAgentLine(
   validMap?: Map<string, string> | (CharacterConfig | string)[]
 ): { realName: string; name: string; task: string; consumed: number } | null {
   const rawLine = lines[startIdx].trim();
-  // Pulizia prefissi markdown (es. "1. **AGENTE:** @dev — ...", "- AGENTE: dev: ...", "@dev - ...")
+  // Pulizia prefissi markdown (es. "1. **AGENTE:** @nome — ...", "- AGENTE: nome: ...", "@nome - ...")
   const cleanLine = rawLine
     .replace(/^(?:\d+\.|\*|-)\s*/, '')
     .replace(/\*\*/g, '')
@@ -303,13 +404,19 @@ export async function handleGoal(ctx: CommandCtx, arg: string): Promise<void> {
   const planRenderer = new StreamRenderer({ headerName: 'Goal Orchestrator', headerColor: chalk.magenta });
   planRenderer.begin();
 
+  const orchestratorEffort = withEffortPin('low');
+
   let planText = '';
   try {
     const response = await ctx.provider.chatWithTools(
       orcMessages,
       undefined,
       (chunk, channel) => planRenderer.onDelta(chunk, channel ?? 'content'),
-      interrupt.signal
+      interrupt.signal,
+      {
+        reasoningEffort: orchestratorEffort,
+        creativity: 'precise'
+      }
     );
     planRenderer.finish();
     planText = response.content?.trim() || '';
@@ -350,14 +457,16 @@ export async function handleGoal(ctx: CommandCtx, arg: string): Promise<void> {
         groups.push({ mode: 'sequential', steps: [{ agentName: name, task: `Esegui task correlato al goal: ${goal}` }], label: name });
       }
     } else {
-      // Tentativo 2: Fallback mirato su max 2 agenti (dev ed overseer, o i primi due)
-      CLITheme.warning('Nessun agente specifico rilevato: assegno il goal al team essenziale (dev + overseer).');
-      const devChar = allCharacters.find((c) => c.name === 'dev' || c.role === 'developer') || allCharacters[0];
-      const overseerChar = allCharacters.find((c) => c.name === 'overseer' || c.role === 'supervisor') || allCharacters[1] || allCharacters[0];
-      
+      // Tentativo 2: fallback su una coppia minima scelta per MESTIERE (chi esegue +
+      // chi verifica), non per nome proprio: il roster è configurabile e i nomi
+      // cambiano, i due mestieri no.
+      const devChar = allCharacters.find((c) => rolesOf(c).includes('developer')) || allCharacters[0];
+      const supervisorChar = allCharacters.find((c) => rolesOf(c).includes('supervisor')) || allCharacters[1] || allCharacters[0];
+      CLITheme.warning(`Nessun agente specifico rilevato: assegno il goal al team essenziale (@${devChar.name} + @${supervisorChar.name}).`);
+
       groups.push({ mode: 'sequential', steps: [{ agentName: devChar.name, task: `Sviluppa e realizza l'obiettivo: ${goal}` }], label: devChar.name });
-      if (overseerChar && overseerChar.name !== devChar.name) {
-        groups.push({ mode: 'sequential', steps: [{ agentName: overseerChar.name, task: `Verifica e convalida il lavoro svolto` }], label: overseerChar.name });
+      if (supervisorChar && supervisorChar.name !== devChar.name) {
+        groups.push({ mode: 'sequential', steps: [{ agentName: supervisorChar.name, task: `Verifica e convalida il lavoro svolto` }], label: supervisorChar.name });
       }
     }
   }
@@ -502,7 +611,7 @@ export async function handleGoal(ctx: CommandCtx, arg: string): Promise<void> {
           }
           overallStep += group.steps.length;
           // NB: non interrompiamo il loop sui gruppi se un agente parallelo dice COMPLETATO:
-          // il piano del goal orchestrator è fisso, tutti gli step devono eseguirsi (es. overseer finale)
+          // il piano del goal orchestrator è fisso, tutti gli step devono eseguirsi (es. la verifica finale del supervisore)
 
         } else {
           // Singolo agente sequenziale
@@ -546,12 +655,15 @@ export async function handleGoal(ctx: CommandCtx, arg: string): Promise<void> {
 
           if (result === 'completed') completed = true;
 
-          // Rilavorazione innescata dall'Overseer finale se il compito fallisce
-          if (step.agentName === 'overseer' && (result === 'failed' || result === 'continue') && !reworkAttempted && g > 0) {
+          // Rilavorazione innescata dal supervisore finale se il compito fallisce.
+          // Il criterio è il MESTIERE, non il nome proprio: vale per qualsiasi
+          // personaggio che abbia 'supervisor' fra le skill, anche se non attiva.
+          const isSupervisor = rolesOf(char).includes('supervisor');
+          if (isSupervisor && (result === 'failed' || result === 'continue') && !reworkAttempted && g > 0) {
             reworkAttempted = true;
             const lastAssistantMsg = teamMessages[teamMessages.length - 1]?.content || '';
-            console.log(chalk.bold.yellow(`\n[OVERSEER VERDICT: RILAVORAZIONE RICHIESTA]`));
-            console.log(chalk.gray(`L'Overseer ha riscontrato problemi. Avvio ciclo di rilavorazione dello step precedente...`));
+            console.log(chalk.bold.yellow(`\n[VERDETTO DEL SUPERVISORE: RILAVORAZIONE RICHIESTA]`));
+            console.log(chalk.gray(`Il supervisore ha riscontrato problemi. Avvio ciclo di rilavorazione dello step precedente...`));
 
             const prevGroup = groups[g - 1];
             if (prevGroup && prevGroup.steps.length > 0) {
@@ -560,9 +672,9 @@ export async function handleGoal(ctx: CommandCtx, arg: string): Promise<void> {
               if (targetChar) {
                 overallStep++;
                 console.log(chalk.bold.yellow(`\n═══ STEP RILAVORAZIONE: ${targetChar.aiName} ═══`));
-                const reworkPrompt = `[RILAVORAZIONE GUIDATA DALL'OVERSEER per @${targetStep.agentName}]:\n` +
-                  `L'Overseer ha riscontrato problemi nella revisione precedente:\n${lastAssistantMsg}\n\n` +
-                  `Correggi i problemi indicati dall'Overseer ed esegui nuovamente il compito.`;
+                const reworkPrompt = `[RILAVORAZIONE GUIDATA DAL SUPERVISORE per @${targetStep.agentName}]:\n` +
+                  `Il supervisore ha riscontrato problemi nella revisione precedente:\n${lastAssistantMsg}\n\n` +
+                  `Correggi i problemi indicati dal supervisore ed esegui nuovamente il compito.`;
                 teamMessages.push({ role: 'user', content: reworkPrompt });
 
                 await runMemberTurn(
@@ -571,10 +683,10 @@ export async function handleGoal(ctx: CommandCtx, arg: string): Promise<void> {
                 );
                 condenseAgentOutput(targetStep.agentName, teamMessages, allCharacters, maxTokens);
 
-                // Riesaegue la revisione finale dell'Overseer
+                // Riesegue la revisione finale del supervisore
                 overallStep++;
-                console.log(chalk.bold.yellow(`\n═══ REVISIONE OVERSEER POST-RILAVORAZIONE ═══`));
-                teamMessages.push({ role: 'user', content: `[Revisione finale Overseer post-rilavorazione]: Verifica se i problemi del lavoro di @${targetStep.agentName} sono stati risolti.` });
+                console.log(chalk.bold.yellow(`\n═══ REVISIONE DEL SUPERVISORE POST-RILAVORAZIONE ═══`));
+                teamMessages.push({ role: 'user', content: `[Revisione finale del supervisore post-rilavorazione]: Verifica se i problemi del lavoro di @${targetStep.agentName} sono stati risolti.` });
                 const finalOverseerOutcome = await runMemberTurn(
                   ctx, step.agentName, goal,
                   overallStep, flatSteps + 2, teamMessages, interrupt, false

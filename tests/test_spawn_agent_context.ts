@@ -285,12 +285,85 @@ async function main() {
     }
     check('SA-e-7', errMsg2000 === 'Provider non disponibile nel contesto.', `un task di esattamente 2000 caratteri supera il controllo di lunghezza (limite invariato) (${errMsg2000})`);
 
-    // Lo schema JSON del tool non prepara più la reazione sbagliata
+    // Lo schema JSON del tool non prepara più la reazione sbagliata. Le due
+    // alternative (dividere in più chiamate, o un briefing su file) sono ora
+    // divise fra 'task' (che rimanda a briefingFile) e 'briefingFile' stesso
+    // (T9.8: parametro strutturato, non più solo una convenzione testuale in 'task').
     const schemaRaw = fs.readFileSync(path.join(__dirname, '..', 'tools_schemas', 'spawn_agent.json'), 'utf-8');
     const schema = JSON.parse(schemaRaw);
     const taskDesc: string = schema.parameters.properties.task.description;
-    check('SA-e-8', /2000/.test(taskDesc) && /write_file/.test(taskDesc) && /spawn_agent/.test(taskDesc), `la descrizione del parametro 'task' nello schema JSON indica le due alternative (${taskDesc})`);
+    const briefingFileDesc: string = schema.parameters.properties.briefingFile.description;
+    const combinedDesc = `${taskDesc}\n${briefingFileDesc}`;
+    check('SA-e-8', /2000/.test(combinedDesc) && /write_file/.test(combinedDesc) && /spawn_agent/.test(combinedDesc) && /briefingFile/.test(taskDesc), `le descrizioni di 'task'/'briefingFile' nello schema JSON indicano le alternative (task: ${taskDesc} | briefingFile: ${briefingFileDesc})`);
     check('SA-e-9', !/^Il compito specifico da assegnare al sub-agente \(max 2000 caratteri\)\.$/.test(taskDesc), 'la descrizione nello schema non è più quella originale');
+  }
+
+  // ============================================================
+  // T9.8 — briefingFile: un briefing lungo letto da un file, non incollato inline
+  // ============================================================
+  {
+    // (a) percorso inesistente → errore esplicito, nessun tentativo di procedere
+    let errMissing = '';
+    try {
+      await spawnAgentTool.execute({ briefingFile: 'briefing-inesistente.md' });
+    } catch (e: any) {
+      errMissing = e.message;
+    }
+    check('SA-f-1', /non esiste/.test(errMissing), `briefingFile inesistente → errore esplicito (${errMissing})`);
+
+    // (b) file oltre il limite → errore prescrittivo (stesso schema di T8.7, limite diverso)
+    fs.writeFileSync(path.join(tmpHome, 'briefing-lungo.md'), 'z'.repeat(12001));
+    let errTooLong = '';
+    try {
+      await spawnAgentTool.execute({ briefingFile: 'briefing-lungo.md' });
+    } catch (e: any) {
+      errTooLong = e.message;
+    }
+    check('SA-f-2', /12001/.test(errTooLong) && /pi[uù] chiamate/i.test(errTooLong), `briefingFile troppo lungo → errore con la lunghezza effettiva e l'uscita corretta (${errTooLong})`);
+
+    // (c) file vuoto → errore esplicito, non un compito vuoto silenzioso
+    fs.writeFileSync(path.join(tmpHome, 'briefing-vuoto.md'), '   \n  ');
+    let errEmpty = '';
+    try {
+      await spawnAgentTool.execute({ briefingFile: 'briefing-vuoto.md' });
+    } catch (e: any) {
+      errEmpty = e.message;
+    }
+    check('SA-f-3', /vuoto/.test(errEmpty), `briefingFile vuoto (solo whitespace) → errore esplicito (${errEmpty})`);
+
+    // (d) un briefing OLTRE i 2000 caratteri di MAX_TASK_LENGTH, ma sotto i 12000
+    // di briefingFile, esegue con successo: il limite più permissivo è quello
+    // realmente applicato quando il testo arriva da file, non da 'task' inline.
+    const longBriefing = 'Implementa il modulo X.\n' + 'Dettaglio riga.\n'.repeat(200); // ~3200 caratteri, > 2000
+    fs.writeFileSync(path.join(tmpHome, 'briefing-ok.md'), longBriefing);
+    const provider2 = new MockLLMProvider([
+      // Round 1 padre: delega con SOLO un percorso (nessun 'task' inline)
+      { toolCalls: [mockToolCall('spawn_agent', { briefingFile: 'briefing-ok.md' })] },
+      // Round 1 figlio: nessun tool, chiude subito il proprio turno
+      { content: 'Fatto.' },
+      // Round 2 padre: riceve il resoconto del figlio e chiude
+      { content: 'Ricevuto il resoconto dal sub-agente.' }
+    ]);
+    const registry2 = buildRegistry();
+    const permissionManager2 = new PermissionManager();
+    const parentAgent2 = new Agent(
+      provider2, registry2, permissionManager2,
+      'Sei un agente di test (padre, fuori da un run).',
+      ['spawn_agent'],
+      40, 65536,
+      'padre-briefing'
+    );
+    let threwOk = false;
+    try {
+      await parentAgent2.run('Spawna un sub-agente con il briefing lungo su file.');
+    } catch {
+      threwOk = true;
+    }
+    check('SA-f-4', !threwOk, `un briefingFile di ~${longBriefing.length} caratteri (> MAX_TASK_LENGTH, < limite briefingFile), passato SOLO come percorso, non fallisce`);
+    check('SA-f-4b', provider2.remaining === 0, 'copione interamente consumato (3 round attesi)');
+
+    const childUserMsg = provider2.callLog[1]?.messages?.find((m: any) => m.role === 'user')?.content || '';
+    check('SA-f-5', typeof childUserMsg === 'string' && childUserMsg.includes('Implementa il modulo X.'), `il contenuto del file finisce per intero nel compito del sub-agente (ricevuto: ${JSON.stringify(childUserMsg).slice(0, 120)}…)`);
   }
 
   console.log(`\n=== Risultato: ${passed} passati, ${failed} falliti ===`);

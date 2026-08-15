@@ -1,5 +1,7 @@
 import { auditCodeTool } from '../src/tools/impl/auditCode';
 import { loadRole, loadCharacter, resolveCharacter } from '../src/cli/shared';
+import { characterWithRole } from './fixtures/roster';
+
 
 let passed = 0;
 let failed = 0;
@@ -26,15 +28,19 @@ async function main() {
     check('SEC1d', role?.creativity === 'precise', "il ruolo 'security_auditor' imposta creativity: 'precise'");
   }
 
-  // Test 2: Caricamento Personaggio `sentinel`
+  // Test 2: chi esercita il mestiere 'security_auditor' nel catalogo installato
   {
-    const char = loadCharacter('sentinel');
-    check('SEC2a', char !== null, "il personaggio 'sentinel' esiste ed è caricabile");
-    check('SEC2b', char?.role === 'security_auditor', "il personaggio 'sentinel' usa il ruolo 'security_auditor'");
-    check('SEC2c', char?.creativity === 'precise', "il personaggio 'sentinel' imposta creativity: 'precise'");
+    const char = characterWithRole('security_auditor');
+    check('SEC2a', !!char, `il ruolo 'security_auditor' è coperto da un personaggio installato (@${char.name})`);
+    check('SEC2b', (char.roles || [char.role]).includes('security_auditor'), `@${char.name} dichiara il ruolo 'security_auditor'`);
+    check('SEC2c', (char.creativity || role?.creativity) === 'precise', `l'auditor gira con creativity 'precise' (personaggio o ruolo)`);
 
-    const resolved = resolveCharacter('sentinel');
-    check('SEC2d', resolved !== null && resolved.name === 'sentinel', "resolveCharacter('sentinel') risolve correttamente il personaggio");
+    // resolveCharacter accetta sia il nome sia il MESTIERE
+    const byName = resolveCharacter(char.name);
+    const byCraft = resolveCharacter('security_auditor');
+    check('SEC2d',
+      byName?.name === char.name && byCraft?.name === char.name,
+      `resolveCharacter risolve sia per nome ('${char.name}') sia per mestiere ('security_auditor')`);
   }
 
   // Test 3: Esecuzione del Tool `audit_code`

@@ -1,10 +1,11 @@
 {
   "name": "devops",
-  "displayName": "⚙️ DevOps — infrastruttura e sicurezza",
-  "description": "Personaggi per automazione, hardening e audit di sistema: Pipeline Pro per CI/CD e deploy, Falco e Piccione per cybersecurity (uno esegue l'hardening, l'altro fa da controllo pignolo e indipendente).",
+  "displayName": "⚙️ DevOps — infrastruttura e sistemi",
+  "description": "Personaggi per automazione, pipeline e affidabilità di sistema: Montgomery Scott (Miracle Worker), La'an Noonien-Singh e Tuvok.",
   "roles": [
     "devops_engineer",
-    "sysadmin"
+    "sysadmin",
+    "security_auditor"
   ],
   "traits": [
     "reliable",
@@ -12,11 +13,12 @@
     "devils_advocate"
   ],
   "characters": [
-    "pipeline_pro",
-    "falco",
-    "piccione"
+    "scotty",
+    "laan",
+    "tuvok"
   ],
   "teams": [
+    "dev_ops",
     "cyber_audit"
   ]
 }

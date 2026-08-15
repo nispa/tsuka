@@ -8,6 +8,23 @@ function loadCharacter(charName: string) {
   return JSON.parse(raw);
 }
 
+/** Personaggi installati, letti live dal catalogo: nessun nome scritto nel test. */
+function listCharacters(): any[] {
+  const dir = path.resolve(process.cwd(), 'characters');
+  return fs.readdirSync(dir)
+    .filter((f) => f.endsWith('.json'))
+    .map((f) => JSON.parse(fs.readFileSync(path.join(dir, f), 'utf-8')));
+}
+
+/** Nome del personaggio che esercita un mestiere (ruolo attivo o skill sbloccata). */
+function agentWithRole(role: string): string {
+  const found = listCharacters().find(
+    (c) => c.role === role || (Array.isArray(c.roles) && c.roles.includes(role))
+  );
+  if (!found) throw new Error(`Nessun personaggio copre il ruolo '${role}'`);
+  return found.name;
+}
+
 function loadRole(roleName: string) {
   const rolePath = path.resolve(process.cwd(), `roles/${roleName}.json`);
   const raw = fs.readFileSync(rolePath, 'utf-8');
@@ -23,12 +40,13 @@ function loadTrait(traitName: string) {
 async function run() {
   console.log("=== Testing Multi-Agent Discussion Call ===");
   
-  const names = ["lola", "salvo", "pippo"];
+  // Dibattito fra tre MESTIERI diversi: chi li interpreta lo decide il catalogo.
+  const names = ['entertainer', 'researcher', 'security_auditor'].map(agentWithRole);
   const participants = [];
   
   // Rileva personaggi
   for (const n of names) {
-    const char = loadCharacter(n === "lola" ? "sensual_diva" : n);
+    const char = loadCharacter(n);
     participants.push(char);
   }
   

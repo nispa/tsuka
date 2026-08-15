@@ -122,9 +122,9 @@ Il profilo è salvato in `models_profile.json`. `getModelTier()` usa prima il pr
 
 | Tier | Tool disponibili | Esclusi |
 |------|----------------|---------|
-| **SMALL** | 12 tool (lettura, scrittura, diagnostica, web, memoria) | `execute_command`, `create_tool` |
-| **MEDIUM** | 14 tool | — |
-| **LARGE** | 14 tool | — |
+| **SMALL** | 20 tool (lettura, scrittura, diagnostica, web, memoria, protocollo) | `execute_command`, `create_tool`, `spawn_agent` |
+| **MEDIUM** | 23 tool | — |
+| **LARGE** | 23 tool | — |
 
 ### 4. Tracciamento Oggettivo delle Fonti Web
 
@@ -202,7 +202,7 @@ Le variabili d'ambiente sensibili (`KEY`, `SECRET`, `TOKEN`, `PASSWORD`...) sono
 Avvia una discussione a più voci su qualsiasi tema:
 
 ```powershell
-/call @falco, @lola e @pippo            # Menzione diretta dei partecipanti
+/call @laan, @deanna_troi e @geordi     # Menzione diretta dei partecipanti
 /call                                    # Checklist interattiva multiselect
 ```
 
@@ -261,6 +261,7 @@ Collaborazione sequenziale su uno spazio di lavoro condiviso:
 | `/search-engine` | Cambia provider di ricerca (DuckDuckGo / Google / Tavily) |
 | `/memory` | Elenca i ricordi persistenti |
 | `/forget <id\|all>` | Elimina ricordi specifici o svuota tutto |
+| `/context` | Mostra il consumo di token della cronologia rispetto al budget |
 | `/reset` | Resetta cronologia + approvazioni sicurezza |
 | `/info` | Mostra informazioni sessione (provider, modello, ruolo, tratto) |
 | `/clear` | Pulisce il terminale |
@@ -294,7 +295,7 @@ npm run dev
 /benchmark
 
 # 4. Inizia a chattare o:
-/call @falco, @lola
+/call @laan, @deanna_troi
 ```
 
 ### Build di Produzione

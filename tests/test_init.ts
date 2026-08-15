@@ -41,9 +41,13 @@ async function main() {
     const allDirsExist = subDirs.every((d) => fs.existsSync(path.join(tsukaDir, d)));
     check('IT2d', allDirsExist, 'tutte le sottocartelle obbligatorie sono state create');
 
-    const devChar = path.join(tsukaDir, 'characters', 'dev.json');
-    const segugioChar = path.join(tsukaDir, 'characters', 'segugio.json');
-    check('IT2e', fs.existsSync(devChar) && fs.existsSync(segugioChar), 'i personaggi del preset core (dev, segugio) sono stati copiati');
+    // I nomi non si scrivono qui: si leggono dal manifest, che è la fonte di verità
+    // di cosa il preset core deve installare.
+    const coreManifest = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), 'presets', 'core.json'), 'utf-8'));
+    const missingChars = (coreManifest.characters || []).filter(
+      (c: string) => !fs.existsSync(path.join(tsukaDir, 'characters', `${c}.json`))
+    );
+    check('IT2e', missingChars.length === 0, `tutti i personaggi del preset core sono stati copiati (mancanti: ${missingChars.join(', ') || 'nessuno'})`);
 
     // Test 3: Re-init senza --force viene rifiutato
     const reInitNoForce = await handleInitCmd(['--preset', 'core'], tempDir);
@@ -61,8 +65,14 @@ async function main() {
   try {
     const success = await handleInitCmd(['--preset', 'core', '--pack', 'osint'], tempDirPack);
     check('IT5a', success === true, 'init con --pack osint ha successo');
-    const volpeChar = path.join(tempDirPack, '.tsuka', 'characters', 'volpe.json');
-    check('IT5b', fs.existsSync(volpeChar), 'il personaggio del pack osint (volpe) è stato copiato');
+    const packManifest = JSON.parse(
+      fs.readFileSync(path.resolve(process.cwd(), 'presets', 'packs', 'osint.json'), 'utf-8')
+    );
+    const missingPackChars = (packManifest.characters || []).filter(
+      (c: string) => !fs.existsSync(path.join(tempDirPack, '.tsuka', 'characters', `${c}.json`))
+    );
+    check('IT5b', missingPackChars.length === 0,
+      `i personaggi elencati nel pack osint sono stati copiati (mancanti: ${missingPackChars.join(', ') || 'nessuno'})`);
   } finally {
     fs.rmSync(tempDirPack, { recursive: true, force: true });
   }

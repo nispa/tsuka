@@ -67,7 +67,9 @@ const suites = [
   'test_loop.ts',
   'test_init.ts',
   'test_sampling_params.ts',
-  'test_security_agent.ts'
+  'test_security_agent.ts',
+  'test_malformed_toolcall_retry.ts',
+  'test_write_file_append.ts'
 ];
 
 let passed = 0;
