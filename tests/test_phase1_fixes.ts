@@ -9,6 +9,8 @@ import { getPsInfoTool } from '../src/tools/impl/getPsInfo';
 import { executeCommandTool } from '../src/tools/impl/executeCommand';
 import { ConfigManager } from '../src/core/config';
 
+import { isWindows } from '../src/core/platform';
+
 let passed = 0;
 let failed = 0;
 
@@ -45,14 +47,16 @@ async function main() {
   check('T1.3', mtimeBefore === mtimeAfter, 'tsuka.config.json non riscritto su load pulito');
 
   // --- T1.4: execute_command funziona ancora per comandi normali (no falso timeout) ---
-  const cmdOut = await executeCommandTool.execute({ command: 'Get-Date -Format "yyyy"' });
+  const isWin = isWindows();
+  const dateCmd = isWin ? 'Get-Date -Format "yyyy"' : 'date +%Y';
+  const cmdOut = await executeCommandTool.execute({ command: dateCmd });
   check('T1.4', /^\d{4}/m.test(cmdOut) || cmdOut.includes(new Date().getFullYear().toString()), 'comando normale eseguito correttamente');
 
   // --- T1.6: get_ps_info 'env' non deve esporre variabili sensibili ---
   process.env.SMOKE_TEST_SECRET_KEY = 'valore_segreto_di_test';
   const envOut = await getPsInfoTool.execute({ category: 'env' });
   const leaksSensitive = /SMOKE_TEST_SECRET_KEY|valore_segreto_di_test/.test(envOut);
-  const stillWorks = envOut.includes('USERNAME') || envOut.includes('COMPUTERNAME') || envOut.includes('"Name"');
+  const stillWorks = envOut.includes('USERNAME') || envOut.includes('COMPUTERNAME') || envOut.includes('"Name"') || envOut.includes('USER') || envOut.includes('PATH') || envOut.includes('HOME');
   check('T1.6a', !leaksSensitive, 'variabile KEY di test esclusa dal dump env');
   check('T1.6b', stillWorks, 'dump env continua a funzionare per variabili innocue');
 

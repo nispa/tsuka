@@ -37,8 +37,11 @@ async function run() {
   try {
     const parsed = JSON.parse(psResult.output);
     parsedOk = Array.isArray(parsed) && parsed.length > 0;
-  } catch {}
-  check('SAFE.3', psResult.success && parsedOk, 'get_ps_info restituisce un array JSON di processi validi');
+  } catch {
+    // Formato tabellare POSIX (ps aux)
+    parsedOk = psResult.output.length > 20 && (psResult.output.includes('PID') || psResult.output.includes('USER') || psResult.output.includes('COMMAND') || psResult.output.includes('%CPU'));
+  }
+  check('SAFE.3', psResult.success && parsedOk, 'get_ps_info restituisce un output di processi valido');
 
   console.log(`\n=== Risultato: ${passed} passati, ${failed} falliti ===`);
   process.exit(failed > 0 ? 1 : 0);
