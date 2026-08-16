@@ -152,7 +152,8 @@ export const spawnAgentTool: Tool = {
     const subAgent = new Agent(
       provider, registry, permissionManager, sysPrompt, subAllowedTools,
       configManager.getMaxHistoryMessages(), configManager.getMaxHistoryTokens(),
-      label
+      label, undefined, undefined,
+      configManager.getMaxToolRounds()
     );
 
     const result = await subAgent.run(

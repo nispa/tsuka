@@ -116,7 +116,9 @@ async function main() {
       configManager.getMaxHistoryMessages(),
       configManager.getMaxHistoryTokens(),
       undefined,
-      reasoningEffort
+      reasoningEffort,
+      undefined,
+      configManager.getMaxToolRounds()
     );
     if (typeof commandCtx !== 'undefined') {
       a.setCommandCtx(commandCtx);

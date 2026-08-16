@@ -162,7 +162,7 @@ export class MemoryStore {
    * @param maxFacts Numero massimo di fatti conservati (oltre il limite, eviction a punteggio)
    * @param scope Scope di questa istanza (default: slug derivato da ConfigManager.getWorkspaceRoot())
    */
-  constructor(filePath?: string, maxFacts: number = 200, scope?: string) {
+  constructor(filePath?: string, maxFacts?: number, scope?: string) {
     // T6.5: isolamento della suite di test dalla memoria reale dell'utente. Un solo punto
     // di override, letto solo quando il chiamante non passa un filePath esplicito: i test
     // che costruiscono MemoryStore con un file temporaneo (es. test_memory_scope.ts) non
@@ -171,12 +171,13 @@ export class MemoryStore {
     // lo ripulisce alla fine. Fuori dai test la variabile non è impostata: comportamento
     // identico a prima (memory/memory.json nella app home).
     const envOverride = process.env.TSUKA_MEMORY_FILE;
+    const config = new ConfigManager();
     this.filePath = filePath
       ?? (envOverride && envOverride.trim().length > 0 ? path.resolve(envOverride.trim()) : homePath('memory', 'memory.json'));
-    this.maxFacts = Math.max(1, maxFacts);
+    this.maxFacts = Math.max(1, typeof maxFacts === 'number' ? maxFacts : config.getMemoryMaxFacts());
     this.scope = scope && scope.trim().length > 0
       ? scope.trim()
-      : scopeFromWorkspaceRoot(new ConfigManager().getWorkspaceRoot());
+      : scopeFromWorkspaceRoot(config.getWorkspaceRoot());
     this.load();
   }
 

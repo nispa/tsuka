@@ -221,7 +221,8 @@ SHARED BLACKBOARD (optional): this run has a shared blackboard, separate from th
     // T9.10: un turno di membro DEVE agire o dichiarare esplicitamente lo stato
     // (il prompt sopra lo richiede) — una risposta senza tool call E senza
     // marker di stato ottiene un nudge esplicito prima che il turno finisca.
-    hasAnyStatusMarker
+    hasAnyStatusMarker,
+    ctx.configManager.getMaxToolRounds()
   );
 
   // Imposta il nome mittente per eventuali messaggi (tool send_message)

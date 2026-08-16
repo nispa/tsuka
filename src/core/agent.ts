@@ -90,9 +90,9 @@ export function sanitizeAndParseToolArgs(rawArguments: string | undefined): {
 }
 
 export class Agent {
-  // Limite di sicurezza: massimo numero di cicli consecutivi di esecuzione tool
+  // Limite di sicurezza di default: massimo numero di cicli consecutivi di esecuzione tool
   // per singola richiesta utente (evita loop infiniti se il modello continua a richiedere tool)
-  private static readonly MAX_TOOL_ROUNDS = 15;
+  private static readonly DEFAULT_MAX_TOOL_ROUNDS = 15;
 
   private provider: ILLMProvider;
   private registry: ToolRegistry;
@@ -101,6 +101,7 @@ export class Agent {
   private allowedTools?: string[];
   private maxHistoryMessages: number;
   private maxHistoryTokens: number;
+  private maxToolRounds: number;
   // Rapporto caratteri/token usato dalla stima euristica, tarato a runtime (vedi
   // calibrateCharsPerToken): seed 3,5 (valore storico, tarato sull'inglese), corretto
   // verso il rapporto realmente osservato su italiano/codice via l'usage reale dell'API.
@@ -145,7 +146,8 @@ export class Agent {
     maxHistoryTokens: number = 65536,
     agentLabel?: string,
     reasoningEffort?: ReasoningEffort,
-    acceptTextOnlyIf?: (content: string) => boolean
+    acceptTextOnlyIf?: (content: string) => boolean,
+    maxToolRounds: number = Agent.DEFAULT_MAX_TOOL_ROUNDS
   ) {
     this.provider = provider;
     this.registry = registry;
@@ -156,6 +158,7 @@ export class Agent {
     this.agentLabel = agentLabel;
     this.reasoningEffort = reasoningEffort;
     this.acceptTextOnlyIf = acceptTextOnlyIf;
+    this.maxToolRounds = Math.max(1, maxToolRounds);
     this.clearHistory(systemPrompt);
   }
 
@@ -169,6 +172,11 @@ export class Agent {
   /** Sforzo di ragionamento risolto per questo agente (diagnostica/test). */
   getReasoningEffort(): ReasoningEffort | undefined {
     return this.reasoningEffort;
+  }
+
+  /** Limite massimo di cicli di tool configurato per questo agente (diagnostica/test). */
+  getMaxToolRounds(): number {
+    return this.maxToolRounds;
   }
 
   /** Conta i caratteri "grezzi" di un messaggio (content + tool_calls serializzati). */
@@ -675,12 +683,12 @@ export class Agent {
         // La cronologia resta coerente: tutti i tool_calls dell'ultimo giro hanno già
         // ricevuto il rispettivo messaggio 'tool' nel for-loop qui sopra.
         toolRounds++;
-        if (toolRounds >= Agent.MAX_TOOL_ROUNDS) {
+        if (toolRounds >= this.maxToolRounds) {
           const stopMessage =
-            `[Interruzione di sicurezza] Ho raggiunto il limite massimo di ${Agent.MAX_TOOL_ROUNDS} ` +
+            `[Interruzione di sicurezza] Ho raggiunto il limite massimo di ${this.maxToolRounds} ` +
             `cicli consecutivi di esecuzione tool per questa richiesta. Il processo è stato fermato ` +
             `per evitare un loop infinito. Riformula la richiesta o spezzala in passi più piccoli.`;
-          emit({ type: 'max_rounds', limit: Agent.MAX_TOOL_ROUNDS });
+          emit({ type: 'max_rounds', limit: this.maxToolRounds });
           this.messages.push({ role: 'assistant', content: stopMessage });
           finalAnswer = stopMessage;
           break;

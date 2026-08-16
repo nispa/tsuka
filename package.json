@@ -33,6 +33,7 @@
     "tools_schemas",
     "benchmarks",
     "tsuka.config.json",
+    "tsuka.config.json.example",
     "README.md",
     "README-it.md",
     "LICENSE"

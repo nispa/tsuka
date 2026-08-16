@@ -14,10 +14,20 @@
       "model": "default"
     }
   },
+  "maxToolRounds": 15,
+  "maxHistoryMessages": 500,
+  "maxHistoryTokens": 65536,
+  "maxToolResultTokens": 4000,
+  "memoryMaxChars": 600,
+  "memoryMaxFacts": 200,
+  "teamMaxRounds": 3,
+  "llmTimeoutMs": 120000,
+  "commandTimeoutMs": 120000,
   "webSearch": {
     "provider": "duckduckgo"
   },
   "activeRole": "developer",
   "activeTrait": "creative",
-  "activeCharacter": "geordi"
+  "activeCharacter": "geordi",
+  "parallelExecutionEnabled": false
 }

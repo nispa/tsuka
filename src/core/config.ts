@@ -28,6 +28,10 @@ export interface AppConfig {
   maxHistoryMessages?: number;
   maxHistoryTokens?: number;
   maxToolResultTokens?: number;
+  /** Limite massimo di cicli consecutivi di esecuzione tool per singola richiesta utente (evita loop infiniti). Default: 15. */
+  maxToolRounds?: number;
+  /** Numero massimo di fatti conservati nella memoria persistente prima dell'eviction. Default: 200. */
+  memoryMaxFacts?: number;
   workspaceRoot?: string;
   memoryMaxChars?: number;
   /** Ultimo livello della cascata di reasoning_effort (T8.10): usato solo se né
@@ -93,7 +97,7 @@ export class ConfigManager {
           providers: {
             ollama: {
               baseUrl: 'http://localhost:11434/v1',
-              model: 'satgeze/qwenpaw-9b-heretic-1m:latest',
+              model: 'qwen2.5-coder:7b',
             },
             openrouter: {
               baseUrl: 'https://openrouter.ai/api/v1',
@@ -274,6 +278,32 @@ export class ConfigManager {
       return Math.floor(value);
     }
     return 4000;
+  }
+
+  /**
+   * Numero massimo di cicli consecutivi di esecuzione tool per singola richiesta utente.
+   * Evita loop infiniti se il modello continua a richiedere tool senza generare risposta finale.
+   * Default: 15. Configurabile con "maxToolRounds" in tsuka.config.json (min 1).
+   */
+  getMaxToolRounds(): number {
+    const value = this.config.maxToolRounds;
+    if (typeof value === 'number' && Number.isFinite(value) && value >= 1) {
+      return Math.floor(value);
+    }
+    return 15;
+  }
+
+  /**
+   * Numero massimo di fatti conservati nella memoria persistente (MemoryStore).
+   * Superato questo limite, scatta l'eviction basata su punteggio (kind/hits/lastUsed).
+   * Default: 200. Configurabile con "memoryMaxFacts" in tsuka.config.json (min 10).
+   */
+  getMemoryMaxFacts(): number {
+    const value = this.config.memoryMaxFacts;
+    if (typeof value === 'number' && Number.isFinite(value) && value >= 10) {
+      return Math.floor(value);
+    }
+    return 200;
   }
 
   /**

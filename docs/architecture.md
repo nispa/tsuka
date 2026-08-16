@@ -8,7 +8,7 @@
 > `AGENTS.md`; per lo stato dei lavori e il debito aperto vedi `TASKS.md`.
 
 **In numeri:** 27 tool · 19 comandi REPL · 23 moduli core · 21 ruoli · 9 tratti ·
-24 personaggi · 10 team · 56 suite di test.
+24 personaggi · 10 team · 57 suite di test.
 
 ---
 
@@ -358,7 +358,7 @@ Onestà sullo stato, perché è ciò che serve per decidere dove andare.
   `tsuka.config.json`; il pin di effort è stato di processo. Con un solo utente e una sola
   sessione va bene; con due client concorrenti si sovrascrivono. È il vincolo principale per una
   interfaccia web multi-scheda, e non ha nulla a che vedere con la grafica.
-- **Suite di test deterministica e isolata.** Tutti i 55 file di test automatici offline sono
+- **Suite di test deterministica e isolata.** Tutti i 57 file di test automatici offline sono
   registrati ed eseguiti in `run_tests.ts`. Gli script che richiedono server live o connessione di
   rete sono organizzati e documentati separatamente in `tests/manual/`.
 - **Propagazione rigorosa dell'effort.** Tutti i chiamanti (`call.ts`, `strategies/`, `spawnAgent.ts`,

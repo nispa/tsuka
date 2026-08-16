@@ -81,7 +81,8 @@ const suites = [
   'test_download_file.ts',
   'test_mention_completion.ts',
   'test_escalation_tools.ts',
-  'test_continue_command.ts'
+  'test_continue_command.ts',
+  'test_config_limits.ts'
 ];
 
 let passed = 0;
