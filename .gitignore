@@ -1,16 +1,26 @@
+# Dependencies & Build
 node_modules/
 dist/
+
+# Local & Private Configuration
 .env*
+tsuka.config.json
+models_profile.json
+.claude
+
+# Logs & REPL History
 *.log
-memory/
 .tsuka_history*
-*.history
-*_history
-.history/
-output/*
-!output/.gitkeep
+
+# Runtime State & Agent Artifacts
+memory/
 workflow_logs/
 runs/
 workspace/
-scratch/
+downloads/
+tools_backup/
+.tsuka/
 archive/
+
+# Tool Outputs
+output/
