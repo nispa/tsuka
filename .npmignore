@@ -11,11 +11,14 @@ archive/
 scratch/
 docs/
 
-# IDE and Environment
+# IDE, Environment and History
 .git/
 .github/
 .claude/
 .env*
 *.log
-.tsuka_history
+.tsuka_history*
+*.history
+*_history
+.history/
 tsconfig.json
