@@ -24,6 +24,18 @@ export class PermissionManager {
   }
 
   /**
+   * Abilita o disabilita l'auto-approvazione delle scritture/modifiche file (RESTRICTED).
+   * Utile per workflow autonomi come /goal o /team dove la jail del workspace è attiva.
+   */
+  setAllowAllWrite(allow: boolean): void {
+    this.allowAllWrite = allow;
+  }
+
+  isAllowAllWrite(): boolean {
+    return this.allowAllWrite;
+  }
+
+  /**
    * Accoda `task` dopo l'eventuale prompt già in corso: un solo prompt alla volta,
    * nell'ordine di arrivo delle richieste. La coda avanza sempre e comunque, anche
    * se `task` rifiuta, altrimenti una richiesta fallita bloccherebbe tutte quelle

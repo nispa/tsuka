@@ -1,6 +1,6 @@
 import chalk from 'chalk';
 import { CommandCtx } from './types';
-import { CLITheme } from '../ui';
+import { CLITheme, InteractiveMenu } from '../ui';
 import { StreamRenderer } from '../stream';
 import { GenerationInterrupt } from '../interrupt';
 import { MemoryStore } from '../../core/memory';
@@ -522,6 +522,29 @@ export async function handleGoal(ctx: CommandCtx, arg: string): Promise<void> {
   let overallStep = 0;
   const agentStats: { name: string; stats: TurnStats }[] = [];
 
+  // In sessioni interattive, chiede all'utente se attivare la modalità autonoma per questo specifico goal
+  let isAuto = true;
+  if (process.stdin.isTTY) {
+    const autoModeChoice = await InteractiveMenu.select<string>(
+      'Modalità di esecuzione per questo goal:',
+      [
+        { title: '⚡ Autonoma — Consenti modifiche file e ricerche nel workspace senza interruzioni', value: 'auto' },
+        { title: '🛡️  Sorvegliata — Chiedi conferma per ogni creazione/modifica di file', value: 'supervised' }
+      ],
+      'auto'
+    );
+    isAuto = autoModeChoice === 'auto';
+  }
+
+  const prevAllowWrite = ctx.permissionManager.isAllowAllWrite();
+  if (isAuto) {
+    ctx.permissionManager.setAllowAllWrite(true);
+    console.log(chalk.green('✔ Modalità autonoma attivata per questo goal (scrittura file nel workspace consentita automaticamente).'));
+    console.log(chalk.gray('  La jail del workspace resta attiva (non è possibile uscire dalla root); comandi DANGEROUS richiederanno conferma.\n'));
+  } else {
+    console.log(chalk.yellow('✔ Modalità sorvegliata attiva: verrà richiesta autorizzazione per ogni file.\n'));
+  }
+
   // Blackboard del run (T6.2, TASKS.md — FASE 2): stato condiviso di QUESTO goal,
   // letto/scritto dagli agenti via post_note/read_notes (runMemberTurn,
   // strategies/common.ts). Isolata dai run concorrenti via AsyncLocalStorage
@@ -720,6 +743,8 @@ export async function handleGoal(ctx: CommandCtx, arg: string): Promise<void> {
       }
     });
   } finally {
+    // Ripristina lo stato dei permessi preesistente
+    ctx.permissionManager.setAllowAllWrite(prevAllowWrite);
     // La blackboard muore col run: liberata subito dopo l'esecuzione del piano,
     // non sopravvive oltre (nessuna persistenza, nessun accumulo tra /goal successivi).
     Blackboard.endRun(runId);

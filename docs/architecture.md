@@ -122,6 +122,14 @@ I tool si dividono per funzione: file (`read_file`, `write_file`, `edit_file`, `
 (`post_note`, `read_notes`, `send_message`, `report_status`, `route_next`, `cast_vote`),
 generativi (`spawn_agent`, `create_role`, `create_tool`).
 
+> **`write_file` ha un tetto rigido di 16000 caratteri per chiamata (T9.11).** Osservato in
+> produzione: un unico `write_file` con l'intero contenuto di un file multi-livello rompeva
+> ripetutamente il parsing JSON della tool call lato server, con modelli locali. La descrizione
+> dello schema già suggeriva di dividere i file lunghi in più chiamate con `append`, ma è
+> un'istruzione che il modello può ignorare — qui il limite è **fatto rispettare**: oltre la
+> soglia il tool rifiuta la chiamata con un errore che prescrive come dividerla (prima porzione
+> senza `append`, successive con `append:true`), e **non tronca mai** il contenuto in silenzio.
+
 ---
 
 ## 6. Le tre memorie, e il confine fra loro
@@ -210,8 +218,10 @@ alto la velocità può essere identica e i token emessi cinque volte tanti.
 
 **Due soffitti** nel provider: `FIRST_TOKEN_TIMEOUT_MS` (120s fisso, attesa del primo token) e
 `MAX_GENERATION_MS` (120s di default, **mai azzerato** all'arrivo del primo token, configurabile
-con `llmTimeoutMs` in `tsuka.config.json` — su questo workspace è impostato a 999999 ms, di fatto
-disattivato) — più `max_tokens` a 8192 come tetto generoso, non come parametro da tarare.
+con `llmTimeoutMs` in `tsuka.config.json`) — più `max_tokens` a 8192 come tetto generoso, non come
+parametro da tarare. Su questo workspace `llmTimeoutMs` è alzato a 999999 ms: non è un
+disattivamento, è un tetto volutamente largo per tollerare modelli che ragionano a lungo prima di
+rispondere, invece di interromperli a metà pensiero.
 
 ---
 
