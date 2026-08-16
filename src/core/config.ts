@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { homePath } from './apphome';
+import { logSink } from './logSink';
 
 // dotenv caricato dal punto di ingresso (cli/index.ts)
 
@@ -111,7 +112,7 @@ export class ConfigManager {
         this.save();
       }
     } catch (error: any) {
-      console.error(`Errore nel caricamento di tsuka.config.json: ${error.message}. Uso configurazione di fallback.`);
+      logSink.error(`Errore nel caricamento di tsuka.config.json: ${error.message}. Uso configurazione di fallback.`);
     }
   }
 
@@ -119,7 +120,7 @@ export class ConfigManager {
     try {
       fs.writeFileSync(CONFIG_PATH, JSON.stringify(this.config, null, 2), 'utf-8');
     } catch (error: any) {
-      console.error(`Errore nel salvataggio della configurazione: ${error.message}`);
+      logSink.error(`Errore nel salvataggio della configurazione: ${error.message}`);
     }
   }
 

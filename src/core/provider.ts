@@ -2,6 +2,7 @@ import { OpenAI } from 'openai';
 import chalk from 'chalk';
 import { ThinkTagParser, stripThinkBlocks, StreamChannel } from './thinkParser';
 import { ChatMessage, ChatRole, ToolCall } from './types';
+import { logSink } from './logSink';
 
 const FIRST_TOKEN_TIMEOUT_MS = 120_000; // 2 minuti di attesa per il primo token
 const MAX_RETRIES = 3;                  // tentativi prima di dichiarare "mancata risposta"
@@ -477,7 +478,7 @@ export class LLMProvider implements ILLMProvider {
         if (timedOut) {
           if (attempt < MAX_RETRIES) {
             process.stdout.write('\n');
-            console.log(
+            logSink.log(
               chalk.yellow(`[Tentativo ${attempt}/${MAX_RETRIES}] Il modello '${this.currentModel}' non risponde, riprovo...`)
             );
             continue;
@@ -499,7 +500,7 @@ export class LLMProvider implements ILLMProvider {
         if (isMalformedToolCallJsonError(error.message)) {
           if (attempt < MAX_RETRIES) {
             process.stdout.write('\n');
-            console.log(
+            logSink.log(
               chalk.yellow(`[Tentativo ${attempt}/${MAX_RETRIES}] Il server ha rifiutato una tool call con JSON malformato, riprovo...`)
             );
             continue;

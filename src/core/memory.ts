@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as crypto from 'crypto';
 import { homePath } from './apphome';
 import { ConfigManager } from './config';
+import { logSink } from './logSink';
 
 /** Tipo di fatto memorizzato (T6.1): guida l'eviction a punteggio — 'run' è il primo
  * a cadere (scarti di turno condensati), 'lezione' l'ultimo (insegnamenti duraturi). */
@@ -221,7 +222,7 @@ export class MemoryStore {
         this.loadedMtime = -1;
       }
     } catch (error: any) {
-      console.error(`Errore nella lettura della memoria condivisa (${this.filePath}): ${error.message}. Riparto da memoria vuota.`);
+      logSink.error(`Errore nella lettura della memoria condivisa (${this.filePath}): ${error.message}. Riparto da memoria vuota.`);
       this.facts = [];
       this.loadedMtime = -1;
     }
@@ -253,7 +254,7 @@ export class MemoryStore {
       fs.writeFileSync(this.filePath, JSON.stringify(data, null, 2), 'utf-8');
       this.loadedMtime = fs.statSync(this.filePath).mtimeMs;
     } catch (error: any) {
-      console.error(`Errore nel salvataggio della memoria condivisa: ${error.message}`);
+      logSink.error(`Errore nel salvataggio della memoria condivisa: ${error.message}`);
     }
   }
 

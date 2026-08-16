@@ -288,7 +288,7 @@ export function loadSystemPrompt(
 
 import chalk from 'chalk';
 import { CLITheme } from './ui';
-import { getModelProfile } from '../core/modelProfile';
+import { getModelProfile, getRecommendedEffort } from '../core/modelProfile';
 import { getModelTier, hasNativeFunctionCalling } from '../tools/registry';
 import type { ReasoningEffort } from '../core/provider';
 
@@ -305,7 +305,15 @@ import type { ReasoningEffort } from '../core/provider';
  */
 export function notifyIfUnprofiled(model: string, effort?: ReasoningEffort): void {
   if (!model) return;
-  if (getModelProfile(model, effort)) return;
+  const profile = getModelProfile(model, effort);
+  if (profile) {
+    const recommended = getRecommendedEffort(model);
+    if (recommended) {
+      const matchHint = effort && effort === recommended ? chalk.green('(già attivo)') : chalk.cyan(`usa /effort ${recommended} per impostarlo`);
+      CLITheme.info(`💡 Profilo benchmark attivo: sforzo consigliato ${chalk.magenta.bold(recommended.toUpperCase())} (${matchHint})`);
+    }
+    return;
+  }
   const estimated = getModelTier(model, effort);
   CLITheme.warning(
     `Modello non ancora profilato: tier stimato dal nome = '${estimated}' (i tool di tier superiore restano nascosti).`

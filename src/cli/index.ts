@@ -12,7 +12,7 @@ import { MemoryStore } from '../core/memory';
 import { createDefaultRegistry } from '../tools/index';
 import { PermissionManager } from '../safety/permissions';
 import { Agent, resolveReasoningEffort } from '../core/agent';
-import { getModelProfile } from '../core/modelProfile';
+import { getModelProfile, getRecommendedEffort } from '../core/modelProfile';
 import { withEffortPin, confirmEffortDivergence } from '../core/effortControl';
 import type { ReasoningEffort } from '../core/provider';
 import { CLITheme, InteractiveMenu } from './ui';
@@ -194,11 +194,18 @@ async function main() {
       ? `${runtimeCtx.toLocaleString()} tok (live server)`
       : `${configManager.getMaxHistoryTokens().toLocaleString()} tok (default config)`;
 
+    const currentM = scan ? provider.getCurrentModel() : '';
+    const recEffort = currentM ? getRecommendedEffort(currentM) : null;
+    const effortLabel = recEffort
+      ? `${recEffort.toUpperCase()} (consigliato da benchmark)`
+      : 'standard';
+
     const rows: { label: string; value: string; color?: (s: string) => string }[] = [
       { label: 'Provider', value: activeProvider.toUpperCase(), color: chalk.green },
       { label: 'Server', value: activeConfig.baseUrl, color: chalk.cyan },
       { label: 'Modello', value: scan ? provider.getCurrentModel() : 'nessuno (server offline)', color: scan ? chalk.green : chalk.red },
       { label: 'Contesto', value: ctxLabel, color: runtimeCtx ? chalk.green : chalk.gray },
+      { label: 'Sforzo (Effort)', value: effortLabel, color: recEffort ? chalk.magenta : chalk.gray },
     ];
     if (initialChar) {
       rows.push({ label: 'Personaggio', value: `${initialChar.displayName} (${initialChar.aiName})`, color: chalk.green });

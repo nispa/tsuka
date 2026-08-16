@@ -65,41 +65,58 @@ export interface ModelProfile {
 
 interface ProfilesFile {
   profiles: Record<string, ModelProfile>;
+  recommendations?: Record<string, ReasoningEffort>;
 }
 
 const PROFILE_PATH = homePath('models_profile.json');
-/**
- * Cache invalidata per CONTENUTO letto (`raw`), non per `mtimeMs` del file: su
- * Windows la risoluzione dell'orologio del filesystem è grossolana (~15ms) — due
- * scritture ravvicinate su models_profile.json (tipico nei test, che riscrivono
- * il file più volte in rapida sequenza) possono condividere lo stesso mtime pur
- * avendo contenuto diverso, e un confronto per mtime tratterebbe la seconda
- * scrittura come "nessuna modifica", servendo dalla cache un profilo stantio (o
- * addirittura assente) invece di quello appena scritto su disco. Stesso problema
- * di risoluzione già affrontato in memory.ts (vedi commento su `useOrder`), qui
- * risolto confrontando i byte effettivamente letti invece del timestamp del
- * file: un confronto per contenuto non può mai avere due esiti diversi entro
- * uno stesso "tick" di orologio, quindi la corsa diventa impossibile da
- * riprodurre, non solo improbabile.
- */
-let cache: { raw: string; profiles: Record<string, ModelProfile> } | null = null;
 
-function loadProfiles(): Record<string, ModelProfile> {
+let cache: { raw: string; data: ProfilesFile } | null = null;
+
+function loadProfilesData(): ProfilesFile {
   try {
     if (!fs.existsSync(PROFILE_PATH)) {
-      cache = { raw: '', profiles: {} };
-      return cache.profiles;
+      cache = { raw: '', data: { profiles: {}, recommendations: {} } };
+      return cache.data;
     }
     const raw = fs.readFileSync(PROFILE_PATH, 'utf-8');
     if (cache && cache.raw === raw) {
-      return cache.profiles;
+      return cache.data;
     }
     const data = JSON.parse(raw) as ProfilesFile;
-    cache = { raw, profiles: data.profiles || {} };
-    return cache.profiles;
+    if (!data.profiles) data.profiles = {};
+    if (!data.recommendations) data.recommendations = {};
+    cache = { raw, data };
+    return cache.data;
   } catch {
-    return cache?.profiles || {};
+    return cache?.data || { profiles: {}, recommendations: {} };
   }
+}
+
+function loadProfiles(): Record<string, ModelProfile> {
+  return loadProfilesData().profiles;
+}
+
+/**
+ * Restituisce lo sforzo di ragionamento consigliato misurato dal benchmark per un dato modello.
+ */
+export function getRecommendedEffort(modelName: string): ReasoningEffort | null {
+  if (!modelName) return null;
+  const data = loadProfilesData();
+  const rec = data.recommendations?.[modelName];
+  if (rec) {
+    const profile = getModelProfile(modelName, rec);
+    if (profile) return rec;
+  }
+  // Se non esplicito in recommendations, cerca tra i profili validi
+  for (const effort of REASONING_EFFORT_LEVELS) {
+    const p = getModelProfile(modelName, effort);
+    if (p && p.tier === 'large') return effort;
+  }
+  for (const effort of REASONING_EFFORT_LEVELS) {
+    const p = getModelProfile(modelName, effort);
+    if (p && p.tier === 'medium') return effort;
+  }
+  return null;
 }
 
 /**
@@ -139,17 +156,16 @@ export function getModelProfile(modelName: string, effort: ReasoningEffort = 'xh
   return profile ? { ...profile, tier: computeTier(profile.scores) } : null;
 }
 
-function saveProfile(profile: ModelProfile): void {
-  const profiles = { ...loadProfiles() };
-  profiles[profileKey(profile.model, profile.reasoningEffort)] = profile;
-  const raw = JSON.stringify({ profiles }, null, 2);
+function saveProfile(profile: ModelProfile, recommendedEffort?: ReasoningEffort | null): void {
+  const data = loadProfilesData();
+  data.profiles[profileKey(profile.model, profile.reasoningEffort)] = profile;
+  if (recommendedEffort) {
+    if (!data.recommendations) data.recommendations = {};
+    data.recommendations[profile.model] = recommendedEffort;
+  }
+  const raw = JSON.stringify(data, null, 2);
   fs.writeFileSync(PROFILE_PATH, raw, 'utf-8');
-  // Aggiorna la cache con lo stesso `raw` appena scritto: una lettura
-  // immediatamente successiva (anche nello stesso tick di orologio) lo trova
-  // già in cache invece di rileggerlo — ma resta comunque corretta anche se
-  // qualcun altro riscrive il file nel frattempo, perché il confronto in
-  // loadProfiles() è sul contenuto, non sul timestamp.
-  cache = { raw, profiles };
+  cache = { raw, data };
 }
 
 /**
@@ -275,6 +291,10 @@ export async function runBenchmark(
       const maxRank = Math.max(...profiles.map((p) => tierRank(p.tier)));
       const best = profiles.find((p) => tierRank(p.tier) === maxRank);
       recommendedEffort = best?.reasoningEffort ?? null;
+      if (recommendedEffort && profiles.length > 0) {
+        // Riassegna e persiste la raccomandazione nel file
+        saveProfile(profiles[0], recommendedEffort);
+      }
     }
 
     return { profiles, recommendedEffort };

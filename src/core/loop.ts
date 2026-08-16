@@ -6,6 +6,7 @@ import { executeCommandTool } from '../tools/impl/executeCommand';
 import { PermissionManager } from '../safety/permissions';
 import { ILLMProvider } from './provider';
 import { Blackboard } from './blackboard';
+import { logSink } from './logSink';
 
 export interface AcceptanceCriteria {
   /** Comando shell da eseguire (deve restituire exit code 0 per superare l'acceptance). */
@@ -136,7 +137,7 @@ export async function runLoop(options: RunLoopOptions): Promise<RunLoopResult> {
   let lastIssues: string[] = [];
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    console.log(chalk.gray(`\n[RunController] Tentativo ${attempt + 1} di ${maxAttempts}...`));
+    logSink.log(chalk.gray(`\n[RunController] Tentativo ${attempt + 1} di ${maxAttempts}...`));
 
     // Esegue il tentativo corrente
     const attemptResult = await options.executeAttempt(currentPrompt, attempt);
@@ -146,7 +147,7 @@ export async function runLoop(options: RunLoopOptions): Promise<RunLoopResult> {
     // Calcolo della firma anti-stallo
     const signature = calculateAttemptSignature(lastAnswer, attemptResult.modifiedFiles);
     if (previousSignature !== null && signature === previousSignature) {
-      console.log(chalk.yellow(`\n[RunController] Rilevato stallo (no_progress): la risposta ed i file prodotti nel tentativo ${attempt + 1} sono identici al precedente.`));
+      logSink.log(chalk.yellow(`\n[RunController] Rilevato stallo (no_progress): la risposta ed i file prodotti nel tentativo ${attempt + 1} sono identici al precedente.`));
       
       const bb = Blackboard.current();
       if (bb) {
@@ -178,7 +179,7 @@ export async function runLoop(options: RunLoopOptions): Promise<RunLoopResult> {
 
     // Se non ci sono problemi/issues, il task è completato con successo
     if (currentIssues.length === 0) {
-      console.log(chalk.green(`\n[RunController] Tentativo ${attempt + 1} superato con successo!`));
+      logSink.log(chalk.green(`\n[RunController] Tentativo ${attempt + 1} superato con successo!`));
       return {
         outcome: 'success',
         attemptsCount: attempt + 1,
@@ -189,7 +190,7 @@ export async function runLoop(options: RunLoopOptions): Promise<RunLoopResult> {
     }
 
     // Se ci sono problemi ed abbiamo ancora tentativi disponibili, prepariamo il prompt di correzione
-    console.log(chalk.yellow(`\n[RunController] Tentativo ${attempt + 1} non superato. Trovate ${currentIssues.length} issue da correggere.`));
+    logSink.log(chalk.yellow(`\n[RunController] Tentativo ${attempt + 1} non superato. Trovate ${currentIssues.length} issue da correggere.`));
 
     // Registra le issue sulla lavagna di run se attiva
     const bb = Blackboard.current();
@@ -209,7 +210,7 @@ ${formattedIssues}`;
   }
 
   // Budget di tentativi esaurito senza superare le verifiche
-  console.log(chalk.red(`\n[RunController] Esauriti i ${maxAttempts} tentativi disponibili senza superare tutte le verifiche.`));
+  logSink.log(chalk.red(`\n[RunController] Esauriti i ${maxAttempts} tentativi disponibili senza superare tutte le verifiche.`));
   return {
     outcome: 'failed',
     attemptsCount: maxAttempts,

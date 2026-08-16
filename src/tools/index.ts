@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { pathToFileURL } from 'url';
 import { ToolRegistry, Tool } from './registry';
+import { logSink } from '../core/logSink';
 
 /**
  * Crea e restituisce un ToolRegistry caricando in modo del tutto dinamico
@@ -49,7 +50,7 @@ export async function createDefaultRegistry(): Promise<ToolRegistry> {
           }
         }
       } catch (error: any) {
-        console.error(`Errore nel caricamento automatico del tool da '${file}': ${error.message}`);
+        logSink.error(`Errore nel caricamento automatico del tool da '${file}': ${error.message}`);
       }
     }
   }

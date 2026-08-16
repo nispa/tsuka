@@ -2,6 +2,7 @@ import { CommandCtx } from './types';
 import { CLITheme } from '../ui';
 import chalk from 'chalk';
 import { ContextTracker } from '../../core/contextTracker';
+import { getRecommendedEffort } from '../../core/modelProfile';
 
 export async function handleExit(_ctx: CommandCtx, _arg: string): Promise<void> {
   console.log(chalk.yellow('Uscita in corso... Arrivederci!'));
@@ -11,10 +12,20 @@ export async function handleExit(_ctx: CommandCtx, _arg: string): Promise<void> 
 export async function handleInfo(ctx: CommandCtx, _arg: string): Promise<void> {
   const charName = ctx.configManager.getActiveCharacter();
   const char = ctx.loadCharacter(charName);
+  const currentModel = ctx.provider.getCurrentModel();
+  const recEffort = getRecommendedEffort(currentModel);
+  const maxTokens = ctx.configManager.getMaxHistoryTokens();
+  const runtimeCtx = ctx.configManager.getRuntimeContextTokens();
+  const ctxSource = runtimeCtx ? chalk.green('(live server)') : chalk.gray('(config default)');
+
   console.log(chalk.bold('\nInformazioni di Sessione:'));
   console.log(`- Provider Attivo: ${chalk.green(ctx.configManager.getActiveProviderName().toUpperCase())}`);
   console.log(`- Endpoint Server: ${chalk.cyan(ctx.provider.getBaseUrl())}`);
-  console.log(`- Modello Attivo:  ${chalk.green(ctx.provider.getCurrentModel())}`);
+  console.log(`- Modello Attivo:  ${chalk.green(currentModel)}`);
+  console.log(`- Finestra Contesto: ${chalk.cyan(maxTokens.toLocaleString() + ' tok')} ${ctxSource}`);
+  if (recEffort) {
+    console.log(`- Sforzo Consigliato: ${chalk.magenta(recEffort.toUpperCase())} ${chalk.gray('(da benchmark, usa /effort ' + recEffort + ')')}`);
+  }
   if (char) {
     console.log(`- Personaggio:     ${chalk.green(char.displayName)} (${chalk.yellow(char.aiName)})`);
     console.log(`  └─ Ruolo collegato:  ${char.role}`);

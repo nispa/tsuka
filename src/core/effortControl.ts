@@ -1,5 +1,6 @@
 import chalk from 'chalk';
 import { ReasoningEffort } from './provider';
+import { logSink } from './logSink';
 
 /**
  * Controllo globale del reasoning_effort a runtime (T8.14, TASKS.md — FASE 3):
@@ -139,7 +140,7 @@ export function logEffortDivergence(
 ): void {
   const reference = getReferenceEffort(configDefault);
   if (effective === reference) return;
-  console.log(chalk.gray(
+  logSink.log(chalk.gray(
     `[Effort] ${agentLabel}: turno a '${effortLabel(effective)}' (riferimento: '${effortLabel(reference)}'${pin ? ', pin attivo' : ''}).`
   ));
 }
@@ -171,7 +172,7 @@ export async function confirmEffortDivergence(
   }
   const proceed = await confirmFn(effective, reference);
   if (proceed) return effective;
-  console.log(chalk.yellow(
+  logSink.log(chalk.yellow(
     `[Effort] Turno rifiutato a '${effortLabel(effective)}': eseguito invece al riferimento '${effortLabel(reference)}'.`
   ));
   return reference;

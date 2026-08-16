@@ -3,6 +3,7 @@ import { homePath } from '../core/apphome';
 import { RiskLevel, PermissionManager } from '../safety/permissions';
 import { getModelProfile } from '../core/modelProfile';
 import type { ReasoningEffort } from '../core/provider';
+import { logSink } from '../core/logSink';
 
 /**
  * Contesto opzionale passato all'esecuzione dei tool (es. accesso al registry
@@ -190,7 +191,7 @@ export function loadToolSchema(name: string): ToolSchemaData {
     schemaCache.set(name, { mtimeMs, data: schemaData });
     return schemaData;
   } catch (error: any) {
-    console.error(`Errore nel caricamento dello schema JSON per '${name}': ${error.message}`);
+    logSink.error(`Errore nel caricamento dello schema JSON per '${name}': ${error.message}`);
     return fallbackSchema(name);
   }
 }

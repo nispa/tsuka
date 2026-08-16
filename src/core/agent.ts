@@ -5,6 +5,7 @@ import { AgentEvent, AgentEventHandler } from './agentEvents';
 import { StreamChannel } from './thinkParser';
 import chalk from 'chalk';
 import { MemoryStore } from './memory';
+import { logSink } from './logSink';
 import { ChatMessage } from './types';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -276,7 +277,7 @@ export class Agent {
     }
 
     this.messages = [this.messages[0], ...this.messages.slice(start)];
-    console.log(
+    logSink.log(
       chalk.gray(`[Cronologia: rimossi ${removed} messaggi meno recenti per restare entro la context window (~${this.maxHistoryTokens} token)]`)
     );
     return removed;
@@ -398,7 +399,7 @@ export class Agent {
     const afterTotal = this.estimateTotalContextTokens();
     const saved = total - afterTotal;
     const savedStr = saved >= 1000 ? `${(saved / 1000).toFixed(1)}k` : `${saved}`;
-    console.log(chalk.gray(`[Compressione automatica: compressi ${toCompress.length} messaggi, risparmiati ~${savedStr} tok (ora ~${Math.round(afterTotal / 1000)}k)]`));
+    logSink.log(chalk.gray(`[Compressione automatica: compressi ${toCompress.length} messaggi, risparmiati ~${savedStr} tok (ora ~${Math.round(afterTotal / 1000)}k)]`));
 
     return { saved, compressedCount: toCompress.length };
   }
@@ -448,7 +449,7 @@ export class Agent {
         `memory/thinking/${filename} — leggilo con read_file prima di riragionare da capo sullo stesso compito.`;
       MemoryStore.getInstance().addFact(pointer.slice(0, 500), this.agentLabel || 'agente', { kind: 'run' });
     } catch (error: any) {
-      console.error(chalk.gray(`[Impossibile salvare la traccia di ragionamento: ${error.message}]`));
+      logSink.error(chalk.gray(`[Impossibile salvare la traccia di ragionamento: ${error.message}]`));
     }
   }
 

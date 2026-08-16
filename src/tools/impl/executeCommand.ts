@@ -3,6 +3,7 @@ import chalk from 'chalk';
 import { Tool } from '../registry';
 import { getShellConfig } from '../../core/platform';
 import { capForContext } from '../../core/contextBudget';
+import { logSink } from '../../core/logSink';
 
 // Timeout massimo di esecuzione per un comando (evita blocchi infiniti dell'agente)
 const COMMAND_TIMEOUT_MS = 120_000;
@@ -15,7 +16,7 @@ export const executeCommandTool: Tool = {
   execute: async (args: { command: string }) => {
     return new Promise<string>((resolve) => {
       const shellConfig = getShellConfig();
-      console.log(chalk.gray(`\n[Esecuzione di: ${args.command}]`));
+      logSink.log(chalk.gray(`\n[Esecuzione di: ${args.command}]`));
 
       const child = spawn(
         shellConfig.shell,
@@ -31,7 +32,7 @@ export const executeCommandTool: Tool = {
         if (settled) return;
         settled = true;
         shellConfig.kill(child);
-        console.log(chalk.red(`\n[Comando interrotto: superato il timeout di ${COMMAND_TIMEOUT_MS / 1000}s]`));
+        logSink.log(chalk.red(`\n[Comando interrotto: superato il timeout di ${COMMAND_TIMEOUT_MS / 1000}s]`));
         resolve(
           capForContext(
             `${combinedOutput}\n[ERRORE: il comando è stato interrotto dopo ${COMMAND_TIMEOUT_MS / 1000} secondi di attesa. ` +
@@ -58,7 +59,7 @@ export const executeCommandTool: Tool = {
         if (settled) return;
         settled = true;
         clearTimeout(watchdog);
-        console.log(chalk.gray(`[Comando terminato con codice: ${code}]`));
+        logSink.log(chalk.gray(`[Comando terminato con codice: ${code}]`));
 
         // Tronca l'output se eccessivo (lo streaming su console è già stato visualizzato interamente)
         let resultOutput = combinedOutput;
