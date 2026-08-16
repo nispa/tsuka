@@ -147,6 +147,11 @@ export interface ChatResponse {
   content: string;
   toolCalls?: ToolCall[];
   stats?: ChatStats;
+  /** T9.12: catena di pensiero completa di questo round (se il modello ne ha
+   *  prodotta una), per uso opzionale del chiamante — es. persisterla come nota
+   *  di memoria invece di lasciarla sparire dopo il rendering live. undefined se
+   *  il modello non ha fatto reasoning separato dal content. */
+  reasoningText?: string;
 }
 
 /**
@@ -252,6 +257,10 @@ export class LLMProvider implements ILLMProvider {
     options?: ChatOptions
   ): Promise<ChatResponse> {
     const startTime = Date.now();
+    // T9.12: reasoning accumulato ATTRAVERSO i tentativi (non solo quello
+    // dell'ultimo) — un retry su timeout/JSON malformato non deve far perdere il
+    // pensiero già prodotto dai tentativi precedenti, vedi il blocco catch sotto.
+    let allReasoningText = '';
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       if (signal?.aborted) break;
@@ -259,6 +268,15 @@ export class LLMProvider implements ILLMProvider {
       const attemptAbort = new AbortController();
       let timedOut = false;
       let generationTimedOut = false; // T8.11: timeout sull'INTERA generazione (il modello stava rispondendo)
+      // T9.12: accumulo del reasoning di QUESTO tentativo, dichiarato qui (non dentro
+      // il ramo streaming più sotto) apposta perché deve restare leggibile anche dal
+      // blocco catch: un ragionamento lungo interrotto da un timeout o da un tool call
+      // JSON malformato lato server veniva finora perso — il testo era già stato
+      // generato (e mostrato live), ma buttato via a fine chiamata. Ora resta
+      // recuperabile su ChatResponse.reasoningText (successo) o Error.partialReasoning
+      // (fallimento/interruzione) — vedi il chiamante in core/agent.ts, che lo
+      // persiste come nota di memoria invece di lasciarlo sparire.
+      let reasoningText = '';
 
       const onUserAbort = () => attemptAbort.abort();
       if (signal) {
@@ -312,6 +330,11 @@ export class LLMProvider implements ILLMProvider {
           const thinkParser = new ThinkTagParser((text, channel) => {
             if (channel === 'content') {
               fullText += text;
+            } else {
+              // T9.12: reasoning estratto da tag <think> dentro il content (modelli
+              // senza campo 'reasoning' separato nella delta) — vedi anche il ramo
+              // 'reasoning' esplicito qui sotto per i modelli che invece lo espongono.
+              reasoningText += text;
             }
             onChunk(text, channel);
           });
@@ -332,6 +355,7 @@ export class LLMProvider implements ILLMProvider {
 
             if (reasoning) {
               chunkCount++;
+              reasoningText += reasoning;
               onChunk(reasoning, 'reasoning');
             }
 
@@ -357,6 +381,21 @@ export class LLMProvider implements ILLMProvider {
             }
           }
 
+          // T9.9: la SDK OpenAI (node_modules/openai/streaming.js, Stream.fromSSEResponse)
+          // intercetta l'AbortError generato dal NOSTRO attemptAbort.abort() e chiude
+          // l'iteratore con un `return` silenzioso invece di rilanciare — comportamento
+          // pensato per l'uso pubblico di `stream.controller.abort()`, dove il chiamante
+          // ha chiesto lui di fermarsi e non vuole un errore. Senza questo controllo, un
+          // timeout scattato a metà stream (T8.11/T8.16) produceva un ChatResponse
+          // "riuscito" con testo troncato a metà (osservato in produzione: risposta
+          // interrotta a "I'm " con il normale footer di stats, nessun errore visibile).
+          // Rilanciamo qui un errore generico per rientrare nella gestione già corretta
+          // del blocco catch sottostante (retry per timedOut, errore definitivo per
+          // generationTimedOut) invece di restituire silenziosamente il parziale.
+          if (generationTimedOut || timedOut) {
+            throw new Error('__generation_aborted_by_timeout__');
+          }
+
           clearTimeout(firstTokenTimer);
           thinkParser.flush();
 
@@ -373,6 +412,7 @@ export class LLMProvider implements ILLMProvider {
           return {
             content: fullText,
             toolCalls: cleanToolCalls.length > 0 ? cleanToolCalls : undefined,
+            reasoningText: reasoningText || undefined,
             stats: {
               durationMs,
               tokenCount,
@@ -408,6 +448,15 @@ export class LLMProvider implements ILLMProvider {
       } catch (error: any) {
         if (signal?.aborted) break;
 
+        // T9.12: il reasoning di QUESTO tentativo (se ce n'era) entra nell'accumulo
+        // cross-tentativo PRIMA di qualunque retry/throw — così un secondo o terzo
+        // tentativo non fa perdere il pensiero già prodotto da quelli precedenti,
+        // e ogni errore lanciato qui sotto lo porta con sé (Error.partialReasoning)
+        // invece di lasciarlo sparire con l'eccezione.
+        if (reasoningText) {
+          allReasoningText += (allReasoningText ? '\n\n---\n\n' : '') + reasoningText;
+        }
+
         // T8.11: controllato PRIMA di timedOut — il modello stava generando (ha già
         // superato il timeout sul primo token, altrimenti sarebbe quest'ultimo a
         // scattare per primo), quindi il messaggio va distinto da "mancata risposta"
@@ -415,10 +464,13 @@ export class LLMProvider implements ILLMProvider {
         // Interruzione definitiva, senza retry: un tentativo che ha già occupato
         // MAX_GENERATION_MS non va ripetuto da capo, raddoppiando l'attesa in silenzio.
         if (generationTimedOut) {
-          throw new Error(
-            `[Timeout generazione] Il modello '${this.currentModel}' stava rispondendo ma ha superato il limite di ` +
-            `${MAX_GENERATION_MS / 1000}s per l'intera generazione: interrotto. Non è una mancata risposta — il ` +
-            `modello stava producendo output quando è scattato il timeout.`
+          throw Object.assign(
+            new Error(
+              `[Timeout generazione] Il modello '${this.currentModel}' stava rispondendo ma ha superato il limite di ` +
+              `${MAX_GENERATION_MS / 1000}s per l'intera generazione: interrotto. Non è una mancata risposta — il ` +
+              `modello stava producendo output quando è scattato il timeout.`
+            ),
+            { partialReasoning: allReasoningText || undefined }
           );
         }
 
@@ -430,9 +482,12 @@ export class LLMProvider implements ILLMProvider {
             );
             continue;
           }
-          throw new Error(
-            `[Mancata risposta] Il modello '${this.currentModel}' non ha prodotto token dopo ${MAX_RETRIES} tentativi ` +
-            `(timeout: ${FIRST_TOKEN_TIMEOUT_MS / 1000}s per tentativo).`
+          throw Object.assign(
+            new Error(
+              `[Mancata risposta] Il modello '${this.currentModel}' non ha prodotto token dopo ${MAX_RETRIES} tentativi ` +
+              `(timeout: ${FIRST_TOKEN_TIMEOUT_MS / 1000}s per tentativo).`
+            ),
+            { partialReasoning: allReasoningText || undefined }
           );
         }
 
@@ -449,13 +504,19 @@ export class LLMProvider implements ILLMProvider {
             );
             continue;
           }
-          throw new Error(
-            `[JSON malformato] Il modello '${this.currentModel}' ha generato ripetutamente (${MAX_RETRIES} tentativi) una tool call ` +
-            `con argomenti JSON non validi. Errore del server: ${error.message}`
+          throw Object.assign(
+            new Error(
+              `[JSON malformato] Il modello '${this.currentModel}' ha generato ripetutamente (${MAX_RETRIES} tentativi) una tool call ` +
+              `con argomenti JSON non validi. Errore del server: ${error.message}`
+            ),
+            { partialReasoning: allReasoningText || undefined }
           );
         }
 
-        throw new Error(`Errore di comunicazione con il modello '${this.currentModel}': ${error.message}`);
+        throw Object.assign(
+          new Error(`Errore di comunicazione con il modello '${this.currentModel}': ${error.message}`),
+          { partialReasoning: allReasoningText || undefined }
+        );
       } finally {
         // T8.11: entrambi i timer ripuliti qui, incondizionatamente — copre ogni
         // uscita dal try (successo, errore, abort utente), non solo il percorso felice.

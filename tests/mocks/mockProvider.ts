@@ -43,6 +43,13 @@ export interface ScriptedResponse {
   toolCalls?: MockToolCall[];
   /** Override parziale delle statistiche di generazione (default: valori fittizi coerenti). */
   stats?: Partial<ChatStats>;
+  /** Catena di pensiero di questo round (T9.12), per testare la persistenza in
+   *  Agent.persistReasoningTrace — vedi ChatResponse.reasoningText. */
+  reasoningText?: string;
+  /** Se presente, questo round lancia un errore invece di rispondere — il campo
+   *  `partialReasoning` sull'oggetto, se impostato, simula il reasoning parziale
+   *  che provider.ts allega agli errori di timeout/JSON malformato (T9.12). */
+  error?: { message: string; partialReasoning?: string };
 }
 
 export interface MockCallRecord {
@@ -99,8 +106,15 @@ export class MockLLMProvider implements ILLMProvider {
 
     const scripted = this.script[this.cursor++];
 
+    if (scripted.error) {
+      throw Object.assign(new Error(scripted.error.message), { partialReasoning: scripted.error.partialReasoning });
+    }
+
     if (onChunk && scripted.content) {
       onChunk(scripted.content, 'content');
+    }
+    if (onChunk && scripted.reasoningText) {
+      onChunk(scripted.reasoningText, 'reasoning');
     }
 
     const tokenCount = scripted.stats?.tokenCount ?? Math.ceil((scripted.content?.length ?? 0) / 3.5);
@@ -116,7 +130,8 @@ export class MockLLMProvider implements ILLMProvider {
     return {
       content: scripted.content ?? '',
       toolCalls: scripted.toolCalls,
-      stats
+      stats,
+      reasoningText: scripted.reasoningText
     };
   }
 

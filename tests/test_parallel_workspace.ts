@@ -197,6 +197,11 @@ async function main() {
     ]);
     const ctx = buildMockCtx(provider);
     ctx.registry.register(writeFileTool);
+    // T9.10: parallelExecutionEnabled è false di default (una singola GPU non trae
+    // vantaggio dal parallelismo). Questo test valida PROPRIO il meccanismo di
+    // branch/merge/conflitto del blocco PARALLELO, quindi lo forza esplicitamente
+    // attivo — indipendentemente dal default reale letto da tsuka.config.json.
+    ctx.configManager.isParallelExecutionEnabled = () => true;
 
     await handleGoal(ctx, 'Scrivi due file distinti in parallelo');
 
@@ -233,6 +238,11 @@ async function main() {
     ]);
     const ctx = buildMockCtx(provider);
     ctx.registry.register(writeFileTool);
+    // T9.10: parallelExecutionEnabled è false di default (una singola GPU non trae
+    // vantaggio dal parallelismo). Questo test valida PROPRIO il meccanismo di
+    // branch/merge/conflitto del blocco PARALLELO, quindi lo forza esplicitamente
+    // attivo — indipendentemente dal default reale letto da tsuka.config.json.
+    ctx.configManager.isParallelExecutionEnabled = () => true;
 
     const { logs } = await captureLogs(() => handleGoal(ctx, 'Scrivi lo stesso file in parallelo'));
 

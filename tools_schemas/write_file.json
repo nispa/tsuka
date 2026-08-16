@@ -1,6 +1,6 @@
 {
   "name": "write_file",
-  "description": "Crea un nuovo file o sovrascrive completamente un file esistente con il contenuto fornito. Per file lunghi (codice, HTML, dati) preferisci più chiamate piccole invece di una sola con tutto il contenuto: una singola stringa molto lunga in un unico argomento rischia di rompere la generazione della tool call stessa. Scrivi una prima porzione, poi continua con 'append': true per le successive.",
+  "description": "Crea un nuovo file o sovrascrive completamente un file esistente con il contenuto fornito. LIMITE RIGIDO: 'content' non può superare 4000 caratteri per chiamata — oltre questa soglia la chiamata viene rifiutata con un errore. Per file più lunghi (codice, HTML, dati) dividi SEMPRE in più chiamate: la prima senza 'append' (o con append:false), le successive con 'append': true, finché il file non è completo. Una singola stringa molto lunga in un unico argomento rischia comunque di rompere la generazione della tool call stessa: anche restando sotto i 4000 caratteri, preferisci porzioni più piccole quando il contenuto ha molte righe con virgolette o caratteri speciali.",
   "requiredTier": "small",
   "parameters": {
     "type": "object",
@@ -11,7 +11,7 @@
       },
       "content": {
         "type": "string",
-        "description": "Il contenuto da scrivere. Senza 'append' (o con append:false) sostituisce l'intero file: usalo per la prima porzione di un file lungo, o per un file che sta comodamente in una sola chiamata. Tieni ogni singola chiamata ragionevolmente breve (poche centinaia di righe al massimo): se il contenuto totale è più lungo, dividilo in più chiamate."
+        "description": "Il contenuto da scrivere. Senza 'append' (o con append:false) sostituisce l'intero file: usalo per la prima porzione di un file lungo, o per un file che sta comodamente in una sola chiamata. MASSIMO 4000 caratteri per chiamata (rifiutato oltre questa soglia): se il contenuto totale è più lungo, dividilo in più chiamate con 'append'."
       },
       "append": {
         "type": "boolean",

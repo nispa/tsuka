@@ -31,8 +31,12 @@
 | T5.1 | ✅ Fatto | `Agent.estimateTokens`/`estimateMessagesTokens` da statici a istanza, con rapporto caratteri/token tarato via media mobile (peso 0.2) su `usage.prompt_tokens` reale. Seed invariato (3.5). `tests/test_token_calibration.ts` verifica convergenza. |
 | T5.2 | ✅ Fatto | `.github/workflows/test.yml`: su push/PR, matrice `ubuntu-latest`/`windows-latest` × Node 20, `npm ci` → `npm run build` → `npm test`. Nessun segreto, nessuna rete verso LLM (tutti i test registrati in `tests/run_tests.ts` usano `MockLLMProvider` o logica pura). Verificato localmente il ciclo completo `npm ci` + `npm run build` + `npm test` da installazione pulita: verde. |
 | T5.3 | ✅ Fatto | Riscritta la Tappa 7 (mantenuta la numerazione cronologica reale della guida, non spostata a posizione 6 — vedi nota nel report finale) con le 4 strategie a confronto (tabella), il protocollo a tool call vs regex, l'isolamento della concorrenza in `/goal` (T3.1+T3.2), i test col mock come documentazione eseguibile. Passata di verifica su tutta la guida (agente di ricerca dedicato, 9 claim controllati contro il codice): corretti "~40 righe" per `Agent.run()` (ora ~150), il limite di I/O (5MB lettura file / 50KB output comandi, erano presentati come un solo numero), il filtro env var (pattern reale più ampio di `*_API_KEY`), il rapporto caratteri/token (ora calibrato a runtime, non fisso), il conteggio benchmark (3 categorie ma 5 casi, non "3 test"). Aggiornata anche la riga "Protocollo STATO" → "Protocollo di coordinamento a tool call" nella tabella §3 e aggiunta una riga "Isolamento dei branch paralleli". Tutti gli altri claim controllati (Tappe 1,3,4,6,9,10, tabelle §3, esistenza file) confermati veri, nessuna modifica. |
+| T11.1 | 📋 Da fare | Packaging npm & Sanitizzazione Distribuzione (`package.json` `files` whitelist, `.npmignore`, pulizia artefatti). |
+| T11.2 | 📋 Da fare | Zero-Config First Run & Wizard Onboarding (gestione assenza provider/config con UX guidata). |
+| T11.3 | 📋 Da fare | CI/CD Multi-OS & Script di Pre-Publish / Dry-Run (`.github/workflows/test.yml` matrice completa + test packaging). |
+| T11.4 | 📋 Da fare | Documentazione Open-Source: Quickstart a 3 comandi in testa al README (EN/IT) + asset demo. |
 
-Tutti i task del piano qualità sono completati. Suite test: 25, tutte verdi (25 casi in `test_team_modes.ts`, 16 in `test_parallel_workspace.ts`, 9 in `test_permission_queue.ts`). Build pulito. CI attiva su ubuntu/windows × Node 20.
+Tutti i task del piano qualità sono completati (45 suite di test verdi). Nuova fase di Ottimizzazione e Release Readiness pianificata.
 
 ---
 
@@ -1402,5 +1406,87 @@ Sfruttare la matrice dei profili di fingerprinting misurati da `/benchmark` (`mo
 - `/goal` e `/team` riescono ad assegnare modelli differenti agli agenti della squadra in base ai profili di `models_profile.json`.
 - Integrazione coerente con la cascata dell'effort e della creatività esistente.
 - Suite di test dedicata `tests/test_model_routing.ts`.
+
+---
+
+# FASE 6 — Release Readiness & Packaging Optimization
+
+> Obiettivo: preparare TSUKA alla pubblicazione open-source e npm garantendo packaging impeccabile, onboarding resiliente al primo avvio su qualsiasi OS, e documentazione chiara con Quickstart.
+
+## T11.1 — Packaging npm & Sanitizzazione Distribuzione
+
+**Dipende da:** nessuno · **Sforzo:** basso · **Priorità:** alta
+
+Configurare il packaging formale di TSUKA per la distribuzione via npm registry e l'esecuzione tramite `npx tsuka` / `npm install -g tsuka`.
+
+- Aggiungere il campo `files` in `package.json` con la whitelist rigorosa degli asset da distribuire:
+  ```json
+  "files": [
+    "dist",
+    "roles",
+    "traits",
+    "characters",
+    "teams",
+    "presets",
+    "tools_schemas",
+    "benchmarks",
+    "tsuka.config.json"
+  ]
+  ```
+- Configurare `.npmignore` esplicito per escludere file di test (`tests/`), memorie persistenti locali (`memory/`), run temporanee (`runs/`, `workspace/`, `output/`, `workflow_logs/`), e log locali.
+- Verificare la risoluzione degli asset in `src/core/apphome.ts` e `src/cli/shared.ts` per garantire che, se invocato come pacchetto npm globale o via `npx`, TSUKA trovi sempre i preset e i character inclusi nel pacchetto senza dipendere da directory di sviluppo relative errate.
+
+**Accettazione:** `npm pack --dry-run` produce un archivio pulito contenente solo il codice compilato e gli asset di configurazione/preset; nessun file di test o di runtime locale incluso.
+
+## T11.2 — Zero-Config First Run & Wizard Onboarding
+
+**Dipende da:** nessuno · **Sforzo:** medio · **Priorità:** massima
+
+Garantire un'esperienza a zero frizione per l'utente che avvia TSUKA per la prima volta in una directory vuota o su un sistema privo di configurazione preesistente.
+
+- Se all'avvio nessun provider LLM locale è raggiungibile (Ollama, LM Studio, Unsloth) e non è presente una chiave API in `tsuka.config.json` o `.env`:
+  1. Non lanciare stacktrace raw di connessione.
+  2. Mostrare un banner accogliente che spiega chiaramente la situazione.
+  3. Offrire un prompt interattivo (`prompts`): scelta tra configurare un endpoint Ollama locale, inserire una chiave OpenRouter, o avviare `tsuka init`.
+- Intercettare tempestivamente gli errori di rete verso LLM durante il ciclo ReAct (`Agent.run`), fornendo suggerimenti pratici a video (es. *"Assicurati che Ollama sia avviato con `ollama serve`"*).
+
+**Accettazione:** Esecuzione di TSUKA in ambiente sterile (senza config e senza LLM attivo) gestita con grazia, con prompt guidato e zero crash non intercettati.
+
+## T11.3 — CI/CD Multi-OS & Script di Pre-Publish / Dry-Run
+
+**Dipende da:** T11.1 · **Sforzo:** basso · **Priorità:** alta
+
+Estendere l'automazione di Continuous Integration per validare la compatibilità cross-platform su tutti i target supportati.
+
+- Aggiornare `.github/workflows/test.yml` per testare la matrice:
+  - OS: `ubuntu-latest`, `windows-latest`, `macos-latest`
+  - Node.js: `20.x`, `22.x`
+- Includere nello step di CI: `npm ci` → `npm run build` → `npm test` → `npm pack --dry-run`.
+- Aggiungere uno script npm `npm run prepublishOnly` che esegua automaticamente build e test prima di qualsiasi operazione di publish.
+
+**Accettazione:** Workflow GitHub Actions completo che valida build, test e packaging su tutte e 3 le piattaforme operative.
+
+## T11.4 — Documentazione Open-Source & Quickstart a 3 Comandi
+
+**Dipende da:** T11.1, T11.2 · **Sforzo:** basso · **Priorità:** media
+
+Rendere il repository immediatamente fruibile e attraente per la community GitHub e sviluppatori esterni.
+
+- Aggiornare `README.md` e `README-it.md` posizionando in evidenza (subito sotto il banner iniziale) un **Quickstart a 3 comandi**:
+  ```bash
+  # 1. Installazione globale
+  npm install -g tsuka
+
+  # 2. Inizializzazione rapida del workspace
+  tsuka init --preset core
+
+  # 3. Avvio
+  tsuka
+  ```
+- Aggiungere indicazioni chiare per il primo comando di test (es. `/goal "Crea un server Express con endpoint di healthcheck"` o `/team game_dev`).
+- Preparare la sezione per demo visiva / GIF terminale.
+
+**Accettazione:** README allineato, chiaro, con guida rapida al primo avvio in cima sia in inglese che in italiano.
+
 
 

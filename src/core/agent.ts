@@ -6,6 +6,9 @@ import { StreamChannel } from './thinkParser';
 import chalk from 'chalk';
 import { MemoryStore } from './memory';
 import { ChatMessage } from './types';
+import * as fs from 'fs';
+import * as path from 'path';
+import { homePath } from './apphome';
 
 /**
  * Sagoma minima per la cascata di risoluzione del reasoning_effort (T8.10):
@@ -404,6 +407,55 @@ export class Agent {
     return { saved, compressedCount: toCompress.length };
   }
 
+  // T9.12: sotto questa soglia (caratteri) non vale la pena salvare — sarebbe
+  // rumore nella cartella memory/thinking/ per un ragionamento troppo breve
+  // perché il modello dovesse davvero "ripartire da capo" rileggendolo.
+  private static readonly MIN_REASONING_TO_PERSIST = 300;
+
+  /**
+   * Persiste una catena di pensiero (T9.12) su file — non nella memoria
+   * "fatti" (MemoryStore, tetto di 500 caratteri per voce, pensata per note
+   * atomiche iniettate a ogni prompt): un ragionamento di 10 minuti è ordini
+   * di grandezza più lungo, e ficcarlo lì gonfierebbe ogni prompt futuro.
+   * Il testo completo va invece su file (stesso pattern di spawn_agent con
+   * 'briefingFile': il contenuto lungo vive su disco, non in un argomento/nota
+   * breve), e in MemoryStore finisce solo un puntatore corto (kind 'run',
+   * stesso kind già usato da compressHistory per gli scarti di turno condensati)
+   * — così un agente futuro lo trova con recall_memory/getRecent e lo rilegge
+   * con read_file solo se davvero gli serve, invece di riceverlo sempre e
+   * comunque in ogni system prompt.
+   *
+   * Chiamata sia sul percorso di successo (reasoningText pieno) sia da dentro
+   * il catch di run() quando la generazione si interrompe (partialReasoning,
+   * vedi provider.ts T9.12): il pensiero prodotto prima di un timeout o di un
+   * tool call JSON malformato è già stato generato per intero, buttarlo via
+   * insieme all'errore sprecherebbe gli stessi minuti che l'utente non vuole
+   * ripagare al turno successivo.
+   */
+  private persistReasoningTrace(text: string, taskExcerpt: string, interrupted: boolean): void {
+    const trimmed = (text || '').trim();
+    if (trimmed.length < Agent.MIN_REASONING_TO_PERSIST) return;
+    try {
+      const dir = homePath('memory', 'thinking');
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const label = (this.agentLabel || 'agente').replace(/[^a-z0-9_-]+/gi, '-').slice(0, 30) || 'agente';
+      const filename = `${stamp}-${label}${interrupted ? '-interrotto' : ''}.md`;
+      fs.writeFileSync(path.join(dir, filename), trimmed, 'utf-8');
+
+      const shortTask = (taskExcerpt || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+      const status = interrupted ? 'interrotto' : 'completo';
+      const pointer =
+        `Ragionamento ${status} (${trimmed.length} caratteri) su "${shortTask}" salvato in ` +
+        `memory/thinking/${filename} — leggilo con read_file prima di riragionare da capo sullo stesso compito.`;
+      MemoryStore.getInstance().addFact(pointer.slice(0, 500), this.agentLabel || 'agente', { kind: 'run' });
+    } catch (error: any) {
+      console.error(chalk.gray(`[Impossibile salvare la traccia di ragionamento: ${error.message}]`));
+    }
+  }
+
   /**
    * Avvia il ciclo agentico per elaborare un messaggio utente.
    */
@@ -469,7 +521,14 @@ export class Agent {
           chatOptions
         );
 
-        const { content, toolCalls, stats } = response;
+        const { content, toolCalls, stats, reasoningText } = response;
+
+        // T9.12: pensiero completo di questo round, se sufficientemente lungo —
+        // vedi persistReasoningTrace(). Non blocca né rallenta il turno: è una
+        // scrittura su file "a lato", il ciclo agentico prosegue subito dopo.
+        if (reasoningText) {
+          this.persistReasoningTrace(reasoningText, userMessage, false);
+        }
 
         // Taratura del rapporto caratteri/token: this.messages è ancora esattamente
         // il prompt appena inviato (il push del turno corrente avviene sotto), quindi
@@ -603,6 +662,14 @@ export class Agent {
       } catch (error: any) {
         // Interruzione richiesta dall'utente (Esc): uscita pulita, non è un errore
         if (signal?.aborted) break;
+        // T9.12: il pensiero prodotto prima dell'interruzione (timeout, tool call
+        // JSON malformato, ecc. — vedi Error.partialReasoning in provider.ts) va
+        // salvato PRIMA di rilanciare: è già stato generato per intero, perderlo
+        // insieme all'errore sprecherebbe gli stessi minuti che questo salvataggio
+        // esiste apposta per non ripagare al turno successivo.
+        if ((error as any)?.partialReasoning) {
+          this.persistReasoningTrace((error as any).partialReasoning, userMessage, true);
+        }
         throw new Error(`Errore nel ciclo agentico: ${error.message}`);
       }
     }

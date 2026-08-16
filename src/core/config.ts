@@ -37,6 +37,13 @@ export interface AppConfig {
   llmTimeoutMs?: number;
   /** Preset di creatività predefinito ('precise' | 'balanced' | 'creative' | 'low' | 'medium' | 'high'). */
   creativity?: string;
+  /** Esecuzione parallela dei blocchi PARALLELO in `goal` (T9.10). Default: false —
+   *  su una singola GPU/singolo modello in VRAM il parallelismo tra agenti non è
+   *  performante (gli agenti finiscono comunque a contendersi la stessa scheda),
+   *  quindi resta disattivato finché non lo si abilita esplicitamente. Quando
+   *  false, un blocco PARALLELO viene comunque riconosciuto ma eseguito come
+   *  sequenza di step normali (vedi parsePlan in cli/commands/goal.ts). */
+  parallelExecutionEnabled?: boolean;
 }
 
 export const CONFIG_PATH = homePath('tsuka.config.json');
@@ -313,6 +320,17 @@ export class ConfigManager {
       return Math.floor(value);
     }
     return 120000;
+  }
+
+  /**
+   * Esecuzione parallela dei blocchi PARALLELO in `goal` (T9.10). Default:
+   * false — vedi il commento su AppConfig.parallelExecutionEnabled. Va
+   * abilitata esplicitamente con "parallelExecutionEnabled": true in
+   * tsuka.config.json solo su hardware che la sostiene davvero (più GPU, o
+   * più modelli caricati in VRAM contemporaneamente).
+   */
+  isParallelExecutionEnabled(): boolean {
+    return this.config.parallelExecutionEnabled === true;
   }
 
   /**

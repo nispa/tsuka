@@ -171,7 +171,11 @@ function normalizeCharName(name: string): string {
   return (name || '').toLowerCase().replace(/[\s_\-]/g, '');
 }
 
-export function parsePlan(content: string, allCharacters: (CharacterConfig | string)[]): ParseResult {
+export function parsePlan(
+  content: string,
+  allCharacters: (CharacterConfig | string)[],
+  parallelEnabled: boolean = true
+): ParseResult {
   const groups: PlanGroup[] = [];
   const lines = content.split('\n');
   const validMap = new Map<string, string>();
@@ -209,11 +213,24 @@ export function parsePlan(content: string, allCharacters: (CharacterConfig | str
         }
       }
       if (parallelSteps.length > 0) {
-        groups.push({
-          mode: 'parallel',
-          steps: parallelSteps,
-          label: `Parallelo (${parallelSteps.map((s) => s.agentName).join(' + ')})`
-        });
+        if (parallelEnabled) {
+          groups.push({
+            mode: 'parallel',
+            steps: parallelSteps,
+            label: `Parallelo (${parallelSteps.map((s) => s.agentName).join(' + ')})`
+          });
+        } else {
+          // T9.10: parallelExecutionEnabled=false (default) — il blocco PARALLELO
+          // resta riconosciuto (il piano del modello non cambia), ma i suoi step
+          // vengono eseguiti in sequenza come step normali, uno per gruppo, invece
+          // che con Promise.all su workspace isolati. Su una singola GPU il
+          // parallelismo reale non c'è comunque (contesa sulla stessa scheda), quindi
+          // eseguire in sequenza evita l'overhead di branch/merge della workspace
+          // senza perdere nessuno step del piano.
+          for (const step of parallelSteps) {
+            groups.push({ mode: 'sequential', steps: [step], label: step.task });
+          }
+        }
         flatSteps += parallelSteps.length;
       }
       i++; // salta FINE PARALLELO
@@ -437,8 +454,9 @@ export async function handleGoal(ctx: CommandCtx, arg: string): Promise<void> {
     return;
   }
 
-  // Parsing del piano in gruppi
-  const { groups, flatSteps } = parsePlan(planText, allCharacters);
+  // Parsing del piano in gruppi (T9.10: il parallelismo è disattivato di default —
+  // vedi ConfigManager.isParallelExecutionEnabled)
+  const { groups, flatSteps } = parsePlan(planText, allCharacters, ctx.configManager.isParallelExecutionEnabled());
 
   if (groups.length === 0) {
     CLITheme.warning('Nessun formato AGENTE: riconosciuto direttamente nel piano. Recupero agenti menzionati...');
