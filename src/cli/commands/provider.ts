@@ -279,8 +279,12 @@ export async function handleBenchmark(ctx: CommandCtx, arg: string): Promise<voi
         console.log();
       }
       if (recommendedEffort) {
-        console.log(chalk.bold(`  🎯 Raccomandazione: ${chalk.magenta(recommendedEffort)}`) +
-          chalk.gray(' — il livello più basso che raggiunge il tier più alto misurato.'));
+        const bestProfile = profiles.find((p) => p.reasoningEffort === recommendedEffort) ?? profiles[0];
+        const tierStr = bestProfile?.tier ? bestProfile.tier.toUpperCase() : 'STANDARD';
+        const speedStr = bestProfile?.tokensPerSecond ? `${bestProfile.tokensPerSecond} tok/s` : '';
+        console.log(chalk.bold(`  🎯 Sforzo di pensiero consigliato: ${chalk.magenta(recommendedEffort.toUpperCase())}`));
+        console.log(chalk.gray(`     └─ Spiegazione: a livello '${recommendedEffort}' il modello ottiene già il tier massimo (${tierStr})`));
+        console.log(chalk.gray(`        e supera tutti i test, garantendo la massima reattività${speedStr ? ` (~${speedStr})` : ''} senza sprecare token in ragionamenti superflui.`));
       }
       console.log();
     } catch (err: any) {
