@@ -208,9 +208,10 @@ ciascuno e raccomanda **il più economico che raggiunge il tier più alto**. Reg
 `avgCompletionTokens`, perché i token al secondo da soli non rivelano l'over-thinking: a effort
 alto la velocità può essere identica e i token emessi cinque volte tanti.
 
-**Due soffitti duri** nel provider: `FIRST_TOKEN_TIMEOUT_MS` (120s, attesa del primo token) e
-`MAX_GENERATION_MS` (300s, **mai azzerato** all'arrivo del primo token) — più `max_tokens` a
-8192 come tetto generoso, non come parametro da tarare.
+**Due soffitti** nel provider: `FIRST_TOKEN_TIMEOUT_MS` (120s fisso, attesa del primo token) e
+`MAX_GENERATION_MS` (120s di default, **mai azzerato** all'arrivo del primo token, configurabile
+con `llmTimeoutMs` in `tsuka.config.json` — su questo workspace è impostato a 999999 ms, di fatto
+disattivato) — più `max_tokens` a 8192 come tetto generoso, non come parametro da tarare.
 
 ---
 

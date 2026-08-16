@@ -12,7 +12,7 @@ import { resolveSafePath } from './utils';
 // Qui il limite è fatto rispettare: oltre questa soglia il tool rifiuta la
 // chiamata con un errore che prescrive come dividerla, invece di sperare che
 // il modello segua la descrizione da solo.
-const MAX_CONTENT_LENGTH = 4000;
+const MAX_CONTENT_LENGTH = 16000;
 
 export const writeFileTool: Tool = {
   name: 'write_file',

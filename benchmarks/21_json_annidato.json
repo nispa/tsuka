@@ -1,0 +1,19 @@
+{
+  "name": "json_annidato",
+  "description": "Generazione di JSON complesso con oggetti annidati, array di oggetti e booleani senza markdown extra",
+  "category": "json",
+  "prompt": "Estrai le informazioni dal seguente testo e produci SOLO un oggetto JSON valido senza blocchi markdown né spiegazioni: 'Il server web (host: \"api.example.com\", porta: 8080) ha SSL abilitato e gestisce 2 endpoint: \"/auth\" (metodo \"POST\", auth richiesta: false) e \"/users\" (metodo \"GET\", auth richiesta: true)'. Il JSON deve avere le chiavi: \"host\" (stringa), \"port\" (numero), \"ssl\" (booleano), e \"endpoints\" (array di 2 oggetti con \"path\", \"method\", \"requires_auth\").",
+  "checks": [
+    { "type": "json_valid", "weight": 3 },
+    { "type": "json_path_equals", "path": "host", "value": "api.example.com", "weight": 2 },
+    { "type": "json_path_equals", "path": "port", "value": 8080, "weight": 2 },
+    { "type": "json_path_equals", "path": "ssl", "value": true, "weight": 2 },
+    { "type": "json_path_length", "path": "endpoints", "value": 2, "weight": 2 },
+    { "type": "json_path_equals", "path": "endpoints[0].path", "value": "/auth" },
+    { "type": "json_path_equals", "path": "endpoints[0].method", "value": "POST" },
+    { "type": "json_path_equals", "path": "endpoints[0].requires_auth", "value": false },
+    { "type": "json_path_equals", "path": "endpoints[1].path", "value": "/users" },
+    { "type": "json_path_equals", "path": "endpoints[1].method", "value": "GET" },
+    { "type": "json_path_equals", "path": "endpoints[1].requires_auth", "value": true }
+  ]
+}

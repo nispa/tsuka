@@ -1,0 +1,57 @@
+{
+  "name": "tool_write_append",
+  "description": "Capacità di invocare write_file con path e content corretti, e di usare la modalità append: true per accodare contenuto",
+  "category": "toolCalling",
+  "weight": 2,
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "write_file",
+        "description": "Crea o sovrascrive un file. Con append: true, accoda il contenuto alla fine del file.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "path": { "type": "string", "description": "Percorso del file" },
+            "content": { "type": "string", "description": "Contenuto testuale da scrivere o accodare" },
+            "append": { "type": "boolean", "description": "Se true, accoda al file invece di sovrascrivere" }
+          },
+          "required": ["path", "content"]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "read_file",
+        "description": "Legge il contenuto di un file.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "path": { "type": "string", "description": "Percorso del file da leggere" }
+          },
+          "required": ["path"]
+        }
+      }
+    }
+  ],
+  "steps": [
+    {
+      "prompt": "Crea il file 'server.log' inserendo la riga '[BOOT] Server avviato'. Usa il tool write_file.",
+      "checks": [
+        { "type": "tool_called", "value": "write_file", "weight": 2 },
+        { "type": "tool_arg_equals", "arg": "path", "value": "server.log", "weight": 2 },
+        { "type": "tool_arg_regex", "arg": "content", "value": "\\[BOOT\\]\\s*Server\\s+avviato", "flags": "i", "weight": 2 }
+      ]
+    },
+    {
+      "toolResult": "File 'server.log' scritto con successo (24 byte).",
+      "checks": [
+        { "type": "tool_called", "value": "write_file", "weight": 2 },
+        { "type": "tool_arg_equals", "arg": "path", "value": "server.log", "weight": 2 },
+        { "type": "tool_arg_equals", "arg": "append", "value": true, "weight": 3 },
+        { "type": "tool_arg_regex", "arg": "content", "value": "pronto|connessioni|ok|listen", "flags": "i", "weight": 1 }
+      ]
+    }
+  ]
+}

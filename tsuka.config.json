@@ -1,5 +1,5 @@
 {
-  "activeProvider": "llamaserver",
+  "activeProvider": "unsloth",
   "providers": {
     "llamaserver": {
       "baseUrl": "http://127.0.0.1:51337/v1",
