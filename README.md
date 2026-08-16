@@ -383,7 +383,7 @@ npx tsx tests/test_self_authoring.ts
 npx tsx tests/test_platform.ts
 ```
 
-Current status: **43 test suites, 200+ assertions — all green**.
+Current status: **56 test suites, 1000+ assertions — all green**.
 
 ## 📚 Documentation
 
