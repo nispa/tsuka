@@ -206,6 +206,7 @@ export class CLITheme {
       ['/memory [clear|<id>]', 'Memoria persistente a lungo termine dei fatti'],
       ['/blackboard', 'Note e stato dell\'ultimo workflow/goal'],
       ['/runs', 'Storico e report delle esecuzioni recenti'],
+      ['/continue [traccia]', 'Forza la ripresa di un ragionamento interrotto'],
 
       { section: '⚙️  Sessione' },
       ['/info', 'Riepilogo configurazione e server attivo'],

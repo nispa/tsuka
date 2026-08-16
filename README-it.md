@@ -136,7 +136,7 @@ Il profilo è salvato in `models_profile.json`. `getModelTier()` usa prima il pr
 
 | Tier | Tool disponibili | Esclusi |
 |------|----------------|---------|
-| **SMALL** | 20 tool (lettura, scrittura, diagnostica, web, memoria, protocollo) | `execute_command`, `create_tool`, `spawn_agent` |
+| **SMALL** | 21 tool (lettura, scrittura, diagnostica, web, memoria, protocollo) | `execute_command`, `create_tool`, `spawn_agent`, `request_goal`, `request_team`, `request_call` |
 | **MEDIUM** | 27 tool | — |
 | **LARGE** | 27 tool | — |
 
@@ -159,6 +159,8 @@ Prompt ← formatForPrompt()      ← memory/memory.json  (iniezione automatica)
 ```
 
 La cronologia chat è anche potata automaticamente (`maxHistoryMessages` in `tsuka.config.json`, default 40) senza rompere le coppie tool_call/tool.
+
+I ragionamenti lunghi vengono salvati per intero in `memory/thinking/*.md` (in `memory.json` finisce solo un puntatore corto, per non gonfiare ogni prompt futuro) — incluso il ragionamento parziale prodotto appena prima di un timeout o di un'interruzione. Se una sessione viene killata a metà compito, `/continue [traccia]` inietta quella traccia direttamente nel turno successivo con l'istruzione esplicita "non ripartire da capo, decidi e agisci", invece di affidarsi all'iniziativa del modello di richiamarla da solo con `recall_memory`.
 
 ### 6. Self-Authoring dei Tool (`create_tool`) 🛠️
 
@@ -215,7 +217,7 @@ Le variabili d'ambiente sensibili (`KEY`, `SECRET`, `TOKEN`, `PASSWORD`...) sono
 Avvia una discussione a più voci su qualsiasi tema:
 
 ```powershell
-/call @laan, @deanna_troi e @geordi     # Menzione diretta dei partecipanti
+/call @tuvok, @deanna_troi e @geordi     # Menzione diretta dei partecipanti
 /call                                    # Checklist interattiva multiselect
 ```
 
@@ -270,6 +272,7 @@ Collaborazione sequenziale su uno spazio di lavoro condiviso:
 | `/memory [clear\|<id>]` | Gestisce, legge o svuota i ricordi persistenti |
 | `/blackboard` | Mostra note e stato dell'ultimo workflow/goal |
 | `/runs` | Mostra storico e report delle esecuzioni recenti |
+| `/continue [traccia]` | Forza la ripresa di un ragionamento interrotto invece di ripartire da capo |
 | `/info` | Mostra informazioni sessione (provider, modello, agente) |
 | `/reset` | Resetta cronologia + approvazioni sicurezza |
 | `/search-engine` | Cambia provider di ricerca (DuckDuckGo / Google / Tavily) |
@@ -303,7 +306,7 @@ npm run dev
 /benchmark
 
 # 4. Inizia a chattare o:
-/call @laan, @deanna_troi
+/call @tuvok, @deanna_troi
 ```
 
 ### Build di Produzione

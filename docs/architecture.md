@@ -1,14 +1,14 @@
 # Architettura di Tsuka
 
-> Stato: 15 agosto 2026, a valle di FASE 3. Sostituisce la versione precedente di questo
+> Stato: 16 agosto 2026, release v0.3.0. Sostituisce la versione precedente di questo
 > documento, che era ferma a "9-10 tool" e al tier dedotto dal nome del modello — entrambe cose
 > non più vere.
 >
 > Questo file descrive **come funziona il sistema**. Per le regole di lavoro sul codice vedi
 > `AGENTS.md`; per lo stato dei lavori e il debito aperto vedi `TASKS.md`.
 
-**In numeri:** 27 tool · 22 comandi REPL · 21 moduli core · 21 ruoli · 9 tratti ·
-22 personaggi · 10 team · 46 suite di test.
+**In numeri:** 27 tool · 19 comandi REPL · 23 moduli core · 21 ruoli · 9 tratti ·
+24 personaggi · 10 team · 56 suite di test.
 
 ---
 
@@ -334,6 +334,9 @@ tempo, non finestra.
 | `apphome.ts` | app home vs workspace |
 | `contextTracker.ts` | tracciamento del contesto |
 | `types.ts` | tipi condivisi |
+| `loop.ts` | `RunController`: esecuzione e verifica iterativa (usato da `/team` in modalità pipeline) |
+| `mentionSuggestions.ts` | risoluzione dei candidati per le mention `@personaggio`/`@ruolo` (Tab-completion, riusabile da qualsiasi client) |
+| `workflowScope.ts` | `WorkflowScope` (`AsyncLocalStorage`): profondità del workflow attivo, freno anti-ricorsione per i tool di escalation |
 
 ---
 
@@ -342,7 +345,7 @@ tempo, non finestra.
 **Esecuzione & Multi-agente**: `/goal` `/team` `/call`
 **Modello & Inferenza**: `/models` `/provider` `/effort` `/benchmark`
 **Agente & Strumenti**: `/agent` `/tools`
-**Memoria & Storico**: `/context` `/memory` `/blackboard` `/runs`
+**Memoria & Storico**: `/context` `/memory` `/blackboard` `/runs` `/continue`
 **Sessione & Altro**: `/info` `/reset` `/clear` `/exit` `/search-engine` `/help`
 
 ---
@@ -355,7 +358,7 @@ Onestà sullo stato, perché è ciò che serve per decidere dove andare.
   `tsuka.config.json`; il pin di effort è stato di processo. Con un solo utente e una sola
   sessione va bene; con due client concorrenti si sovrascrivono. È il vincolo principale per una
   interfaccia web multi-scheda, e non ha nulla a che vedere con la grafica.
-- **Suite di test deterministica e isolata.** Tutti i 51 file di test automatici offline sono
+- **Suite di test deterministica e isolata.** Tutti i 55 file di test automatici offline sono
   registrati ed eseguiti in `run_tests.ts`. Gli script che richiedono server live o connessione di
   rete sono organizzati e documentati separatamente in `tests/manual/`.
 - **Propagazione rigorosa dell'effort.** Tutti i chiamanti (`call.ts`, `strategies/`, `spawnAgent.ts`,
@@ -398,6 +401,11 @@ selezione della cartella deve avvenire lato server; e un server con filesystem e
 Ordine sensato, se e quando: (1) estrarre una sessione headless — la CLI ne diventa il primo
 client, e se continua a funzionare identica l'estrazione è corretta; (2) chiudere i `console.*`;
 (3) transport su localhost; (4) frontend; (5) sessione e selettore di cartella.
+
+Passo (2) iniziato (T12.4, T13.2, T13.3): `/goal`, `/team`, `/call`, le loro strategie, i tool di
+escalation e `CLITheme` stessa passano ora da `logSink` invece di `console.log` diretto. Restano
+su `console.*` diretto: `cli/index.ts`, `initCmd.ts`, `interrupt.ts`, `shared.ts`, `stream.ts`,
+i comandi `blackboard`/`effort`/`memory`/`provider`, `core/agent.ts`, `safety/permissions.ts`.
 
 **La conclusione che conta:** non si sceglie fra web e TUI, si sceglie di fare il *transport*.
 Fatto quello, ogni client parla lo stesso protocollo e la CLI resta viva. La fase 1 vale a

@@ -40,6 +40,7 @@ import { handleTeam } from './commands/team';
 import { handleGoal } from './commands/goal';
 import { handleEffort } from './commands/effort';
 import { handleBlackboard } from './commands/blackboard';
+import { listThinkingTraces, resolveThinkingTrace, buildResumeDirective } from './commands/continueSession';
 
 import { handleInitCmd } from './initCmd';
 
@@ -268,11 +269,12 @@ async function main() {
   setCompletionSource({
     commands: [...new Set([
       ...Object.keys(commandMap),
-      '/clear', '/help', '/reset', '/info', '/exit',
+      '/clear', '/help', '/reset', '/info', '/exit', '/continue',
     ])].sort(),
     argumentsFor: (command) => {
       if (command === '/models' || command === '/benchmark') return commandCtx.availableModels.current;
       if (command === '/provider') return configManager.getProviderNames();
+      if (command === '/continue') return listThinkingTraces().map((t) => t.filename);
       if (command === '/agent') return commandCtx.listAvailableCharacters().map(c => c.name);
       if (command === '/team') return listAvailableTeams().map(t => t.name);
       if (command === '/call') {
@@ -303,6 +305,12 @@ async function main() {
 
     const trimmedInput = input.trim();
     if (!trimmedInput) continue;
+
+    // Messaggio effettivo da inviare all'agente in questo giro: di norma è
+    // trimmedInput così com'è, ma /continue lo sostituisce con la direttiva
+    // di ripresa forzata e "cade" nel turno di chat normale sotto invece di
+    // consumare l'input con un `continue` come fanno gli altri comandi.
+    let messageToSend: string | null = null;
 
     // Gestione dei comandi Slash
     if (trimmedInput.startsWith('/')) {
@@ -356,22 +364,49 @@ async function main() {
         console.log();
         continue;
       }
-
-      // Dispatch ai moduli estratti per i comandi complessi
-      const handler = commandMap[command];
-      if (handler) {
-        await handler(commandCtx, arg);
-        // Aggiorna i riferimenti mutabili dopo l'esecuzione del comando
-        agent = commandCtx.agent.current;
-        if (commandCtx.availableModels.current !== availableModels) {
-          availableModels = commandCtx.availableModels.current;
+      if (command === '/continue') {
+        const traces = listThinkingTraces();
+        if (traces.length === 0) {
+          CLITheme.warning('Nessun ragionamento salvato da riprendere (memory/thinking/ è vuota).');
+          continue;
         }
+        const trace = await resolveThinkingTrace(arg, traces);
+        if (!trace) {
+          CLITheme.error(`Nessuna traccia trovata per '${arg}'. Usa /continue senza argomenti per l'elenco.`);
+          continue;
+        }
+        let traceContent: string;
+        try {
+          traceContent = fs.readFileSync(trace.fullPath, 'utf-8');
+        } catch (err: any) {
+          CLITheme.error(`Impossibile leggere ${trace.filename}: ${err.message}`);
+          continue;
+        }
+        CLITheme.info(`Ripresa forzata da: ${chalk.cyan(trace.filename)} (${trace.interrupted ? chalk.yellow('interrotto') : chalk.green('completo')})`);
+        messageToSend = buildResumeDirective(traceContent);
+        // Nessun `continue` qui: si cade di proposito nel turno di chat
+        // normale più sotto, con messageToSend al posto di trimmedInput.
+      } else {
+        // Dispatch ai moduli estratti per i comandi complessi
+        const handler = commandMap[command];
+        if (handler) {
+          await handler(commandCtx, arg);
+          // Aggiorna i riferimenti mutabili dopo l'esecuzione del comando
+          agent = commandCtx.agent.current;
+          if (commandCtx.availableModels.current !== availableModels) {
+            availableModels = commandCtx.availableModels.current;
+          }
+          continue;
+        }
+
+        CLITheme.error(`Comando sconosciuto: ${command}. Digita /help per vedere i comandi.`);
         continue;
       }
-
-      CLITheme.error(`Comando sconosciuto: ${command}. Digita /help per vedere i comandi.`);
-      continue;
+    } else {
+      messageToSend = trimmedInput;
     }
+
+    if (messageToSend === null) continue;
 
      // Determina il prompt con il nome proprio del personaggio se disponibile
      const charName = configManager.getActiveCharacter();
@@ -414,7 +449,7 @@ async function main() {
 
     try {
        await agent.run(
-         trimmedInput,
+         messageToSend,
          (chunk, channel) => renderer.onDelta(chunk, channel ?? 'content'),
          (stats) => { renderer.setStats(stats); agentRunStats = stats; },
          // rearm: i prompt di autorizzazione disattivano il raw mode alla chiusura,

@@ -138,7 +138,7 @@ The tier profile is saved to `models_profile.json`. `getModelTier()` uses the me
 
 | Tier | Available Tools | Excluded |
 |------|----------------|----------|
-| **SMALL** | 20 tools (read, write, diagnostics, web, memory, protocol) | `execute_command`, `create_tool`, `spawn_agent` |
+| **SMALL** | 21 tools (read, write, diagnostics, web, memory, protocol) | `execute_command`, `create_tool`, `spawn_agent`, `request_goal`, `request_team`, `request_call` |
 | **MEDIUM** | 27 tools | — |
 | **LARGE** | 27 tools | — |
 
@@ -165,6 +165,8 @@ Prompt  ← formatForPrompt()    ← memory/memory.json  (auto-injected)
 ```
 
 Chat history is also configuratively pruned (`maxHistoryMessages` in `tsuka.config.json`, default 40) without breaking tool_call/tool pairs.
+
+Long reasoning chains are persisted whole to `memory/thinking/*.md` (only a short pointer goes into `memory.json`, to avoid bloating every future prompt) — including partial reasoning captured right before a timeout or interruption. If a session gets killed mid-task, `/continue [trace]` force-feeds that trace back into the next turn with an explicit "don't start over, decide and act" instruction, instead of relying on the model to `recall_memory` it on its own initiative.
 
 ### 7. Tool Self-Authoring (`create_tool`) 🛠️
 
@@ -249,7 +251,7 @@ The orchestrator also supports `PARALLELO` blocks for independent subtasks execu
 Start a multi-voice discussion on any topic:
 
 ```powershell
-/call @laan, @deanna_troi and @geordi   # Mention participants directly
+/call @tuvok, @deanna_troi and @geordi   # Mention participants directly
 /call                                    # Interactive multiselect checklist
 ```
 
@@ -304,6 +306,7 @@ Lets an organized group of agents actively collaborate on a task, executing writ
 | `/memory [clear\|<id>]` | Inspect, manage, or wipe persistent memories |
 | `/blackboard` | Show notes and state of the latest workflow/goal |
 | `/runs` | Show history and reports of recent workflow executions |
+| `/continue [trace]` | Force-resume an interrupted reasoning trace instead of starting over |
 | `/info` | Show session info (provider, model, agent) |
 | `/reset` | Reset history + security approvals |
 | `/search-engine` | Change search provider (DuckDuckGo / Google / Tavily) |
@@ -337,7 +340,7 @@ npm run dev
 /benchmark
 
 # 4. Start chatting or:
-/call @laan, @deanna_troi
+/call @tuvok, @deanna_troi
 ```
 
 ### Production Build

@@ -62,7 +62,7 @@ Tripla stratificazione ortogonale:
 - **Character** (`characters/*.json`): preset nome + role + trait
 
 **Copertura dei ruoli (T7.1)**: `/goal` sceglie fra i *character*, non fra i role — un role
-senza nessun character che lo usi è un role che `/goal` non potrà mai assegnare. 22 character
+senza nessun character che lo usi è un role che `/goal` non potrà mai assegnare. 24 character
 coprono tutti i 21 role (contando anche le skill secondarie del multi-skill).
 Verificato da `tests/test_presets.ts`: per ogni file in `roles/` deve esistere almeno un
 character che lo usa.

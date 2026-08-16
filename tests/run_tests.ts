@@ -80,7 +80,8 @@ const suites = [
   'test_browser_evolution.ts',
   'test_download_file.ts',
   'test_mention_completion.ts',
-  'test_escalation_tools.ts'
+  'test_escalation_tools.ts',
+  'test_continue_command.ts'
 ];
 
 let passed = 0;
