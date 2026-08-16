@@ -224,7 +224,7 @@ TS strict, ES2022, CommonJS, `tsx` per dev.
 
 ## Convenzioni codice
 
-- Commenti e nomi in **italiano** (codice in inglese)
+- **Tutta la codebase in inglese**: codice, tipi, commenti e docstring devono essere in **inglese** (English only across code, comments, and docstrings).
 - `chalk` per colori, `prompts` per input interattivi, `openai` SDK
 - Tool: file in `src/tools/impl/*.ts` + schema in `tools_schemas/*.json`
 - Test esistenti in `tests/`, eseguiti con `tsx`
