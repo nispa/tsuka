@@ -36,6 +36,8 @@
 | T11.3 | ✅ Fatto | Workflow GitHub Actions `.github/workflows/test.yml` esteso alla matrice Ubuntu, Windows e macOS su Node.js 20 e 22, con step automatico di build, test e packaging dry-run. |
 | T11.4 | ✅ Fatto | Sezione "⚡ Quickstart (60 seconds)" / "Guida Rapida in 60 Secondi" a 3 comandi posizionata in evidenza a inizio `README.md` e `README-it.md`. |
 | T11.5 | ✅ Fatto | Dynamic Context Window Auto-Detection: implementato `detectContextWindow` per llama-server (`/props`, `/slots`), Ollama (`/api/show` model_info e num_ctx), OpenRouter e vLLM (`/models`); `ConfigManager` applica precedenza runtime con fallback statico da config; visualizzazione sorgente limite in `/context` e pannello di avvio; 10/10 check in `tests/test_context_detection.ts`. |
+| T11.6 | ✅ Fatto | Token-Driven History & Dynamic Command Timeout: potatura cronologia guidata dai token effettivi con soffitto a 500 messaggi; timeout di `execute_command` reso dinamico via parametro `timeout_ms` e configurabile con `commandTimeoutMs` in `tsuka.config.json`. |
+| T11.7 | ✅ Fatto | Blackboard Visibility & Goal Persistence: salvataggio report `/goal` con snapshot blackboard in `workflow_logs/`; visualizzazione note a fine goal; comando `/blackboard` per consultare gli ultimi workflow. |
 
 Tutti i task del piano qualità e della Fase 6 di ottimizzazione sono completati (46 suite di test verdi, package pulito e pronto per il rilascio).
 
@@ -1504,6 +1506,29 @@ Rilevare dinamicamente e in tempo reale la dimensione della finestra di contesto
 - Scrivere la suite di test `tests/test_context_detection.ts` per validare il parsing dei vari formati di payload server.
 
 **Accettazione:** All'avvio su llama-server o Ollama, TSUKA adotta automaticamente la dimensione reale del contesto del modello/server senza richiedere modifiche manuali a `tsuka.config.json`.
+
+## T11.6 — Token-Driven History & Dynamic Command Timeout
+
+**Dipende da:** T11.5 · **Sforzo:** basso · **Priorità:** alta
+
+- Rendere il budget token (`maxHistoryTokens`) il driver primario per il pruning della cronologia in `Agent.pruneHistory`: non eliminare messaggi finché il contesto effettivo non supera la soglia di guardia (o il 75% per la smart compression).
+- Alzare `maxHistoryMessages` di default da 40 a 500 (funzione di sola guardia superiore per loop infiniti).
+- Rendere il timeout di `execute_command` configurabile tramite il parametro opzionale `timeout_ms` (nello schema JSON del tool) e tramite `commandTimeoutMs` in `tsuka.config.json` (default 120000 ms, cap 10 min).
+- Migliorare il messaggio di errore su timeout fornendo spiegazioni operative e suggerimenti per operazioni lunghe o demoni.
+
+**Accettazione:** Esecuzione di loop prolungati senza potature premature a basso consumo di token; possibilità per l'agente di specificare timeout personalizzati per comandi pesanti.
+
+## T11.7 — Blackboard Visibility & Goal Report Persistence
+
+**Dipende da:** T6.2 · **Sforzo:** basso · **Priorità:** media
+
+- Persistenza automatica dei report di workflow per `/goal` in `workflow_logs/goal-<timestamp>.json` con esito, task, agenti, token stats e snapshot della Blackboard.
+- Stampa a console delle note della Blackboard al completamento del goal se utilizzata dagli agenti (`post_note`).
+- Implementazione del comando slash `/blackboard [limit]` nel REPL per visualizzare le note e i dettagli degli ultimi workflow eseguiti.
+- Allineamento documentale in `AGENTS.md` e persistenza dello snapshot della lavagna.
+
+**Accettazione:** Tutti i workflow (/team e /goal) salvano i report e le note della blackboard in modo consultabile in `workflow_logs/` e tramite il comando `/blackboard`.
+
 
 
 
