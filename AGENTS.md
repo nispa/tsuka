@@ -1,261 +1,190 @@
-# TSUKA — TypeScript Unified Kit for Agents
+# TSUKA — Agent & Developer Guide (AGENTS.md)
 
-## Overview
+## 📌 Project Overview & Tech Stack
 
-Framework multi-agente CLI in TypeScript. Orchestrazione di LLM locali (Ollama/Unsloth) e cloud (OpenRouter). Ciclo agentico ReAct, tool hot-plug, character system ortogonale (ruolo × tratto), memory persistente condivisa, benchmark oggettivo per tier dei modelli.
+**TSUKA** (TypeScript Unified Kit for Agents) is a lightweight, deterministic multi-agent CLI harness in TypeScript. It orchestrates local LLM backends (Ollama, llama.cpp, Unsloth, LM Studio) and cloud gateways (OpenRouter) using an OpenAI-compatible interface (`/v1/chat/completions`).
 
-## Architettura
+* **Runtime**: Node.js (v20+ recommended), TypeScript (strict mode, ES2022 target, CommonJS module output), `tsx` for live execution.
+* **Core Design**: Deterministic ReAct loop, hot-plug dynamic tool auto-discovery, orthogonal persona system (*Role* × *Trait* = *Character/Agent*), session-scoped run blackboard via `AsyncLocalStorage`, token-budgeted memory with semantic keyword scoring, and empirical capability fingerprinting (`/benchmark`).
+* **Metrics**: 27 native tools · 24 characters/agents · 21 roles · 9 traits · 10 preconfigured teams · 19 REPL slash commands · 57 automated test suites.
+
+---
+
+## 🚨 Non-Negotiable Directives for Coding Agents
+
+1. **English Only Across Codebase**: Code, TypeScript types, interfaces, functions, variables, comments, and docstrings **must always be written in English**. User-facing CLI prompts and docs may be bilingual, but source code is strictly English.
+2. **I/O Decoupling in Core Engine**: **NEVER** use direct `console.log`, `console.error`, or raw TTY stream writes inside `src/core/`. All engine notifications must pass through the `AgentEvents` event contracts (`onChunk`, `onStats`, `onEvent`) or the injectable `logSink` (`src/core/logSink.ts`).
+3. **Strict Workspace Jail**: All filesystem operations (`read_file`, `write_file`, `edit_file`, `delete_file`, `list_dir`, `grep_search`, `audit_code`) must be strictly confined within `workspaceRoot` via `resolveSafePath()`. Escaping via `..` is blocked.
+4. **Environment & Credential Masking**: Automatically mask sensitive environment variables (`KEY`, `SECRET`, `TOKEN`, `PASSWORD`, `CREDENTIAL`, `AUTH`) before logging or sending prompts.
+5. **Deterministic Multi-Agent Coordination**: Inter-agent communication in `/team` and `/goal` must use dedicated protocol tools (`report_status`, `route_next`, `cast_vote`) with automated fallback to text markers and visible degradation warnings.
+6. **No Test Regressions**: All 57 test suites (`npm test`) must pass cleanly before completing any task. Automated tests must use mock stores and temporary test directories—never mutate the active user's `memory.json`.
+
+---
+
+## 🏛️ System Architecture
 
 ```
-CLI (REPL) → Agent.run() → LLMProvider.chatWithTools()
-                ↓
-         ToolRegistry.executeTool()  ←  Tool auto-discovery (src/tools/impl/)
-                ↓
-         PermissionManager (SAFE / RESTRICTED / DANGEROUS)
+CLI REPL (src/cli/) ──► Agent.run() ──► LLMProvider.chatWithTools() (OpenAI API)
+                            ↓
+                     ToolRegistry.executeTool() ◄── Auto-Discovery (src/tools/impl/)
+                            ↓
+                     PermissionManager (SAFE / RESTRICTED / DANGEROUS)
 ```
 
-### Ciclo agentico (`src/core/agent.ts`)
+### Four Decoupled Layers
 
-`Agent.run()` implementa ReAct:
-1. Invia history + tool list all'LLM
-2. Se response contiene `tool_calls`, li esegue in sequenza
-3. Output dei tool → history → torna al passo 1
-4. Max 15 round di tool (`MAX_TOOL_ROUNDS`), poi stop di sicurezza
-5. History pruning: max 40 messaggi / 65536 token stimati
+| Layer | Directory | Responsibility |
+|---|---|---|
+| **CLI & UI** | `src/cli/` | REPL loop, slash command router, interactive menus (`prompts`), animated statusline, live ANSI streaming, and Markdown repainting. |
+| **Core Engine** | `src/core/` | Deterministic ReAct loop (`Agent`), HTTP LLM provider (`LLMProvider`), token context budgeter, blackboard (`AsyncLocalStorage`), persistent memory (`MemoryStore`), server discovery, and loop controller. |
+| **Tools** | `src/tools/` | Auto-discovery dynamic registry (`ToolRegistry`), tier gating, JSON Schema definitions (`tools_schemas/`), and 27 native TypeScript tool implementations (`src/tools/impl/`). |
+| **Safety** | `src/safety/` | 3-tier risk system (`SAFE`, `RESTRICTED`, `DANGEROUS`), serialized interactive permission queue (`enqueuePrompt`), workspace jail, and `node:vm` sandbox for runtime tools (`create_tool`). |
 
-### Pattern multi-agente
+---
 
-Tutti **sequenziali** (turn-based, non a sciame):
-
-| Pattern | File | Tool Access | Coordination |
-|---------|------|-------------|--------------|
-| **Conferenza** (`/call`) | `src/cli/commands/call.ts` | Nessuno | 2 round, trascrizione condivisa |
-| **Team collaborativo** (`/team`) | `src/cli/commands/team.ts` | Pieno | Round configurabili, history condivisa, protocollo `STATO: COMPLETATO/DA_CONTINUARE` |
-
-Il pattern `/team` crea Agent freschi a ogni turno, semina la history condivisa, e verifica lo stato dichiarato dal membro per early stop. Ogni team si chiude con un membro dal ruolo `supervisor` come quality gate: il criterio è il MESTIERE, non un nome proprio (`goal.ts` innesca la rilavorazione su `rolesOf(char).includes('supervisor')`).
-
-**Protocollo a tool call (T2.1)**: il coordinamento tra membri non si basa più solo su marker testuali liberi (`STATO: COMPLETATO`, `AGENTE: @nome`, `VOTO: APPROVO`) — con modelli piccoli quei marker falliscono su grassetto markdown, spazi extra, nomi multi-parola. Tre tool di protocollo (`riskLevel: SAFE`, disponibili solo nei contesti giusti, non nella chat normale) sostituiscono il testo libero:
-- `report_status(status, summary, next_hint?)` — chiude un turno di membro/pipeline (`COMPLETATO`/`DA_CONTINUARE`/`FALLITO`);
-- `route_next(agent, reason)` — decisione di routing dell'orchestrator (`@nome` o `FINE`);
-- `cast_vote(vote, reason)` — voto nei round di discussione con `voting: true`.
-
-Ordine di decisione per ogni turno, identico per i tre: **tool call → regex esistente (fallback) → default**. Ogni caduta di livello sotto `tool_call` emette una riga gialla in UI (`warnProtocolDegrade` in `strategies/common.ts`) e una voce in `ProtocolLogEntry` (confluisce in `protocolLog` nei `workflow_logs/`, scritto da `workflowLog.ts`). `STATO: FALLITO` (prima non implementato da nessuna parte) ora ferma round-robin/orchestrated/pipeline: il turno ritorna `'failed'` invece di `'completed'/'continue'`.
-
-**Blackboard di run (T6.2)**: due tool SAFE in più, `post_note(key, value)` / `read_notes(prefix?)`, offerti nello stesso punto di `report_status` (`runMemberTurn` in `strategies/common.ts`, quindi in tutte e 4 le modalità `/team` e in ogni step di `/goal`) — non nella chat normale. Scrivono/leggono `src/core/blackboard.ts`: stato condiviso di **un solo run**, isolato dagli altri (vedi "Da sapere").
-
-**Routing orchestrato**: se il team ha `"mode": "orchestrated"` e un `"orchestrator"`, l'orchestrator decide dinamicamente chi lavora a ogni turno invece del loop fisso, preferibilmente via `route_next` (fallback: `AGENTE: @nome` / `FINE` testuale). Fallback a round-robin se la risposta non è parseabile in nessuno dei due modi.
-
-**Goal orchestrator (`/goal`)**: seleziona DINAMICAMENTE gli agenti da TUTTI i personaggi disponibili, assegna compiti e coordina l'esecuzione. Supporta blocchi `PARALLELO` per sotto-compiti indipendenti eseguiti con `Promise.all`.
-
-### Tool system (`src/tools/registry.ts`)
-
-- Auto-discovery: scansiona `src/tools/impl/*.ts` all'avvio
-- Doppio filtro: **ruolo** (allowedTools) × **tier modello** (small/medium/large)
-- Tier misurato da `/benchmark` (capability fingerprinting), fallback su euristica dal nome (es. 9b → small, 70b → large)
-- 27 tool implementati (incluso `send_message`, `report_status`, `route_next`, `cast_vote`, `post_note`, `read_notes`, `audit_code`, `download_file`, `request_goal`, `request_team`, `request_call`), schema JSON in `tools_schemas/`
-
-### Character system
-
-Tripla stratificazione ortogonale:
-- **Role** (`roles/*.json`): competenze + tool consentiti
-- **Trait** (`traits/*.json`): stile comunicativo
-- **Character** (`characters/*.json`): preset nome + role + trait
-
-**Copertura dei ruoli (T7.1)**: `/goal` sceglie fra i *character*, non fra i role — un role
-senza nessun character che lo usi è un role che `/goal` non potrà mai assegnare. 24 character
-coprono tutti i 21 role (contando anche le skill secondarie del multi-skill).
-Verificato da `tests/test_presets.ts`: per ogni file in `roles/` deve esistere almeno un
-character che lo usa.
-
-**I nomi sono dati, i ruoli sono il contratto**: il roster in `characters/` è rinominabile
-dall'utente, quindi nessun nome proprio va scritto nel codice, nei prompt o nei test. Il
-prompt dell'orchestrator (`buildGoalOrchestratorPrompt`) genera catalogo ed esempi dai
-character installati e i blueprint dai team installati (`buildTeamBlueprints`);
-`resolveCharacter` risolve anche per mestiere (`@security_auditor` → chi lo esercita); i test
-prendono gli agenti da `tests/fixtures/roster.ts` (`agentWithRole`, `distinctAgents`).
-
-**Preset (`presets/`)**: manifest JSON che *elencano* nomi di roles/traits/characters/teams
-già presenti su disco — non spostano né cancellano file, quindi comporli non rompe nulla.
-Pensati per essere letti da `tsuka init` (`src/cli/initCmd.ts`, T7.2) per copiare il sottoinsieme scelto nella cartella `.tsuka/` del workspace (`tsuka init [--preset core|full] [--pack <nome,...>] [--force]`). `homePath` (`src/core/apphome.ts`) risponde con risoluzione gerarchica: predilige `.tsuka/` nel workspace corrente se presente, altrimenti ricade sull'app home predefinita.
-- `presets/core.json` — set minimo di default: 14 character, uno per competenza distinta,
-  nessun ruolo duplicato, più i team che quei character sanno comporre.
-- `presets/packs/{osint,content,devops,security,demo}.json` — set aggiuntivi opzionali per dominio
-  (`--pack <nome,...>`). I pack si installano SOPRA il core: un pack può quindi citare un
-  team i cui membri arrivano dal core, ma non membri che nessuno dei due installa
-  (verificato da `T7.4-install-*` in `tests/test_presets.ts`). Il pack `demo` è l'eccezione:
-  raccoglie deliberatamente i tratti dannosi (`compliant`, character `neelix`) come esempio
-  didattico di cosa succede a un voto (`strategies/hybrid.ts`) con un membro accondiscendente
-  — non è un default consigliato, ed è documentato come tale nel campo `note` del manifest.
-- Schema di un manifest: `{ name, displayName?, description?, roles: string[], traits:
-  string[], characters: string[], teams: string[], note?: string }`. Ogni nome deve
-  corrispondere a un file esistente nella cartella omonima; per `core.json`, ogni character
-  elencato deve usare un role e un trait a loro volta elencati nello stesso manifest
-  (altrimenti `tsuka init --preset core` produrrebbe un'installazione con riferimenti rotti).
-  Validato da `tests/test_presets.ts`.
-
-### Memoria persistente (`src/core/memory.ts`)
-
-- Singleton `MemoryStore`, file `memory/memory.json`
-- Condivisa tra tutti gli agenti (chat, /call, /team)
-- Auto-iniettata nel system prompt
-- Fino a 200 fatti; scope per workspace (+ `'globale'`, T6.1), eviction a punteggio (kind/hits/recency, mai i `pinned`), ricerca keyword con scoring OR
-
-## Project structure
+## 📂 Source Code & File Index
 
 ```
 harness/
 ├── src/
-│   ├── cli/                         # REPL, comandi slash, UI
-│   │   ├── index.ts                 # Entry point principale
-│   │   ├── commands/
-│   │   │   ├── types.ts             # CommandCtx interface
-│   │   │   ├── call.ts              # /call — conferenza
-│   │   │   ├── goal.ts              # /goal — orchestratore dinamico
-│   │   │   ├── team.ts              # /team — dispatcher (carica team, sceglie strategia, delega)
-│   │   │   ├── workflowLog.ts       # scrittura report JSON in workflow_logs/
-│   │   │   ├── strategies/          # T4.2: le 4 modalità di /team + utility condivise
-│   │   │   │   ├── common.ts        # runMemberTurn, protocollo di stato, TeamStrategy/TeamResult
-│   │   │   │   ├── roundRobin.ts    # modalità round-robin
-│   │   │   │   ├── orchestrated.ts  # modalità orchestrata (routing dinamico via route_next)
-│   │   │   │   ├── pipeline.ts      # modalità pipeline (catena di montaggio)
-│   │   │   │   └── hybrid.ts        # round di discussione + voto (cast_vote), usato da round-robin/orchestrated
-│   │   │   ├── persona.ts           # /agent
-│   │   │   ├── provider.ts          # /provider, /models, /benchmark, /search-engine
-│   │   │   ├── tools.ts             # /tools
-│   │   │   ├── runs.ts              # /runs
-│   │   │   ├── memory.ts            # /memory
-│   │   │   └── session.ts           # /exit, /info, /reset, /context
-│   │   ├── shared.ts                # loadSystemPrompt, loadRole/Trait/Character/Team
-│   │   ├── stream.ts                # StreamRenderer (UI live)
-│   │   ├── ui.ts                    # CLITheme, InteractiveMenu
-│   │   ├── input.ts                 # Tab completion, readline
-│   │   ├── interrupt.ts             # Esc key interrupt
-│   │   ├── statusline.ts            # "Thinking..." animato
-│   │   └── rawlock.ts               # Raw mode lock (Windows)
+│   ├── cli/
+│   │   ├── index.ts                 # CLI REPL entry point & turn lifecycle
+│   │   ├── shared.ts                # Dynamic loader for roles, traits, characters, teams
+│   │   ├── stream.ts                # StreamRenderer: live chunk output & ANSI Markdown repaint
+│   │   ├── input.ts                 # Tab completion, history navigation, and readline loop
+│   │   ├── interrupt.ts             # Raw mode keyboard hook (Esc / Ctrl+X turn interrupt)
+│   │   ├── statusline.ts            # Animated spinner & status updates
+│   │   ├── ui.ts                    # Theme definitions, chalk helpers, and InteractiveMenu
+│   │   └── commands/                # 19 Slash commands
+│   │       ├── call.ts              # /call — turn-based multi-agent conference debate
+│   │       ├── goal.ts              # /goal — dynamic goal orchestrator with PARALLEL blocks
+│   │       ├── team.ts              # /team — team dispatcher (orchestrated, round-robin, pipeline, hybrid)
+│   │       ├── workflowLog.ts       # Structured JSON report exporter (workflow_logs/)
+│   │       ├── strategies/          # Team coordination strategies & common runner
+│   │       │   ├── common.ts        # runMemberTurn, protocol validation, degradation warnings
+│   │       │   ├── orchestrated.ts  # Supervisor-directed routing via route_next
+│   │       │   ├── roundRobin.ts    # Cyclical rotation across team members
+│   │       │   ├── pipeline.ts      # Assembly-line workflow with loop.ts acceptance checks
+│   │       │   └── hybrid.ts        # Intermittent discussion rounds & cast_vote formal polling
+│   │       ├── provider.ts          # /provider, /models, /benchmark, /search-engine
+│   │       ├── effort.ts            # /effort (none, low, medium, xhigh, auto, ask)
+│   │       ├── persona.ts           # /agent
+│   │       ├── tools.ts             # /tools diagnostic inspector
+│   │       ├── runs.ts              # /runs history viewer
+│   │       ├── memory.ts            # /memory inspector and query tool
+│   │       └── session.ts           # /exit, /info, /reset, /context, /clear
 │   ├── core/
-│   │   ├── agent.ts                 # Agent class (ciclo ReAct + compressHistory)
-│   │   ├── provider.ts              # LLMProvider (OpenAI client)
-│   │   ├── types.ts                 # Tipi condivisi layer protocollo (ChatMessage, TeamConfig, ...)
-│   │   ├── config.ts                # ConfigManager (tsuka.config.json)
-│   │   ├── contextTracker.ts        # ContextTracker (registro attività)
-│   │   ├── discovery.ts             # Server auto-discovery
-│   │   ├── memory.ts                # MemoryStore (memoria condivisa)
-│   │   ├── modelProfile.ts          # Capability fingerprinting
-│   │   ├── benchmarkTests.ts        # Benchmark runner
-│   │   ├── agentEvents.ts           # Agent event types
-│   │   ├── thinkParser.ts           # <think> tag parser
-│   │   ├── messageQueue.ts          # Coda messaggi inter-agente (send_message)
-│   │   ├── parallelWorkspace.ts     # T3.2: staging + merge/conflict per il blocco PARALLELO di /goal
-│   │   ├── logBuffer.ts             # T3.2: buffer output console per branch parallelo
-│   │   ├── blackboard.ts            # T6.2: stato condiviso di UN run (/team, /goal), isolato via AsyncLocalStorage
-│   │   ├── apphome.ts               # App home vs workspace
-│   │   └── platform.ts              # Cross-platform shell
+│   │   ├── agent.ts                 # Agent class: ReAct cycle, token pruning, smart compression
+│   │   ├── provider.ts              # LLMProvider: OpenAI SDK client, SSE parser, timeouts
+│   │   ├── types.ts                 # Core protocol interfaces & shared types
+│   │   ├── contextBudget.ts         # Token estimations, runtime calibration, capForContext
+│   │   ├── memory.ts                # MemoryStore: persistent facts, keyword scoring, eviction
+│   │   ├── blackboard.ts            # Ephemeral session blackboard isolated via AsyncLocalStorage
+│   │   ├── modelProfile.ts          # Capability fingerprinting profiles & tier assigner
+│   │   ├── benchmarkTests.ts        # Test runner for instruction, JSON, and tool benchmarks
+│   │   ├── discovery.ts             # Server discovery, VRAM loaded-model detector, context probe
+│   │   ├── parallelWorkspace.ts     # Isolated filesystem staging & conflict-aware merge
+│   │   ├── logBuffer.ts             # Console output buffer for concurrent parallel branches
+│   │   ├── loop.ts                  # RunController: iterative execution with acceptance criteria
+│   │   ├── logSink.ts               # Injectable logging abstraction decoupling core from TTY
+│   │   ├── thinkParser.ts           # Streaming parser separating <think> reasoning from content
+│   │   ├── messageQueue.ts          # Inter-agent message queue (send_message)
+│   │   ├── apphome.ts               # Hierarchical path resolver (.tsuka/ vs global app home)
+│   │   ├── platform.ts              # Cross-platform shell executor (PowerShell / sh)
+│   │   └── config.ts                # ConfigManager: tsuka.config.json manager
 │   ├── tools/
-│   │   ├── index.ts                 # Tool auto-discoverer
-│   │   ├── registry.ts              # ToolRegistry, getModelTier
-│   │   └── impl/                    # 27 tool implementazioni
+│   │   ├── index.ts                 # Dynamic auto-discovery scanner
+│   │   ├── registry.ts              # ToolRegistry, tier gating, parameter validation
+│   │   └── impl/                    # 27 native tool implementations
 │   └── safety/
-│       └── permissions.ts           # PermissionManager (coda prompt per esecuzione parallela)
-├── characters/                      # 22 preset JSON
-├── roles/                           # 21 ruoli JSON
-├── traits/                          # 9 tratti JSON
-├── teams/                           # 10 team JSON
-├── presets/                         # T7.1: manifest core.json + packs/*.json per `tsuka init`
-├── tools_schemas/                   # JSON Schema per Function Calling
-├── benchmarks/                      # 5 test JSON per fingerprinting
-├── memory/                          # Memoria persistente (auto-creata)
-├── tests/                           # Suite di test
-├── docs/                            # Documentazione tecnica
-└── tsuka.config.json                # Configurazione runtime
+│       └── permissions.ts           # PermissionManager: async FIFO prompt queue & bypass state
+├── characters/                      # 24 Character JSON definitions (aiName + roles + trait)
+├── roles/                           # 21 Role JSON definitions (systemPrompt + allowedTools)
+├── traits/                          # 9 Trait JSON definitions (tone + stylistic guidelines)
+├── teams/                           # 10 Team JSON definitions (members + mode + orchestrator)
+├── presets/                         # Manifests: core.json & domain packs for tsuka init
+├── tools_schemas/                   # 27 JSON Schema files for function calling validation
+├── benchmarks/                      # 5 JSON capability benchmark fixtures
+├── tests/                           # 57 automated test suites
+└── tsuka.config.json                # Runtime configuration file
 ```
 
-## Configurazione (`tsuka.config.json`)
+---
 
-```json
-{
-  "activeProvider": "unsloth",
-  "providers": {
-    "ollama":     { "baseUrl": "http://localhost:11434/v1", "model": "..." },
-    "openrouter": { "baseUrl": "https://openrouter.ai/api/v1", "model": "..." },
-    "unsloth":    { "baseUrl": "http://127.0.0.1:8888/v1", "model": "..." }
-  },
-  "webSearch":      { "provider": "duckduckgo" },
-  "activeRole":     "developer",
-  "activeTrait":    "creative",
-  "activeCharacter":"geordi"
-}
-```
+## ⚙️ Core Technical Contracts
 
-`maxHistoryMessages` (default 500, guardia token-driven) e `maxHistoryTokens` (default dinamico da server, fallback 65536) in `ConfigManager`. `teamMaxRounds` default 3 nel config.
+### 1. Deterministic ReAct Loop (`Agent.run()`)
+* **Dynamic Assembly**: Mounts active character identity, role instructions, trait tone, relevant persistent memories, and tier-authorized tools.
+* **Token Pruning (`pruneHistory`)**: Enforces token budget (`maxHistoryTokens`, calibrated from server headers). Removes oldest messages while preserving matching pairs of `tool_call` and `tool` response messages.
+* **Anti-Loop Ceiling**: Hard limit of 15 consecutive tool rounds (`Agent.DEFAULT_MAX_TOOL_ROUNDS = 15`), configurable via `maxToolRounds`.
+* **Output Truncation (`capForContext`)**: Tool responses exceeding `maxToolResultTokens` (default 4,000) are truncated with head/tail preservation and pagination advice.
 
-## Comandi REPL
+### 2. Coordination Protocol Tools (T2.1)
+In collaborative multi-agent workflows (`/team`, `/goal`), coordination uses structured tools:
+* `report_status(status, summary, next_hint)` — `COMPLETATO`, `DA_CONTINUARE`, `FALLITO` (`FALLITO` halts execution chain).
+* `route_next(agent, reason)` — Dynamic orchestrator routing (`@agent_name` or `FINE`).
+* `cast_vote(vote, reason)` — Formal voting during hybrid discussion rounds (`APPROVO`, `MODIFICARE`, `RIFIUTO`).
+* **Resolution Order**: `Tool Call` $\to$ `Regex Text Marker (Fallback)` $\to$ `Safety Default` (with visual degradation warnings and logging to `workflow_logs/`).
 
-| Comando | Descrizione |
-|---------|-------------|
-| `/goal <obiettivo>` | Goal orchestrator: sceglie agenti e coordina dinamicamente |
-| `/team [nome]` | Team collaborativo (round-robin, orchestrated, pipeline) |
-| `/call [@agenti...]` | Conferenza multi-agente |
-| `/models [modello]` | Elenca o seleziona il modello LLM |
-| `/provider [nome]` | Cambia provider LLM |
-| `/effort [livello\|auto\|ask]` | Regola il reasoning effort (none/low/med/xhigh) |
-| `/benchmark [modello\|all]` | Profila capacità modello (tier e tok/s) |
-| `/agent [nome]` | Mostra o seleziona l'agente attivo |
-| `/tools` | Mostra i tool abilitati per ruolo, tier ed effort |
-| `/context` | Mostra contesto usato/disponibile, token e attività |
-| `/memory [clear\|<id>]` | Mostra, gestisce o svuota la memoria condivisa |
-| `/blackboard` | Mostra le note della blackboard dell'ultimo workflow |
-| `/runs` | Elenca lo storico e i dettagli dei workflow recenti |
-| `/reset` | Reset history + permessi |
-| `/info` | Stato sessione e configurazione attiva |
-| `/search-engine` | Cambia motore ricerca |
-| `/clear` · `/exit` | Pulisce lo schermo · Esci |
+### 3. State Management: Three Strict Levels
+1. **Turn History (RAM)**: Ephemeral exchange messages and raw tool outputs within the active turn. Subject to pruning.
+2. **Run Blackboard (`blackboard.ts`)**: Shared scratchpad across members of a **single workflow run** (`/team` or `/goal`), isolated via `AsyncLocalStorage`. Read/written via `post_note` and `read_notes`. Exported into the run's JSON log report and destroyed on completion.
+3. **Long-Term Persistent Memory (`memory/memory.json`)**: Cross-session knowledge store shared by all agents. Eviction prioritizes transient execution logs while protecting lessons and permanently preserving `pinned` facts.
 
-## Sviluppo
+### 4. Parallel Execution in `/goal` (`PARALLELO` blocks)
+* Independent branches execute concurrently via `Promise.all`.
+* **Staging Sandbox**: Each branch writes to an isolated folder via `AsyncLocalStorage` (`parallelWorkspace.ts`). On block exit, changes are merged into the real workspace with conflict detection (no silent overwrites).
+* **Serialized UI Prompts**: `PermissionManager` queues interactive prompts sequentially (`enqueuePrompt`) so parallel branches never collide on the terminal.
+
+### 5. Defensive SAST Tool (`audit_code`)
+Comprehensive static analysis engine inspecting code for:
+* `CWE-798` (Hardcoded secrets, OpenAI/AWS/GitHub tokens, JWT, PEM keys)
+* `CWE-78` / `CWE-95` (Command injection and unsafe dynamic code evaluation `eval`)
+* `CWE-89` (SQL injection via concatenated queries)
+* `CWE-22` (Path traversal with un-sanitized dynamic paths)
+* `CWE-79` (DOM XSS via `innerHTML`, `dangerouslySetInnerHTML`)
+* `CWE-327` / `CWE-295` (Broken crypto MD5/SHA1 and disabled TLS verification)
+* `CWE-532` / `CWE-732` (Log credential leaks and permissive permissions `chmod 777`)
+* Supports `severityThreshold` (`HIGH`, `MEDIUM`, `LOW`), `fileExtensions`, and `maxIssues` filtering.
+
+---
+
+## 🛠️ Developer & Testing Cheatsheet
+
+### Standard Commands
 
 ```powershell
-npm run dev            # Avvia con tsx (dev)
-npm run build          # Compila con tsc
-npm start              # Esegui build
-npm test               # Test suite
-npm link               # Installa comando globale `tsuka`
+# Development execution with hot TypeScript runner (tsx)
+npm run dev
+
+# Compile TypeScript to dist/ (tsc)
+npm run build
+
+# Run compiled build
+npm start
+
+# Execute full automated test suite (57 test suites)
+npm test
+
+# Link globally for CLI usage
+npm link
 ```
 
-TS strict, ES2022, CommonJS, `tsx` per dev.
+### Running Individual Tests
+To run or debug a specific test suite directly:
 
-## Convenzioni codice
+```powershell
+npx tsx tests/test_security_agent.ts
+npx tsx tests/test_goal_orchestrator.ts
+npx tsx tests/test_parallel_workspace.ts
+npx tsx tests/test_blackboard.ts
+npx tsx tests/test_team_modes.ts
+```
 
-- **Tutta la codebase in inglese**: codice, tipi, commenti e docstring devono essere in **inglese** (English only across code, comments, and docstrings).
-- `chalk` per colori, `prompts` per input interattivi, `openai` SDK
-- Tool: file in `src/tools/impl/*.ts` + schema in `tools_schemas/*.json`
-- Test esistenti in `tests/`, eseguiti con `tsx`
-- Eventi agente via `AgentEvent` system (disaccoppia core da UI)
-- `signal?: AbortSignal` per interrupt su ogni chiamata LLM
-- `GenerationInterrupt` per Esc key durante generazione
+---
 
-## Da sapere
+## 🎭 Persona System Guidelines
 
-- **Coda dei permessi (T3.1)**: `PermissionManager` è condiviso tra gli agenti di un blocco `PARALLELO` di `/goal` (`Promise.all`). Le richieste RESTRICTED/DANGEROUS (uniche a generare un prompt interattivo) si accodano internamente (`enqueuePrompt`): un prompt alla volta, in ordine di arrivo, con il nome dell'agente richiedente mostrato quando disponibile. I tool SAFE restano sincroni, senza coda.
-- **App home vs workspace**: `apphome.ts` gestisce la separazione tra cartella d'installazione (asset, config, memoria) e cartella di lavoro (file tool). `TSUKA_HOME` env var override.
-- **Streaming**: provider supporta stream con `onChunk`, `thinkParser` per `<think>` tags. StreamRenderer gestisce UI mostrando il ragionamento in grigio dimmed (stile opencode) e il contenuto in bianco.
-- **Server auto-discovery**: all'avvio scansiona provider, priorità a modello già caricato in RAM. Fallback su qualsiasi server locale vivo.
-- **Self-authoring tool**: agenti possono creare tool JS via `create_tool`, sandbox `vm` + blocklist, hot-registrati.
-- **Orchestrated team mode**: se un team ha `"mode": "orchestrated"` e un `orchestrator` con ruolo `supervisor`, l'orchestrator decide dinamicamente chi lavora a ogni turno (`AGENTE: @nome` / `FINE`).
-- **Goal orchestrator (`/goal`)**: seleziona DINAMICAMENTE gli agenti da TUTTI i personaggi disponibili, assegna compiti e coordina l'esecuzione. Supporta blocchi `PARALLELO` per sotto-compiti indipendenti eseguiti con `Promise.all`.
-  - **Condensed history**: dopo ogni turno, l'output dell'agente viene condensato solo se >1500 char, mantenendo un summary significativo (non un one-liner). I dettagli vengono salvati in memoria persistente.
-  - **Context bar duale**: prima dell'agente mostra stima (usa prompt tokens reali dell'agente precedente se disponibili). Dopo l'agente mostra il peak reale (`promptTokens`) misurato dall'ultimo round LLM.
-  - **Nessun early break**: il piano dell'orchestrator viene eseguito completamente — tutti gli step vengono eseguiti inclusa la revisione finale del supervisore. `STATO: COMPLETATO` non interrompe il piano.
-  - **Task instructions**: ogni agente riceve istruzioni esplicite di ispezionare i file del workspace creati dagli agenti precedenti (`list_dir`, `read_file`).
-  - **Stats summary**: a fine goal mostra Out tok / Ctx tok / Tot tok / Tempo / Velocità per ogni agente + totali cumulativi.
-  - **Workspace isolati nel blocco PARALLELO (T3.2)**: ogni branch scrive in una cartella di staging propria (`workspace/parallel-<n>/` sotto l'app home, `src/core/parallelWorkspace.ts`), attivata come jail temporanea via `withWorkspaceOverride` (AsyncLocalStorage, `src/tools/impl/utils.ts`) — non nella workspace reale. A fine blocco i file vengono uniti: stesso path con contenuto diverso tra branch → conflitto segnalato, nessuna sovrascrittura silenziosa (il file principale, anche se preesistente, resta intatto). Output console bufferizzato per branch (`src/core/logBuffer.ts`) e flushato in ordine a fine blocco, con uno spinner unico nel frattempo — le scritture concorrenti non si interfogliano più.
-- **Blackboard di run (T6.2)**: `src/core/blackboard.ts` — stato condiviso di UN SOLO run `/team` o `/goal` (decisioni prese, artefatti prodotti, punti aperti), scritto/letto dagli agenti con i tool `post_note(key, value)` / `read_notes(prefix?)`, offerti nello stesso punto di `report_status` (`runMemberTurn`), quindi in tutte le modalità `/team` e in ogni step di `/goal` — non nella chat normale. Confine netto e voluto rispetto agli altri due livelli di stato del progetto: **history** = ciò che è stato detto (`teamMessages`); **memoria** = ciò che resta fra le sessioni (`MemoryStore`); **blackboard** = stato di QUESTO run, muore col run — non scrive mai in `MemoryStore`. Isolamento fra run concorrenti via `AsyncLocalStorage` (`Blackboard.withRun`, stesso meccanismo di `withWorkspaceOverride`/`logBuffer.ts`): il `runId` viaggia nel contesto asincrono, non in una variabile globale — un singolo run (incluso il blocco `PARALLELO` di `/goal`, i cui branch sono annidati nello stesso `withRun` e quindi condividono la blackboard) resta isolato da altri run distinti eseguiti in `Promise.all` nello stesso processo. `handleTeam` (`team.ts`) crea un run per workflow e include lo `snapshot()` finale nel campo `blackboard` del report JSON in `workflow_logs/` (`workflowLog.ts`); `handleGoal` (`goal.ts`) crea e propaga il run allo stesso modo (nessun workflow log per `/goal`, quindi nessuno snapshot scritto lì). La blackboard è liberata a fine run (`Blackboard.endRun`): non sopravvive, non c'è accumulo tra `/team`/`/goal` successivi in una stessa sessione REPL.
-- **Inter-agent messages**: tool `send_message(agent, message)` per comunicazione diretta tra agenti nel team. La coda è in `messageQueue.ts`.
-- **Hybrid mode**: se un team ha `discussionRounds > 0`, dopo ogni round di lavoro si tiene una discussione stile `/call` (senza tool). Con `voting: true` i membri votano `APPROVO/MODIFICARE/RIFIUTO` — se tutti approvano, il task è completato.
-- **Sub-agent spawning**: tool `spawn_agent(task, charName?)` per creare agenti temporanei durante un turno di lavoro. Richiede tier MEDIUM.
-- **Pipeline mode**: se un team ha `"mode": "pipeline"`, gli agenti lavorano in sequenza lineare (catena di montaggio), ognuno perfeziona l'output del precedente. Supporta l'integrazione di `RunController` (`src/core/loop.ts`): se una stazione o il team specifica un `acceptance` (es. exit 0 di un comando shell, file esistente, JSON valido), la stazione esegue un loop di verifica e correzione guidato dalle issue.
-- **RunController & rilavorazione guidata dal supervisore (T6.3 & T6.4)**: `src/core/loop.ts` implementa il controllore di ciclo esecutivo con verifiche oggettive e detect anti-stallo (`no_progress`). In `/goal`, se il supervisore finale evidenzia difetti nel codice o nei requisiti, innesca automaticamente un ciclo di rilavorazione guidato dal suo feedback sullo step precedente, risolvendo il gap "Nessun early break".
-- **maxRoundsPerMember**: limita i turni per singolo membro in modalità round-robin.
-- **Workflow logs**: ogni workflow `/team` salva un report JSON in `workflow_logs/`.
-- **Condensed history**: la cronologia condivisa salva solo i messaggi assistant (sintesi), non i tool output grezzi, risparmiando contesto.
-- **Goal context condensation**: il goal orchestrator condensa ulteriormente la history tra un agente e l'altro: sostituisce gli assistant message con riferimenti brevi e salva i dettagli in memoria persistente (gestione automatica contesto).
-- **Smart compression automatica** (`Agent.compressHistory`): quando il contesto supera il 75% del limite, i messaggi più vecchi (esclusi system + ultimi 4) vengono compattati in un riassunto generato dall'LLM. I dettagli sono salvati in MemoryStore per `recall_memory`. Attivo dopo ogni turno utente nel REPL.
-- **ContextTracker** (`contextTracker.ts`): registro singleton di tutte le attività degli agenti (timestamp, personaggio, token out/ctx, azione). Usato da `/context` per mostrare la cronologia attività e da team/goal per tracciare gli interventi.
+* **Every Character is an Agent**: Characters in `characters/*.json` combine an operational craft (`role`, with multi-skill support via `roles: [...]`) and an expressive style (`trait`).
+* **Roles are the Contract, Names are Data**: Code must never hardcode character names. Always query roles via `resolveCharacter` or `characterWithRole` (e.g. `@security_auditor` resolves to whichever character exercises that role).
+* **Total Role Coverage**: Every role in `roles/*.json` must be exercised by at least one character in `characters/*.json` (validated by `tests/test_presets.ts`).

@@ -1,119 +1,96 @@
 # Multi-Agent & Collaboration Workflows 👥
 
-TSUKA supports advanced multi-agent interactions, allowing you to orchestrate group debates, launch collaborative teams that actively use tools on your workspace in sequential shifts, or let a dynamic orchestrator assemble the perfect team on the fly from all available characters.
+<div align="right">
+  <p>Leggi in <a href="multi-agent-it.md">🇮🇹 Italiano</a></p>
+</div>
+
+TSUKA supports advanced multi-agent interactions: orchestrating group debate conferences (`/call`), launching collaborative teams operating directly on workspace files with native tools (`/team`), or using a dynamic goal orchestrator (`/goal`) that plans workflows and dynamically recruits agents from all available characters.
 
 ---
 
-## 🎭 Persona Orthogonality (Roles vs. Traits)
+## 🎭 1. Declarative Persona System (Character = Agent)
 
-Instead of hardcoding a character prompt, TSUKA splits the agent personality into two orthogonal vectors:
+Instead of hardcoding monolithic prompts, TSUKA separates agent definitions into two orthogonal dimensions:
 
-* **Role (What they do)**: Defined in `roles/*.json` (e.g., `developer`, `sysadmin`). Determines the set of allowed tools.
-* **Trait (How they speak)**: Defined in `traits/*.json` (e.g., `grumpy`, `sensual`, `devils_advocate`). Determines the tone and stylistic directives.
+* **Role (`roles/*.json`)**: defines technical skills, default reasoning effort, and allowed tools (e.g. `developer`, `sysadmin`, `security_auditor`, `supervisor`).
+* **Trait (`traits/*.json`)**: defines communication tone and behavioral guidelines (e.g. `professional`, `creative`, `grumpy`, `uncompromising`, `devils_advocate`).
 
-A **Character Preset** (`characters/*.json`) simply binds these two together under a custom name (`aiName`), such as:
-- **La'an** (`laan.json`): `sysadmin` (Role) + `grumpy` (Trait) + `Laan` (Name).
-- **Geordi** (`geordi.json`): `developer` (Role) + `professional` (Trait) + `Geordi` (Name).
-
-A character may also unlock several roles (`"roles": [...]`, multi-skill): it then owns the
-tools of all of them, so a task spanning two crafts needs no handover.
+A **Character (`characters/*.json`)** binds an identifier (`aiName`) with a role (or multiple roles with multi-skill support and runtime swapping via `switch_skill`) and a trait:
+* **Geordi** (`geordi.json`): `developer` + `professional`
+* **Worf** (`worf.json`): `security_auditor` + `reliable`
+* **Pike** (`pike.json`): `supervisor` + `reliable`
 
 ---
 
-## 📞 Group Debate Conferences (`/call`)
+## 📞 2. Multi-Agent Debate Conferences (`/call`)
 
-The `/call` command starts a discussion round between multiple characters in the same chat history:
+The `/call` command launches a turn-based group discussion on any topic without tool execution:
 
 1. **Invocation**:
-   - **Interactive Multiselect**: Type `/call` with no arguments to trigger a visual checkbox checklist. Use `Space` to select/deselect characters, and `Enter` to confirm.
-   - **Menzions**: Mention names directly using the `@` symbol (e.g., `/call @laan, @deanna_troi and @geordi`).
+   * **Interactive Multiselect**: run `/call` without arguments to open an interactive checkbox picker.
+   * **Direct Mentions**: specify names with `@` (e.g. `/call @spock, @kirk, @doctor`).
 2. **Execution**:
-   - The user inputs a discussion topic.
-   - The CLI enters a loop of $N$ rounds. In each round, it swaps the system prompt to match the current speaker and prompts the LLM.
-   - To make the active agent aware of previous speakers, the debate history is formatted as a sequence of `user` messages, prepended with the name of the speaker: `[SpeakerName]: "Message content..."`.
+   * The user inputs a discussion topic.
+   * The CLI runs $N$ rounds: in each round it mounts the current speaker's system prompt and provides the formatted conversation history prefixed with `[SpeakerName]: "..."`.
 3. **Transcript Memory**:
-   - After the call, the entire debate transcript is formatted and injected into the main chat history. The active main character will remember what was discussed during the call.
+   * The full debate transcript is injected into the main chat history upon call completion.
 
 ---
 
-## 🚀 Collaborative Team Workflows (`/team`)
+## 🚀 3. Collaborative Teams on Shared Workspace (`/team`)
 
-The `/team` command launches an active multi-agent team workflow where characters use their tools on the workspace in sequential shifts:
-
-1. **Selecting a Team**:
-   - Type `/team` to select from preconfigured teams (e.g., `cyber_audit`, a `security_auditor` → `sysadmin` → `supervisor` chain).
-2. **Task Assignment**:
-   - The user inputs a goal (e.g., *"Audit current ports and write a security report"*).
-3. **Sequential Shifts (Tool Handover)**:
-   - **Shift 1 (the auditor)**: the first member runs with its role instructions, allowed tools and the task. It executes system commands or diagnostics; file writes and command outputs happen for real. When it finishes, it writes a final summary.
-   - **Shift 2 (the sysadmin)**: the next member inherits the **exact tool execution history and message log** of the previous shift. It sees which files were modified, reads the workspace, finds weaknesses, runs its own tools, and provides the final solution.
-4. **Shared Workspace & State**:
-   - Because all agents operate in the same physical directory, file modifications made during previous shifts are immediately visible to the subsequent agents.
-   - **Auditing**: All tool calls made by the team members (such as editing code or executing PowerShell scripts) are subject to the user's interactive permission checks (`[y/N]`) in real-time, giving you full control over the team's operations.
-
----
-
-## 🎯 Dynamic Goal Orchestrator (`/goal`)
-
-The `/goal` command dynamically assembles a team from **all available characters** — no preconfigured team file needed. The orchestrator LLM plans the workflow, assigns tasks, and coordinates execution autonomously.
+The `/team` command starts a multi-agent workflow where characters cooperate on tasks using tools on the physical filesystem:
 
 ```powershell
-/goal Crea una sceneggiatura di Cappuccetto Rosso e per ogni scena genera il prompt Krea2
+/team dev_security
+> "Implement a secure logging module and verify that no hardcoded credentials exist."
 ```
 
-### Orchestrator Planning Phase
+### The 4 Collaboration Strategies (`mode`):
+1. **`orchestrated` (recommended)**: a dedicated supervisor (`orchestrator`, e.g. `pike`) receives a progress digest after each turn and dynamically routes the next step via `route_next(agent, reason)` (or calls `FINE`).
+2. **`round-robin`**: fixed cyclical rotation among team members up to configured rounds (`teamMaxRounds`, default 3).
+3. **`pipeline`**: single-pass assembly line where each station refines previous outputs. Supports objective acceptance loops via `RunController` ([`src/core/loop.ts`](../src/core/loop.ts)).
+4. **`hybrid`**: when `discussionRounds > 0`, adds a formal debate and voting round (`cast_vote`) after each working cycle.
 
-1. The orchestrator receives the goal and the full list of available characters with their roles/descriptions.
-2. It produces a plan in a structured format:
-   ```
-   AGENTE: @doctor — Scrivi la sceneggiatura
-   PARALLELO:
-   AGENTE: @moriarty — Genera prompt Krea2 per ogni scena
-   AGENTE: @quark — Prepara i testi promozionali
-   FINE PARALLELO
-   AGENTE: @pike — Revisiona il lavoro finale
-   FINE
-   ```
-3. `PARALLELO` blocks execute independent subtasks concurrently via `Promise.all`.
-4. If the goal is trivial (a simple question), the orchestrator responds with just `FINE` and no team is spawned.
+### Coordination Protocol Tools:
+* `report_status(status, summary, next_hint)`: marks turn completion (`COMPLETATO`, `DA_CONTINUARE`, `FALLITO`).
+* `route_next(agent, reason)`: used by the orchestrator to route the next turn.
+* `cast_vote(vote, reason)`: cast vote during hybrid team discussions (`APPROVO`, `MODIFICARE`, `RIFIUTO`).
+* *Resolution Hierarchy*: **Tool Call → Legacy Regex Marker (`STATO:`) → Safety Default** (with visible degradation warnings).
 
-### Execution & Context Management
+### Run Blackboard (`post_note` / `read_notes`):
+A temporary shared scratchpad scoped to a specific run via `AsyncLocalStorage` for exchanging intermediate decisions, notes, and artifacts without polluting persistent long-term memory.
 
-Each agent turn:
-1. **Context bar** (dual):
-   - **Before** the agent: shows estimated context based on history + 2000 tok overhead for system prompt/tools. Uses real `promptTokens` from the previous agent if available.
-     ```
-     Contesto prima di Doctor: ████░░░░░░░░░░░░░░░░ 17% (~11.2k / 65.536 tok)
-     ```
-   - **After** the agent: shows real peak prompt tokens measured from the LLM's last round:
-     ```
-     Contesto reale (peak Doctor): ██████████████░░░░░░ 59% (~38.4k / 65.536 tok)
-     ```
-2. The agent runs with full tool access, streaming output live. **Each agent is instructed to inspect workspace files created by previous agents** (`list_dir`, `read_file`).
-3. **Reasoning** from `<think>` tags or native `reasoning_content` is displayed in dimmed gray.
-4. **No early stop on `STATO: COMPLETATO`**: the orchestrator's plan is executed fully — all steps run, including the final supervisor. Early completion flags are tracked but do not abort the plan.
-5. After completion, the agent's output is **condensed** only if longer than 1500 characters:
-   - A meaningful summary (not a one-liner) is kept in the shared history
-   - A fact is saved to persistent memory (`recall_memory` for full details)
-   - Estimated token savings are displayed
+---
 
-### Stats Summary
+## 🎯 4. Dynamic Goal Orchestrator (`/goal`)
 
-At the end, per-agent and cumulative statistics with output/context/total tok breakdown:
-```
-📊 RIEPILOGO STATS AGENTI
-  Agente             Out tok    Ctx tok   Tot tok    Tempo    Velocità
-  Doctor             1234      15032     16266     12.3s   100.3 tok/s
-  Krea Master            892      16780     17672      8.1s   110.1 tok/s
-  Pike                   456      17500     17956      4.2s   108.6 tok/s
-  TOTALE                2582      17500     51894     24.6s
+The `/goal` command dynamically plans, recruits agents from all 24 characters, and executes end-to-end objectives:
+
+```powershell
+/goal Build a TypeScript CLI application with automated unit tests and a security audit
 ```
 
-- **Out tok**: cumulative output (completion) tokens — sum of all LLM rounds in the agent's turn
-- **Ctx tok**: peak prompt tokens — the context window size for the last (largest) LLM call
-- **Tot tok**: estimated total = ctx + out
+### 1. Planning Phase (Orchestrator Planner)
+The orchestrator inspects available character capabilities and emits a structured plan:
+```
+AGENTE: @una — Design module architecture and TypeScript interfaces
+PARALLELO:
+AGENTE: @geordi — Implement core logic
+AGENTE: @data — Author technical documentation
+FINE PARALLELO
+AGENTE: @worf — Run static security audit
+AGENTE: @pike — Review and validate final deliverables
+FINE
+```
 
-The stream panel at the end of each agent turn also shows the real-time summary:
-```
-[Out: 1234 tok | Ctx: 15032 tok | Tot: 16266 tok | 100.3 tok/s | 12.34s]
-```
+### 2. Execution & Concurrency in `PARALLELO` Blocks
+* Independent subtasks inside `PARALLELO` blocks execute concurrently using `Promise.all`.
+* **Isolated Staging Workspaces**: each parallel branch writes to a temporary sandbox (`parallelWorkspace.ts`). On block completion, changes are merged with conflict detection.
+* **Serialized Permission Queue**: interactive permission prompts (`[y/N]`) are queued cleanly without overlapping.
+
+### 3. Context Monitoring & Run Statistics
+* **Dual Context Bar**: displays pre-turn estimate and real peak prompt tokens measured by the LLM.
+* **History Condensation**: outputs exceeding 1,500 characters are summarized while persisting full details to memory.
+* **Supervisor Rework Loop**: if the final supervisor finds deficiencies, the failed step is re-queued for targeted rework.
+* **Final Stats Summary**: per-agent token breakdown (output, context peak, total, timing, and generation speed).

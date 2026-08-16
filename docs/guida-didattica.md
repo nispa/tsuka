@@ -1,291 +1,391 @@
-# Guida didattica — Come si costruisce un harness agentico 🎓
+# Guida didattica — Come costruire un harness agentico 🎓
 
-> Questo documento racconta **come si arriva** a costruire un harness multi-agente come TSUKA,
-> quali componenti sono **comuni a tutti** gli harness (Claude Code, opencode, aider, …) e quali
-> scelte sono invece **peculiari** di questo progetto. Ogni concetto rimanda al file sorgente
-> che lo implementa: il codice è il vero libro di testo, questo è l'indice ragionato.
+<div align="right">
+  <p>Read in <a href="educational-guide.md">🇬🇧 English</a></p>
+</div>
+
+> Questa guida illustra i principi architetturali e i dettagli implementativi necessari per costruire un harness multi-agente moderno come **TSUKA**. Vengono analizzati sia i componenti **universali** (presenti in strumenti come Claude Code, OpenCode o Aider), sia le **scelte specifiche** di questo progetto, evidenziando le insidie pratiche riscontrate durante lo sviluppo.
+>
+> 💡 **Come consultare la guida**: Le tappe della sezione [§2](#2-il-percorso-di-costruzione-tappa-per-tappa) sono ordinate per complessità crescente: ogni modulo è autonomo e costituisce il prerequisito del successivo. Se stai sviluppando il tuo harness personale, ti consigliamo di seguirle in sequenza; se invece desideri approfondire l'architettura di TSUKA, puoi passare direttamente alla tappa di tuo interesse.
 
 ---
 
 ## 1. Cos'è un harness agentico
 
-Un LLM, da solo, è una funzione: testo in ingresso → testo in uscita. Non può leggere un file,
-eseguire un comando, ricordare qualcosa tra una sessione e l'altra. Un **harness** (letteralmente
-"imbracatura") è il programma che avvolge il modello e gli dà mani, occhi e memoria:
+Un Large Language Model (LLM), preso singolarmente, è una funzione pura: riceve testo in ingresso e restituisce testo in uscita. Di per sé non possiede gli strumenti per leggere file su disco, eseguire comandi shell o mantenere uno stato persistente tra sessioni distinte.
+
+Un **harness** (letteralmente *"imbracatura"* o *"telaio di controllo"*) è l'applicazione che incapsula il modello, dotandolo di strumenti di osservazione, esecuzione e memoria:
 
 ```
-┌────────────────────────── HARNESS ──────────────────────────┐
-│                                                             │
-│  REPL ──► Ciclo agentico ──► Provider LLM (HTTP streaming)  │
-│   ▲            │                                            │
-│   │            ▼                                            │
-│  UI ◄── Tool Registry ──► Permessi ──► Esecuzione (fs, sh)  │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────── HARNESS ───────────────────────────┐
+│                                                               │
+│   REPL ──► Ciclo agentico ──► Provider LLM (HTTP streaming)   │
+│    ▲             │                                            │
+│    │             ▼                                            │
+│   UI  ◄── Tool Registry ──► Permessi ──► Esecuzione (fs, sh)  │
+│                                                               │
+└───────────────────────────────────────────────────────────────┘
 ```
 
-L'intuizione chiave, che vale per ogni harness esistente: **il modello non esegue nulla**.
-Il modello *dichiara* di voler usare un tool (function calling); è l'harness che esegue,
-raccoglie l'output e glielo rimanda come nuovo messaggio. L'intelligenza è del modello,
-il potere è dell'harness — ed è per questo che i permessi vivono nell'harness (§5).
+Il principio cardine alla base di qualsiasi harness è il seguente:
+
+> **Il modello linguistico non esegue mai direttamente le azioni.**  
+> Il modello *dichiara l'intenzione* di invocare uno o più strumenti (*tool calling*). È l'harness che convalida la richiesta, esegue l'operazione in un ambiente controllato, raccoglie l'output e lo reinietta nella cronologia come nuovo messaggio per il modello.
+
+L'intelligenza generativa appartiene al modello, ma il controllo operativo e la sicurezza risiedono interamente nell'harness. Per questo motivo la gestione dei permessi (Tappa 4) vive nell'harness: solo a questo livello è possibile intercettare, autorizzare o bloccare in sicurezza qualsiasi operazione sul sistema operativo.
+
+### Concetti fondamentali
+
+| Termine | Definizione |
+|---|---|
+| **Tool** | Una funzione o utility di sistema che il modello può richiedere di eseguire (es. lettura file, ricerca web, comandi shell). |
+| **Tool Call** | La richiesta strutturata (solitamente in formato JSON) emessa dal modello contenente il nome della funzione e i relativi argomenti. |
+| **Cronologia (History)** | La sequenza ordinata di messaggi scambiati tra utente, assistente e tool, inviata all'LLM a ogni richiesta per preservare il contesto operativo. |
+| **Finestra di contesto (Context Window)** | Il limite massimo di token che il modello può elaborare simultaneamente in una singola richiesta. Rappresenta la risorsa più critica dell'intero sistema. |
+| **Personaggio / Agente** | In TSUKA **ogni Personaggio è a tutti gli effetti un Agente**: un'identità configurata in JSON che unisce competenze operative (*Ruolo*) e stile comunicativo (*Tratto*). |
 
 ---
 
 ## 2. Il percorso di costruzione, tappa per tappa
 
-Questo è l'ordine in cui TSUKA è effettivamente cresciuto, ed è un buon ordine per chiunque
-voglia costruirne uno: ogni tappa funziona da sola ed è la base della successiva.
-
-### Tappa 1 — Una chat REPL con streaming
-*File: `src/core/provider.ts`, `src/cli/index.ts`, `src/cli/input.ts`*
-
-Si parte da un ciclo `while (true)` che legge una riga e chiama un endpoint
-**OpenAI-compatible** (`/v1/chat/completions`). Questa compatibilità è la prima decisione
-architetturale gratuita ma potentissima: Ollama, OpenRouter, Unsloth Studio, LM Studio e
-decine di altri server parlano lo stesso dialetto, quindi un solo `LLMProvider` li copre tutti.
-Lo streaming (Server-Sent Events, gestito dall'SDK `openai`) non è un lusso estetico: senza,
-l'utente fissa un cursore fermo per 30 secondi.
-
-### Tappa 2 — Il ciclo agentico (function calling)
-*File: `src/core/agent.ts`*
-
-È il cuore di qualsiasi harness: un loop che (1) invia la cronologia con l'elenco dei tool,
-(2) se il modello risponde con `tool_calls` li esegue tutti, (3) appende i risultati come
-messaggi `role: "tool"` e (4) ripete, finché il modello risponde con solo testo. Nella sua
-forma minima sta in poche decine di righe; in TSUKA `Agent.run()` è cresciuto a ~150 righe
-via via che si sono aggiunti eventi per la UI, statistiche cumulative e la calibrazione
-dinamica del rapporto caratteri/token (Tappa 5) — la logica di base resta comunque quella
-appena descritta. Due guardie imparate sul campo:
-- **`MAX_TOOL_ROUNDS`**: un modello piccolo può entrare in loop di tool infiniti e bruciare
-  token per sempre. Serve un limite duro con messaggio esplicito.
-- **Coerenza `tool_call`/`tool`**: l'API rifiuta cronologie dove un `tool_calls` resta senza
-  risposta o viceversa. Ogni manipolazione della cronologia (pruning!) deve rispettarlo.
-
-### Tappa 3 — Tool registry con schemi dichiarativi
-*File: `src/tools/registry.ts`, `src/tools/index.ts`, `tools_schemas/*.json`*
-
-I tool sono la parte che cresce di più nel tempo, quindi conviene renderli **plugin**:
-l'implementazione è un file in `src/tools/impl/` scoperto automaticamente all'avvio
-(auto-discovery con `import()` dinamico), mentre descrizione e parametri vivono in JSON
-esterni (`tools_schemas/`). Separare schema e codice permette di ritoccare le descrizioni
-(che sono, di fatto, *prompt engineering*) senza ricompilare. Prima di eseguire, gli argomenti
-del modello vengono validati contro lo schema: i modelli piccoli sbagliano spesso i tipi.
-
-### Tappa 4 — Permessi: l'utente nel loop
-*File: `src/safety/permissions.ts`*
-
-Ogni tool dichiara un livello di rischio: `SAFE` (esegue e basta), `RESTRICTED` (chiede
-conferma), `DANGEROUS` (chiede sempre, es. `execute_command`). È la stessa filosofia
-"user-in-the-loop" di Claude Code. Complementi: la **jail del workspace** (i file tool possono
-essere confinati in una root configurata), i **limiti di I/O** (lettura file troncata a 5MB,
-output di `execute_command` troncato a 50KB — due limiti distinti, non lo stesso numero) e il
-**filtro delle env var sensibili** (regex su `KEY|SECRET|TOKEN|PASSWORD|CREDENTIAL|AUTH`: mai
-far arrivare una API key nel contesto del modello, finirebbe nei log del provider).
-
-### Tappa 5 — Gestione del contesto
-*File: `src/core/agent.ts` (pruneHistory), `src/core/thinkParser.ts`, `src/core/memory.ts`*
-
-La context window è la risorsa scarsa. Tre meccanismi:
-- **Pruning a doppio criterio**: massimo numero di messaggi *e* budget di token stimati — il
-  secondo protegge dal caso "3 messaggi ma uno contiene un file da 2MB". La stima usa un
-  rapporto caratteri/token che parte da un seed (3,5, tarato sull'inglese) e si **auto-calibra
-  a runtime**: media mobile verso il rapporto osservato sull'`usage.prompt_tokens` reale
-  restituito dall'API a ogni round. Il taglio non lascia mai messaggi `tool` orfani (vedi Tappa 2).
-- **Reasoning fuori dalla cronologia**: i blocchi `<think>` dei modelli reasoning vengono
-  separati in streaming (`ThinkTagParser`) e mostrati all'utente ma **mai rimandati al
-  modello**: sarebbero token sprecati a ogni giro successivo.
-- **Memoria persistente**: un archivio JSON di fatti (`memory/memory.json`) iniettato in forma
-  compatta nel system prompt e interrogabile con un tool (`recall_memory`). Sopravvive al
-  riavvio: è la differenza tra una sessione e un collaboratore. Ogni fatto porta uno `scope`
-  (slug della workspace, o `'globale'`): un agente vede solo i fatti della propria workspace
-  più quelli globali — così due progetti diversi non si inquinano a vicenda pur condividendo
-  lo stesso archivio. L'iniezione nel prompt non prende più semplicemente gli *ultimi* fatti,
-  ma i più *pertinenti* al compito corrente (`formatRelevant`, scoring per keyword su
-  `search()`: OR — più parole della query trovate, più il fatto sale — non AND rigido, che con
-  query di più parole tornava quasi sempre zero risultati). Oltre il tetto di 200 fatti,
-  l'espulsione non è più FIFO ma a punteggio: combina categoria (`kind`: gli scarti di run
-  cadono per primi, le lezioni durature per ultime), quante volte il fatto è stato
-  recuperato e quanto di recente — un fatto `pinned` non viene mai espulso.
-
-### Tappa 6 — La UI: streaming, status, markdown (senza framework TUI)
-*File: `src/cli/stream.ts`, `src/cli/statusline.ts`, `src/cli/markdown.ts`*
-
-Vincolo autoimposto: niente Ink/React, solo CommonJS + chalk + sequenze ANSI. La strategia è
-**stream grezzo live → erase → repaint**: durante la generazione si stampa il testo com'è;
-a fine risposta si cancella la zona streammata (`\x1b[nF\x1b[0J`) e la si ridipinge come
-pannello markdown renderizzato. Il markdown "live" su input incompleto è instabile, il repaint
-finale no. Tutto l'ANSI è condizionato a `isTTY`: in pipe l'output resta testo pulito — regola
-d'oro per qualunque CLI.
-
-### Tappa 7 — Da un agente a N agenti coordinati
-*File: `roles/`, `traits/`, `characters/`, `teams/`, `src/cli/commands/{call.ts,team.ts,goal.ts,strategies/}`, `src/core/blackboard.ts`*
-
-Un "agente" qui è solo un system prompt assemblato da pezzi JSON dichiarativi:
-**ruolo** (competenze + tool consentiti) × **tratto** (personalità) × **personaggio**
-(preset nominato). Sopra si costruiscono i workflow: `/call` (conferenza-dibattito, nessun
-tool) e `/team` (round iterativi con cronologia condivisa e accesso pieno ai tool).
-
-**Quattro strategie per `/team`**, ognuna nel proprio file sotto `strategies/`; `team.ts`
-è solo un dispatcher che carica il team, sceglie la strategia e delega (~130 righe):
-
-| Strategia | File | Come decide il turno successivo |
-|---|---|---|
-| round-robin | `strategies/roundRobin.ts` | giro fisso tra i membri, si ferma quando uno dichiara COMPLETATO |
-| orchestrated | `strategies/orchestrated.ts` | un membro "orchestrator" decide dinamicamente chi lavora, invece del giro fisso |
-| pipeline | `strategies/pipeline.ts` | catena di montaggio, un solo passaggio lineare |
-| hybrid | `strategies/hybrid.ts` | non un `mode` a sé: round di discussione + voto che round-robin/orchestrated inseriscono dopo ogni round se `discussionRounds > 0` |
-
-Utility condivise tra le quattro (turno di un membro, protocollo di stato, seeding della
-history) vivono in `strategies/common.ts`.
-
-**Non fidarsi mai della *sensazione* di completamento**: serve un protocollo deterministico
-per decidere se fermarsi, chi lavora dopo, come si vota. Prima iterazione: marker testuale
-ancorato a inizio riga (`STATO: COMPLETATO`/`DA_CONTINUARE`/`FALLITO`, `AGENTE: @nome`,
-`VOTO: APPROVO`) via regex — fragile con modelli piccoli: `tests/test_protocol_parsing.ts`
-documenta i casi reali che rompono il match (marker in grassetto markdown, spazio prima dei
-due punti, nomi multi-parola). Iterazione successiva: tre tool call dedicate — `report_status`,
-`route_next`, `cast_vote` (`src/tools/impl/`) — come meccanismo primario. Ordine di decisione
-identico per tutte e tre: **tool call → regex esistente → default**, con ogni caduta di
-livello sotto `tool_call` segnalata (riga gialla in UI + voce in `protocolLog` nei
-`workflow_logs/`), mai silenziosa.
-
-**Il problema della concorrenza in `/goal`**: i blocchi `PARALLELO` (`Promise.all` in
-`goal.ts`) fanno emergere ciò che il round-robin sequenziale non ha mai dovuto affrontare —
-più agenti attivi nello stesso istante, che condividono lo stesso `PermissionManager` e lo
-stesso workspace. Due fix mirati, entrambi basati su primitive *scoped* invece che su stato
-globale mutabile (con la concorrenza reale di `Promise.all`, una variabile globale si
-contamina tra branch):
-- **Permessi**: `PermissionManager` accoda internamente le richieste che generano un prompt
-  interattivo (promise-chain, non un lock) — un prompt alla volta, con l'agente richiedente
-  indicato quando ce n'è più di uno.
-- **Workspace**: ogni branch scrive isolato in una cartella di staging temporanea — jail
-  attivata via `AsyncLocalStorage` (`withWorkspaceOverride`), non una variabile globale — e
-  unita alla workspace reale solo a fine blocco. Un path scritto in modo diverso da branch
-  diversi è un conflitto elencato all'utente, mai una sovrascrittura silenziosa.
-
-**Una lavagna per il run, non solo una cronologia (`blackboard.ts`)**: la history condivisa
-(`teamMessages`) e la memoria persistente (`MemoryStore`) non bastano a coprire un terzo
-bisogno — uno stato *di questo run* (decisioni prese, artefatti prodotti, punti aperti) che
-gli agenti possono aggiornare esplicitamente senza aspettare che finisca nella sintesi
-condensata della history, e che non deve sopravvivere al run come farebbe un fatto in
-memoria. Due tool, `post_note`/`read_notes`, offerti nello stesso punto di `report_status`
-(quindi in ogni turno di team/goal, mai nella chat normale). L'isolamento riusa la stessa
-lezione della concorrenza qui sopra — `AsyncLocalStorage`, non una variabile globale — ma con
-una granularità diversa e istruttiva: i branch di UN blocco `PARALLELO` condividono la stessa
-blackboard (sono lo stesso run, è quello che li rende una lavagna comune), mentre run
-*diversi* (due `/goal` in `Promise.all`, come nel test di isolamento) ne hanno una a testa.
-Muore col run: nessuna scrittura in `MemoryStore`, l'unica traccia che resta è lo `snapshot()`
-incluso nel workflow log.
-
-**I test col mock come documentazione eseguibile**: `MockLLMProvider` (`tests/mocks/`)
-scripta le risposte di un "modello" senza rete né LLM reale. `test_team_modes.ts` (25 casi)
-verifica ognuna delle quattro strategie su due rami — "il modello usa la tool call" e "il
-modello scrive solo testo" (fallback + segnalazione) — inclusa la chiusura di un gap reale
-(`STATO: FALLITO` non era gestito da nessuna parte finché non è arrivato `report_status`).
-`test_permission_queue.ts` dimostra la serializzazione dei prompt paralleli;
-`test_parallel_workspace.ts` dimostra isolamento e merge dei workspace, sia a livello di
-funzione pura sia end-to-end con due agenti mock che scrivono file veri via `write_file`;
-`test_blackboard.ts` dimostra un agente che legge, nel proprio turno, la nota scritta da un
-altro nel turno precedente (sull'output reale di `read_notes`, non sulla classe `Blackboard`
-chiamata a mano) e due run in `Promise.all` che non si vedono le note a vicenda.
-Sono la specifica più affidabile del comportamento multi-agente — più del codice stesso: se
-un comportamento cambia e il test relativo no, uno dei due è sbagliato.
-
-### Tappa 8 — Adattività al modello: tier misurato, non indovinato
-*File: `src/core/modelProfile.ts`, `getModelTier` in `src/tools/registry.ts`*
-
-Un harness per modelli locali ha un problema che Claude Code non ha: i modelli variano da 1B
-a 70B e un 9B sommerso da 20 tool sbaglia tutto. Primo approccio: euristica sul nome
-("9b" → small → meno tool). Ma le euristiche mentono: il **capability fingerprinting**
-(`/benchmark`) esegue test oggettivi su 3 categorie — instruction following, JSON, function
-calling (5 casi in `benchmarks/*.json`) — e salva un profilo *misurato* — un caso reale: un
-9B stimato "small" dall'euristica è risultato "large" ai test. Regola generale:
-**misura, non indovinare**.
-
-### Tappa 9 — Self-extension: l'agente scrive i propri tool
-*File: `src/tools/impl/createTool.ts`*
-
-Il passo più "meta": un tool (`create_tool`) con cui l'agente genera nuovi tool JavaScript,
-validati in una sandbox `vm` con blocklist, mai a livello `DANGEROUS`, mai in sovrascrittura
-di tool core, con backup automatico e registrazione a caldo. È anche il punto più delicato
-del progetto: il confine tra "l'agente si estende" e "l'agente fa quello che vuole" è tutto
-nelle validazioni.
-
-### Tappa 10 — Distribuzione: home vs workspace
-*File: `src/core/apphome.ts`, campo `bin` in `package.json`*
-
-Finché si lancia con `npm run dev` dalla cartella del progetto, tutto può essere risolto da
-`process.cwd()`. Ma un comando globale (`tsuka` da qualsiasi cartella) impone la distinzione
-finale: la **home dell'app** (asset, config, memoria — risolta da `__dirname` o `TSUKA_HOME`)
-è *dove l'harness vive*; il **workspace** (`cwd`) è *dove l'agente lavora*. Confonderle
-significa config duplicati e memoria persa a ogni cartella.
+```
+  ┌──────────────┐      ┌──────────────┐      ┌──────────────┐
+  │  1. REPL &   │ ──►  │ 2. Ciclo     │ ──►  │ 3. Tool      │
+  │   Streaming  │      │   Agentico   │      │   Registry   │
+  └──────────────┘      └──────────────┘      └──────────────┘
+                                                     │
+  ┌──────────────┐      ┌──────────────┐             │
+  │ 6. UI TUI &  │ ◄──  │ 5. Gestione  │ ◄──  ┌──────▼───────┐
+  │   ANSI Live  │      │   Contesto   │      │ 4. Sistema   │
+  └──────────────┘      └──────────────┘      │   Permessi   │
+         │                                    └──────────────┘
+         ▼
+  ┌──────────────┐      ┌──────────────┐      ┌──────────────┐
+  │ 7. Multi-    │ ──►  │ 8. Model     │ ──►  │ 9. Self-     │ ──► 10. Packaging &
+  │   Agente     │      │   Tiers      │      │   Extension  │     Distribuzione
+  └──────────────┘      └──────────────┘      └──────────────┘
+```
 
 ---
 
-## 3. Caratteristiche comuni vs peculiari
+### Tappa 1 — Chat REPL e streaming in tempo reale
 
-### Comuni a (quasi) tutti gli harness — se ne costruisci uno, ti servono
-| Componente | In TSUKA | Nota |
+*Riferimenti nel codice: `src/core/provider.ts`, `src/cli/index.ts`, `src/cli/input.ts`*
+
+Il punto di partenza è un ciclo di lettura interattivo (REPL) che raccoglie l'input dell'utente e lo inoltra a un endpoint compatibile con lo standard **OpenAI** (`/v1/chat/completions`).
+
+Adottare questa interfaccia standard è una decisione architetturale strategica: server locali come Ollama, llama-server (`llama.cpp`), Unsloth Studio, vLLM e aggregatori cloud come OpenRouter espongono tutti lo stesso protocollo HTTP. In questo modo un'unica classe `LLMProvider` consente di interfacciare qualsiasi backend.
+
+Lo streaming delle risposte (gestito tramite *Server-Sent Events* con l'SDK OpenAI) è essenziale per l'esperienza utente: senza di esso, l'operatore si troverebbe di fronte a un terminale bloccato per diversi secondi o minuti, senza alcun riscontro sull'avanzamento dell'elaborazione.
+
+---
+
+### Tappa 2 — Il ciclo agentico (Function Calling)
+
+*Riferimenti nel codice: `src/core/agent.ts`*
+
+Il nucleo operativo dell'harness segue il pattern **ReAct** (*Reason + Act*), articolato in quattro passaggi sequenziali:
+
+1. **Invio del contesto**: la cronologia della conversazione viene trasmessa all'LLM unitamente alle definizioni dei tool abilitati.
+2. **Analisi della risposta**: se il modello restituisce una o più chiamate a funzione (`tool_calls`), l'harness ne sospende l'output testuale e avvia l'esecuzione dei tool richiesti.
+3. **Integrazione dei risultati**: gli output dei tool vengono aggiunti alla cronologia come messaggi con ruolo `tool`.
+4. **Ciclo ricorsivo**: la cronologia aggiornata viene re-inviata al modello, ripetendo il processo fino a quando l'LLM non produce una risposta finale puramente testuale.
+
+```
+                  ┌──────────────────────┐
+                  │ Input Utente/Prompt  │
+                  └──────────┬───────────┘
+                             │
+            ┌────────────────▼────────────────┐
+            │   Invia Cronologia + Tool JSON  │◄─────────────┐
+            └────────────────┬────────────────┘              │
+                             │                               │
+                             ▼                               │
+                   [ Risposta del Modello ]                  │
+                             │                               │
+              Ha richiesto   │                               │
+              tool calls?    ├───────── No ──────────┐       │
+                             │                       │       │
+                            Sì                       ▼       │
+                             │                 ┌───────────┐ │
+                             ▼                 │ Risposta  │ │
+                    ┌─────────────────┐        │  Finale   │ │
+                    │ Esegui Tool     │        └─────┬─────┘ │
+                    │ (Permessi + FS) │              │       │
+                    └────────┬────────┘              │       │
+                             │                       │       │
+                             ▼                       │       │
+                    ┌─────────────────┐              │       │
+                    │ Aggiungi output │              │       │
+                    │ con role: "tool"│──────────────┘       │
+                    └────────┬────────┘                      │
+                             └───────────────────────────────┘
+```
+
+#### Aspetti critici da considerare fin dall'inizio:
+* **Tetto massimo ai round (`MAX_TOOL_ROUNDS`)**: i modelli linguistici (in particolare quelli più compatti) possono entrare in loop ricorsivi invocando ripetutamente gli stessi tool. È indispensabile definire un limite massimo di sicurezza (in TSUKA impostato di default a 15 round in `Agent.DEFAULT_MAX_TOOL_ROUNDS`, configurabile tramite `maxToolRounds`).
+* **Integrità formale della cronologia**: le API dei provider richiedono che a ogni `tool_call` corrisponda esattamente un messaggio di risposta `tool` con il medesimo `tool_call_id`. Se la cronologia viene alterata o troncata in modo scorretto, le chiamate successive falliranno sistematicamente.
+
+---
+
+### Tappa 3 — Tool Registry con schemi dichiarativi
+
+*Riferimenti nel codice: `src/tools/registry.ts`, `src/tools/index.ts`, `tools_schemas/*.json`*
+
+I tool rappresentano l'elemento con il tasso di espansione più elevato nel ciclo di vita di un harness. Per garantire manutenibilità e scalabilità, è opportuno strutturarli come **plugin modulari**:
+
+* **Implementazione TypeScript**: ogni file in `src/tools/impl/` esporta la logica esecutiva e viene caricato dinamicamente all'avvio (*dynamic import*).
+* **Definizione dello schema JSON**: la descrizione del tool e la specifica dei parametri risiedono in file JSON dedicati all'interno della cartella `tools_schemas/`.
+
+```
+src/tools/impl/read_file.ts  ──► Logica esecutiva (TypeScript)
+tools_schemas/read_file.json ──► Descrizione e parametri (JSON Schema)
+```
+
+Separare il codice dallo schema è un vantaggio notevole: **la documentazione e i parametri di un tool costituiscono una forma di prompt engineering**. Poter raffinare le descrizioni per orientare le scelte del modello senza dover ricompilare il codice velocizza notevolmente l'iterazione.
+
+Inoltre, prima di eseguire qualsiasi funzione, gli argomenti forniti dal modello devono essere convalidati rigorosamente a runtime rispetto allo schema dichiarato.
+
+---
+
+### Tappa 4 — Sistema di permessi: User-in-the-Loop
+
+*Riferimenti nel codice: `src/safety/permissions.ts`*
+
+Per garantire la sicurezza del sistema host, ogni tool dichiara un livello di rischio predefinito:
+
+| Livello | Comportamento operativo | Esempi |
 |---|---|---|
-| Ciclo agentico con function calling | `src/core/agent.ts` | Il pattern è identico ovunque |
-| Astrazione provider OpenAI-compatible | `src/core/provider.ts` | Un client, molti server |
-| Tool con schema JSON + validazione | `src/tools/` | Lo schema È il prompt del tool |
-| Permessi user-in-the-loop a livelli | `src/safety/permissions.ts` | SAFE/RESTRICTED/DANGEROUS |
-| Streaming + UI reattiva in terminale | `src/cli/stream.ts` | Feedback continuo o l'utente pensa sia morto |
-| Gestione context window (pruning) | `agent.pruneHistory()` | Doppio criterio: messaggi + token |
-| REPL con comandi slash | `src/cli/index.ts` | Dispatch map, comandi in moduli |
-| Config dichiarativa esterna al codice | `*.json` in root | Comportamento modificabile senza ricompilare |
+| `SAFE` | Esecuzione automatica trasparente senza interruzioni. | `read_file`, `list_dir`, `web_search` |
+| `RESTRICTED` | Richiede la conferma esplicita dell'utente (con opzione per autorizzare la sessione). | `write_file`, `delete_file`, `edit_file` |
+| `DANGEROUS` | Richiede **sempre** autorizzazione esplicita ad ogni singola esecuzione. | `execute_command` |
 
-### Peculiari di TSUKA — le scelte che lo distinguono
-| Caratteristica | Perché è particolare |
+A questo meccanismo di autorizzazione si affiancano tre ulteriori barriere di sicurezza:
+1. **Workspace Sandbox (Jail)**: tutte le operazioni di lettura e scrittura su filesystem possono essere circoscritte alla cartella di lavoro configurata.
+2. **Limitazione delle dimensioni di I/O**: limiti prefissati sui volumi di dati scambiati (es. massimo 5 MB per la lettura dei file, troncamento degli output da terminale a 50 KB) per non saturare la memoria dell'applicazione e il contesto del modello.
+3. **Oscuramento delle variabili d'ambiente riservate**: filtraggio preventivo di credenziali e token (`KEY|SECRET|TOKEN|PASSWORD|CREDENTIAL|AUTH`) per impedire che chiavi sensibili finiscano nel contesto inviato all'LLM e nei log del provider.
+
+---
+
+### Tappa 5 — Gestione e ottimizzazione del contesto
+
+*Riferimenti nel codice: `src/core/agent.ts` (`pruneHistory`), `src/core/thinkParser.ts`, `src/core/memory.ts`*
+
+La finestra di contesto rappresenta la risorsa computazionale più critica. TSUKA implementa quattro meccanismi complementari per massimizzarne l'efficienza:
+
+#### 1. Compattazione guidata dai token (Token-driven Pruning)
+Il criterio primario di riduzione della cronologia si basa sul budget effettivo di token (`maxHistoryTokens`), non sul semplice conteggio dei messaggi. Questo approccio previene saturazioni improvvise dovute a singoli messaggi molto voluminosi (ad esempio la lettura di un file di grandi dimensioni).
+
+Il limite di contesto viene interrogato dinamicamente dal server LLM all'avvio (tramite `/props` in llama-server, `/api/show` in Ollama, o metadati di OpenRouter). Se il server non fornisce questa informazione, viene adottato il valore di fallback configurato. Il comando `/context` mostra sempre l'origine esatta del limite applicato.
+
+La stima interna dei token adotta un fattore iniziale di 3.5 caratteri per token e si **auto-calibra a runtime**, sincronizzandosi progressivamente con il valore reale di `usage.prompt_tokens` restituito dalle risposte delle API.
+
+```
+[System Prompt] ──► [Messaggi Iniziali] ──► [ ...Messaggi Prunati... ] ──► [Ultimi N Messaggi Intatti]
+                                                    ▲
+                                    (Preserva sempre coerenza tool_call / tool)
+```
+
+#### 2. Isolamento dei blocchi di reasoning
+Nei modelli di tipo *reasoning* (DeepSeek R1, Qwen QwQ, o3), le sezioni di pensiero delimitate dai tag `<think>` vengono estratte e mostrate all'utente in tempo reale tramite `ThinkTagParser`, ma **vengono rimosse dalla cronologia persistente**. In questo modo si evita di sprecare token ri-inviando catene di ragionamento pregresse nei turni successivi.
+
+#### 3. Memoria persistente condivisa
+Un archivio strutturato su disco (`memory/memory.json`) registra fatti, convenzioni di progetto e preferenze dell'utente, rendendoli disponibili tra sessioni differenti e tra agenti diversi:
+* **Scoping dei contesti**: ogni informazione può avere uno scope locale (relativo al workspace corrente) o `globale`, evitando interferenze tra progetti distinti.
+* **Iniezione semantica e ranking**: le informazioni pertinenti vengono selezionate tramite scoring basato su corrispondenze multiple di parole chiave (logica OR ponderata) e iniettate in forma sintetica nel system prompt.
+* **Politica di eviction a punteggio**: al raggiungimento della capienza massima (`memoryMaxFacts`, default a 200), i record vengono rimossi in base a frequenza d'uso, tipologia e data, garantendo la conservazione permanente dei fatti contrassegnati come `pinned`.
+
+#### 4. Salvataggio su disco del ragionamento esteso
+I blocchi di ragionamento voluminosi vengono archiviati su disco in file Markdown dedicati (`memory/thinking/*.md`), memorizzando nell'indice principale solo un puntatore sintetico. Il comando dedicato `/continue [traccia]` consente all'utente di reiniettare esplicitamente un percorso logico interrotto nei turni successivi.
+
+---
+
+### Tappa 6 — Interfaccia utente: streaming, rendering e reattività
+
+*Riferimenti nel codice: `src/cli/stream.ts`, `src/cli/statusline.ts`, `src/cli/markdown.ts`, `src/cli/interrupt.ts`*
+
+Per mantenere l'applicazione snella e senza dipendenze pesanti da framework TUI complessi, l'interfaccia adotta un'architettura basata su **stream grezzo live → cancellazione ANSI → repaint formattato**:
+1. Durante la generazione, il testo grezzo viene stampato a video man mano che arrivano i chunk dallo stream.
+2. Al termine della risposta, l'area interessata viene cancellata tramite sequenze di escape ANSI (`\x1b[nF\x1b[0J`).
+3. Il contenuto completo viene quindi ridipinto come pannello Markdown renderizzato, con evidenziazione della sintassi e box formattati.
+
+```
+[ Generazione in corso ] ──► [ Stream grezzo a video ]
+                                      │
+[ Fine generazione ]     ──► [ Cancella area ANSI: \x1b[nF\x1b[0J ]
+                                      │
+                         ──► [ Repaint finale in Markdown stilizzato ]
+```
+
+Durante la fase di generazione, l'input da tastiera passa in modalità grezza (*raw mode*) per consentire la cancellazione immediata del turno tramite il tasto `Esc` o la combinazione `Ctrl+X` (gestita con `AbortController`), preservando lo stato della sessione senza dover terminare il processo.
+
+Tutte le emissioni a video sono instradate attraverso un'astrazione a sink sostituibile (`src/core/logSink.ts`), disaccoppiando il motore logico dell'harness dall'interfaccia di visualizzazione.
+
+---
+
+### Tappa 7 — Architettura multi-agente e coordinamento
+
+*Riferimenti nel codice: `roles/`, `traits/`, `characters/`, `teams/`, `src/cli/commands/{call.ts,team.ts,goal.ts,strategies/}`, `src/core/blackboard.ts`, `src/core/loop.ts`*
+
+#### 7.1 L'equazione fondamentale: Personaggio = Agente
+
+In molti framework agentici un "agente" è una complessa classe software hardcodata. In TSUKA l'approccio è puramente dichiarativo: **un agente non è altro che un personaggio composto a runtime**:
+
+```
+┌─────────────────────────┐     ┌────────────────────────┐
+│     RUOLO (roles/)      │  ×  │    TRATTO (traits/)    │  ──►  PERSONAGGIO / AGENTE
+│ (Cosa fa + tool ammessi)│     │(Come parla + carattere)│      (es. @geordi, @worf, @pike)
+└─────────────────────────┘     └────────────────────────┘
+```
+
+* **Ruolo (`roles/*.json`)**: definisce le competenze tecniche e i tool che l'agente è autorizzato a invocare (es. `developer`, `sysadmin`, `security_auditor`, `supervisor`).
+* **Tratto (`traits/*.json`)**: imposta il tono di voce e lo stile comunicativo (es. `professional`, `creative`, `grumpy`, `uncompromising`).
+* **Personaggio (`characters/*.json`)**: unisce ruolo e tratto attribuendo un nome (`aiName`), una descrizione e una skill attiva (es. `Geordi` = `developer` + `professional`).
+
+Quando nel terminale invochi `/agent geordi`, `/call @worf, @tuvok` o avvii un team con `/team`, **stai a tutti gli effetti instanziando e coordinando agenti AI autonomi e specializzati**. 
+
+Inoltre, un personaggio può disporre di competenze multiple (`roles: [...]`), montando un ruolo alla volta per non sovraccaricare il prompt e cambiando competenza attiva a runtime con il tool `switch_skill`.
+
+#### 7.2 Le strategie di coordinamento (`/team`)
+
+La gestione del team collaborativo supporta tre strategie principali:
+
+```
+1. ORCHESTRATED (Consigliata)
+   [ Orchestratore ] ──► decide ──► [ Agente A ] ──► [ Orchestratore ] ──► decide ──► [ Agente B ]
+   
+2. ROUND-ROBIN
+   [ Agente A ] ───────► passa a ───────► [ Agente B ] ───────► passa a ───────► [ Agente C ]
+   
+3. PIPELINE
+   [ Fase 1: Input ] ──► [ Fase 2: Analisi ] ──► [ Fase 3: Sintesi ] ──► [ Output Finale ]
+```
+
+| Strategia | Meccanismo di selezione del turno | Quando utilizzarla |
+|---|---|---|
+| **orchestrated** | Un agente supervisore decide dinamicamente a ogni turno chi deve intervenire. | **Scelta consigliata di default** per team con ruoli eterogenei e compiti articolati. |
+| **round-robin** | Sequenza ciclica fissa predefinita tra i membri del team. | Team compatti con competenze equivalenti o per baseline di test. |
+| **pipeline** | Esecuzione lineare sequenziale a passaggio singolo. | Flussi rigidi e unidirezionali in cui l'ordine di elaborazione è rigorosamente stabilito a priori. |
+
+#### Perché la strategia orchestrata è la più efficace:
+1. **Coinvolgimento mirato**: interviene solo l'agente le cui competenze sono richieste nello stato corrente del task, evitando turni a vuoto che saturerebbero il contesto.
+2. **Decisione atomica e semplificata**: l'orchestratore riceve un digest compatto degli ultimi interventi e dispone di un unico tool (`route_next`), un compito lineare eseguibile con precisione anche da modelli compatti.
+3. **Tracciabilità delle decisioni**: ogni instradamento viene registrato nei log di workflow con motivazione e metodo di decisione (tool call o fallback testuale).
+
+#### Confronto tra `/team` (orchestrated) e `/goal`:
+
+| Caratteristica | `/team` (orchestrated) | `/goal` (Goal Orchestrator) |
+|---|---|---|
+| **Momento della decisione** | Dinamica, dopo ogni singolo turno. | Globale, all'inizio del workflow. |
+| **Output prodotto** | L'agente designato per il turno successivo. | Un piano di lavoro strutturato in step sequenziali/paralleli. |
+| **Selezione agenti** | Limitata ai membri definiti nel team JSON. | Dinamica, selezionata tra **tutti** i personaggi installati. |
+| **Parallelismo** | No (sequenziale, un turno alla volta). | Sì, supporta blocchi `PARALLELO` concorrenti. |
+| **Rilavorazione** | Progressiva turno dopo turno. | Verdetto del supervisore finale con riapertura mirata degli step. |
+
+#### Protocollo di comunicazione tra agenti
+Il coordinamento operativo si affida a tre tool dedicati con livello `SAFE`:
+* `report_status(status, summary, next_hint)`: notifica lo stato del turno (`COMPLETATO`, `DA_CONTINUARE`, `FALLITO`).
+* `route_next(agent, reason)`: utilizzato dall'orchestratore per designare il prossimo agente o dichiarare la `FINE`.
+* `cast_vote(vote, reason)`: impiegato nelle discussioni collegiali per approvare o richiedere modifiche (`APPROVO`, `MODIFICARE`, `RIFIUTO`).
+
+La risoluzione segue una gerarchia rigorosa: **Tool call esplicita → Parsing regex del testo (fallback) → Default di sicurezza**. Qualsiasi degradazione al livello di fallback genera un avviso visibile a terminale e viene tracciata nei log del workflow.
+
+#### Concorrenza e Blackboard di sessione
+Nei blocchi `PARALLELO` di `/goal` (eseguiti tramite `Promise.all` che comunque io ho disabilitato perché uso una sola GPU locale):
+* **Coda unificata dei permessi**: le richieste di autorizzazione interattiva vengono accodate ed elaborate una alla volta in modo deterministico.
+* **Workspace isolati di staging**: ogni ramo parallelo opera in una cartella temporanea dedicata isolata tramite `AsyncLocalStorage` (`withWorkspaceOverride`), riconciliando le modifiche al termine e segnalando eventuali conflitti su file condivisi.
+* **Blackboard di run (`blackboard.ts`)**: uno spazio condiviso temporaneo accessibile tramite i tool `post_note` e `read_notes` per consentire agli agenti dello stesso run di scambiarsi appunti, decisioni e artefatti intermedi senza inquinare la memoria a lungo termine.
+
+---
+
+### Tappa 8 — Adattività ai modelli: Capability Fingerprinting
+
+*Riferimenti nel codice: `src/core/modelProfile.ts`, `src/tools/registry.ts`*
+
+Nei contesti locali i modelli spaziano da 1B a 70B di parametri. Un modello compatto (es. 7B o 9B) rischia di fallire se esposto a un numero eccessivo di definizioni di tool complessi.
+
+Anziché affidarsi a euristiche basate sul nome del file di modello, TSUKA adotta un sistema di **Capability Fingerprinting** (`/benchmark`):
+* Esegue una serie di test oggettivi su *instruction following*, generazione JSON e *function calling* strutturato (definiti in `benchmarks/*.json`).
+* Calcola e memorizza un punteggio oggettivo determinando il **tier del modello** (`small`, `medium`, `large`).
+* Il registry dei tool applica automaticamente un filtro a due livelli: **Ruolo attivo × Tier misurato del modello**.
+* I profili registrano l'hash del banco di prova e sono indicizzati in base al livello di *reasoning effort*, garantendo misurazioni affidabili e riproducibili.
+
+---
+
+### Tappa 9 — Auto-estensione: creazione dinamica di tool
+
+*Riferimenti nel codice: `src/tools/impl/createTool.ts`*
+
+TSUKA include una funzionalità avanzata di self-extension: tramite il tool `create_tool`, un agente con autorizzazioni adeguate (ad esempio un `developer`) può generare a runtime nuove utility JavaScript/TypeScript.
+
+Per garantire la stabilità dell'ambiente:
+* Il codice viene validato all'interno di una sandbox `node:vm` con blocco degli accessi non autorizzati.
+* I tool generati a runtime possono avere al massimo livello `SAFE` o `RESTRICTED` (mai `DANGEROUS`).
+* È vietata la sovrascrittura dei tool di sistema (core).
+* Viene effettuato un backup preventivo automatico e la registrazione a caldo nel registro dei tool.
+
+---
+
+### Tappa 10 — Distribuzione e risoluzione delle configurazioni
+
+*Riferimenti nel codice: `src/core/apphome.ts`, `package.json`*
+
+Quando l'harness viene eseguito come comando globale di sistema (`tsuka`), è fondamentale separare due percorsi:
+* **Home dell'applicazione (`appHome`)**: dove risiedono i binari di sistema, i preset nativi e le impostazioni predefinite.
+* **Workspace corrente**: la cartella di lavoro in cui l'utente sta operando.
+
+TSUKA adotta una **risoluzione gerarchica**: se nella cartella corrente è presente una directory `.tsuka/` (generata con `tsuka init`), le configurazioni, i personaggi e la memoria locali hanno la precedenza su quelli globali. In caso contrario, il sistema ricade in modo trasparente sulle risorse globali dell'applicazione.
+
+---
+
+## 3. Riepilogo architetturale: componenti universali e scelte di TSUKA
+
+### Componenti comuni a qualsiasi harness agentico
+| Componente | Ruolo architetturale |
 |---|---|
-| **Capability fingerprinting** (`/benchmark`) | Il tier dei tool è *misurato* con test oggettivi, non stimato dal nome del modello |
-| **Tier gating dei tool** | I modelli piccoli vedono solo i tool che possono gestire: meno confusione, meno errori |
-| **Self-authoring** (`create_tool`) | L'agente estende l'harness a runtime, in sandbox e con versioning |
-| **Personas componibili** (ruolo × tratto × personaggio) | Identità degli agenti interamente dichiarativa in JSON |
-| **Protocollo di coordinamento a tool call** | `report_status`/`route_next`/`cast_vote` come meccanismo primario, marker testuale (`STATO:`/`AGENTE:`/`VOTO:`) come fallback esplicito — mai una decisione silenziosa |
-| **Isolamento dei branch paralleli** | `PermissionManager` in coda + workspace di staging per branch (`AsyncLocalStorage`), non stato globale mutabile: la concorrenza reale di `Promise.all` in `/goal` non contamina un agente con l'altro |
-| **Blackboard di run** | `post_note`/`read_notes` su uno stato condiviso *del solo run corrente* (`AsyncLocalStorage`, non memoria persistente): i branch di uno stesso `PARALLELO` la condividono, run diversi in `Promise.all` no |
-| **Memoria condivisa cross-agente** | Tutti gli agenti (chat, /call, /team) leggono/scrivono lo stesso archivio persistente |
-| **UI streaming senza framework TUI** | Erase/repaint ANSI a mano, vincolo CommonJS: dimostra che non serve Ink |
-| **Windows-first, cross-platform** | PowerShell nativo primario, `/bin/sh` POSIX come porting (`src/core/platform.ts`) — l'opposto della norma |
+| **Ciclo ReAct & Function Calling** | Motore ricorsivo di esecuzione tra LLM e tool. |
+| **Astrazione Provider OpenAI-compatible** | Client unico per interagire con server locali e provider cloud. |
+| **Tool Registry dichiarativo** | Separazione tra logica esecutiva e schemi JSON di validazione. |
+| **Sistema di permessi multilivello** | Controllo degli accessi a salvaguardia del sistema operativo (*User-in-the-Loop*). |
+| **Streaming e UI reattiva** | Visualizzazione progressiva e gestione degli interrupt da tastiera (`Esc`). |
+| **Pruning token-driven della cronologia** | Gestione della finestra di contesto basata su token reali. |
+
+### Caratteristiche distintive di TSUKA
+| Caratteristica | Vantaggio operativo |
+|---|---|
+| **Capability Fingerprinting (`/benchmark`)** | Calcolo oggettivo del tier dei modelli per filtrare i tool supportati. |
+| **Orchestrazione dinamica (`route_next`)** | Assegnazione dinamica del turno basata su un supervisore dedicato. |
+| **Protocollo strutturato con fallback visibile** | Tool di coordinamento formali con tracciamento esplicito delle degradazioni. |
+| **Verifica oggettiva e loop di correzione (`loop.ts`)** | Validazione dei risultati tramite comandi o verificatori dedicati prima della chiusura. |
+| **Branch paralleli isolati** | Staging indipendente del filesystem con `AsyncLocalStorage` e merge sicuro. |
+| **Blackboard di sessione isolata** | Condivisione temporanea dello stato di workflow senza inquinare la memoria globale. |
+| **Architettura Windows-first & Cross-platform** | Supporto primario per PowerShell su Windows con piena compatibilità Linux/macOS. |
 
 ---
 
-## 4. Trappole reali incontrate (e perché ti capiteranno anche a te)
+## 4. Dieci insidie pratiche nello sviluppo di un harness
 
-Tutte documentate con data e fix in [`HISTORY.md`](../HISTORY.md) — qui le più istruttive:
-
-1. **`String.replace` interpreta `$` nel rimpiazzo** (`$&`, `` $` ``…): un tool `edit_file`
-   ingenuo corrompe silenziosamente i file. Fix: replacer function `() => replacement`.
-2. **`import()` traspilato in CommonJS non accetta URL `file://`**: l'auto-discovery
-   funzionava in dev (tsx) ed era rotto nella build compilata — scoperto solo creando il
-   comando globale. Morale: testa *entrambe* le modalità di esecuzione.
-3. **Statistiche token contando i chunk di stream**: i tok/s erano fantasiosi. I token veri
-   arrivano con `stream_options: { include_usage: true }`.
-4. **Pruning che sposta gli indici**: estrarre "i messaggi nuovi" con `slice(lunghezzaPrima)`
-   si rompe appena il pruning rimuove messaggi a metà run. Serve un riferimento a oggetto,
-   non un indice.
-5. **Entità HTML nel renderer markdown**: `marked` produce HTML (`po'` → `po&#39;`);
-   togliere i tag non basta, bisogna decodificare le entità.
-6. **Env var sensibili nel contesto**: un tool "innocuo" che elenca le variabili d'ambiente
-   è un canale di esfiltrazione delle API key verso il provider del modello.
-7. **Il modello che "si blocca"** spesso non è bloccato: è in coda su un server locale che
-   serve una richiesta alla volta. Prima di debuggare l'harness, guarda il server — e dai
-   comunque all'utente un tasto per interrompere (Esc + `AbortController`).
+1. **Interpolazione nei rimpiazzi di stringhe**: `String.prototype.replace` interpreta sequenze speciali come `$&` o `` $` `` nel testo sostitutivo. Negli strumenti di modifica file (`edit_file`) è opportuno usare sempre una funzione di rimpiazzo `() => replacement`.
+2. **Import dinamici in ambienti ibridi CommonJS / ESM**: `import()` dinamico traspilato può generare comportamenti differenti tra ambienti di sviluppo (`tsx`) e pacchetti compilati. È fondamentale testare sempre entrambe le configurazioni.
+3. **Misurazione inaccurata dei token in streaming**: contare i singoli frammenti di stream (*chunk*) produce stime di velocità errate; i valori corretti si ottengono abilitando `stream_options: { include_usage: true }`.
+4. **Invalidazione degli indici durante la potatura**: recuperare i nuovi messaggi tramite slice basate su indici numerici fallisce se la cronologia viene accorciata a metà esecuzione; è preferibile tracciare i riferimenti agli oggetti messaggio.
+5. **Entità HTML nel rendering del terminale**: i parser Markdown possono convertire caratteri in entità HTML (es. `&#39;`), che richiedono una fase esplicita di decodifica prima della stampa su terminale ANSI.
+6. **Esfiltrazione involontaria di credenziali**: tool diagnostici che leggono le variabili d'ambiente possono includere inavvertitamente chiavi API nel prompt; è essenziale applicare una maschera di censura preventiva.
+7. **Accodamento invisibile sui server locali**: un modello locale apparentemente bloccato potrebbe essere semplicemente in coda su un'istanza a slot singolo. È necessario fornire all'utente indicatori visivi di stato e timeout globali sull'intera generazione.
+8. **Argomenti JSON sovradimensionati**: passare interi file come parametri inline può causare la generazione di JSON troncati o non validi da parte del modello. È preferibile strutturare i tool per supportare scritture incrementali (*append*) o percorsi su file.
+9. **Corruzione della cronologia da JSON malformati**: una risposta con sintassi JSON errata non deve essere salvata grezza nella cronologia, altrimenti comprometterà tutte le chiamate successive; gli argomenti vanno convalidati e sanificati prima del salvataggio.
+10. **Isolamento della memoria nei test automatici**: i test end-to-end non devono mai scrivere nell'archivio `memory.json` reale dell'utente; l'istanza di test deve operare su percorsi temporanei isolati tramite variabili d'ambiente dedicate.
 
 ---
 
-## 5. Da dove partire per rifarlo da zero
+## 5. Da dove iniziare per implementare un harness da zero
 
-Percorso minimo consigliato (~ordine delle tappe di §2):
+1. **Fase 1 — REPL e client streaming** (Tappa 1): implementa l'interfaccia interattiva da riga di comando e il collegamento HTTP con il server LLM.
+2. **Fase 2 — Ciclo agentico, tool essenziali e permessi** (Tappe 2–4): realizza il ciclo di *function calling* con i tre strumenti fondamentali (`read_file`, `write_file`, `list_dir`) e un controllo di autorizzazione sulle operazioni di scrittura.
+3. **Fase 3 — Gestione del contesto e interfaccia** (Tappe 5–6): integra la potatura automatica dei messaggi basata sui token e il rendering Markdown a terminale.
+4. **Fase 4 — Multi-agente e profilazione** (Tappe 7–8): struttura i ruoli, definisci il protocollo di coordinamento (`report_status`, `route_next`) e implementa la classificazione per tier dei modelli.
+5. **Fase 5 — Estendibilità e distribuzione** (Tappe 9–10): aggiungi la creazione dinamica di tool in sandbox e la gestione gerarchica delle configurazioni di progetto (`apphome` vs `workspace`).
 
-1. REPL + provider streaming (tappe 1): già utile come chat.
-2. Ciclo agentico + 3 tool (`read_file`, `write_file`, `list_dir`) + permessi (tappe 2–4):
-   a questo punto hai *un harness*, tutto il resto è raffinamento.
-3. Pruning e memoria (tappa 5), poi UI (tappa 6).
-4. Multi-agente e adattività (tappe 7–8) solo quando il singolo agente è solido.
-5. Self-extension e distribuzione (tappe 9–10) per ultime: dipendono da tutto il resto.
+---
 
-Documentazione di approfondimento: [architettura](architecture.md) ·
-[multi-agente](multi-agent.md) · [sicurezza](security.md) · [casi d'uso](use-cases.md).
+*Per ulteriori approfondimenti tecnici sull'architettura e i componenti di sistema, consulta la documentazione dedicata: [Architettura di Sistema](architecture.md) · [Workflow Multi-Agente](multi-agent.md) · [Sicurezza e Permessi](security.md) · [Casi d'Uso](use-cases.md).*

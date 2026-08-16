@@ -1,12 +1,28 @@
 {
   "name": "audit_code",
-  "description": "Performs a defensive static code analysis on the workspace to detect hardcoded secrets, dangerous functions (e.g. eval, insecure SQL queries), and potential security risks.",
+  "description": "Performs a defensive static code analysis (SAST) on the workspace to detect OWASP/CWE security vulnerabilities, hardcoded secrets/tokens, command injection, RCE, SQL injection, insecure TLS, weak crypto, and dangerous coding patterns.",
   "parameters": {
     "type": "object",
     "properties": {
       "targetPath": {
         "type": "string",
         "description": "Relative path to a file or directory within the workspace to scan (defaults to '.' for entire workspace)."
+      },
+      "severityThreshold": {
+        "type": "string",
+        "enum": ["HIGH", "MEDIUM", "LOW"],
+        "description": "Minimum severity level of findings to report (HIGH, MEDIUM, or LOW; defaults to LOW)."
+      },
+      "fileExtensions": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "Optional list of file extensions to include in scan (e.g. ['.ts', '.js', '.py', '.env'])."
+      },
+      "maxIssues": {
+        "type": "number",
+        "description": "Maximum number of security findings to return (defaults to 50)."
       }
     },
     "required": []

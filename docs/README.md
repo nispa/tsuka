@@ -1,32 +1,34 @@
 # TSUKA Documentation Portal 📖
 
-Welcome to the **TSUKA** technical documentation system. This portal covers the design, architecture, multi-agent workflows, and safety features of this lightweight, dynamic agentic harness for Windows and PowerShell (with experimental Linux/macOS support).
+<div align="right">
+  <p>Leggi in <a href="README-it.md">🇮🇹 Italiano</a></p>
+</div>
+
+Welcome to the **TSUKA** technical documentation system. This portal covers the design, architecture, multi-agent workflows, and safety features of this lightweight, dynamic agentic harness for Windows, Linux, and macOS.
 
 ---
 
 ## 🗂️ Documentation Sections
 
 ### 1. [System Architecture](architecture.md)
-* Learn about the **dynamic plugin auto-discovery registry** (`src/tools/impl/*.ts`), the **model-adaptive tool selection** (Tier Pruning), and the runtime **Dynamic Prompt Assembly** engine.
+* Learn about the **deterministic ReAct cycle**, dynamic **tool auto-discovery** (`src/tools/impl/*.ts`), adaptive tool selection via **Capability Fingerprinting**, and event-driven I/O decoupling.
 
 ### 2. [Multi-Agent & Collaboration Workflows](multi-agent.md)
-* Understand the mechanics of the multi-agent debate conference command (`/call`) with `@` mentions, and the collaborative, state-sharing tool workflows (`/team`) that allow agents to cooperate on code development and cybersecurity hardening.
+* Understand conference debates (`/call`), collaborative shared-filesystem teams (`/team`) across 4 strategies, and the dynamic goal orchestrator (`/goal`) with isolated parallel execution.
 
-### 3. [Casi d'Uso Pratici](use-cases.md)
-* Esempi concreti di utilizzo dei personaggi, ruoli e team (Krea2, social, copy, traduzione, dati, SEO, DevOps, supervisione).
+### 3. [Practical Use Cases](use-cases.md)
+* Concrete recipes and prompts across all 24 characters/agents, 21 roles, and 10 preconfigured teams (Krea2, social media, copywriting, translation, data analysis, SEO, DevOps, security, and OSINT).
 
 ### 4. [Security & Permissions Framework](security.md)
-* Deep dive into the user-in-the-loop permission manager (`SAFE`, `RESTRICTED`, `DANGEROUS` risk levels), the local sandbox protection, and the deterministic web source URL logging.
+* Deep dive into the **User-in-the-Loop** permission manager (`SAFE`, `RESTRICTED`, `DANGEROUS`), filesystem jail (`workspaceRoot`), dynamic tool sandboxing, and deterministic web source logging.
 
-### 5. [Guida Didattica — Costruire un harness agentico](guida-didattica.md) 🎓
-* Il percorso completo, tappa per tappa, per arrivare a un harness come TSUKA: i componenti comuni a tutti gli harness (ciclo agentico, tool registry, permessi, gestione contesto), le scelte peculiari di questo progetto (fingerprinting, self-authoring, personas, protocollo STATO) e le trappole reali incontrate lungo la strada.
+### 5. [Educational Guide — Building an Agentic Harness](educational-guide.md) 🎓
+* The full 10-milestone curriculum to building a modern agentic harness from scratch: ReAct loop, tool plugins, context budgeting, live ANSI streaming, and the 10 real-world engineering traps.
 
 ---
 
 ## 🏗️ High-Level Design Principles
 
-TSUKA is designed as a **highly educational, decoupled, and modular framework**:
-
-* **Declarative Configurations**: System roles, traits, character presets, and team configurations are stored as clean JSON files outside the source code. You can modify their behavior or invent new agents simply by editing JSON files.
-* **Low Startup Context overhead**: Instead of passing giant prompts to the LLM, the harness dynamically mounts only the instructions and tools related to the active role, saving model token capacity and reducing hallucinations.
-* **Safety First**: Dangerous commands (like running shell scripts) can never run autonomously. The user always retains full execution audit power.
+* **Purely Declarative Configurations**: Roles, traits, characters, and teams are stored as external JSON files. Modify or create new agents without touching application source code.
+* **Low Startup Context Overhead**: The harness dynamically mounts only instructions and tools authorized for the active role, saving token capacity and reducing hallucinations.
+* **Safety First**: Destructive actions (such as arbitrary shell execution) always require explicit user approval.

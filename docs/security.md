@@ -1,55 +1,62 @@
 # Security & Permissions Framework 🛡️
 
-TSUKA is designed to automate Windows and PowerShell tasks. Because executing shell scripts or writing files on a host system carries risks, the framework implements a strict security model and a user-in-the-loop authorization engine.
+<div align="right">
+  <p>Leggi in <a href="security-it.md">🇮🇹 Italiano</a></p>
+</div>
+
+TSUKA is designed to automate real-world OS tasks on Windows, Linux, and macOS. Because running shell scripts or modifying files on a host system carries operational risk, the framework enforces a strict **User-in-the-Loop** permission model.
 
 ---
 
-## 🔒 Tool Risk Tiers
+## 🔒 1. Tool Risk Tiers
 
-Every tool registered in the registry declares a `RiskLevel`. The `PermissionManager` enforces authorization boundaries based on this level:
+Every registered tool declares an explicit `riskLevel`. The `PermissionManager` enforces authorization boundaries accordingly:
 
-| Risk Level | Description | Examples | Execution Behavior |
+| Risk Tier | Operational Description | Examples | Execution Behavior |
 | :--- | :--- | :--- | :--- |
-| **`SAFE`** | Read-only operations, static security auditing, internet queries, and basic system checks. | `read_file`, `list_dir`, `grep_search`, `audit_code`, `web_search`, `browse_url`, `get_ps_info` | Executed instantly without interrupting the user. |
-| **`RESTRICTED`** | Actions that modify the user's workspace files or agent configurations. | `write_file`, `edit_file`, `delete_file`, `create_role` | Prompts the user: `[y/N/sempre]`. Selecting `sempre` (always) grants authorization for all workspace file edits for the rest of the session. |
-| **`DANGEROUS`** | Actions that execute arbitrary code, modify system files, or open ports. | `execute_command` (PowerShell command executor) | **Always prompts** the user `[y/N]` before execution. Session bypass is disabled. |
+| **`SAFE`** | Read-only operations, static code auditing, internet search, and system telemetry. | `read_file`, `list_dir`, `grep_search`, `audit_code`, `web_search`, `browse_url`, `get_ps_info` | Executed instantly without interrupting the user. |
+| **`RESTRICTED`** | Actions modifying or deleting workspace files, or changing configuration states. | `write_file`, `edit_file`, `delete_file`, `download_file`, `create_role`, `create_tool` | Prompts the user: `[y/N/always]`. Choosing `always` approves all subsequent file modifications for the active session. |
+| **`DANGEROUS`** | Arbitrary code execution, shell commands, or network port manipulation. | `execute_command` (PowerShell / Shell executor) | **Always prompts** the user `[y/N]`. Global session bypass is strictly disabled. |
 
 ---
 
-## 🛡️ Cybersecurity Specialist & Static Security Audit (`audit_code`)
+## 🛡️ 2. Cybersecurity Specialist & Static Code Auditing (`audit_code`)
 
-TSUKA includes a dedicated cybersecurity role (`security_auditor`), covered in the default catalog by `worf` (and as a secondary skill by `tuvok`):
+TSUKA includes a dedicated `security_auditor` role (covered by **Worf**, and as a secondary skill by **Tuvok** and **Sherlock**):
 
-* **Defensive Static Analysis (`audit_code`)**: Automatically scans workspace source files for OWASP vulnerabilities, hardcoded API keys/secrets, insecure dynamic code execution (`eval`), SQL injection patterns, and weak hashing algorithms (MD5/SHA1).
-* **Remediation & Patching**: the `security_auditor` agent proposes concrete defensive code fixes and hardening measures for the user to review.
-* **Security Pack**: Enable security capabilities in any workspace via `tsuka init --pack security`.
-
----
-
-## 👤 User-in-the-Loop Prompting
-
-When a `RESTRICTED` or `DANGEROUS` tool is called by an agent:
-
-1. The agent loop pauses.
-2. The `PermissionManager` prints the action details on the console (e.g., the exact PowerShell code to be run, or the file path to be created).
-3. The user is prompted for approval:
-   - `y` (yes): Authorizes this specific execution.
-   - `n` (no): Rejects the execution. The tool returns an error message telling the agent the user denied the request.
-   - `sempre` (always - only for RESTRICTED): Authorizes all future RESTRICTED writes for this session without further prompts.
-4. You can reset session-approved permissions at any time by typing the `/reset` slash command.
-
----
-
-## 🌐 Objective Source Logging
-
-To protect the user from LLM hallucinations when accessing online data:
-
-* **No LLM Omission**: The framework captures raw results from search engines (DuckDuckGo, Google, Tavily) and URL browsers.
-* **Console Logging**: Upon successful tool completion, the CLI prints the list of source URLs directly to the terminal:
+* **Defensive Static Analysis (`audit_code`)**: Scans workspace source files for OWASP vulnerabilities, hardcoded API keys/JWT tokens, command injection patterns, insecure dynamic execution (`eval`), and weak cryptographic hashing.
+* **Remediation & Hardening**: The security agent formulates concrete defensive code fixes and configuration hardening recommendations for developer review.
+* **Security Pack**: Enable security capabilities across any project using:
+  ```powershell
+  tsuka init --pack security
   ```
-  ✔ Tool 'web_search' completato.
-    └─ Fonti trovate:
+
+---
+
+## 👤 3. User-in-the-Loop Authorization Workflow
+
+When an agent requests a `RESTRICTED` or `DANGEROUS` tool:
+
+1. The ReAct execution loop pauses immediately.
+2. The `PermissionManager` displays exact action details (e.g. the exact PowerShell command or file destination path).
+3. The user selects an option:
+   * `y` (yes): Authorizes the single execution.
+   * `n` (no): Denies the execution, returning an error to the agent to explore alternative approaches.
+   * `always` (only for `RESTRICTED`): Authorizes all future workspace writes for the session.
+4. Session-approved permissions can be revoked at any time via the `/reset` command.
+
+---
+
+## 🌐 4. Objective Source Logging
+
+To protect against hallucinations when accessing online data:
+
+* **Deterministic URL Capture**: The framework intercepts raw search results (DuckDuckGo, Google, Tavily) and browser targets directly.
+* **Console Logging**: Upon tool completion, the CLI prints the queried URLs to the terminal:
+  ```
+  ✔ Tool 'web_search' completed.
+    └─ Sources found:
        • https://nodejs.org/en/blog/announcements/v22-release-announce
        • ...
   ```
-* This ensures that the user is aware of the exact resources queried by the agent, even if the agent fails to cite them in its final conversational output.
+* Users always retain immediate visibility into external resources referenced by agents.
