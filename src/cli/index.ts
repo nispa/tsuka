@@ -37,6 +37,7 @@ import { handleCall } from './commands/call';
 import { handleTeam } from './commands/team';
 import { handleGoal } from './commands/goal';
 import { handleEffort } from './commands/effort';
+import { handleBlackboard } from './commands/blackboard';
 
 import { handleInitCmd } from './initCmd';
 
@@ -254,6 +255,7 @@ async function main() {
     '/memory':     handleMemory,
     '/context':    handleContext,
     '/effort':     handleEffort,
+    '/blackboard': handleBlackboard,
   };
 
   // Autocompletamento con Tab: nomi comando + argomenti dinamici.

@@ -11,7 +11,8 @@ import { runLoop } from '../../core/loop';
 import { createParallelBranches, mergeParallelWorkspaces } from '../../core/parallelWorkspace';
 import { installLogBuffering, runWithLogBuffer, flushLogBuffer } from '../../core/logBuffer';
 import { withWorkspaceOverride } from '../../tools/impl/utils';
-import { Blackboard } from '../../core/blackboard';
+import { Blackboard, BlackboardNote } from '../../core/blackboard';
+import { writeGoalLog } from './workflowLog';
 import { withEffortPin } from '../../core/effortControl';
 import { loadRole, listAvailableTeams, CharacterConfig } from '../shared';
 
@@ -554,6 +555,7 @@ export async function handleGoal(ctx: CommandCtx, arg: string): Promise<void> {
   // chiamata a handleGoal (es. due /goal in Promise.all, come nel test di
   // isolamento) genera un runId diverso e non vede queste note.
   const runId = Blackboard.newRunId();
+  let blackboardNotes: BlackboardNote[] = [];
   try {
     await Blackboard.withRun(runId, async () => {
       for (let g = 0; g < groups.length; g++) {
@@ -743,6 +745,9 @@ export async function handleGoal(ctx: CommandCtx, arg: string): Promise<void> {
       }
     });
   } finally {
+    try {
+      blackboardNotes = Blackboard.forRun(runId).snapshot();
+    } catch {}
     // Ripristina lo stato dei permessi preesistente
     ctx.permissionManager.setAllowAllWrite(prevAllowWrite);
     // La blackboard muore col run: liberata subito dopo l'esecuzione del piano,
@@ -775,6 +780,15 @@ export async function handleGoal(ctx: CommandCtx, arg: string): Promise<void> {
     console.log();
   }
 
+  // Visualizzazione note Blackboard se presenti
+  if (blackboardNotes.length > 0) {
+    console.log(chalk.bold('📋 NOTE CONDIVISE SULLA BLACKBOARD (RUN)'));
+    for (const note of blackboardNotes) {
+      console.log(`  • ${chalk.cyan(`[${note.key}]`)} ${chalk.gray(`(@${note.author}):`)} ${note.value}`);
+    }
+    console.log();
+  }
+
   console.log(chalk.bold('\n🎯 [FINE GOAL]\n'));
 
   const agentNames = groups.flatMap((g) => g.steps.map((s) => s.agentName));
@@ -782,6 +796,18 @@ export async function handleGoal(ctx: CommandCtx, arg: string): Promise<void> {
     CLITheme.success(`Goal raggiunto con successo in ${flatSteps} passi.`);
   } else {
     CLITheme.warning(`Goal non completato (elaborati ${flatSteps} passi).`);
+  }
+
+  // Scrive il report JSON in workflow_logs/
+  const logFile = writeGoalLog({
+    goal,
+    success: completed,
+    agents: agentNames,
+    stats: agentStats,
+    blackboard: blackboardNotes
+  });
+  if (logFile) {
+    console.log(chalk.gray(`  📄 Report goal salvato in: workflow_logs/${logFile}`));
   }
 
   const summary = completed

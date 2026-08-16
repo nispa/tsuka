@@ -203,6 +203,7 @@ harness/
 | `/use <modello>` | Seleziona modello |
 | `/benchmark [modello\|all]` | Profila capacità modello |
 | `/memory` | Mostra memoria condivisa |
+| `/blackboard` | Mostra le note della blackboard degli ultimi workflow (/goal e /team) |
 | `/forget <id\|all>` | Elimina ricordi |
 | `/reset` | Reset history + permessi |
 | `/info` | Stato sessione |

@@ -23,9 +23,6 @@ interface WorkflowLogInput {
  * Salva il report JSON di un workflow `/team` in `workflow_logs/` (silenzioso su
  * errore: un log mancato non deve far fallire il workflow). Include `protocolLog`
  * (T2.1): il meccanismo di decisione — tool_call/regex/fallback — di ogni turno.
- * Include `blackboard` (T6.2): lo snapshot delle note lasciate dagli agenti sulla
- * lavagna condivisa di QUESTO run (post_note/read_notes) — non è memoria
- * persistente, questa è l'unica traccia che ne resta dopo la fine del run.
  */
 export function writeWorkflowLog(input: WorkflowLogInput): void {
   try {
@@ -56,4 +53,59 @@ export function writeWorkflowLog(input: WorkflowLogInput): void {
       'utf-8'
     );
   } catch {}
+}
+
+export interface GoalLogInput {
+  goal: string;
+  success: boolean;
+  agents: string[];
+  stats: { name: string; stats: any }[];
+  blackboard: BlackboardNote[];
+}
+
+/**
+ * Salva il report JSON di un workflow `/goal` in `workflow_logs/`
+ */
+export function writeGoalLog(input: GoalLogInput): string | null {
+  try {
+    const logsDir = homePath('workflow_logs');
+    if (!fs.existsSync(logsDir)) fs.mkdirSync(logsDir, { recursive: true });
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const filename = `goal-${timestamp}.json`;
+    const fullPath = path.join(logsDir, filename);
+    const report = {
+      type: 'goal',
+      goal: input.goal,
+      success: input.success,
+      agents: input.agents,
+      timestamp: new Date().toISOString(),
+      stats: input.stats,
+      blackboard: input.blackboard
+    };
+    fs.writeFileSync(fullPath, JSON.stringify(report, null, 2), 'utf-8');
+    return filename;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Recupera gli ultimi report di workflow salvati in `workflow_logs/`
+ */
+export function getLatestWorkflowLogs(limit: number = 5): { file: string; data: any }[] {
+  try {
+    const logsDir = homePath('workflow_logs');
+    if (!fs.existsSync(logsDir)) return [];
+    const files = fs.readdirSync(logsDir).filter((f) => f.endsWith('.json')).sort().reverse();
+    const result: { file: string; data: any }[] = [];
+    for (const file of files.slice(0, limit)) {
+      try {
+        const content = fs.readFileSync(path.join(logsDir, file), 'utf-8');
+        result.push({ file, data: JSON.parse(content) });
+      } catch {}
+    }
+    return result;
+  } catch {
+    return [];
+  }
 }
