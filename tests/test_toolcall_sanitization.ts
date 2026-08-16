@@ -24,7 +24,34 @@ export async function runToolCallSanitizationTests(): Promise<void> {
     assert.doesNotThrow(() => JSON.parse(result.sanitizedJsonString));
   }
 
-  // Test 3: JSON completamente malformato (sanificazione preventiva anti-HTTP 500)
+  // Test 3: Markdown codeblock wrapper (```json ... ```)
+  {
+    const markdownWrapped = '```json\n{"path":"config.json","content":"{}"}\n```';
+    const result = sanitizeAndParseToolArgs(markdownWrapped);
+    assert.equal(result.isMalformed, false);
+    assert.equal(result.parsedArgs.path, 'config.json');
+    assert.doesNotThrow(() => JSON.parse(result.sanitizedJsonString));
+  }
+
+  // Test 4: Trailing commas
+  {
+    const withTrailingComma = '{"path":"a.txt","content":"ok",}';
+    const result = sanitizeAndParseToolArgs(withTrailingComma);
+    assert.equal(result.isMalformed, false);
+    assert.equal(result.parsedArgs.path, 'a.txt');
+    assert.doesNotThrow(() => JSON.parse(result.sanitizedJsonString));
+  }
+
+  // Test 5: JSON con newline letterali non escapati
+  {
+    const unescapedNewlines = '{"path":"script.js","content":"function test() {\n  return 42;\n}"}';
+    const result = sanitizeAndParseToolArgs(unescapedNewlines);
+    assert.equal(result.isMalformed, false);
+    assert.equal(result.parsedArgs.path, 'script.js');
+    assert.ok(result.parsedArgs.content.includes('return 42;'));
+  }
+
+  // Test 6: JSON completamente malformato (sanificazione preventiva anti-HTTP 500)
   {
     const broken = '{"path": incomplete... syntax error @#$';
     const result = sanitizeAndParseToolArgs(broken);
