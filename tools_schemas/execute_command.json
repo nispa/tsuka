@@ -8,6 +8,10 @@
       "command": {
         "type": "string",
         "description": "Il comando o lo script PowerShell da eseguire."
+      },
+      "timeout_ms": {
+        "type": "integer",
+        "description": "Timeout massimo in millisecondi (opzionale, es. 300000 per build o installazioni lunghe; default 120000)."
       }
     },
     "required": ["command"]

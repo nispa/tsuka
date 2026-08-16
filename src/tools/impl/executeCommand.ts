@@ -4,19 +4,24 @@ import { Tool } from '../registry';
 import { getShellConfig } from '../../core/platform';
 import { capForContext } from '../../core/contextBudget';
 import { logSink } from '../../core/logSink';
+import { ConfigManager } from '../../core/config';
 
-// Timeout massimo di esecuzione per un comando (evita blocchi infiniti dell'agente)
-const COMMAND_TIMEOUT_MS = 120_000;
 // Limite dimensione dell'output restituito al modello (lo streaming su console resta illimitato)
 const MAX_OUTPUT_BYTES = 50 * 1024; // 50 KB
 
 export const executeCommandTool: Tool = {
   name: 'execute_command',
   riskLevel: 'DANGEROUS',
-  execute: async (args: { command: string }) => {
+  execute: async (args: { command: string; timeout_ms?: number }) => {
     return new Promise<string>((resolve) => {
       const shellConfig = getShellConfig();
-      logSink.log(chalk.gray(`\n[Esecuzione di: ${args.command}]`));
+      const configManager = new ConfigManager();
+      const defaultTimeout = configManager.getCommandTimeoutMs();
+      const requestedTimeout = typeof args.timeout_ms === 'number' && Number.isFinite(args.timeout_ms) && args.timeout_ms >= 1000
+        ? Math.min(600_000, Math.floor(args.timeout_ms)) // cap superiore a 10 minuti
+        : defaultTimeout;
+
+      logSink.log(chalk.gray(`\n[Esecuzione di: ${args.command} (timeout: ${requestedTimeout / 1000}s)]`));
 
       const child = spawn(
         shellConfig.shell,
@@ -32,16 +37,16 @@ export const executeCommandTool: Tool = {
         if (settled) return;
         settled = true;
         shellConfig.kill(child);
-        logSink.log(chalk.red(`\n[Comando interrotto: superato il timeout di ${COMMAND_TIMEOUT_MS / 1000}s]`));
+        logSink.log(chalk.red(`\n[Comando interrotto: superato il timeout di ${requestedTimeout / 1000}s]`));
         resolve(
           capForContext(
-            `${combinedOutput}\n[ERRORE: il comando è stato interrotto dopo ${COMMAND_TIMEOUT_MS / 1000} secondi di attesa. ` +
-            `Probabilmente era bloccato o in attesa di input.]`,
+            `${combinedOutput}\n[ERRORE: il comando è stato interrotto dopo ${requestedTimeout / 1000} secondi di attesa. ` +
+            `Se il comando richiede più tempo (es. build, installazioni, test lunghi), specifica un 'timeout_ms' maggiore; se è un server/demone in ascolto continuo, non avviarlo in foreground.]`,
             undefined,
             { label: `l'output del comando '${args.command}' (interrotto per timeout)` }
           )
         );
-      }, COMMAND_TIMEOUT_MS);
+      }, requestedTimeout);
 
       child.stdout.on('data', (data) => {
         const text = data.toString();

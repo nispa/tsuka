@@ -36,6 +36,8 @@ export interface AppConfig {
   reasoningEffort?: string;
   /** Timeout a orologio sull'intera generazione LLM in ms (T8.16). Default: 120000. */
   llmTimeoutMs?: number;
+  /** Timeout massimo di default per i comandi shell eseguiti con execute_command in ms. Default: 120000. */
+  commandTimeoutMs?: number;
   /** Preset di creatività predefinito ('precise' | 'balanced' | 'creative' | 'low' | 'medium' | 'high'). */
   creativity?: string;
   /** Esecuzione parallela dei blocchi PARALLELO in `goal` (T9.10). Default: false —
@@ -341,6 +343,18 @@ export class ConfigManager {
    */
   getLlmTimeoutMs(): number {
     const value = this.config.llmTimeoutMs;
+    if (typeof value === 'number' && Number.isFinite(value) && value >= 1000) {
+      return Math.floor(value);
+    }
+    return 120000;
+  }
+
+  /**
+   * Timeout massimo di default per i comandi shell eseguiti con execute_command in millisecondi.
+   * Default: 120000 ms (2 minuti). Configurabile con "commandTimeoutMs" in tsuka.config.json.
+   */
+  getCommandTimeoutMs(): number {
+    const value = this.config.commandTimeoutMs;
     if (typeof value === 'number' && Number.isFinite(value) && value >= 1000) {
       return Math.floor(value);
     }
