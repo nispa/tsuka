@@ -4,7 +4,7 @@ import { Tool } from '../registry';
 import { resolveSafePath } from './utils';
 
 /**
- * Deduce un nome file sensato dall'URL o da un header se l'utente non lo specifica.
+ * Infers a sensible filename from a URL or content-type header.
  */
 function inferFilenameFromUrl(urlStr: string, contentType: string = ''): string {
   try {
@@ -16,7 +16,6 @@ function inferFilenameFromUrl(urlStr: string, contentType: string = ''): string 
     }
   } catch {}
 
-  // Mappa estensione da contentType se non presente nel path
   let ext = '.bin';
   if (contentType.includes('image/png')) ext = '.png';
   else if (contentType.includes('image/jpeg')) ext = '.jpg';
@@ -53,7 +52,7 @@ export const downloadFileTool: Tool = {
       });
 
       if (!response.ok) {
-        throw new Error(`Errore HTTP ${response.status}: ${response.statusText}`);
+        throw new Error(`HTTP Error ${response.status}: ${response.statusText}`);
       }
 
       const contentType = response.headers.get('content-type') || '';
@@ -80,12 +79,12 @@ export const downloadFileTool: Tool = {
         ? `${(buffer.byteLength / (1024 * 1024)).toFixed(2)} MB`
         : `${sizeKb} KB`;
 
-      return `✔ File scaricato con successo da '${targetUrl}' e salvato in '${destPath}' (${sizeFormatted}, tipo: ${contentType || 'binario'}).`;
+      return `✔ File downloaded successfully from '${targetUrl}' to '${destPath}' (${sizeFormatted}, type: ${contentType || 'binary'}).`;
     } catch (error: any) {
       if (error?.name === 'AbortError') {
-        throw new Error(`Timeout: il download da '${targetUrl}' ha superato il limite di ${FETCH_TIMEOUT_MS / 1000}s.`);
+        throw new Error(`Timeout: download from '${targetUrl}' exceeded limit of ${FETCH_TIMEOUT_MS / 1000}s.`);
       }
-      throw new Error(`Impossibile scaricare il file da '${targetUrl}': ${error.message}`);
+      throw new Error(`Failed to download file from '${targetUrl}': ${error.message}`);
     } finally {
       clearTimeout(timeout);
     }

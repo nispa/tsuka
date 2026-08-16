@@ -9,24 +9,24 @@ export const requestGoalTool: Tool = {
   execute: async (args: { goal: string; reason?: string }, context?: ToolExecutionContext) => {
     const goal = (args.goal || '').trim();
     if (!goal) {
-      throw new Error("Parametro 'goal' obbligatorio per richiedere un workflow /goal.");
+      throw new Error("Parameter 'goal' is required to request /goal escalation.");
     }
 
-    // Freno anti-ricorsione (Depth Guard): mai consentire l'avvio di un /goal dall'interno di un altro workflow
+    // Depth Guard anti-recursion check: prevent nested /goal workflows
     if (WorkflowScope.isInsideWorkflow()) {
       throw new Error(
-        `Richiesta rifiutata: Impossibile avviare un /goal ricorsivo. Un workflow di tipo '${WorkflowScope.getCurrentType()}' (profondità: ${WorkflowScope.getDepth()}) è già in esecuzione.`
+        `Request rejected: recursive /goal is not permitted. A '${WorkflowScope.getCurrentType()}' workflow (depth: ${WorkflowScope.getDepth()}) is already active.`
       );
     }
 
-    const reason = args.reason ? ` Motivo: ${args.reason}` : '';
-    logSink.log(`\n🎯 [ESCALATION A /GOAL AUTORIZZATA DALL'UTENTE]${reason}`);
+    const reason = args.reason ? ` Reason: ${args.reason}` : '';
+    logSink.log(`\n🎯 [ESCALATION TO /GOAL AUTHORIZED BY USER]${reason}`);
 
     if (context?.commandCtx) {
       await handleGoal(context.commandCtx, goal);
-      return `Workflow /goal completato per l'obiettivo: "${goal}".`;
+      return `Workflow /goal completed for goal: "${goal}".`;
     }
 
-    return `Richiesta di escalation /goal accettata per l'obiettivo: "${goal}".`;
+    return `Escalation request to /goal accepted for: "${goal}".`;
   }
 };

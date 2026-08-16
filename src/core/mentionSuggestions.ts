@@ -1,13 +1,13 @@
 /**
- * Motore di risoluzione per mention (@personaggi e @ruoli).
- * Progettato per essere puro, disaccoppiato dall'interfaccia e riutilizzabile
- * identico per CLI (Tab-completion), TUI (popup box) e WebUI (dropdown popover).
+ * Mention candidate resolution engine (@characters and @roles).
+ * Designed to be pure, decoupled from UI rendering, and shared across
+ * CLI (Tab-completion), TUI, and Web interfaces.
  */
 
 export interface MentionCandidate {
-  tag: string;           // Es. '@geordi' o '@developer'
-  name: string;          // Es. 'geordi' o 'developer'
-  displayName: string;   // Es. 'Geordi La Forge' o '💻 Sviluppatore Software'
+  tag: string;           // e.g. '@geordi' or '@developer'
+  name: string;          // e.g. 'geordi' or 'developer'
+  displayName: string;   // e.g. 'Geordi La Forge' or '💻 Software Developer'
   kind: 'character' | 'role';
   description?: string;
 }
@@ -26,7 +26,7 @@ export interface RoleMentionData {
 }
 
 /**
- * Risolve la lista ordinata dei candidati a partire da una query (es. '@g', 'geo', '@dev').
+ * Resolves an ordered list of mention candidates from a query (e.g. '@g', 'geo', '@dev').
  */
 export function getMentionCandidates(
   query: string,
@@ -37,7 +37,7 @@ export function getMentionCandidates(
 
   const candidates: MentionCandidate[] = [];
 
-  // 1. Aggiungi personaggi
+  // 1. Add characters
   for (const c of characters) {
     const matchesName = c.name.toLowerCase().startsWith(cleanQuery);
     const matchesDisplayName = c.displayName.toLowerCase().split(/\s+/).some((w) => w.startsWith(cleanQuery));
@@ -48,18 +48,18 @@ export function getMentionCandidates(
         name: c.name,
         displayName: c.displayName,
         kind: 'character',
-        description: c.description || (c.role ? `Ruolo: ${c.role}` : undefined),
+        description: c.description || (c.role ? `Role: ${c.role}` : undefined),
       });
     }
   }
 
-  // 2. Aggiungi ruoli
+  // 2. Add roles
   for (const r of roles) {
     const matchesName = r.name.toLowerCase().startsWith(cleanQuery);
     const matchesDisplayName = r.displayName.toLowerCase().split(/\s+/).some((w) => w.startsWith(cleanQuery));
 
     if (!cleanQuery || matchesName || matchesDisplayName) {
-      // Evita duplicati esatti se un ruolo ha lo stesso nome di un personaggio
+      // Avoid duplicate tags if a role shares a name with a character
       if (!candidates.some((c) => c.tag === `@${r.name}`)) {
         candidates.push({
           tag: `@${r.name}`,
@@ -76,7 +76,7 @@ export function getMentionCandidates(
 }
 
 /**
- * Restituisce i soli tag di completamento (es. ['@geordi', '@developer']) per i sistemi readline/Tab.
+ * Returns completion tags only (e.g. ['@geordi', '@developer']) for readline/Tab completers.
  */
 export function getMentionTags(
   query: string,

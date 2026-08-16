@@ -1,13 +1,13 @@
 import { AsyncLocalStorage } from 'async_hooks';
 
 /**
- * Gestione dell'ambito di esecuzione del workflow (Depth Guard).
- * Traccia se l'agente sta lavorando nella chat diretta 1-to-1 con l'utente
- * (depth = 0) oppure all'interno di un workflow orchestrato /goal, /team o /call (depth >= 1).
+ * Workflow execution scope management (Depth Guard).
+ * Tracks whether the agent is operating in direct 1-to-1 user chat (depth = 0)
+ * or inside an orchestrated /goal, /team, or /call workflow (depth >= 1).
  *
- * Utilizzato dai tool di escalation (request_goal, request_team, request_call)
- * come freno anti-ricorsione: impedisce che un agente all'interno di un goal/team
- * inneschi loop infiniti di escalation o sottoteam a cascata.
+ * Used by escalation tools (request_goal, request_team, request_call) as an
+ * anti-recursion guard: prevents agents within a workflow from triggering
+ * infinite loops of cascading escalations or subteams.
  */
 
 export type WorkflowType = 'goal' | 'team' | 'call';
@@ -21,39 +21,31 @@ export interface WorkflowScopeInfo {
 const scopeStorage = new AsyncLocalStorage<WorkflowScopeInfo>();
 
 export class WorkflowScope {
-  /**
-   * Ritorna la profondità corrente del workflow (0 se chat normale).
-   */
+  /** Returns the current workflow depth (0 for standard direct chat). */
   static getDepth(): number {
     const info = scopeStorage.getStore();
     return info?.depth ?? 0;
   }
 
-  /**
-   * Ritorna true se l'esecuzione è all'interno di un workflow (/goal, /team, /call).
-   */
+  /** Returns true if execution is currently inside a workflow (/goal, /team, /call). */
   static isInsideWorkflow(): boolean {
     return WorkflowScope.getDepth() > 0;
   }
 
-  /**
-   * Ritorna il tipo di workflow attivo ('goal' | 'team' | 'call' | null).
-   */
+  /** Returns the active workflow type ('goal' | 'team' | 'call' | null). */
   static getCurrentType(): WorkflowType | null {
     const info = scopeStorage.getStore();
     return info?.type ?? null;
   }
 
-  /**
-   * Ritorna l'informazione completa sull'ambito corrente.
-   */
+  /** Returns full current scope information. */
   static getCurrentScope(): WorkflowScopeInfo | null {
     return scopeStorage.getStore() ?? null;
   }
 
   /**
-   * Esegue una funzione asincrona all'interno di un contesto di workflow,
-   * incrementando la profondità.
+   * Executes an asynchronous function within a workflow scope context,
+   * incrementing the workflow depth.
    */
   static async withScope<T>(
     type: WorkflowType,

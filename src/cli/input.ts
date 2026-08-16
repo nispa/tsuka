@@ -4,29 +4,18 @@ import chalk from 'chalk';
 import { homePath } from '../core/apphome';
 
 /**
- * Input principale della REPL basato sul readline nativo di Node:
- * a differenza di `prompts` supporta la history navigabile con frecce su/giù.
- * La history è persistita su file (.tsuka_history) e sopravvive tra sessioni.
- *
- * I menu interattivi (select/multiselect) restano su `prompts`: qui viene
- * creata un'istanza readline per singola domanda, chiusa subito dopo, così
- * i due sistemi non si contendono mai stdin.
+ * Main REPL input handler based on Node.js native readline.
+ * Supports up/down arrow history persistence (.tsuka_history).
  */
 
 const HISTORY_FILE = homePath('.tsuka_history');
 const MAX_HISTORY = 100;
 
-/**
- * Autocompletamento con Tab: comandi slash e, per alcuni comandi, i loro
- * argomenti (es. i nomi dei modelli per /use). La sorgente è registrata
- * dalla REPL all'avvio con setCompletionSource, così questo modulo non
- * dipende dalla mappa dei comandi né dallo stato della sessione.
- */
 export interface CompletionSource {
   commands: string[];
-  /** Opzioni di completamento per l'argomento di un dato comando (es. '/agent' → personaggi). */
+  /** Argument completion options for commands (e.g. '/agent' -> characters). */
   argumentsFor?: (command: string) => string[];
-  /** Opzioni di completamento per le menzioni con @ (es. '@geordi', '@developer'). */
+  /** Mention completion options (e.g. '@geordi', '@developer'). */
   mentions?: () => string[];
 }
 
@@ -36,29 +25,27 @@ export function setCompletionSource(source: CompletionSource): void {
   completionSource = source;
 }
 
-/** Esportata per i test. Formato readline: [candidati, sottostringa da sostituire]. */
+/** Exported for testing. Readline completer tuple: [candidates, matchingSubstring]. */
 export function completeLine(line: string): [string[], string] {
   if (!completionSource) return [[], line];
 
   const parts = line.split(' ');
   const last = parts[parts.length - 1];
 
-  // 1. Completamento mention @ in qualsiasi punto della riga (es. /call @g, @sp, parlane con @w)
+  // 1. @mention completion anywhere on the line
   if (last.startsWith('@')) {
     const allMentions = completionSource.mentions?.() ?? [];
     const hits = allMentions.filter((m) => m.toLowerCase().startsWith(last.toLowerCase()));
     return [hits, last];
   }
 
-  // 2. Completamento comandi slash
+  // 2. Slash commands completion
   if (line.startsWith('/')) {
     if (parts.length === 1) {
-      // Completa il nome del comando (es. /mo -> /models)
       const hits = completionSource.commands.filter((c) => c.startsWith(line));
       return [hits, line];
     }
 
-    // Completa l'ultima parola come argomento del comando
     const command = parts[0].toLowerCase();
     const options = completionSource.argumentsFor?.(command) ?? [];
     const hits = options.filter((o) => o.toLowerCase().startsWith(last.toLowerCase()));
@@ -68,7 +55,6 @@ export function completeLine(line: string): [string[], string] {
   return [[], line];
 }
 
-// History in memoria, dal più recente al più vecchio (formato readline)
 let history: string[] = loadHistory();
 
 function loadHistory(): string[] {
@@ -87,25 +73,21 @@ function loadHistory(): string[] {
 
 function saveHistory(): void {
   try {
-    // Su file dal più vecchio al più recente (ordine naturale di lettura)
     fs.writeFileSync(HISTORY_FILE, [...history].reverse().join('\n') + '\n', 'utf-8');
-  } catch {
-    // History non persistita: non bloccare la REPL per un errore di I/O
-  }
+  } catch {}
 }
 
 function addToHistory(line: string): void {
   const trimmed = line.trim();
   if (!trimmed) return;
-  if (history[0] === trimmed) return; // niente duplicati consecutivi
+  if (history[0] === trimmed) return;
   history.unshift(trimmed);
   if (history.length > MAX_HISTORY) history = history.slice(0, MAX_HISTORY);
   saveHistory();
 }
 
 /**
- * Pone la domanda e risolve con la riga inserita.
- * Risolve `undefined` su Ctrl+C o Ctrl+D (stessa semantica di `prompts`).
+ * Prompts user for single-line input. Resolves undefined on Ctrl+C or Ctrl+D.
  */
 export function askInput(message: string): Promise<string | undefined> {
   return new Promise((resolve) => {
@@ -133,7 +115,7 @@ export function askInput(message: string): Promise<string | undefined> {
       finish(answer);
     });
 
-    rl.on('SIGINT', () => finish(undefined)); // Ctrl+C durante l'input
-    rl.on('close', () => finish(undefined));  // Ctrl+D / stdin esaurito
+    rl.on('SIGINT', () => finish(undefined));
+    rl.on('close', () => finish(undefined));
   });
 }

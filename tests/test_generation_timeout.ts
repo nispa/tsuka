@@ -138,9 +138,9 @@ async function main() {
     const elapsed = Date.now() - start;
 
     check('GT.2a', threw, 'una generazione che supera MAX_GENERATION_MS viene interrotta con un errore');
-    check('GT.2b', /timeout generazione/i.test(errMsg), `l'errore segnala esplicitamente il timeout sull'INTERA generazione (ricevuto: "${errMsg}")`);
-    check('GT.2c', !/\[Mancata risposta\]/.test(errMsg), `l'errore NON riusa il prefisso "[Mancata risposta]" (diagnosticherebbe il problema sbagliato: qui il modello stava rispondendo, non taceva) (ricevuto: "${errMsg}")`);
-    check('GT.2d', /stava (rispondendo|producendo)/i.test(errMsg), `l'errore dichiara che il modello stava generando, non tacendo (ricevuto: "${errMsg}")`);
+    check('GT.2b', /(timeout generazione|generation timeout)/i.test(errMsg), `l'errore segnala esplicitamente il timeout sull'INTERA generazione (ricevuto: "${errMsg}")`);
+    check('GT.2c', !/\[(Mancata risposta|No response)\]/i.test(errMsg), `l'errore NON riusa il prefisso "[Mancata risposta]" (diagnosticherebbe il problema sbagliato: qui il modello stava rispondendo, non taceva) (ricevuto: "${errMsg}")`);
+    check('GT.2d', /(stava (rispondendo|producendo)|exceeded generation time limit)/i.test(errMsg), `l'errore dichiara che il modello stava generando, non tacendo (ricevuto: "${errMsg}")`);
     // Niente retry: se il generation-timeout venisse ritentato come il timeout sul
     // primo token, l'attesa totale salirebbe a ~3×150ms. Deve restare vicina a 150ms.
     check('GT.2e', elapsed < 150 * 2, `interrotto subito, senza retry silenziosi che moltiplichino l'attesa (soglia 150ms, trascorsi: ${elapsed}ms)`);
@@ -236,7 +236,7 @@ async function main() {
       errMsg = e.message || '';
     }
 
-    check('GT.5b', threw && /timeout generazione/i.test(errMsg), `setLlmTimeoutMs(150) configura correttamente il timeout della generazione (errore: "${errMsg}")`);
+    check('GT.5b', threw && /(timeout generazione|generation timeout)/i.test(errMsg), `setLlmTimeoutMs(150) configura correttamente il timeout della generazione (errore: "${errMsg}")`);
   }
 
   console.log(`\n=== Risultato: ${passed} passati, ${failed} falliti ===`);

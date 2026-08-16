@@ -4,17 +4,8 @@ import { homePath } from '../../core/apphome';
 import { InteractiveMenu } from '../ui';
 
 /**
- * Comando `/continue`: forza la ripresa di un compito interrotto invece di
- * lasciare che il modello ricominci da capo su un agente respawnato.
- *
- * Il gap che colma: `Agent.persistReasoningTrace` (T9.12) salva già il
- * ragionamento completo su file (`memory/thinking/*.md`) con un puntatore in
- * `MemoryStore` — ma è un meccanismo PASSIVO: dipende dal modello che
- * decide di sua iniziativa di chiamare `recall_memory` e poi `read_file`, e
- * di prendere sul serio "non rileggere da capo". In pratica un agente
- * respawnato senza history spesso rilegge la spec e ri-arriva alle stesse
- * domande, invece di leggere la traccia e agire. `/continue` inietta la
- * traccia direttamente nel prossimo turno con un'istruzione esplicita.
+ * `/continue` command: forces resumption of an interrupted reasoning trace
+ * from `memory/thinking/*.md` directly into the conversation.
  */
 
 export interface ThinkingTraceEntry {
@@ -24,7 +15,7 @@ export interface ThinkingTraceEntry {
   interrupted: boolean;
 }
 
-/** Elenca le tracce di ragionamento salvate in memory/thinking/, più recenti prima. */
+/** Lists thinking traces saved in memory/thinking/, sorted most recent first. */
 export function listThinkingTraces(limit: number = 15): ThinkingTraceEntry[] {
   const dir = homePath('memory', 'thinking');
   if (!fs.existsSync(dir)) return [];
@@ -45,9 +36,8 @@ export function listThinkingTraces(limit: number = 15): ThinkingTraceEntry[] {
 }
 
 /**
- * Risolve quale traccia riprendere: match esplicito sul filename se `arg` è
- * dato (utile per script/non-TTY e per scegliere una traccia specifica senza
- * menu); altrimenti la più recente in non-TTY, o un menu interattivo in TTY.
+ * Resolves which trace to resume: matching filename if arg provided,
+ * or most recent in non-TTY, or interactive select menu in TTY.
  */
 export async function resolveThinkingTrace(
   arg: string,
@@ -65,28 +55,25 @@ export async function resolveThinkingTrace(
   }
 
   const choices = traces.map((t) => ({
-    title: `${t.interrupted ? '⚠ interrotto' : '✔ completo'} · ${t.mtime.toLocaleString()} · ${t.filename}`,
+    title: `${t.interrupted ? '⚠ interrupted' : '✔ complete'} · ${t.mtime.toLocaleString()} · ${t.filename}`,
     value: t.filename,
   }));
   const selected = await InteractiveMenu.select<string>(
-    'Quale ragionamento vuoi riprendere? (usa le frecce)',
+    'Which reasoning trace would you like to resume? (use arrow keys)',
     choices
   );
   return traces.find((t) => t.filename === selected) || null;
 }
 
 /**
- * Costruisce il messaggio da inviare come prossimo turno utente: la traccia
- * completa più un'istruzione esplicita di NON ri-derivarla, ma decidere e
- * agire. È testo semplice (nessun tool coinvolto): l'agente riceve la stessa
- * cosa che avrebbe letto da solo con `read_file`, ma senza doverlo scegliere.
+ * Builds user prompt directive containing the complete reasoning trace.
  */
 export function buildResumeDirective(traceContent: string): string {
   const trimmed = (traceContent || '').trim();
-  return `[RIPRESA FORZATA DI UN COMPITO INTERROTTO]\n` +
-    `Questo è il tuo ragionamento completo dell'ultima sessione su questo stesso compito, salvato prima dell'interruzione:\n\n` +
+  return `[FORCED RESUMPTION OF AN INTERRUPTED TASK]\n` +
+    `This is your complete reasoning trace from the prior session on this exact task, saved before interruption:\n\n` +
     `---\n${trimmed}\n---\n\n` +
-    `NON ripartire da capo e non rileggere le specifiche o il contesto da zero: il ragionamento sopra è già completo. ` +
-    `Se converge già a una decisione, prendila ed esegui SUBITO con i tool (scrivi/modifica i file). ` +
-    `Se restano dubbi aperti, risolvili con una scelta pragmatica in una frase e procedi — non serve rivalutare di nuovo tutte le alternative.`;
+    `Do NOT restart from scratch or re-read workspace files from zero: the reasoning trace above is already complete. ` +
+    `If it converges to a decision, take it and act IMMEDIATELY with tools (write/edit files). ` +
+    `If minor doubts remain, resolve pragmatically in a sentence and proceed.`;
 }

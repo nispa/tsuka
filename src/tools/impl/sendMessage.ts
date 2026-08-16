@@ -9,16 +9,16 @@ export const sendMessageTool: Tool = {
     const message = (args.message || '').trim();
 
     if (!target) {
-      throw new Error("Specificare il destinatario del messaggio (parametro 'target').");
+      throw new Error("Target recipient required ('target' parameter).");
     }
     if (!message) {
-      throw new Error("Il messaggio non può essere vuoto.");
+      throw new Error("Message content cannot be empty.");
     }
     if (message.length > 1000) {
-      throw new Error('Messaggio troppo lungo (max 1000 caratteri).');
+      throw new Error('Message too long (max 1000 characters).');
     }
 
     const entry = enqueueMessage(target, message);
-    return `Messaggio accodato per @${target}. Lo riceverà all'inizio del suo prossimo turno.`;
+    return `Message queued for @${target}. It will be received at the start of their next turn.`;
   }
 };

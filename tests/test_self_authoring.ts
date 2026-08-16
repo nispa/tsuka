@@ -61,7 +61,7 @@ async function main() {
       description: 'tenta di usare child_process',
       executeBody: "const { execSync } = require('child_process'); return execSync('dir').toString();"
     }, perm);
-    check('X4.2a', !blocked.success && /sicurezza/.test(blocked.output), 'child_process bloccato dalla policy');
+    check('X4.2a', !blocked.success && /sicurezza|security/i.test(blocked.output), 'child_process bloccato dalla policy');
 
     const blocked2 = await registry.executeTool('create_tool', {
       name: '__evil_tool2',

@@ -1,9 +1,8 @@
 import { ProviderConfig } from './config';
 
 /**
- * Scansione dei server LLM all'avvio: interroga i provider configurati per
- * capire quale server è effettivamente attivo e quale modello è disponibile
- * (o già caricato in memoria, nel caso di Ollama) in quel momento.
+ * Startup scan for LLM servers: probes configured providers to determine
+ * which server is active and which model is available (or loaded in RAM).
  */
 
 export interface ScanCandidate {
@@ -16,9 +15,9 @@ export interface ProviderScanResult {
   name: string;
   config: ProviderConfig;
   models: string[];
-  /** Modello attualmente caricato in RAM sul server (endpoint /api/ps di Ollama), se rilevabile. */
+  /** Currently loaded model in RAM (e.g. Ollama's /api/ps endpoint), if detectable. */
   loadedModel: string | null;
-  /** Dimensione del context window rilevata dinamicamente dal server per il modello attivo. */
+  /** Dynamically detected context window length for the active model. */
   contextWindow?: number | null;
 }
 
@@ -27,8 +26,8 @@ export function isLocalUrl(url: string): boolean {
 }
 
 /**
- * Rileva dinamicamente la dimensione della finestra di contesto del server/modello.
- * Supporta:
+ * Dynamically detects the context window size from the active server/model.
+ * Supports:
  * - llama-server / llama.cpp (/props, /slots)
  * - Ollama (/api/show -> model_info / parameters)
  * - OpenRouter (/v1/models -> context_length)
@@ -73,14 +72,14 @@ export async function detectContextWindow(
         if (response.ok) {
           const showData = await response.json();
           const info = showData?.model_info || {};
-          // Cerca chiavi standard *.context_length
+          // Search standard *.context_length keys
           for (const key of Object.keys(info)) {
             if (key.endsWith('.context_length') || key === 'context_length') {
               const val = info[key];
               if (typeof val === 'number' && val > 0) return val;
             }
           }
-          // Cerca in parameters (es. "num_ctx 32768")
+          // Search in parameters (e.g. "num_ctx 32768")
           if (typeof showData?.parameters === 'string') {
             const match = showData.parameters.match(/num_ctx\s+(\d+)/i);
             if (match) {
@@ -93,7 +92,7 @@ export async function detectContextWindow(
     }
   }
 
-  // 3. OpenRouter / vLLM / Endpoint OpenAI (/models)
+  // 3. OpenRouter / vLLM / OpenAI-compatible endpoint (/models)
   try {
     const data = await fetchJson(`${base}/models`, timeoutMs, auth);
     const entries = Array.isArray(data?.data) ? data.data : [];
@@ -104,7 +103,7 @@ export async function detectContextWindow(
         if (typeof ctx === 'number' && ctx > 0) return ctx;
       }
     }
-    // Se c'è solo un modello caricato (es. vLLM)
+    // Single model fallback (e.g. vLLM)
     if (entries.length === 1) {
       const ctx = entries[0].context_length ?? entries[0].max_model_len ?? entries[0].context_window;
       if (typeof ctx === 'number' && ctx > 0) return ctx;
@@ -121,8 +120,7 @@ async function fetchJson(url: string, timeoutMs: number, headers?: Record<string
 }
 
 /**
- * Interroga un singolo provider. Torna i modelli disponibili e quello
- * eventualmente già caricato, oppure null se il server non risponde.
+ * Probes a single provider: returns available models and loaded model if reachable, or null.
  */
 export async function probeProvider(
   name: string,
@@ -135,17 +133,16 @@ export async function probeProvider(
   let loadedModel: string | null = null;
 
   try {
-    // Endpoint standard OpenAI-compatibile (Ollama, llama.cpp/Unsloth, OpenRouter)
+    // Standard OpenAI-compatible endpoint (Ollama, llama.cpp/Unsloth, OpenRouter)
     const auth = apiKey && apiKey !== 'local' ? { Authorization: `Bearer ${apiKey}` } : undefined;
     const data = await fetchJson(`${base}/models`, timeoutMs, auth);
     const entries = Array.isArray(data?.data) ? data.data : [];
     models = entries.map((m: any) => m.id).sort();
-    // Unsloth Studio marca il modello in RAM con "loaded": true;
-    // LM Studio (/api/v0) usa "state": "loaded"
+    // Unsloth Studio marks RAM model with "loaded": true; LM Studio uses "state": "loaded"
     const loadedEntry = entries.find((m: any) => m.loaded === true || m.state === 'loaded');
     if (loadedEntry?.id) loadedModel = loadedEntry.id;
   } catch {
-    // Fallback nativo Ollama per i server locali
+    // Native Ollama fallback for local servers
     if (!isLocalUrl(base)) return null;
     try {
       const data = await fetchJson(base.replace(/\/v1$/, '') + '/api/tags', timeoutMs);
@@ -156,8 +153,7 @@ export async function probeProvider(
     }
   }
 
-  // Ollama espone i modelli caricati in RAM su /api/ps: agganciarsi a quello
-  // evita di far ricaricare un modello diverso al server.
+  // Ollama exposes loaded RAM models on /api/ps
   if (loadedModel === null && isLocalUrl(base)) {
     try {
       const ps = await fetchJson(base.replace(/\/v1$/, '') + '/api/ps', 1500);
@@ -174,10 +170,7 @@ export async function probeProvider(
 }
 
 /**
- * Forza il caricamento di un modello sul server inviando una richiesta minima
- * (1 token): i server locali con caricamento just-in-time (Unsloth Studio,
- * Ollama) caricano il modello richiesto prima di rispondere. Il timeout è
- * largo perché lo swap di un GGUF grande può richiedere minuti.
+ * Warms up a local model by sending a 1-token minimal request.
  */
 export async function warmUpModel(
   baseUrl: string,
@@ -208,9 +201,8 @@ export async function warmUpModel(
 }
 
 /**
- * Scansiona i provider candidati: prima quello attivo in configurazione, poi
- * (se non risponde) gli altri server locali in parallelo. I provider remoti
- * non attivi non vengono interrogati per non dipendere dalla rete all'avvio.
+ * Scans candidate providers: first the configured active provider, then
+ * remaining local servers in parallel.
  */
 export async function scanProviders(
   candidates: ScanCandidate[],

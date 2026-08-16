@@ -98,14 +98,14 @@ async function main() {
       await agent.run('Task che si interrompe');
     } catch (e: any) {
       threw = true;
-      check('R3a', e.message.includes('Errore nel ciclo agentico'), `l'errore continua a propagarsi al chiamante (ricevuto: ${e.message})`);
+      check('R3a', e.message.includes('Errore nel ciclo agentico') || e.message.includes('Error in agentic loop'), `l'errore continua a propagarsi al chiamante (ricevuto: ${e.message})`);
     }
     check('R3b', threw, "un turno interrotto lancia comunque l'errore (nessun inghiottimento silenzioso)");
 
     const files = fs.existsSync(thinkingDir) ? fs.readdirSync(thinkingDir) : [];
     check('R3c', files.length === 1, `il reasoning parziale è stato salvato nonostante l'errore (${files.length} file)`);
     if (files.length === 1) {
-      check('R3d', files[0].includes('interrotto'), `il file è etichettato come interrotto (${files[0]})`);
+      check('R3d', files[0].includes('interrotto') || files[0].includes('interrupted'), `il file è etichettato come interrotto (${files[0]})`);
       const content = fs.readFileSync(path.join(thinkingDir, files[0]), 'utf-8');
       check('R3e', content === longReasoning.trim(), 'il contenuto salvato è il reasoning parziale completo');
     }

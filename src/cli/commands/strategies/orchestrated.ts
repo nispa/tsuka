@@ -11,7 +11,7 @@ import { runRoundRobin } from './roundRobin';
 import { runDiscussionRound } from './hybrid';
 import { logSink } from '../../../core/logSink';
 
-// ── Helper: prompt per l'orchestrator ──
+// Orchestrator prompt generator
 
 function buildOrchestratorPrompt(
   orchestratorChar: CharacterConfig,
@@ -27,7 +27,7 @@ function buildOrchestratorPrompt(
     .filter((m: string) => m !== orchestratorChar.name)
     .map((m: string) => {
       const c = resolveCharacter(m);
-      return c ? `- ${c.aiName} (@${c.name}): ruolo ${c.role}, attitudine ${c.trait}` : `- ${m}`;
+      return c ? `- ${c.aiName} (@${c.name}): role ${c.role}, trait ${c.trait}` : `- ${m}`;
     })
     .join('\n');
 
@@ -63,15 +63,11 @@ FINE
 No other text. No explanations.`;
 }
 
-// ── Helper: parsing risposta orchestrator ──
-
-/** Risolve un nome "grezzo" (nome tecnico o aiName, @ opzionale) al nome tecnico del membro, se valido. */
 function resolveMemberName(raw: string, validMembers: string[]): string | null {
   const chosen = raw.replace(/^@/, '').toLowerCase();
   if (validMembers.includes(chosen)) {
     return chosen;
   }
-  // Fallback: cerca per aiName
   for (const m of validMembers) {
     const c = resolveCharacter(m);
     if (c && c.aiName.toLowerCase() === chosen) {
@@ -82,7 +78,6 @@ function resolveMemberName(raw: string, validMembers: string[]): string | null {
 }
 
 export function parseOrchestratorDecision(content: string, validMembers: string[]): { agent: string } | null {
-  // Cerca AGENTE: @nome
   const agentMatch = content.match(/AGENTE:\s*@?(\w+)/i);
   if (agentMatch) {
     const resolved = resolveMemberName(agentMatch[1], validMembers);
@@ -95,7 +90,7 @@ export function hasDoneSignal(content: string): boolean {
   return /^FINE\b/im.test(content.trim());
 }
 
-/** Estrae la decisione da una eventuale tool_call `route_next` nella risposta dell'orchestrator. */
+/** Extracts decision from `route_next` tool call in orchestrator response. */
 function extractRouteNextCall(toolCalls: ToolCall[] | undefined, validMembers: string[]): { agent: string } | 'FINE' | null {
   if (!Array.isArray(toolCalls)) return null;
   for (const tc of toolCalls) {
@@ -108,14 +103,12 @@ function extractRouteNextCall(toolCalls: ToolCall[] | undefined, validMembers: s
       if (/^FINE$/i.test(rawAgent)) return 'FINE';
       const resolved = resolveMemberName(rawAgent, validMembers);
       if (resolved) return { agent: resolved };
-    } catch {
-      // Argomenti non parseabili: ignora, si ricade sulla regex
-    }
+    } catch {}
   }
   return null;
 }
 
-// ── Modalità orchestrata (routing dinamico) ──
+// Orchestrated team mode (dynamic routing)
 
 export async function runOrchestrated(
   ctx: CommandCtx,
@@ -132,7 +125,7 @@ export async function runOrchestrated(
   const seenThisRound = new Set<string>();
   const orchestratorName = team.orchestrator;
   if (!orchestratorName) {
-    CLITheme.error(`Team senza orchestrator configurato. Passaggio a modalità round-robin.`);
+    CLITheme.error(`Team missing configured orchestrator. Falling back to round-robin.`);
     return runRoundRobin(ctx, team, task, maxRounds, interrupt, teamMessages, turnLog);
   }
   const workerMembers = team.members.filter((m: string) => m !== orchestratorName);
@@ -140,42 +133,34 @@ export async function runOrchestrated(
 
   const orchestratorChar = resolveCharacter(orchestratorName);
   if (!orchestratorChar) {
-    CLITheme.error(`Orchestrator '${orchestratorName}' non trovato. Passaggio a modalità round-robin.`);
+    CLITheme.error(`Orchestrator '${orchestratorName}' not found. Falling back to round-robin.`);
     return runRoundRobin(ctx, team, task, maxRounds, interrupt, teamMessages, turnLog);
   }
   const orchestratorRole = ctx.loadRole(orchestratorChar.role);
   const orchestratorTrait = ctx.loadTrait(orchestratorChar.trait);
 
-  // L'orchestrator usa solo tool di diagnostica (nessuna scrittura/esecuzione)
-  const orchestratorTools = (orchestratorRole.allowedTools || []).filter((t: string) =>
-    ['read_file', 'list_dir', 'grep_search', 'get_ps_info', 'web_search', 'browse_url', 'recall_memory'].includes(t)
-  );
-  // Tool di protocollo (T2.1): route_next è l'unico tool offerto nella chiamata di
-  // routing, indipendentemente dal ruolo — non è un tool "libero" dell'orchestrator.
   const routeNextTools = ctx.registry.listForLLM(ctx.provider.getCurrentModel(), ['route_next']);
 
   outer:
   for (let round = 1; round <= maxRounds; round++) {
     roundsDone = round;
-    logSink.log(chalk.bold.yellow(`\n═══ ROUND ${round}/${maxRounds} (Orchestrato) ═══`));
+    logSink.log(chalk.bold.yellow(`\n═══ ROUND ${round}/${maxRounds} (Orchestrated) ═══`));
     seenThisRound.clear();
 
     while (true) {
       if (interrupt.aborted) break outer;
 
-      // Costruisce prompt per l'orchestrator
       const orcSysPrompt = buildOrchestratorPrompt(
         orchestratorChar, orchestratorRole, orchestratorTrait,
         team.members, task, round, maxRounds, teamMessages
       );
 
-      // Crea un agente orchestrator (history condivisa + prompt di coordinamento)
       const orcMessages: ChatMessage[] = [{ role: 'system', content: orcSysPrompt }];
       for (let i = 1; i < teamMessages.length; i++) {
         orcMessages.push(teamMessages[i]);
       }
 
-      logSink.log(chalk.bold.cyan(`\n[ORCHESTRATOR: ${orchestratorChar.aiName} decide il prossimo turno]`));
+      logSink.log(chalk.bold.cyan(`\n[ORCHESTRATOR: ${orchestratorChar.aiName} deciding next turn]`));
 
       const renderer = new StreamRenderer({ headerName: orchestratorChar.aiName, headerColor: chalk.cyan });
       renderer.begin();
@@ -196,11 +181,10 @@ export async function runOrchestrated(
       } catch (err: any) {
         renderer.abort();
         if (interrupt.aborted) break outer;
-        CLITheme.error(`Errore nell'orchestrator: ${err.message}`);
-        break; // passa al round successivo
+        CLITheme.error(`Error in orchestrator turn: ${err.message}`);
+        break;
       }
 
-      // Decisione: tool call route_next → regex AGENTE:/FINE esistente → default
       const toolDecision = extractRouteNextCall(decisionToolCalls, allMemberNames);
       let decision: { agent: string } | null = null;
       let doneSignal = false;
@@ -221,22 +205,21 @@ export async function runOrchestrated(
         agent: orchestratorChar.aiName,
         role: 'orchestrator',
         protocol: source,
-        outcome: doneSignal ? 'FINE' : decision ? `@${decision.agent}` : 'non riconosciuto'
+        outcome: doneSignal ? 'FINE' : decision ? `@${decision.agent}` : 'unrecognized'
       });
 
       if (doneSignal) {
-        logSink.log(chalk.green.bold(`\n✔ ${orchestratorChar.aiName} ha dichiarato il compito COMPLETATO.`));
+        logSink.log(chalk.green.bold(`\n✔ ${orchestratorChar.aiName} declared task COMPLETED.`));
         completed = true;
         break outer;
       }
 
       if (!decision) {
-        CLITheme.warning('Orchestrator: risposta non riconosciuta. Prossimo membro in ordine.');
-        // Fallback: sceglie il primo worker non ancora chiamato in questo round
+        CLITheme.warning('Orchestrator: decision unrecognized. Picking next available member.');
         let fallback = workerMembers.find((m: string) => !seenThisRound.has(m));
         if (!fallback) fallback = workerMembers[0];
         if (!fallback) {
-          CLITheme.warning('Nessun worker disponibile.');
+          CLITheme.warning('No workers available.');
           break;
         }
         logSink.log(chalk.gray(`Fallback: ${fallback}\n`));
@@ -249,11 +232,11 @@ export async function runOrchestrated(
       }
 
       const chosen = decision.agent;
-      logSink.log(chalk.gray(`Scelto: @${chosen}\n`));
+      logSink.log(chalk.gray(`Chosen: @${chosen}\n`));
 
-      // Loop detection: stesso agente due volte di fila
+      // Loop detection: prevent calling same agent multiple times consecutively in a round
       if (seenThisRound.has(chosen)) {
-        CLITheme.warning(`@${chosen} già chiamato in questo round. Forzo cambio.`);
+        CLITheme.warning(`@${chosen} already called in this round. Forcing switch.`);
         const alternatives = workerMembers.filter((m: string) => !seenThisRound.has(m));
         if (alternatives.length > 0) {
           const altResult = await runMemberTurn(ctx, alternatives[0], task, round, maxRounds, teamMessages, interrupt, round === 1 && seenThisRound.size === 0, undefined, turnLog);
@@ -262,7 +245,7 @@ export async function runOrchestrated(
           if (altResult === 'interrupted') break outer;
           seenThisRound.add(alternatives[0]);
         } else {
-          break; // tutti chiamati, passa al round successivo
+          break;
         }
       } else {
         const result = await runMemberTurn(ctx, chosen, task, round, maxRounds, teamMessages, interrupt, round === 1 && seenThisRound.size === 0, undefined, turnLog);
@@ -275,7 +258,6 @@ export async function runOrchestrated(
       if (interrupt.aborted) break outer;
     }
 
-    // Discussione dopo ogni round se configurata
     if ((team.discussionRounds ?? 0) > 0 && !completed && !interrupt.aborted) {
       const discResult = await runDiscussionRound(ctx, team.members, task, round, teamMessages, interrupt, !!team.voting, turnLog);
       if (discResult === 'all_approve') { completed = true; break outer; }

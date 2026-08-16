@@ -9,10 +9,10 @@ export const listDirTool: Tool = {
   execute: async (args: { path?: string }) => {
     const dirPath = resolveSafePath(args.path || '.');
     if (!fs.existsSync(dirPath)) {
-      throw new Error(`La directory '${args.path || '.'}' non esiste.`);
+      throw new Error(`Directory '${args.path || '.'}' does not exist.`);
     }
     if (!fs.statSync(dirPath).isDirectory()) {
-      throw new Error(`Il percorso '${args.path || '.'}' non è una directory.`);
+      throw new Error(`Path '${args.path || '.'}' is not a directory.`);
     }
 
     const items = fs.readdirSync(dirPath);
@@ -28,12 +28,12 @@ export const listDirTool: Tool = {
       if (stat.isDirectory()) {
         result.push(`[DIR]  ${relativePath}/`);
       } else {
-        result.push(`[FILE] ${relativePath} (${stat.size} byte)`);
+        result.push(`[FILE] ${relativePath} (${stat.size} bytes)`);
       }
     });
 
     return result.length > 0 
-      ? `Elementi in '${args.path || '.'}':\n${result.join('\n')}`
-      : `La directory '${args.path || '.'}' è vuota.`;
+      ? `Items in '${args.path || '.'}':\n${result.join('\n')}`
+      : `Directory '${args.path || '.'}' is empty.`;
   }
 };

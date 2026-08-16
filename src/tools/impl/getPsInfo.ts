@@ -2,7 +2,7 @@ import { spawn } from 'child_process';
 import { Tool } from '../registry';
 import { getShellConfig, isWindows } from '../../core/platform';
 
-// Regex per escludere variabili d'ambiente potenzialmente sensibili (API key, token, password)
+// Pattern to exclude sensitive environment variables (API keys, secrets, passwords)
 const SENSITIVE_ENV_PATTERN = /KEY|SECRET|TOKEN|PASSWORD|PASSWD|PWD|CREDENTIAL|AUTH/i;
 
 function buildCommand(category: 'processes' | 'services' | 'disk' | 'env'): string {
@@ -15,12 +15,10 @@ function buildCommand(category: 'processes' | 'services' | 'disk' | 'env'): stri
       case 'disk':
         return 'Get-Volume | Select-Object -Property DriveLetter, FriendlyName, Size, SizeRemaining | ConvertTo-Json';
       case 'env':
-        // Filtro lato PowerShell (case-insensitive di default)
         return 'Get-ChildItem Env: | Where-Object { $_.Name -notmatch \'KEY|SECRET|TOKEN|PASSWORD|PASSWD|PWD|CREDENTIAL|AUTH\' } | Select-Object -Property Name, Value | ConvertTo-Json';
     }
   }
 
-  // Linux / macOS (POSIX sh)
   const isMac = process.platform === 'darwin';
   switch (category) {
     case 'processes':
@@ -57,7 +55,6 @@ export const getPsInfoTool: Tool = {
       });
 
       child.on('close', (code) => {
-        // Su POSIX il dump env viene filtrato lato JS (su Windows è filtrato dal comando stesso)
         if (args.category === 'env' && !isWindows()) {
           output = output
             .split(/\r?\n/)
@@ -66,14 +63,14 @@ export const getPsInfoTool: Tool = {
         }
 
         if (code !== 0) {
-          resolve(`Errore durante l'esecuzione del comando di sistema (Codice uscita: ${code}).\nOutput: ${output}`);
+          resolve(`Error executing system command (Exit code: ${code}).\nOutput: ${output}`);
         } else {
-          resolve(output || 'Nessun elemento trovato.');
+          resolve(output || 'No items found.');
         }
       });
 
       child.on('error', (err) => {
-        resolve(`Impossibile avviare la shell di sistema: ${err.message}`);
+        resolve(`Failed to launch system shell: ${err.message}`);
       });
     });
   }

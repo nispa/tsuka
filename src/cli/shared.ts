@@ -3,8 +3,6 @@ import * as path from 'path';
 import { homePath } from '../core/apphome';
 import { TeamConfig } from '../core/types';
 
-// TeamConfig vive in core/types.ts (T4.1, PLANNING-QUALITA.md): riesportato qui per
-// compatibilità con gli importatori esistenti (cli/index.ts, cli/commands/types.ts).
 export type { TeamConfig };
 
 export interface RoleConfig {
@@ -28,17 +26,17 @@ export interface CharacterConfig {
   name: string;
   displayName: string;
   aiName: string;
-  role?: string;        // Legacy: 1 ruolo
-  roles?: string[];     // Multi-skill: lista ruoli/skill sbloccate
-  activeRole?: string;  // Skill correntemente equipaggiata
+  role?: string;        // Legacy: 1 role
+  roles?: string[];     // Multi-skill: unlocked roles/skills list
+  activeRole?: string;  // Currently active skill
   trait: string;
   description: string;
-  signature?: string;   // Firma sintetica opzionale per l'orchestrator
+  signature?: string;   // Optional signature summary for orchestrator
   reasoningEffort?: string;
   creativity?: string;
 }
 
-// ── Helpers di caricamento JSON ──
+// ── JSON file loading helpers ──
 
 const jsonFileCache = new Map<string, { mtimeMs: number; value: any }>();
 
@@ -57,7 +55,7 @@ export function loadJsonFile<T>(filePath: string): T | null {
     jsonFileCache.set(filePath, { mtimeMs, value });
     return value;
   } catch (err: any) {
-    console.error(`Errore nel caricamento di '${path.basename(filePath)}': ${err.message}`);
+    console.error(`Error loading '${path.basename(filePath)}': ${err.message}`);
     return null;
   }
 }
@@ -75,12 +73,12 @@ export function listAvailableItems<T>(dirName: string, loadFn: (name: string) =>
       }
     }
   } catch (err: any) {
-    console.error(`Errore nella scansione di '${dirName}': ${err.message}`);
+    console.error(`Error scanning '${dirName}': ${err.message}`);
   }
   return items;
 }
 
-// ── Caricamento ruoli, tratti, personaggi, team ──
+// ── Roles, traits, characters, teams loaders ──
 
 export function loadRole(roleName?: string): RoleConfig {
   if (!roleName) {
@@ -122,7 +120,6 @@ export function loadTrait(traitName?: string): TraitConfig {
   };
 }
 
-/** Chiave di confronto per i nomi: minuscolo e senza separatori (`Deanna_Troi` → `deannatroi`). */
 function normalizeName(name: string): string {
   return (name || '').toLowerCase().replace(/[\s_\-]/g, '');
 }
@@ -132,7 +129,7 @@ export function loadCharacter(charName: string): CharacterConfig | null {
   const charData = loadJsonFile<CharacterConfig>(homePath('characters', `${charName}.json`));
   if (!charData) return null;
 
-  // Inizializzazione Multi-Skill per retro-compatibilità
+  // Multi-skill backward compatibility initialization
   if (Array.isArray(charData.roles) && charData.roles.length > 0) {
     if (!charData.activeRole || !charData.roles.includes(charData.activeRole)) {
       charData.activeRole = charData.roles[0];
@@ -153,25 +150,16 @@ export function listAvailableCharacters(): CharacterConfig[] {
   return listAvailableItems('characters', loadCharacter);
 }
 
-/** Team effettivamente installati in `teams/` (dipende dal preset scelto a `tsuka init`). */
 export function listAvailableTeams(): TeamConfig[] {
   return listAvailableItems('teams', loadTeam);
 }
 
-/** Ruoli effettivamente installati in `roles/`. */
 export function listAvailableRoles(): RoleConfig[] {
   return listAvailableItems('roles', loadRole);
 }
 
 /**
- * Risolve un riferimento a un agente, dal più specifico al più generico:
- * nome file → nome visibile (aiName) → MESTIERE (ruolo).
- *
- * L'ultimo livello è il punto: si può chiamare un agente per la competenza che
- * serve (`@security_auditor`) invece che per nome proprio. Il nome è solo
- * l'handle di chi quel mestiere lo esercita — e con il multi-skill (T9.1) lo
- * stesso handle risponde a più mestieri, evitando un passaggio di consegne
- * fatto solo per raggiungere il tool di un altro ruolo.
+ * Resolves an agent identifier: file name -> aiName -> role / skill name.
  */
 export function resolveCharacter(nameOrAiName: string): CharacterConfig | null {
   const direct = loadCharacter(nameOrAiName);
@@ -185,8 +173,7 @@ export function resolveCharacter(nameOrAiName: string): CharacterConfig | null {
     if (normalizeName(charObj.aiName) === target || normalizeName(charObj.name) === target) return charObj;
   }
 
-  // Ultimo livello: il riferimento è un mestiere. Preferisce chi ce l'ha come
-  // ruolo attivo, poi chi lo possiede fra le skill sbloccate (multi-skill).
+  // Resolve by active role or multi-skill role
   const byActiveRole = catalog.find((c) => normalizeName(c.role || '') === target);
   if (byActiveRole) return byActiveRole;
   return catalog.find((c) => (c.roles || []).some((r) => normalizeName(r) === target)) || null;
@@ -195,8 +182,7 @@ export function resolveCharacter(nameOrAiName: string): CharacterConfig | null {
 import type { CreativityLevel } from '../core/provider';
 
 /**
- * Risolve il livello di creatività (campionamento) seguendo la cascata:
- * personaggio -> ruolo attivo -> default di configurazione.
+ * Resolves creativity sampling level: character -> active role -> config default.
  */
 export function resolveCreativity(
   character: CharacterConfig | null | undefined,
@@ -212,12 +198,10 @@ export function resolveCreativity(
   return configDefault;
 }
 
-// ── Assemblaggio System Prompt ──
+// ── System Prompt Assembly ──
 
 import { MemoryStore } from '../core/memory';
 import { ToolRegistry } from '../tools/registry';
-
-// ...
 
 export function loadSystemPrompt(
   role: RoleConfig,
@@ -226,10 +210,6 @@ export function loadSystemPrompt(
   registry?: ToolRegistry,
   character?: CharacterConfig | null,
   taskText?: string,
-  // T8.12 (coda di T8.10): effort con cui il modello girerà davvero, per elencare nel
-  // prompt lo stesso set di tool che Agent.run() renderà poi eseguibile (vedi agent.ts).
-  // Opzionale e in coda per non rompere le chiamate esistenti: omesso, registry.listForLLM
-  // ricade sul default prudente di getModelTier (comportamento identico a prima).
   effort?: ReasoningEffort
 ): string {
   let prompt = '';
@@ -246,15 +226,6 @@ export function loadSystemPrompt(
 - Be cautious: only run system shell commands when strictly necessary and no other tool covers the task.
 - Cite sources when doing web research or browsing URLs.`;
 
-  // Iniezione della memoria (T6.1): se è disponibile un testo di task, la sezione
-  // è basata sulla rilevanza al compito corrente (formatRelevant) invece che
-  // semplicemente sui fatti più recenti; formatForPrompt() resta il fallback.
-  //
-  // Filtro per agente in lettura (T8.2): attivo solo quando è noto un `character.aiName`
-  // (l'identità dell'agente che sta per ricevere questo prompt) — un agente vede i propri
-  // fatti più quelli condivisibili per costruzione (lezione/decisione) di chiunque altro,
-  // escluso lo scarto di run altrui. Senza character (es. chat "custom" senza personaggio),
-  // nessun filtro: comportamento identico a prima.
   const trimmedTask = (taskText || '').trim();
   const memorySources = character?.aiName ? [character.aiName] : undefined;
   const memorySection = trimmedTask
@@ -267,21 +238,12 @@ export function loadSystemPrompt(
   if (registry) {
     const tools = registry.listForLLM(modelName, role.allowedTools, effort);
     if (tools.length > 0) {
-      // T8.9 (Ridurre il costo fisso del prompt): i tool viaggiano già come array
-      // `tools` nella richiesta API (provider.ts) — per un modello con function
-      // calling nativo MISURATO come affidabile (hasNativeFunctionCalling,
-      // registry.ts), riscriverli qui come elenco testuale è puro spreco di
-      // contesto pagato a ogni chiamata. Per qualunque altro caso (nessun profilo,
-      // o profilo sotto soglia) l'elenco resta: comportamento identico a prima,
-      // rete di sicurezza per un modello di cui non sappiamo se legge bene l'array.
       if (!hasNativeFunctionCalling(modelName, effort)) {
         prompt += `\n\nAvailable tools:\n`;
         for (const t of tools) {
           prompt += `- **${t.function.name}**: ${t.function.description}\n`;
         }
       }
-      // Nota d'uso su save_memory/recall_memory: NON è un elenco di tool, va
-      // conservata a prescindere dall'elenco testuale sopra (Fuori scope di T8.9).
       if (tools.some((t: any) => t.function.name === 'save_memory')) {
         prompt += `\nNote: you have persistent shared memory. Use **save_memory** for important facts to keep across sessions and **recall_memory** to retrieve them.`;
       }
@@ -298,15 +260,7 @@ import { getModelTier, hasNativeFunctionCalling } from '../tools/registry';
 import type { ReasoningEffort } from '../core/provider';
 
 /**
- * Avvisa se il modello attivo non ha un profilo di capacità misurato
- * (models_profile.json): in tal caso il tier dei tool è stimato con
- * l'euristica sul nome e può nascondere tool al modello. Suggerisce /benchmark.
- * Chiamata all'avvio e a ogni cambio di modello o provider.
- *
- * `effort` (T8.12, coda di T8.10): livello con cui il modello girerà, per verificare
- * la presenza del profilo alla chiave giusta ("modello@effort", vedi modelProfile.ts)
- * invece che sempre a 'xhigh'. Opzionale e in coda: omesso, comportamento identico a
- * prima (default prudente 'xhigh' dentro getModelProfile/getModelTier).
+ * Warns if the active model lacks a benchmark capability profile.
  */
 export function notifyIfUnprofiled(model: string, effort?: ReasoningEffort): void {
   if (!model) return;
@@ -314,14 +268,14 @@ export function notifyIfUnprofiled(model: string, effort?: ReasoningEffort): voi
   if (profile) {
     const recommended = getRecommendedEffort(model);
     if (recommended) {
-      const matchHint = effort && effort === recommended ? chalk.green('(già attivo)') : chalk.cyan(`usa /effort ${recommended} per impostarlo`);
-      CLITheme.info(`💡 Profilo benchmark attivo: sforzo consigliato ${chalk.magenta.bold(recommended.toUpperCase())} (${matchHint})`);
+      const matchHint = effort && effort === recommended ? chalk.green('(already active)') : chalk.cyan(`use /effort ${recommended} to configure`);
+      CLITheme.info(`💡 Active benchmark profile: recommended effort ${chalk.magenta.bold(recommended.toUpperCase())} (${matchHint})`);
     }
     return;
   }
   const estimated = getModelTier(model, effort);
   CLITheme.warning(
-    `Modello non ancora profilato: tier stimato dal nome = '${estimated}' (i tool di tier superiore restano nascosti).`
+    `Model not yet profiled: tier estimated by name = '${estimated}' (higher-tier tools remain hidden).`
   );
-  CLITheme.info(`Lancia ${chalk.cyan('/benchmark')} per misurare le capacità reali e usare il tier corretto.`);
+  CLITheme.info(`Run ${chalk.cyan('/benchmark')} to measure real capabilities and calibrate tier.`);
 }

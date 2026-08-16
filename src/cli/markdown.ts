@@ -20,9 +20,7 @@ function stripTags(s: string): string {
 }
 
 /**
- * Decodifica le entità HTML prodotte da marked/highlight.js (es. &#39; → ').
- * L'ordine conta: prima le numeriche, poi le nominali, con &amp; per ultima
- * (altrimenti "&amp;#39;" verrebbe decodificata due volte).
+ * Decodes HTML entities produced by marked and highlight.js (e.g. &#39; -> ').
  */
 function decodeEntities(s: string): string {
   return s
@@ -36,12 +34,12 @@ function decodeEntities(s: string): string {
     .replace(/&amp;/g, '&');
 }
 
-/** HTML di marked → testo piano per il terminale (senza tag, entità decodificate). */
+/** Converts marked HTML to plain terminal text. */
 function htmlToText(s: string): string {
   return decodeEntities(stripTags(s));
 }
 
-// Mappa delle classi hljs più comuni sui colori chalk del tema
+// Highlight.js class to chalk color mapping
 const HLJS_STYLES: Record<string, (s: string) => string> = {
   keyword: chalk.magenta,
   built_in: chalk.cyan,
@@ -72,8 +70,7 @@ const HLJS_STYLES: Record<string, (s: string) => string> = {
 };
 
 /**
- * Converte l'HTML di highlight.js in testo ANSI: gli <span class="hljs-…">
- * (anche annidati) diventano colori chalk, le entità vengono decodificate.
+ * Converts highlight.js HTML spans into colored ANSI terminal text.
  */
 function hljsHtmlToAnsi(html: string): string {
   const tagRegex = /<span class="hljs-([\w-]+)[^"]*">|<\/span>|<[^>]+>/g;
@@ -95,20 +92,17 @@ function hljsHtmlToAnsi(html: string): string {
     if (match[0] === '</span>') {
       styleStack.pop();
     } else if (match[1] !== undefined) {
-      // La classe può essere composta (es. "title function_"): usa il primo stile noto
       const base = match[1].replace(/_+$/, '');
       styleStack.push(HLJS_STYLES[base] || styleStack[styleStack.length - 1] || chalk.white);
     } else if (match[0].startsWith('<span')) {
-      // Span senza classe nota: eredita lo stile corrente per mantenere lo stack bilanciato
       styleStack.push(styleStack[styleStack.length - 1] || chalk.white);
     }
-    // Altri tag HTML: ignorati
   }
   emit(html.slice(last));
   return out;
 }
 
-// Converte HTML di marked in righe TTY colorate da disegnare dentro il pannello.
+/** Renders markdown into wrapped terminal lines for boxed panel output. */
 export function renderMarkdownToLines(md: string, innerWidth: number): string[] {
   const tokens = marked.lexer(md);
   const lines: string[] = [];
@@ -149,7 +143,6 @@ export function renderMarkdownToLines(md: string, innerWidth: number): string[] 
       case 'list': {
         const items = (t as any).items as any[];
         for (const it of items) {
-          // Un token list_item non è parsabile top-level: si parsano i suoi token interni
           const txt = htmlToText(marked.parser(it.tokens as any)).trim();
           pushWrapped('• ' + txt, chalk.white, 2);
         }

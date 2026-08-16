@@ -69,7 +69,7 @@ async function main() {
     goal: 'Riscrivi architettura auth',
     reason: 'Task multidisciplinare con audit'
   }, pm);
-  check('ESC.8', goalSuccess.success && goalSuccess.output.includes('accettata'), 'Esecuzione request_goal a depth 0 ha successo');
+  check('ESC.8', goalSuccess.success && (goalSuccess.output.includes('accettata') || goalSuccess.output.includes('accepted')), 'Esecuzione request_goal a depth 0 ha successo');
 
   let goalBlockedInside = false;
   await WorkflowScope.withScope('goal', async () => {
@@ -77,7 +77,7 @@ async function main() {
       goal: 'Altro goal annidato',
       reason: 'Test ricorsione'
     }, pm);
-    goalBlockedInside = !blockedRes.success && blockedRes.output.includes('ricorsivo');
+    goalBlockedInside = !blockedRes.success && (blockedRes.output.includes('ricorsivo') || blockedRes.output.includes('recursive'));
   });
   check('ESC.9', goalBlockedInside, 'Blocco anti-ricorsione: request_goal rifiutato se già dentro un workflow');
 
@@ -87,7 +87,7 @@ async function main() {
     task: 'Audit codice sorgente',
     reason: 'Verifica vulnerabilità'
   }, pm);
-  check('ESC.10', teamSuccess.success && teamSuccess.output.includes('accettata'), 'Esecuzione request_team a depth 0 ha successo');
+  check('ESC.10', teamSuccess.success && (teamSuccess.output.includes('accettata') || teamSuccess.output.includes('accepted')), 'Esecuzione request_team a depth 0 ha successo');
 
   let teamBlockedInside = false;
   await WorkflowScope.withScope('team', async () => {
@@ -95,7 +95,7 @@ async function main() {
       task: 'Task team annidato',
       reason: 'Test ricorsione'
     }, pm);
-    teamBlockedInside = !blockedRes.success && blockedRes.output.includes('ricorsivo');
+    teamBlockedInside = !blockedRes.success && (blockedRes.output.includes('ricorsivo') || blockedRes.output.includes('recursive'));
   });
   check('ESC.11', teamBlockedInside, 'Blocco anti-ricorsione: request_team rifiutato se già dentro un workflow');
 
@@ -105,7 +105,7 @@ async function main() {
     topic: 'Valutazione pattern asincrono',
     reason: 'Brainstorming architetturale'
   }, pm);
-  check('ESC.12', callSuccess.success && callSuccess.output.includes('accettata'), 'Esecuzione request_call a depth 0 ha successo');
+  check('ESC.12', callSuccess.success && (callSuccess.output.includes('accettata') || callSuccess.output.includes('accepted')), 'Esecuzione request_call a depth 0 ha successo');
 
   let callBlockedInside = false;
   await WorkflowScope.withScope('call', async () => {
@@ -114,7 +114,7 @@ async function main() {
       topic: 'Altro topic',
       reason: 'Test ricorsione'
     }, pm);
-    callBlockedInside = !blockedRes.success && blockedRes.output.toLowerCase().includes('ricorsiv');
+    callBlockedInside = !blockedRes.success && (blockedRes.output.toLowerCase().includes('ricorsiv') || blockedRes.output.toLowerCase().includes('recursive'));
   });
   check('ESC.13', callBlockedInside, 'Blocco anti-ricorsione: request_call rifiutato se già dentro un workflow');
 

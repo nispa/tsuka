@@ -96,7 +96,7 @@ async function main() {
       errMsg = e.message;
     }
 
-    check('GM.2a', /\[JSON malformato\]/.test(errMsg), `l'errore finale è distinguibile da "Errore di comunicazione" generico (${errMsg})`);
+    check('GM.2a', /(\[JSON malformato\]|\[Malformed JSON\])/.test(errMsg), `l'errore finale è distinguibile da "Errore di comunicazione" generico (${errMsg})`);
     check('GM.2b', callCount === 3, `esaurisce tutti i tentativi previsti (MAX_RETRIES) prima di arrendersi (chiamate: ${callCount})`);
   }
 
@@ -119,7 +119,7 @@ async function main() {
     }
 
     check('GM.3a', callCount === 1, `un errore di comunicazione generico NON viene ritentato (chiamate: ${callCount})`);
-    check('GM.3b', /Errore di comunicazione/.test(errMsg) && !/\[JSON malformato\]/.test(errMsg), `il messaggio resta quello generico invariato (${errMsg})`);
+    check('GM.3b', /(Errore di comunicazione|Communication error)/i.test(errMsg) && !/(\[JSON malformato\]|\[Malformed JSON\])/.test(errMsg), `il messaggio resta quello generico invariato (${errMsg})`);
   }
 
   console.log(`\n=== Risultato: ${passed} passati, ${failed} falliti ===`);

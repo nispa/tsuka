@@ -106,7 +106,7 @@ async function main() {
 
   // args non-oggetto devono fallire
   const badRes3 = await registry.executeTool('read_file', 'non_un_oggetto', perm);
-  check('T3.3e', !badRes3.success && badRes3.output.toLowerCase().includes('oggetto'), `args non-oggetto rifiutato: ${badRes3.output.slice(0, 60)}`);
+  check('T3.3e', !badRes3.success && (badRes3.output.toLowerCase().includes('oggetto') || badRes3.output.toLowerCase().includes('object')), `args non-oggetto rifiutato: ${badRes3.output.slice(0, 60)}`);
 
   console.log(`\n=== Risultato: ${passed} passati, ${failed} falliti ===`);
   process.exit(failed > 0 ? 1 : 0);

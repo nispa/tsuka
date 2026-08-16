@@ -38,7 +38,7 @@ export class ContextTracker {
     this.entries = [];
   }
 
-  /** Calcola il totale output token di tutte le entry */
+  /** Calculates total output tokens across all entries. */
   totalTokens(): number {
     return this.entries.reduce((sum, e) => sum + e.tokenCount, 0);
   }

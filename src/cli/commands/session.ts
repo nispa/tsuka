@@ -7,7 +7,7 @@ import { sumMessageChars } from '../../core/contextBudget';
 import { logSink } from '../../core/logSink';
 
 export async function handleExit(_ctx: CommandCtx, _arg: string): Promise<void> {
-  logSink.log(chalk.yellow('Uscita in corso... Arrivederci!'));
+  logSink.log(chalk.yellow('Exiting... Goodbye!'));
   process.exit(0);
 }
 
@@ -20,21 +20,21 @@ export async function handleInfo(ctx: CommandCtx, _arg: string): Promise<void> {
   const runtimeCtx = ctx.configManager.getRuntimeContextTokens();
   const ctxSource = runtimeCtx ? chalk.green('(live server)') : chalk.gray('(config default)');
 
-  logSink.log(chalk.bold('\nInformazioni di Sessione:'));
-  logSink.log(`- Provider Attivo: ${chalk.green(ctx.configManager.getActiveProviderName().toUpperCase())}`);
-  logSink.log(`- Endpoint Server: ${chalk.cyan(ctx.provider.getBaseUrl())}`);
-  logSink.log(`- Modello Attivo:  ${chalk.green(currentModel)}`);
-  logSink.log(`- Finestra Contesto: ${chalk.cyan(maxTokens.toLocaleString() + ' tok')} ${ctxSource}`);
+  logSink.log(chalk.bold('\nSession Information:'));
+  logSink.log(`- Active Provider: ${chalk.green(ctx.configManager.getActiveProviderName().toUpperCase())}`);
+  logSink.log(`- Server Endpoint: ${chalk.cyan(ctx.provider.getBaseUrl())}`);
+  logSink.log(`- Active Model:    ${chalk.green(currentModel)}`);
+  logSink.log(`- Context Window:  ${chalk.cyan(maxTokens.toLocaleString() + ' tok')} ${ctxSource}`);
   if (recEffort) {
-    logSink.log(`- Sforzo Consigliato: ${chalk.magenta(recEffort.toUpperCase())} ${chalk.gray('(da benchmark, usa /effort ' + recEffort + ')')}`);
+    logSink.log(`- Recommended Effort: ${chalk.magenta(recEffort.toUpperCase())} ${chalk.gray('(from benchmark, use /effort ' + recEffort + ')')}`);
   }
   if (char) {
-    logSink.log(`- Personaggio:     ${chalk.green(char.displayName)} (${chalk.yellow(char.aiName)})`);
-    logSink.log(`  └─ Ruolo collegato:  ${char.role}`);
-    logSink.log(`  └─ Tratto collegato: ${char.trait}`);
+    logSink.log(`- Character:       ${chalk.green(char.displayName)} (${chalk.yellow(char.aiName)})`);
+    logSink.log(`  └─ Linked Role:   ${char.role}`);
+    logSink.log(`  └─ Linked Trait:  ${char.trait}`);
   } else {
-    logSink.log(`- Ruolo Agente:    ${chalk.green(ctx.loadRole(ctx.configManager.getActiveRole()).displayName)}`);
-    logSink.log(`- Attitudine:      ${chalk.green(ctx.loadTrait(ctx.configManager.getActiveTrait()).displayName)}`);
+    logSink.log(`- Agent Role:      ${chalk.green(ctx.loadRole(ctx.configManager.getActiveRole()).displayName)}`);
+    logSink.log(`- Trait:           ${chalk.green(ctx.loadTrait(ctx.configManager.getActiveTrait()).displayName)}`);
   }
   logSink.log('');
 }
@@ -44,19 +44,15 @@ export async function handleContext(ctx: CommandCtx, _arg: string): Promise<void
   const msgs = agent.getMessages();
   const maxTokens = ctx.configManager.getMaxHistoryTokens();
 
-  // Stima token totali con il rapporto caratteri/token calibrato di QUESTO agente
-  // (più preciso della costante fissa usata da /goal, che attraversa più agenti
-  // effimeri e non ha "il" rapporto di uno solo da applicare — vedi contextBudget.ts).
   const total = agent.estimateMessagesTokens(msgs);
 
   const runtimeCtx = ctx.configManager.getRuntimeContextTokens();
   const sourceLabel = runtimeCtx ? chalk.green('(live server)') : chalk.gray('(config default)');
 
-  logSink.log(chalk.bold('\n📊 STATO CONTESTO'));
-  CLITheme.contextBar(total, maxTokens, 'Contesto:', sourceLabel);
+  logSink.log(chalk.bold('\n📊 CONTEXT STATUS'));
+  CLITheme.contextBar(total, maxTokens, 'Context:', sourceLabel);
   logSink.log('');
 
-  // Conteggio per ruolo
   const counts: Record<string, number> = {};
   let roleTokens: Record<string, number> = {};
   for (const m of msgs) {
@@ -64,7 +60,7 @@ export async function handleContext(ctx: CommandCtx, _arg: string): Promise<void
     roleTokens[m.role] = (roleTokens[m.role] || 0) + Math.ceil(sumMessageChars([m]) / agent.getCharsPerTokenRatio());
   }
 
-  logSink.log(chalk.bold('  Messaggi per ruolo:'));
+  logSink.log(chalk.bold('  Messages by role:'));
   for (const role of ['system', 'user', 'assistant', 'tool']) {
     if (counts[role]) {
       const tok = roleTokens[role] || 0;
@@ -74,11 +70,10 @@ export async function handleContext(ctx: CommandCtx, _arg: string): Promise<void
   }
   logSink.log('');
 
-  // Attività recenti dal tracker
   const tracker = ContextTracker.getInstance();
   const recent = tracker.getRecent(10);
   if (recent.length > 0) {
-    logSink.log(chalk.bold('  Ultime attività:'));
+    logSink.log(chalk.bold('  Recent activities:'));
     for (const e of recent) {
       const time = e.timestamp.slice(11, 19);
       const tok = e.tokenCount >= 1000 ? `${(e.tokenCount / 1000).toFixed(1)}k` : `${e.tokenCount}`;
@@ -88,13 +83,12 @@ export async function handleContext(ctx: CommandCtx, _arg: string): Promise<void
     logSink.log('');
   }
 
-  // Ultimi messaggi della cronologia
   const lastMsgs = msgs.slice(-6);
   if (lastMsgs.length > 1) {
-    logSink.log(chalk.bold('  Ultimi messaggi:'));
+    logSink.log(chalk.bold('  Recent messages:'));
     for (const m of lastMsgs) {
-      const preview = typeof m.content === 'string' ? m.content.replace(/\s+/g, ' ').slice(0, 100) : '(strumento)';
-      const label = m.role === 'assistant' ? chalk.green('assistente') : m.role === 'user' ? chalk.cyan('utente') : chalk.gray(m.role);
+      const preview = typeof m.content === 'string' ? m.content.replace(/\s+/g, ' ').slice(0, 100) : '(tool)';
+      const label = m.role === 'assistant' ? chalk.green('assistant') : m.role === 'user' ? chalk.cyan('user') : chalk.gray(m.role);
       logSink.log(`    ${label} ${chalk.gray(preview)}`);
     }
     logSink.log('');
@@ -105,5 +99,5 @@ export async function handleReset(ctx: CommandCtx, _arg: string): Promise<void> 
   ctx.agent.current = ctx.recreateAgent();
   ctx.permissionManager.resetSession();
   ContextTracker.getInstance().clear();
-  CLITheme.success('Sessione resettata con successo (cronologia e autorizzazioni azzerate).');
+  CLITheme.success('Session reset successfully (history and permissions cleared).');
 }

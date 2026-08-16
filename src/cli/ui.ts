@@ -35,15 +35,14 @@ export class CLITheme {
     );
     logSink.log(chalk.gray('  ─'.repeat(Math.ceil(w / 2))));
     logSink.log(
-      chalk.gray('  柄 (') + chalk.hex('#e879f9').bold('tsuka') + chalk.gray('): l\'impugnatura della katana — a cui si attacca la lama.')
+      chalk.gray('  柄 (') + chalk.hex('#e879f9').bold('tsuka') + chalk.gray('): the handle of a katana — where the blade attaches.')
     );
     logSink.log('');
   }
 
-  // ── Box generico con titolo ──
+  // Generic box container with title
   static box(title: string, lines: string[], color: (s: string) => string = chalk.cyan) {
     const w = TTY_WIDTH();
-    // Larghezza utile: w meno 2 bordi e 2 spazi di margine per lato
     const inner = w - 6;
     const bar = color('│');
     const top = color('┌') + color('─'.repeat(w - 2)) + color('┐');
@@ -58,7 +57,7 @@ export class CLITheme {
     logSink.log(bot);
   }
 
-  // ── Pannello agente (risposta) ──
+  // Agent response panel
   static agentPanel(agentName: string, body: string) {
     const w = TTY_WIDTH();
     const inner = w - 2;
@@ -73,7 +72,7 @@ export class CLITheme {
       renderedLines = CLITheme.wrap(body, inner).map((l) => chalk.white(l));
     }
 
-    if (renderedLines.length === 0) renderedLines = [chalk.white('(nessuna risposta)')];
+    if (renderedLines.length === 0) renderedLines = [chalk.white('(no response)')];
 
     for (const ln of renderedLines) {
       logSink.log(ln);
@@ -98,15 +97,12 @@ export class CLITheme {
   }
 
   static cleanLen(s: string): number {
-    // Lunghezza visuale: gli emoji/wide char occupano 2 colonne nel terminale.
     let len = 0;
     for (const ch of s.replace(/\x1b\[[0-9;]*m/g, '')) {
       const code = ch.codePointAt(0) || 0;
-      // Variation selectors e caratteri zero-width: occupano 0 colonne
       if ((code >= 0xfe00 && code <= 0xfe0f) || code === 0x200d || code === 0x200b || code === 0x200c) {
         continue;
       }
-      // Range emoji e CJK wide (stimato): ≥ U+1F000 o nella fascia wide CJK
       if (code >= 0x1f000 || (code >= 0x2500 && code <= 0x27bf) || (code >= 0x3000 && code <= 0x9fff) || (code >= 0xff00 && code <= 0xffef)) {
         len += 2;
       } else {
@@ -136,7 +132,7 @@ export class CLITheme {
     logSink.log('  ' + chalk.gray('•') + ' ' + chalk.bold(label + ':') + ' ' + color(value));
   }
 
-  /** Barra di utilizzo contesto: usata da /goal (per step/agente) e /context (agente singolo). */
+  /** Context window usage bar */
   static contextBar(used: number, total: number, label: string, suffix: string = ''): void {
     const pct = total > 0 ? Math.min(100, Math.round((used / total) * 100)) : 0;
     const barW = 24;
@@ -150,7 +146,7 @@ export class CLITheme {
 
   static agentThought(agentName: string, thought: string) {
     logSink.log(
-      chalk.magenta.bold(`\n[Pensiero di ${agentName}]: `) +
+      chalk.magenta.bold(`\n[Thought from ${agentName}]: `) +
       chalk.italic.gray(thought)
     );
   }
@@ -164,9 +160,9 @@ export class CLITheme {
 
   static printModelChanged(oldModel: string, newModel: string) {
     logSink.log(
-      chalk.yellow(`\n🔄 Modello cambiato da `) +
-      chalk.red(oldModel || 'nessuno') +
-      chalk.yellow(` a `) +
+      chalk.yellow(`\n🔄 Model changed from `) +
+      chalk.red(oldModel || 'none') +
+      chalk.yellow(` to `) +
       chalk.green(newModel)
     );
   }
@@ -180,38 +176,38 @@ export class CLITheme {
     const top = chalk.cyan('┌') + chalk.cyan('─'.repeat(w - 2)) + chalk.cyan('┐');
     const bot = chalk.cyan('└') + chalk.cyan('─'.repeat(w - 2)) + chalk.cyan('┘');
     logSink.log(top);
-    const headTitle = 'Comandi disponibili';
+    const headTitle = 'Available commands';
     const headPad = Math.max(0, w - 4 - CLITheme.cleanLen(headTitle));
     logSink.log(chalk.cyan('│ ') + chalk.bold.cyan(headTitle) + ' '.repeat(headPad) + chalk.cyan(' │'));
 
     type HelpEntry = { section: string } | [string, string];
     const items: HelpEntry[] = [
-      { section: '🚀 Esecuzione & Multi-Agente' },
-      ['/goal <obiettivo>', 'Orchestrazione dinamica: scompone e coordina il task'],
-      ['/team [nome]', 'Esegue un workflow o una pipeline predefinita'],
-      ['/call [@agenti...]', 'Conferenza multi-agente / brainstorming a più voci'],
+      { section: '🚀 Execution & Multi-Agent' },
+      ['/goal <goal>', 'Dynamic orchestration: decomposes and executes task'],
+      ['/team [name]', 'Runs predefined multi-agent team or pipeline'],
+      ['/call [@agents...]', 'Multi-agent conference / brainstorming call'],
 
-      { section: '🧠 Modello & Inferenza' },
-      ['/models [nome]', 'Elenca i modelli o seleziona il modello attivo'],
-      ['/provider [nome]', 'Cambia server/provider (Ollama, Unsloth, OpenRouter)'],
-      ['/effort [livello|auto|ask]', 'Regola il reasoning effort (none/low/med/xhigh)'],
-      ['/benchmark [modello|all]', 'Misura tier e velocità (tok/s) del modello'],
+      { section: '🧠 Model & Inference' },
+      ['/models [name]', 'Lists available models or switches active model'],
+      ['/provider [name]', 'Changes LLM provider (Ollama, Unsloth, OpenRouter)'],
+      ['/effort [level|auto|ask]', 'Adjusts reasoning effort (none/low/med/xhigh)'],
+      ['/benchmark [model|all]', 'Benchmarks model tier and speed (tok/s)'],
 
-      { section: '🛠️  Agente & Strumenti' },
-      ['/agent [nome]', 'Seleziona o ispeziona l\'agente attivo'],
-      ['/tools', 'Elenca i tool abilitati per ruolo, tier ed effort'],
+      { section: '🛠️  Agent & Tools' },
+      ['/agent [name]', 'Selects or inspects active character/role'],
+      ['/tools', 'Lists enabled tools per role, tier, and effort'],
 
-      { section: '📊 Memoria & Storico' },
-      ['/context', 'Finestra di contesto, token usati e attività'],
-      ['/memory [clear|<id>]', 'Memoria persistente a lungo termine dei fatti'],
-      ['/blackboard', 'Note e stato dell\'ultimo workflow/goal'],
-      ['/runs', 'Storico e report delle esecuzioni recenti'],
-      ['/continue [traccia]', 'Forza la ripresa di un ragionamento interrotto'],
+      { section: '📊 Memory & History' },
+      ['/context', 'Context window usage, tokens, and activity history'],
+      ['/memory [clear|<id>]', 'Persistent shared memory store'],
+      ['/blackboard', 'Workflow notes and blackboard state'],
+      ['/runs', 'Workflow execution history and reports'],
+      ['/continue [trace]', 'Resumes interrupted reasoning trace'],
 
-      { section: '⚙️  Sessione' },
-      ['/info', 'Riepilogo configurazione e server attivo'],
-      ['/reset', 'Azzera cronologia, contesto e permessi'],
-      ['/clear · /exit', 'Pulisce lo schermo · Esci'],
+      { section: '⚙️  Session' },
+      ['/info', 'Displays active session configuration and server status'],
+      ['/reset', 'Resets history, context, and permissions'],
+      ['/clear · /exit', 'Clears screen · Exits REPL'],
     ];
 
     const cmdColW = 34;
@@ -231,7 +227,7 @@ export class CLITheme {
       }
     }
     logSink.log(bot);
-    logSink.log(chalk.gray('  Tab completa comandi e argomenti · ↑/↓ naviga la history · Esc interrompe la generazione'));
+    logSink.log(chalk.gray('  Tab completes commands & args · ↑/↓ navigates history · Esc interrupts generation'));
     logSink.log('');
   }
 
@@ -240,7 +236,7 @@ export class CLITheme {
       const col = r.color || chalk.green;
       return r.label + ': ' + col(r.value);
     });
-    CLITheme.box('Stato Sessione', lines, chalk.blue);
+    CLITheme.box('Session Status', lines, chalk.blue);
   }
 
   static createSpinner(text: string) {

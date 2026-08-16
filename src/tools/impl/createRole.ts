@@ -15,15 +15,13 @@ export const createRoleTool: Tool = {
   }) => {
     const rolesDir = homePath('roles');
     
-    // Assicura che la cartella roles esista
     if (!fs.existsSync(rolesDir)) {
       fs.mkdirSync(rolesDir, { recursive: true });
     }
 
-    // Pulisce il nome del file per sicurezza
     const cleanName = args.name.toLowerCase().replace(/[^a-z0-9_-]/g, '');
     if (!cleanName) {
-      throw new Error("Il nome identificativo del ruolo fornito non è valido.");
+      throw new Error("Invalid role name identifier provided.");
     }
 
     const rolePath = path.join(rolesDir, `${cleanName}.json`);
@@ -36,9 +34,8 @@ export const createRoleTool: Tool = {
       allowedTools: args.allowedTools
     };
 
-    // Scrive il file JSON
     fs.writeFileSync(rolePath, JSON.stringify(roleContent, null, 2), 'utf-8');
 
-    return `Ruolo '${args.displayName}' (${cleanName}) salvato con successo in 'roles/${cleanName}.json'.\nPuoi attivare questa nuova personalità usando il comando '/agent' nel REPL.`;
+    return `Role '${args.displayName}' (${cleanName}) saved successfully in 'roles/${cleanName}.json'.\nActivate with '/agent' in the REPL.`;
   }
 };

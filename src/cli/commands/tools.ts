@@ -6,12 +6,11 @@ import { RiskLevel } from '../../safety/permissions';
 import { logSink } from '../../core/logSink';
 
 /**
- * Comando `/tools`: elenca tutti i tool disponibili nel sistema ed evidenzia
- * quali sono effettivamente abilitati e visibili all'agente attivo in base a:
- *  - Ruolo dell'agente (allowedTools)
- *  - Tier del modello attivo (small, medium, large)
- *  - Reasoning effort corrente
- *  - Livello di rischio (SAFE, RESTRICTED, DANGEROUS)
+ * `/tools` command: lists all registered tools and displays active visibility based on:
+ *  - Agent role (allowedTools)
+ *  - Active model tier (small, medium, large)
+ *  - Active reasoning effort
+ *  - Risk level (SAFE, RESTRICTED, DANGEROUS)
  */
 export async function handleTools(ctx: CommandCtx, _arg: string): Promise<void> {
   const charName = ctx.configManager.getActiveCharacter();
@@ -25,17 +24,16 @@ export async function handleTools(ctx: CommandCtx, _arg: string): Promise<void> 
 
   const allRegisteredTools = ctx.registry.getAllTools();
   if (allRegisteredTools.length === 0) {
-    CLITheme.warning('Nessun tool registrato nel sistema.');
+    CLITheme.warning('No tools registered in system.');
     return;
   }
 
-  // Tool visibili al modello attivo in questo momento
   const visibleForLlm = ctx.registry.listForLLM(model, role.allowedTools, effort);
   const visibleNames = new Set(visibleForLlm.map((t) => t.function.name));
 
-  logSink.log(chalk.bold(`\n🛠️  Toolbox Agente — ${char ? `${char.displayName} (${char.aiName})` : role.displayName}`));
-  logSink.log(chalk.gray(`   Modello: ${chalk.green(model)} · Tier rilevato: ${chalk.yellow(tier.toUpperCase())} · Reasoning Effort: ${chalk.magenta(effort || 'standard')}`));
-  logSink.log(chalk.gray(`   Tool abilitati per questo turno: ${chalk.green(visibleNames.size)} su ${allRegisteredTools.length} totali\n`));
+  logSink.log(chalk.bold(`\n🛠️  Agent Toolbox — ${char ? `${char.displayName} (${char.aiName})` : role.displayName}`));
+  logSink.log(chalk.gray(`   Model: ${chalk.green(model)} · Detected Tier: ${chalk.yellow(tier.toUpperCase())} · Reasoning Effort: ${chalk.magenta(effort || 'standard')}`));
+  logSink.log(chalk.gray(`   Tools enabled for this turn: ${chalk.green(visibleNames.size)} of ${allRegisteredTools.length} total\n`));
 
   const formatRisk = (risk: RiskLevel) => {
     switch (risk) {
@@ -69,9 +67,9 @@ export async function handleTools(ctx: CommandCtx, _arg: string): Promise<void> 
     if (!isVisible) {
       const roleAllowed = !role.allowedTools || role.allowedTools.includes(t.name);
       if (!roleAllowed) {
-        reason = chalk.gray('(escluso dal ruolo)');
+        reason = chalk.gray('(excluded by role)');
       } else {
-        reason = chalk.gray(`(richiede tier ${schema.requiredTier})`);
+        reason = chalk.gray(`(requires tier ${schema.requiredTier})`);
       }
     }
 

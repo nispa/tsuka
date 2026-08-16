@@ -4,8 +4,7 @@ import chalk from 'chalk';
 import { logSink } from '../../core/logSink';
 
 /**
- * Comando `/agent`: gestore unificato dell'agente attivo.
- * Permette di selezionare o commutare il profilo agente/personaggio attivo.
+ * `/agent` command: character and active persona switcher.
  */
 export async function handleAgent(ctx: CommandCtx, arg: string): Promise<void> {
   const availableChars = ctx.listAvailableCharacters();
@@ -17,27 +16,27 @@ export async function handleAgent(ctx: CommandCtx, arg: string): Promise<void> {
     );
 
     if (!found) {
-      CLITheme.error(`Personaggio/Agente '${arg}' non trovato.`);
-      logSink.log(chalk.gray(`Disponibili: ${availableChars.map((c) => c.displayName).join(', ')}`));
+      CLITheme.error(`Character/Agent '${arg}' not found.`);
+      logSink.log(chalk.gray(`Available: ${availableChars.map((c) => c.displayName).join(', ')}`));
       return;
     }
 
     ctx.configManager.setActiveCharacter(found.name);
     ctx.agent.current = ctx.recreateAgent();
-    CLITheme.success(`Agente attivo: ${chalk.green(found.displayName)} (${chalk.yellow(found.aiName)})`);
-    CLITheme.info(`Ruolo: ${chalk.cyan(found.role)} · Stile: ${chalk.gray(found.trait)}`);
+    CLITheme.success(`Active agent: ${chalk.green(found.displayName)} (${chalk.yellow(found.aiName)})`);
+    CLITheme.info(`Role: ${chalk.cyan(found.role)} · Style: ${chalk.gray(found.trait)}`);
     return;
   }
 
   const currentCharName = ctx.configManager.getActiveCharacter();
   const currentChar = ctx.loadCharacter(currentCharName);
 
-  logSink.log(chalk.bold('\n👤 Configurazione Agente'));
+  logSink.log(chalk.bold('\n👤 Agent Configuration'));
   if (currentChar) {
-    logSink.log(`  • Attivo:      ${chalk.green(currentChar.displayName)} (${chalk.yellow(currentChar.aiName)})`);
-    logSink.log(`  • Ruolo:       ${chalk.cyan(currentChar.role)}`);
-    logSink.log(`  • Stile:       ${chalk.gray(currentChar.trait)}`);
-    logSink.log(`  • Descrizione: ${chalk.white(currentChar.description)}`);
+    logSink.log(`  • Active:      ${chalk.green(currentChar.displayName)} (${chalk.yellow(currentChar.aiName)})`);
+    logSink.log(`  • Role:        ${chalk.cyan(currentChar.role)}`);
+    logSink.log(`  • Style:       ${chalk.gray(currentChar.trait)}`);
+    logSink.log(`  • Description: ${chalk.white(currentChar.description)}`);
   }
   logSink.log('');
 
@@ -47,7 +46,7 @@ export async function handleAgent(ctx: CommandCtx, arg: string): Promise<void> {
   }));
 
   const selected = await InteractiveMenu.select<string>(
-    'Seleziona l\'agente da attivare (usa le frecce):',
+    'Select agent to activate (use arrow keys):',
     menuOptions,
     currentCharName
   );
@@ -57,7 +56,7 @@ export async function handleAgent(ctx: CommandCtx, arg: string): Promise<void> {
     ctx.agent.current = ctx.recreateAgent();
     const selectedCharObj = ctx.loadCharacter(selected);
     if (selectedCharObj) {
-      CLITheme.success(`Agente attivo cambiato a: ${chalk.green(selectedCharObj.displayName)} (${chalk.yellow(selectedCharObj.aiName)})`);
+      CLITheme.success(`Active agent switched to: ${chalk.green(selectedCharObj.displayName)} (${chalk.yellow(selectedCharObj.aiName)})`);
     }
   }
 }

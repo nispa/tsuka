@@ -11,13 +11,13 @@ export const recallMemoryTool: Tool = {
 
     if (results.length === 0) {
       return args.query
-        ? `Nessun ricordo trovato nella memoria condivisa per "${args.query}".`
-        : 'La memoria condivisa è vuota: nessun fatto salvato finora.';
+        ? `No memories found in shared memory matching "${args.query}".`
+        : 'Shared memory is empty: no facts saved yet.';
     }
 
     const header = args.query
-      ? `Trovati ${results.length} ricordi per "${args.query}":`
-      : `Ultimi ${results.length} ricordi nella memoria condivisa:`;
+      ? `Found ${results.length} memory item(s) for "${args.query}":`
+      : `Recent ${results.length} memory item(s) in shared memory:`;
 
     const lines = results.map(
       (f) => `- [${f.timestamp.slice(0, 10)}] (${f.source}) ${f.content}`

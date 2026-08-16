@@ -1,19 +1,9 @@
 /**
- * Blocco del raw mode per l'intera sessione interattiva.
+ * Persistent raw mode lock for interactive session.
  *
- * Su Windows il passaggio raw→cooked (che readline fa a ogni close, prompts a
- * ogni menu, e l'interrupt a ogni disarm) può lasciare una ReadConsole cooked
- * pendente che libuv non riesce a cancellare: al ritorno in raw mode i tasti
- * finiscono nella lettura-zombie e l'input muore (niente eco, niente Ctrl+C,
- * niente Esc — il sintomo del "terminale bloccato col cursore che lampeggia").
- *
- * Soluzione (stessa strategia di Ink e simili): il raw mode viene acceso una
- * volta all'avvio e i successivi setRawMode(false) dei vari componenti vengono
- * ignorati — readline e prompts funzionano comunque in raw, dato che sono loro
- * stessi ad attivarlo quando servono. La console viene ripristinata (cooked)
- * solo all'uscita del processo, così la shell dell'utente resta pulita.
- *
- * Senza TTY è tutto no-op.
+ * On Windows, switching between raw and cooked modes can leave pending ReadConsole
+ * handles in libuv, causing frozen terminal states. Locking raw mode for the process
+ * duration and restoring cooked mode on exit avoids stdin lockups.
  */
 export function lockRawMode(): void {
   if (!process.stdin.isTTY) return;
@@ -25,10 +15,8 @@ export function lockRawMode(): void {
 
   stdin.setRawMode = ((mode: boolean) => {
     if (mode) {
-      // Riasserzione: no-op a livello libuv se il raw mode è già attivo
       realSetRawMode(true);
     }
-    // I tentativi di tornare in cooked mode durante la sessione sono ignorati
     return stdin;
   }) as typeof stdin.setRawMode;
 

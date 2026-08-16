@@ -63,7 +63,7 @@ async function main() {
     const lastAssistant = finalMsgs[finalMsgs.length - 1];
     check(
       'G1c',
-      lastAssistant.role === 'assistant' && typeof lastAssistant.content === 'string' && /completato/i.test(lastAssistant.content),
+      lastAssistant.role === 'assistant' && typeof lastAssistant.content === 'string' && (/completato/i.test(lastAssistant.content) || /completed/i.test(lastAssistant.content)),
       `riepilogo finale riflette il completamento (contenuto: "${lastAssistant.content}")`
     );
 
@@ -125,7 +125,7 @@ async function main() {
     const lastAssistant = finalMsgs[finalMsgs.length - 1];
     check(
       'G3b',
-      lastAssistant.role === 'assistant' && typeof lastAssistant.content === 'string' && /completato/i.test(lastAssistant.content),
+      lastAssistant.role === 'assistant' && typeof lastAssistant.content === 'string' && (/completato/i.test(lastAssistant.content) || /completed/i.test(lastAssistant.content)),
       'il goal con rilavorazione si conclude con successo'
     );
   }

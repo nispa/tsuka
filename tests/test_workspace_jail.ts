@@ -71,7 +71,7 @@ async function main() {
     rejected = true;
     errorMsg = e.message;
   }
-  check('J3', rejected && /[Aa]ccesso negato/.test(errorMsg), `percorso fuori workspace rifiutato: "${errorMsg}"`);
+  check('J3', rejected && /([Aa]ccesso negato|[Aa]ccess denied)/.test(errorMsg), `percorso fuori workspace rifiutato: "${errorMsg}"`);
 
   // --- J4: la workspace root stessa (path esatto, es. list_dir su '.') è accettata ---
   let rootOk = false;

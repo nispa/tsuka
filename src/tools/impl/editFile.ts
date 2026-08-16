@@ -8,27 +8,25 @@ export const editFileTool: Tool = {
   execute: async (args: { path: string; targetContent: string; replacementContent: string }) => {
     const fullPath = resolveSafePath(args.path);
     if (!fs.existsSync(fullPath)) {
-      throw new Error(`Il file '${args.path}' non esiste.`);
+      throw new Error(`File '${args.path}' does not exist.`);
     }
 
     const content = fs.readFileSync(fullPath, 'utf-8');
     const occurrences = content.split(args.targetContent).length - 1;
     if (occurrences === 0) {
       throw new Error(
-        `Impossibile trovare il testo target in '${args.path}'. Assicurati che corrisponda esattamente.`
+        `Target content not found in '${args.path}'. Ensure it matches exactly.`
       );
     }
     if (occurrences > 1) {
       throw new Error(
-        `Trovate ${occurrences} occorrenze in '${args.path}'. Rendi il blocco 'targetContent' più specifico.`
+        `Found ${occurrences} occurrences in '${args.path}'. Make 'targetContent' block more specific.`
       );
     }
 
-    // NOTA: si usa una replacer function per evitare che pattern speciali
-    // ($&, $', $`, $1...) nel replacementContent vengano interpretati da String.replace,
-    // corrompendo silenziosamente il file modificato.
+    // Use replacer function to avoid special pattern interpretations ($&, $', $`, $1...)
     const updatedContent = content.replace(args.targetContent, () => args.replacementContent);
     fs.writeFileSync(fullPath, updatedContent, 'utf-8');
-    return `File '${args.path}' modificato con successo.`;
+    return `File '${args.path}' edited successfully.`;
   }
 };

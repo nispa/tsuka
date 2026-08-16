@@ -1,21 +1,13 @@
 /**
- * Sink di logging iniettabile per core/tools (debito tecnico T-"23 console.*
- * nel core", docs/architecture.md §14-15). `agentEvents.ts` dichiara che il
- * core non deve stampare direttamente — ma molte classi che stampano
- * (`MemoryStore`, `ConfigManager`, `ToolRegistry`, `RunController`, i tool
- * stessi) non girano dentro un `Agent.run()` e non hanno un `AgentEventHandler`
- * a disposizione: instradarle su `AgentEvent` avrebbe richiesto cambiare la
- * firma pubblica di mezza codebase. Questo modulo dà loro un punto di uscita
- * unico e sostituibile, come alternativa più leggera indicata nella stessa nota
- * di debito ("instradarli su AgentEvent o su un sink iniettato").
+ * Injectable logging sink for core and tools. `agentEvents.ts` declares that the core
+ * should not print directly — but several utility classes (`MemoryStore`, `ConfigManager`,
+ * `ToolRegistry`, `RunController`, tools themselves) run outside of `Agent.run()` and do
+ * not have an `AgentEventHandler` available. This module provides a single, replaceable
+ * output sink.
  *
- * Default: identico al comportamento precedente (stampa su console) — nessuna
- * differenza visibile per chi non fa nulla. Chi vuole intercettare (una UI
- * diversa dalla CLI, un test che vuole silenzio) chiama `setLogSink()` una
- * volta all'avvio. Il default richiama `console.*` non catturato per
- * riferimento ma per lookup a ogni chiamata, quindi resta compatibile con
- * `logBuffer.ts`, che sostituisce temporaneamente `console.log` per bufferizzare
- * l'output dei branch paralleli di `/goal`.
+ * Default: standard console printing. Custom UI layers or quiet test runners can call
+ * `setLogSink()`. The default resolves `console.*` at call time, maintaining compatibility
+ * with `logBuffer.ts`.
  */
 
 export interface LogSink {
@@ -32,17 +24,17 @@ const defaultSink: LogSink = {
 
 let activeSink: LogSink = defaultSink;
 
-/** Sostituisce il sink attivo (es. per instradare su una UI diversa dalla CLI). */
+/** Replaces the active log sink (e.g. to route to a UI other than the CLI). */
 export function setLogSink(sink: LogSink): void {
   activeSink = sink;
 }
 
-/** Ripristina il comportamento di default (stampa su console). Utile nei test. */
+/** Restores default console logging behavior. Useful in tests. */
 export function resetLogSink(): void {
   activeSink = defaultSink;
 }
 
-/** Punto di logging da usare al posto di `console.*` in core/tools. */
+/** Logging sink to use instead of direct `console.*` in core/tools. */
 export const logSink = {
   log: (message: string) => activeSink.log(message),
   warn: (message: string) => activeSink.warn(message),

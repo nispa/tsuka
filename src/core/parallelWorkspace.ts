@@ -3,22 +3,19 @@ import * as path from 'path';
 import { homePath } from './apphome';
 
 /**
- * Workspace isolati per i branch di un blocco PARALLELO (T3.2, PLANNING-QUALITA.md).
+ * Isolated staging workspaces for branches of a PARALLEL block (T3.2).
  *
- * Ogni branch scrive in una propria cartella di staging sotto l'app home
- * (`workspace/parallel-<n>/`, non nella workspace reale del progetto): evita che
- * scritture concorrenti si sovrappongano prima che il blocco sia concluso e
- * permette di rilevare conflitti — stesso path relativo, contenuto diverso tra
- * branch — prima di toccare la workspace principale. Nessuna sovrascrittura
- * silenziosa: un path in conflitto non viene mai copiato nella workspace
- * principale, che resta intatta per quel file.
+ * Each branch writes into its own staging folder under the app home (`workspace/parallel-<n>/`),
+ * preventing concurrent file writes from clobbering each other. At merge time, conflicts
+ * (same relative path, different content across branches) are detected without touching
+ * the main workspace.
  */
 
 export interface ParallelBranch {
   index: number;
-  /** Etichetta del branch (es. aiName del personaggio), per i log e i conflitti. */
+  /** Branch label (e.g. character aiName) for logs and conflict reporting. */
   label: string;
-  /** Cartella di staging assoluta di questo branch. */
+  /** Absolute staging directory path for this branch. */
   root: string;
 }
 
@@ -32,7 +29,7 @@ export interface MergeResult {
   conflicts: MergeConflict[];
 }
 
-/** Crea (pulendole prima, in caso di run precedenti interrotte) le cartelle di staging. */
+/** Creates staging directories for branches, cleaning up any leftover directories. */
 export function createParallelBranches(labels: string[]): ParallelBranch[] {
   const base = homePath('workspace');
   return labels.map((label, i) => {
@@ -44,7 +41,7 @@ export function createParallelBranches(labels: string[]): ParallelBranch[] {
   });
 }
 
-/** Elenca ricorsivamente tutti i file di `dir`, come path relativi a `dir`. */
+/** Recursively lists all files in `dir` as relative paths. */
 function listFilesRecursive(dir: string): string[] {
   const out: string[] = [];
   const walk = (current: string) => {
@@ -59,14 +56,10 @@ function listFilesRecursive(dir: string): string[] {
 }
 
 /**
- * Unisce i file prodotti dai branch nella workspace principale. Se due o più
- * branch hanno scritto lo stesso path relativo con contenuto diverso (confronto
- * byte a byte, non testuale: sicuro anche per file binari), il path finisce in
- * `conflicts` e NON viene copiato — la workspace principale resta intatta per
- * quel file, incluso se già esisteva prima del blocco. Se il contenuto coincide
- * tra tutti i branch che l'hanno scritto (o un solo branch l'ha scritto), il file
- * viene copiato in `mainWorkspaceRoot`. Le cartelle di staging vengono sempre
- * ripulite al termine, anche in presenza di conflitti.
+ * Merges files produced by parallel branches into the main workspace.
+ * If two or more branches wrote differing content to the same relative path,
+ * the conflict is recorded in `conflicts` and the target file is not overwritten.
+ * Staging directories are cleaned up upon completion.
  */
 export function mergeParallelWorkspaces(branches: ParallelBranch[], mainWorkspaceRoot: string): MergeResult {
   const writers = new Map<string, { label: string; content: Buffer }[]>();

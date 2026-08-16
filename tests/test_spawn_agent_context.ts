@@ -154,7 +154,7 @@ async function main() {
 
     // --- T8.1: il system prompt del figlio istruisce a leggere le note prima di iniziare ---
     const childSysPrompt = provider.callLog[2]?.messages?.[0]?.content || '';
-    check('SA-a-5', typeof childSysPrompt === 'string' && /LAVAGNA DEL RUN/.test(childSysPrompt) && /read_notes/.test(childSysPrompt), `il system prompt del figlio menziona la lavagna e read_notes (estratto: "${String(childSysPrompt).slice(-300)}")`);
+    check('SA-a-5', typeof childSysPrompt === 'string' && /(LAVAGNA DEL RUN|RUN BLACKBOARD)/i.test(childSysPrompt) && /read_notes/.test(childSysPrompt), `il system prompt del figlio menziona la lavagna e read_notes (estratto: "${String(childSysPrompt).slice(-300)}")`);
 
     // --- T8.1: il figlio legge DAVVERO la nota del padre attraverso il tool reale (callLog[3] = round 2 figlio) ---
     const childToolMsg = provider.callLog[3]?.messages.find((m: any) => m.role === 'tool' && m.name === 'read_notes');
@@ -175,7 +175,7 @@ async function main() {
     check('SA-b-1', !!spawnToolMsg, 'la history del padre contiene il messaggio tool di spawn_agent');
     const spawnOutput = typeof spawnToolMsg?.content === 'string' ? spawnToolMsg.content : '';
     check('SA-b-2', spawnOutput.length > 0 && spawnOutput.length <= 3000, `il valore ritornato resta sotto i 3000 caratteri (${spawnOutput.length})`);
-    const pathMatch = spawnOutput.match(/salvato in '([^']+)'/);
+    const pathMatch = spawnOutput.match(/(?:salvato in|saved in) '([^']+)'/i);
     check('SA-b-3', !!pathMatch, `il valore ritornato contiene il percorso dell'artefatto (${JSON.stringify(spawnOutput.slice(0, 200))})`);
 
     const relPath = pathMatch ? pathMatch[1] : '';
@@ -269,9 +269,9 @@ async function main() {
     }
     check('SA-e-1', errMsg.length > 0, `un task di 2001 caratteri lancia un errore (${JSON.stringify(errMsg.slice(0, 200))})`);
     check('SA-e-2', errMsg.includes('2001'), `l'errore dichiara la lunghezza effettiva del task (${errMsg})`);
-    check('SA-e-3', /NON accorciarlo/i.test(errMsg), `l'errore vieta esplicitamente l'accorciamento (${errMsg})`);
-    check('SA-e-4', /spawn_agent/.test(errMsg) && /pi[uù] chiamate/i.test(errMsg), `l'errore indica l'uscita (a): più chiamate a spawn_agent (${errMsg})`);
-    check('SA-e-5', /write_file/.test(errMsg) && /percorso/i.test(errMsg), `l'errore indica l'uscita (b): write_file + percorso nel task (${errMsg})`);
+    check('SA-e-3', /(NON accorciarlo|do not truncate)/i.test(errMsg), `l'errore vieta esplicitamente l'accorciamento (${errMsg})`);
+    check('SA-e-4', /spawn_agent/.test(errMsg) && /(pi[uù] chiamate|multiple.*calls)/i.test(errMsg), `l'errore indica l'uscita (a): più chiamate a spawn_agent (${errMsg})`);
+    check('SA-e-5', /write_file/.test(errMsg) && /(percorso|briefingFile)/i.test(errMsg), `l'errore indica l'uscita (b): write_file + percorso nel task (${errMsg})`);
     check('SA-e-6', errMsg !== 'Compito troppo lungo (max 2000 caratteri).', 'il messaggio non è più quello originale (che invitava implicitamente ad accorciare)');
 
     // Il limite resta 2000: un task ESATTAMENTE a 2000 caratteri non deve incappare
@@ -283,7 +283,7 @@ async function main() {
     } catch (e: any) {
       errMsg2000 = e.message;
     }
-    check('SA-e-7', errMsg2000 === 'Provider non disponibile nel contesto.', `un task di esattamente 2000 caratteri supera il controllo di lunghezza (limite invariato) (${errMsg2000})`);
+    check('SA-e-7', errMsg2000 === 'Provider non disponibile nel contesto.' || errMsg2000 === 'Provider not available in execution context.', `un task di esattamente 2000 caratteri supera il controllo di lunghezza (limite invariato) (${errMsg2000})`);
 
     // Lo schema JSON del tool non prepara più la reazione sbagliata. Le due
     // alternative (dividere in più chiamate, o un briefing su file) sono ora
@@ -309,7 +309,7 @@ async function main() {
     } catch (e: any) {
       errMissing = e.message;
     }
-    check('SA-f-1', /non esiste/.test(errMissing), `briefingFile inesistente → errore esplicito (${errMissing})`);
+    check('SA-f-1', /(non esiste|does not exist)/i.test(errMissing), `briefingFile inesistente → errore esplicito (${errMissing})`);
 
     // (b) file oltre il limite → errore prescrittivo (stesso schema di T8.7, limite diverso)
     fs.writeFileSync(path.join(tmpHome, 'briefing-lungo.md'), 'z'.repeat(12001));
@@ -319,7 +319,7 @@ async function main() {
     } catch (e: any) {
       errTooLong = e.message;
     }
-    check('SA-f-2', /12001/.test(errTooLong) && /pi[uù] chiamate/i.test(errTooLong), `briefingFile troppo lungo → errore con la lunghezza effettiva e l'uscita corretta (${errTooLong})`);
+    check('SA-f-2', /12001/.test(errTooLong) && /(pi[uù] chiamate|multiple.*calls)/i.test(errTooLong), `briefingFile troppo lungo → errore con la lunghezza effettiva e l'uscita corretta (${errTooLong})`);
 
     // (c) file vuoto → errore esplicito, non un compito vuoto silenzioso
     fs.writeFileSync(path.join(tmpHome, 'briefing-vuoto.md'), '   \n  ');
@@ -329,7 +329,7 @@ async function main() {
     } catch (e: any) {
       errEmpty = e.message;
     }
-    check('SA-f-3', /vuoto/.test(errEmpty), `briefingFile vuoto (solo whitespace) → errore esplicito (${errEmpty})`);
+    check('SA-f-3', /(vuoto|empty)/i.test(errEmpty), `briefingFile vuoto (solo whitespace) → errore esplicito (${errEmpty})`);
 
     // (d) un briefing OLTRE i 2000 caratteri di MAX_TASK_LENGTH, ma sotto i 12000
     // di briefingFile, esegue con successo: il limite più permissivo è quello

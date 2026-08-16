@@ -2,15 +2,11 @@ import chalk from 'chalk';
 import { CLITheme } from './ui';
 
 /**
- * Riga di stato animata a fondo output durante la generazione del modello,
- * in stile Claude Code: `◐ Thinking… (2.4s · 87 tok) · coda del reasoning`.
+ * Animated status line displayed at the bottom of the terminal during LLM generation:
+ * e.g., `◐ Thinking… (2.4s · 87 tok) · reasoning hint`.
  *
- * Implementata a mano (non con ora): l'interval interno di ora confligge con
- * le write manuali interleaved dello streaming. La riga si ridisegna con
- * `\r + clear-line` e non va mai a capo (troncata alla larghezza del terminale),
- * così un singolo clear la rimuove sempre in modo pulito.
- *
- * In assenza di TTY (output redirezionato) tutte le operazioni sono no-op.
+ * Implemented manually without external spinner libraries to avoid interleaving conflicts
+ * with live streaming output.
  */
 
 const FRAMES = ['◐', '◓', '◑', '◒'];
@@ -18,7 +14,7 @@ const FRAME_INTERVAL_MS = 100;
 
 const isTTY = () => !!process.stdout.isTTY && process.env.TERM !== 'dumb';
 
-/** Coda visuale di una stringa che occupa al massimo maxCols colonne. */
+/** Returns visual tail of a string taking at most maxCols terminal columns. */
 function visualTail(s: string, maxCols: number): string {
   let out = '';
   for (let i = s.length - 1; i >= 0; i--) {
@@ -48,12 +44,12 @@ export class StatusLine {
     this.frame = 0;
     this.startedAt = Date.now();
     StatusLine.active = this;
-    process.stdout.write('\x1b[?25l'); // nasconde il cursore
+    process.stdout.write('\x1b[?25l'); // hide cursor
     this.render();
     this.timer = setInterval(() => this.render(), FRAME_INTERVAL_MS);
   }
 
-  /** Aggiorna i campi mostrati; il ridisegno avviene al prossimo frame dell'interval. */
+  /** Updates displayed fields; redrawn on next frame tick. */
   update(fields: { label?: string; tokens?: number; hint?: string }): void {
     if (fields.label !== undefined) this.label = fields.label;
     if (fields.tokens !== undefined) this.tokens = fields.tokens;
@@ -68,7 +64,7 @@ export class StatusLine {
     }
     if (StatusLine.active === this) StatusLine.active = null;
     if (wasActive) {
-      process.stdout.write('\r\x1b[2K\x1b[?25h'); // pulisce la riga e ripristina il cursore
+      process.stdout.write('\r\x1b[2K\x1b[?25h'); // clear line and restore cursor
     }
   }
 
@@ -76,7 +72,7 @@ export class StatusLine {
     return this.timer !== null;
   }
 
-  /** Ripristino d'emergenza del terminale (SIGINT/exit): pulisce la riga e mostra il cursore. */
+  /** Emergency terminal reset (SIGINT/exit): clears line and shows cursor. */
   static emergencyReset(): void {
     if (StatusLine.active) {
       StatusLine.active.stop();
@@ -89,10 +85,10 @@ export class StatusLine {
     const cols = process.stdout.columns || 80;
     const elapsed = ((Date.now() - this.startedAt) / 1000).toFixed(1);
     const spinner = chalk.magenta(FRAMES[this.frame++ % FRAMES.length]);
-    let line = spinner + ' ' + chalk.gray(`${this.label} (${elapsed}s · ${this.tokens} tok · esc/ctrl+x interrompe)`);
+    let line = spinner + ' ' + chalk.gray(`${this.label} (${elapsed}s · ${this.tokens} tok · esc/ctrl+x interrupts)`);
 
     if (this.hint) {
-      const used = CLITheme.cleanLen(line) + 3; // ' · ' di separazione
+      const used = CLITheme.cleanLen(line) + 3;
       const room = cols - used - 2;
       if (room > 8) {
         line += chalk.gray(' · ') + chalk.dim(visualTail(this.hint, room));
@@ -103,7 +99,6 @@ export class StatusLine {
   }
 }
 
-// Garanzia finale: il cursore torna visibile anche su uscite impreviste
 process.on('exit', () => {
   if (isTTY()) process.stdout.write('\x1b[?25h');
 });

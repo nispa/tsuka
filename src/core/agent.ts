@@ -13,32 +13,17 @@ import * as path from 'path';
 import { homePath } from './apphome';
 
 /**
- * Sagoma minima per la cascata di risoluzione del reasoning_effort (T8.10):
- * qualunque oggetto con un campo opzionale `reasoningEffort` la soddisfa, così
- * i CharacterConfig/RoleConfig reali (src/cli/shared.ts, VIETATO da toccare in
- * questo task) non vanno importati qui — bastano duck-typing e il campo in più
- * nei rispettivi file JSON (characters/*.json, roles/*.json).
+ * Minimal interface shape for reasoning effort cascade resolution (T8.10).
  */
 export interface ReasoningEffortSource {
   reasoningEffort?: ReasoningEffort;
 }
 
 /**
- * Cascata a 4 livelli per decidere il reasoning_effort effettivo di una chiamata
- * (T8.10, TASKS.md): override del chiamante (es. spawn_agent per un sotto-compito
- * meccanico) → personaggio → ruolo → default di `tsuka.config.json`. Il primo
- * livello che specifica un valore vince. Il tratto resta fuori di proposito:
- * descrive il tono della risposta, non la profondità del ragionamento — i due assi
- * sono indipendenti.
+ * 4-level cascade to resolve effective reasoning effort (T8.10):
+ * caller override -> character -> role -> config default.
+ * First level specifying a value wins.
  */
-// Parametri tipizzati `object` (non ReasoningEffortSource): TypeScript considera
-// ReasoningEffortSource un "weak type" (tutte proprietà opzionali) e rifiuta con
-// TS2559 l'assegnazione diretta di un CharacterConfig/RoleConfig reale (nessuna
-// proprietà in comune per nome, non avendo ancora `reasoningEffort` nel loro tipo
-// dichiarato in src/cli/shared.ts, VIETATO da toccare in questo task — il campo
-// esiste comunque a runtime nei file JSON, vedi characters/*.json e roles/*.json).
-// La lettura resta sicura: `as ReasoningEffortSource` più `?.` non lancia mai se
-// il campo manca, si limita a leggere `undefined`.
 export function resolveReasoningEffort(
   callerOverride: ReasoningEffort | undefined,
   character: object | null | undefined,
@@ -54,8 +39,7 @@ export function resolveReasoningEffort(
 }
 
 /**
- * Renderer minimale usato quando il chiamante non fornisce un handler eventi
- * (test, usi programmatici). La CLI passa il proprio (StreamRenderer).
+ * Minimal fallback event renderer used when caller provides no event handler (tests/programmatic use).
  */
 function plainEventRenderer(ev: AgentEvent): void {
   switch (ev.type) {
@@ -63,10 +47,10 @@ function plainEventRenderer(ev: AgentEvent): void {
       console.log(chalk.cyan(`[tool] ${ev.name}...`));
       break;
     case 'tool_end':
-      console.log(chalk.gray(`[tool] ${ev.name} ${ev.success ? 'completato' : 'fallito/rifiutato'}`));
+      console.log(chalk.gray(`[tool] ${ev.name} ${ev.success ? 'completed' : 'failed/rejected'}`));
       break;
     case 'max_rounds':
-      console.log(chalk.yellow(`[Interruzione: raggiunto il limite di ${ev.limit} cicli di tool]`));
+      console.log(chalk.yellow(`[Interrupted: reached limit of ${ev.limit} tool rounds]`));
       break;
   }
 }
@@ -74,7 +58,7 @@ function plainEventRenderer(ev: AgentEvent): void {
 import { sanitizeToolCallArguments } from '../tools/jsonRepair';
 
 /**
- * Wrapper di retrocompatibilità: delega al motore di riparazione JSON in `src/tools/jsonRepair.ts`.
+ * Backward compatibility wrapper for tool arguments sanitization.
  */
 export function sanitizeAndParseToolArgs(rawArguments: string | undefined): {
   parsedArgs: any;
@@ -90,8 +74,6 @@ export function sanitizeAndParseToolArgs(rawArguments: string | undefined): {
 }
 
 export class Agent {
-  // Limite di sicurezza di default: massimo numero di cicli consecutivi di esecuzione tool
-  // per singola richiesta utente (evita loop infiniti se il modello continua a richiedere tool)
   private static readonly DEFAULT_MAX_TOOL_ROUNDS = 15;
 
   private provider: ILLMProvider;
@@ -102,38 +84,11 @@ export class Agent {
   private maxHistoryMessages: number;
   private maxHistoryTokens: number;
   private maxToolRounds: number;
-  // Rapporto caratteri/token usato dalla stima euristica, tarato a runtime (vedi
-  // calibrateCharsPerToken): seed 3,5 (valore storico, tarato sull'inglese), corretto
-  // verso il rapporto realmente osservato su italiano/codice via l'usage reale dell'API.
   private charsPerToken = 3.5;
-  private static readonly RATIO_SMOOTHING = 0.2; // peso della nuova osservazione nella media mobile
-  // Etichetta dell'agente (es. aiName del personaggio), passata alle richieste di
-  // permesso (T3.1) così che un prompt RESTRICTED/DANGEROUS mostri chi lo chiede
-  // quando più agenti sono attivi in parallelo (blocco PARALLELO di /goal).
+  private static readonly RATIO_SMOOTHING = 0.2;
   private agentLabel?: string;
-  // Sforzo di ragionamento risolto per QUESTO agente (T8.10): già il risultato
-  // della cascata personaggio → ruolo → default config, calcolato dal chiamante
-  // (vedi resolveReasoningEffort) — Agent non conosce character/role, solo l'esito.
   private reasoningEffort?: ReasoningEffort;
-  // T9.10: alcuni contesti (turno di membro /team-/goal) hanno un modo noto per
-  // riconoscere una risposta testuale LEGITTIMA come chiusura del turno (es. il
-  // marker "STATO: COMPLETATO/DA_CONTINUARE/FALLITO" del protocollo) — osservato
-  // in produzione con modelli locali "pensanti" (Qwen3 via llama-server): una
-  // risposta che è solo ragionamento, senza mai una tool call E senza quel
-  // marker, termina comunque il turno in run() (vedi sotto) e viene scambiata
-  // per "nessun lavoro necessario", sprecando l'intero turno.
-  // undefined ovunque non esiste questo concetto (chat normale in index.ts, o
-  // un sub-agente di spawn_agent senza un protocollo di stato): lì il testo
-  // puro resta sempre una risposta legittima, comportamento invariato.
   private acceptTextOnlyIf?: (content: string) => boolean;
-  // Caratteri dell'array `tools` inviato all'ultimo round (T8.9, "Ridurre il costo
-  // fisso del prompt"): gli schemi dei tool viaggiano nella richiesta API esattamente
-  // come i messaggi, ma pruneHistory/estimateMessagesTokens/compressHistory ne erano
-  // ciechi — il budget di contesto credeva di avere più spazio di quanto ne avesse
-  // davvero. Aggiornato a ogni round da run() (stesso punto in cui i tool vengono
-  // calcolati per la chiamata), 0 quando nessun tool viene inviato (allineato a
-  // `tools.length > 0 ? tools : undefined` in run(): coerente con ciò che l'API
-  // riceve davvero, non con l'array vuoto restituito da listForLLM).
   private toolsChars = 0;
 
   constructor(
@@ -164,45 +119,27 @@ export class Agent {
 
   private commandCtx?: any;
 
-  /** Imposta il contesto dei comandi CLI (usato dai tool di escalation come request_goal/team/call). */
+  /** Sets CLI command context (used by escalation tools like request_goal/team/call). */
   setCommandCtx(ctx: any): void {
     this.commandCtx = ctx;
   }
 
-  /** Sforzo di ragionamento risolto per questo agente (diagnostica/test). */
   getReasoningEffort(): ReasoningEffort | undefined {
     return this.reasoningEffort;
   }
 
-  /** Limite massimo di cicli di tool configurato per questo agente (diagnostica/test). */
   getMaxToolRounds(): number {
     return this.maxToolRounds;
   }
 
-  /** Conta i caratteri "grezzi" di un messaggio (content + tool_calls serializzati). */
   private static messageChars(m: Pick<ChatMessage, 'content' | 'tool_calls'>): number {
     return sumMessageChars([m]);
   }
 
-  /**
-   * Stima i token di un messaggio usando il rapporto caratteri/token corrente
-   * (tarato a runtime, vedi calibrateCharsPerToken), inclusi gli eventuali
-   * tool_calls serializzati che viaggiano nel contesto insieme al content.
-   */
   private estimateTokens(m: Pick<ChatMessage, 'content' | 'tool_calls'>): number {
     return Math.ceil(Agent.messageChars(m) / this.charsPerToken);
   }
 
-  /**
-   * Aggiorna il rapporto caratteri/token con un'osservazione reale: chiamata dopo
-   * ogni risposta dell'LLM per cui l'API ha restituito promptTokens > 0 (usage reale,
-   * non stimato). Media mobile invece di sostituzione secca: un singolo turno anomalo
-   * (es. prompt quasi vuoto) non deve far divergere la stima per i turni successivi.
-   * Include i caratteri degli schemi tool (T8.9): promptTokens dell'API conta anche
-   * l'array `tools` inviato nella stessa richiesta, quindi il denominatore dei
-   * caratteri deve farlo altrettanto, o la calibrazione convergerebbe a un rapporto
-   * caratteri/token falsato.
-   */
   private calibrateCharsPerToken(sentMessages: Array<Pick<ChatMessage, 'content' | 'tool_calls'>>, promptTokens?: number): void {
     if (!promptTokens || promptTokens <= 0) return;
     const chars = sentMessages.reduce((sum, m) => sum + Agent.messageChars(m), 0) + this.toolsChars;
@@ -211,12 +148,6 @@ export class Agent {
     this.charsPerToken = this.charsPerToken * (1 - Agent.RATIO_SMOOTHING) + observed * Agent.RATIO_SMOOTHING;
   }
 
-  /**
-   * Registra la dimensione (in caratteri) dell'array `tools` che sta per essere
-   * inviato all'API (T8.9): chiamato da run() a ogni round, con lo stesso valore
-   * che verrà davvero passato a chatWithTools (`undefined` quando non ci sono tool
-   * → 0 caratteri, non "[]", per restare coerenti con ciò che l'API riceve).
-   */
   private updateToolsSize(toolsForRequest: unknown[] | undefined): void {
     if (!toolsForRequest || toolsForRequest.length === 0) {
       this.toolsChars = 0;
@@ -229,10 +160,6 @@ export class Agent {
     }
   }
 
-  /**
-   * Stima i token occupati dagli schemi tool dell'ultimo round (T8.9), con lo
-   * stesso rapporto caratteri/token corrente usato per i messaggi.
-   */
   private estimateToolsTokens(): number {
     return this.toolsChars > 0 ? Math.ceil(this.toolsChars / this.charsPerToken) : 0;
   }
@@ -248,8 +175,7 @@ export class Agent {
   }
 
   /**
-   * Cambia la skill (ruolo) ed i tool ammessi dell'agente a caldo,
-   * aggiornando il system prompt ed il filtro dei tool senza cancellare la cronologia.
+   * Updates agent skill/role and allowed tools dynamically without clearing conversation history.
    */
   setActiveSkill(systemPrompt: string, allowedTools?: string[]): void {
     this.allowedTools = allowedTools;
@@ -265,26 +191,14 @@ export class Agent {
   }
 
   /**
-   * Mantiene la cronologia entro i limiti configurati: conserva il system prompt
-   * e taglia i messaggi meno recenti in base a due criteri combinati:
-   *  1. numero massimo di messaggi (maxHistoryMessages);
-   *  2. budget di token stimati (maxHistoryTokens): protegge la context window
-   *     anche quando pochi messaggi contengono output tool molto grandi.
-   * Il punto di taglio è scelto in modo sicuro: il primo messaggio mantenuto non è
-   * mai una risposta 'tool' orfana del suo tool_call (altrimenti l'API rifiuterebbe
-   * la richiesta) e restano sempre almeno gli ultimi 3 messaggi oltre al system.
-   * Ritorna il numero di messaggi rimossi.
+   * Prunes history to stay within message count and estimated token budgets.
    */
   pruneHistory(): number {
-    // 1) Limite a conteggio messaggi (guardia superiore di sicurezza)
     let start = 1;
     if (this.messages.length > this.maxHistoryMessages) {
       start = this.messages.length - (this.maxHistoryMessages - 1);
     }
 
-    // 2) Limite a token stimati (driver primario): avanza il punto di taglio finché
-    //    il budget è rispettato, senza mai scendere sotto gli ultimi 3 messaggi (un output
-    //    recente sopra budget da solo resta: rimuoverlo romperebbe il turno in corso)
     if (this.maxHistoryTokens > 0) {
       let total = this.estimateToolsTokens() + this.estimateTokens(this.messages[0]);
       for (let i = start; i < this.messages.length; i++) {
@@ -296,7 +210,6 @@ export class Agent {
       }
     }
 
-    // Taglio sicuro rispetto alle coppie tool_call/tool
     while (start < this.messages.length - 1 && this.messages[start].role === 'tool') {
       start++;
     }
@@ -308,61 +221,36 @@ export class Agent {
 
     this.messages = [this.messages[0], ...this.messages.slice(start)];
     logSink.log(
-      chalk.gray(`[Cronologia: rimossi ${removed} messaggi meno recenti per restare entro la context window (~${this.maxHistoryTokens} token)]`)
+      chalk.gray(`[History: pruned ${removed} older messages to stay within context window (~${this.maxHistoryTokens} tokens)]`)
     );
     return removed;
   }
 
-  /**
-   * Stima i token di un array completo di messaggi, con il rapporto caratteri/token
-   * corrente (tarato a runtime). Pubblico: usato anche fuori da questa classe per
-   * mostrare stime di contesto coerenti con la calibrazione di questo agente.
-   */
   estimateMessagesTokens(msgs: Array<Pick<ChatMessage, 'content' | 'tool_calls'>>): number {
     return Math.ceil(sumMessageChars(msgs) / this.charsPerToken);
   }
 
-  /** Rapporto caratteri/token correntemente tarato (per diagnostica/test). */
   getCharsPerTokenRatio(): number {
     return this.charsPerToken;
   }
 
-  /**
-   * Stima di contesto TOTALE (T8.9): messaggi correnti + schemi tool dell'ultimo
-   * round, con il rapporto caratteri/token corrente. A differenza di
-   * `estimateMessagesTokens` (che ragiona solo sui messaggi passati, riusata anche
-   * per sotto-insiemi come "quanto pesa il blocco da comprimere"), questa è la
-   * stima pensata per essere confrontata col `promptTokens` reale dell'ultima
-   * risposta API: entrambe includono i tool, quindi convergono con la calibrazione
-   * di `calibrateCharsPerToken` invece di sottostimare sistematicamente.
-   */
   estimateTotalContextTokens(): number {
     return this.estimateMessagesTokens(this.messages) + this.estimateToolsTokens();
   }
 
   /**
-   * Compressione automatica della cronologia quando il contesto supera la soglia.
-   * Sostituisce i messaggi più vecchi (mantenendo system + ultimi 4) con un
-   * riassunto generato dall'LLM. Salva i dettagli in MemoryStore per recall_memory.
-   *
-   * @param threshold Soglia di attivazione (default 0.75 = 75% di maxHistoryTokens)
-   * @returns Token risparmiati e numero messaggi compressi
+   * Automatic conversation history compaction when context exceeds threshold.
    */
   async compressHistory(threshold: number = 0.75): Promise<{ saved: number; compressedCount: number }> {
     if (this.maxHistoryTokens <= 0 || this.messages.length < 6) return { saved: 0, compressedCount: 0 };
 
-    // T8.9: stesso baseline tool contato da pruneHistory, sommato alla stima dei
-    // messaggi — altrimenti la soglia di attivazione (threshold) scatta più tardi
-    // di quanto dovrebbe rispetto al contesto realmente inviato all'API.
     const total = this.estimateTotalContextTokens();
     if (total < this.maxHistoryTokens * threshold) return { saved: 0, compressedCount: 0 };
 
-    // Trova quanti messaggi comprimere: da [1] a [N], mantenendo system + ultimi 4
     const keepRecent = 4;
     const maxCompressEnd = this.messages.length - keepRecent - 1;
     if (maxCompressEnd < 1) return { saved: 0, compressedCount: 0 };
 
-    // Non rompere coppie tool_call/tool
     let compressEnd = maxCompressEnd;
     while (compressEnd > 0 && this.messages[compressEnd]?.role === 'tool') {
       compressEnd--;
@@ -371,14 +259,12 @@ export class Agent {
 
     const toCompress = this.messages.slice(1, compressEnd + 1);
     const compressTok = this.estimateMessagesTokens(toCompress);
-    // Chiamata LLM costa ~1k tok (prompt + risposta): comprimi solo se risparmio > 3x
     if (compressTok < 3000) return { saved: 0, compressedCount: 0 };
 
-    // Costruisce testo da riassumere
     const summaryInput = toCompress
       .filter((m) => m.role !== 'tool' && m.content)
       .map((m) => {
-        const label = m.role === 'user' ? 'Utente' : 'Assistente';
+        const label = m.role === 'user' ? 'User' : 'Assistant';
         const content = (m.content || '').slice(0, 600);
         return `${label}: ${content}`;
       })
@@ -398,7 +284,6 @@ export class Agent {
       );
       summary = response.content?.trim() || '';
     } catch {
-      // Fallback: tronca i contenuti più rilevanti
       summary = toCompress
         .filter((m) => m.role === 'assistant' && m.content)
         .map((m) => (m.content || '').slice(0, 300))
@@ -408,7 +293,7 @@ export class Agent {
 
     if (summary) {
       MemoryStore.getInstance().addFact(
-        `[Storia compressa] ${summary.replace(/\s+/g, ' ').slice(0, 500)}`,
+        `[Compressed history] ${summary.replace(/\s+/g, ' ').slice(0, 500)}`,
         'system',
         { kind: 'run' }
       );
@@ -416,7 +301,7 @@ export class Agent {
 
     const summaryMsg = {
       role: 'user' as const,
-      content: `[Storia precedente compressa]: ${summary.slice(0, 2000)}`
+      content: `[Previous conversation summary]: ${summary.slice(0, 2000)}`
     };
 
     this.messages = [
@@ -428,35 +313,15 @@ export class Agent {
     const afterTotal = this.estimateTotalContextTokens();
     const saved = total - afterTotal;
     const savedStr = saved >= 1000 ? `${(saved / 1000).toFixed(1)}k` : `${saved}`;
-    logSink.log(chalk.gray(`[Compressione automatica: compressi ${toCompress.length} messaggi, risparmiati ~${savedStr} tok (ora ~${Math.round(afterTotal / 1000)}k)]`));
+    logSink.log(chalk.gray(`[Auto-compression: compressed ${toCompress.length} messages, saved ~${savedStr} tokens (now ~${Math.round(afterTotal / 1000)}k)]`));
 
     return { saved, compressedCount: toCompress.length };
   }
 
-  // T9.12: sotto questa soglia (caratteri) non vale la pena salvare — sarebbe
-  // rumore nella cartella memory/thinking/ per un ragionamento troppo breve
-  // perché il modello dovesse davvero "ripartire da capo" rileggendolo.
   private static readonly MIN_REASONING_TO_PERSIST = 300;
 
   /**
-   * Persiste una catena di pensiero (T9.12) su file — non nella memoria
-   * "fatti" (MemoryStore, tetto di 500 caratteri per voce, pensata per note
-   * atomiche iniettate a ogni prompt): un ragionamento di 10 minuti è ordini
-   * di grandezza più lungo, e ficcarlo lì gonfierebbe ogni prompt futuro.
-   * Il testo completo va invece su file (stesso pattern di spawn_agent con
-   * 'briefingFile': il contenuto lungo vive su disco, non in un argomento/nota
-   * breve), e in MemoryStore finisce solo un puntatore corto (kind 'run',
-   * stesso kind già usato da compressHistory per gli scarti di turno condensati)
-   * — così un agente futuro lo trova con recall_memory/getRecent e lo rilegge
-   * con read_file solo se davvero gli serve, invece di riceverlo sempre e
-   * comunque in ogni system prompt.
-   *
-   * Chiamata sia sul percorso di successo (reasoningText pieno) sia da dentro
-   * il catch di run() quando la generazione si interrompe (partialReasoning,
-   * vedi provider.ts T9.12): il pensiero prodotto prima di un timeout o di un
-   * tool call JSON malformato è già stato generato per intero, buttarlo via
-   * insieme all'errore sprecherebbe gli stessi minuti che l'utente non vuole
-   * ripagare al turno successivo.
+   * Persists long reasoning chains to disk under `memory/thinking/` and adds an index pointer to MemoryStore.
    */
   private persistReasoningTrace(text: string, taskExcerpt: string, interrupted: boolean): void {
     const trimmed = (text || '').trim();
@@ -467,23 +332,23 @@ export class Agent {
         fs.mkdirSync(dir, { recursive: true });
       }
       const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const label = (this.agentLabel || 'agente').replace(/[^a-z0-9_-]+/gi, '-').slice(0, 30) || 'agente';
-      const filename = `${stamp}-${label}${interrupted ? '-interrotto' : ''}.md`;
+      const label = (this.agentLabel || 'agent').replace(/[^a-z0-9_-]+/gi, '-').slice(0, 30) || 'agent';
+      const filename = `${stamp}-${label}${interrupted ? '-interrupted' : ''}.md`;
       fs.writeFileSync(path.join(dir, filename), trimmed, 'utf-8');
 
       const shortTask = (taskExcerpt || '').replace(/\s+/g, ' ').trim().slice(0, 120);
-      const status = interrupted ? 'interrotto' : 'completo';
+      const status = interrupted ? 'interrupted' : 'complete';
       const pointer =
-        `Ragionamento ${status} (${trimmed.length} caratteri) su "${shortTask}" salvato in ` +
-        `memory/thinking/${filename} — leggilo con read_file prima di riragionare da capo sullo stesso compito.`;
-      MemoryStore.getInstance().addFact(pointer.slice(0, 500), this.agentLabel || 'agente', { kind: 'run' });
+        `Reasoning trace ${status} (${trimmed.length} chars) on "${shortTask}" saved in ` +
+        `memory/thinking/${filename} — read with read_file before re-evaluating the task from scratch.`;
+      MemoryStore.getInstance().addFact(pointer.slice(0, 500), this.agentLabel || 'agent', { kind: 'run' });
     } catch (error: any) {
-      logSink.error(chalk.gray(`[Impossibile salvare la traccia di ragionamento: ${error.message}]`));
+      logSink.error(chalk.gray(`[Unable to save reasoning trace: ${error.message}]`));
     }
   }
 
   /**
-   * Avvia il ciclo agentico per elaborare un messaggio utente.
+   * Runs the agentic ReAct loop for a user message.
    */
   async run(
     userMessage: string,
@@ -491,9 +356,6 @@ export class Agent {
     onStats?: (stats: { durationMs: number; tokenCount: number; tokensPerSecond: number; promptTokens: number; totalTokens: number }) => void,
     onEvent?: AgentEventHandler,
     signal?: AbortSignal,
-    // Override del chiamante (T8.10, primo livello della cascata): es. spawn_agent
-    // che sa già che il sotto-compito è meccanico. Vince su quanto risolto in
-    // costruzione (this.reasoningEffort), solo per questa singola run().
     reasoningEffortOverride?: ReasoningEffort
   ): Promise<string> {
     const emit = onEvent ?? plainEventRenderer;
@@ -503,44 +365,26 @@ export class Agent {
     let isDone = false;
     let finalAnswer = '';
     let toolRounds = 0;
-    // Stats cumulative attraverso tutti i round LLM (tool loop)
     let cumStats = { durationMs: 0, tokenCount: 0, promptTokens: 0, totalTokens: 0 };
-    // T9.10: usati solo se acceptTextOnlyIf è definito — vedi il ramo "nessuna
-    // tool call" più sotto. Il nudge si applica SOLO se questo run() non ha MAI
-    // eseguito un tool finora: un turno che ha già agito (es. report_status via
-    // tool call) e poi chiude con una nota testuale libera non ripete per forza
-    // il marker — è un wrap-up legittimo, non il vicolo cieco che il nudge
-    // vuole intercettare. Un solo nudge in tutto: se anche dopo il nudge il
-    // modello non chiama nulla né produce testo accettabile, si accetta la
-    // risposta com'è (nessun loop infinito, nessuna seconda insistenza).
     let everCalledTool = false;
     let noToolNudgeUsed = false;
 
     while (!isDone) {
-      // Interruzione utente arrivata tra un round e l'altro (es. durante i tool):
-      // esce subito senza aspettare che sia la prossima chiamata API a fallire
       if (signal?.aborted) break;
 
-      // Calcolo dinamico del Reasoning Budget e Throttling (T11.10)
       const promptTokensEst = Math.ceil(this.estimateMessagesTokens(this.messages) + this.toolsChars / this.charsPerToken);
       const baseEffort = currentRoundEffortOverride ?? this.reasoningEffort;
       const budget = calculateReasoningBudget(promptTokensEst, this.maxHistoryTokens, baseEffort);
       const effectiveEffort = (budget.effectiveEffort as ReasoningEffort) ?? baseEffort;
       const chatOptions: ChatOptions | undefined = effectiveEffort ? { reasoningEffort: effectiveEffort } : undefined;
 
-      // T8.12: propaga l'effort effettivo fino al tier dei tool
       const tools = this.registry.listForLLM(this.provider.getCurrentModel(), this.allowedTools, effectiveEffort);
       const toolsForRequest = tools.length > 0 ? tools : undefined;
 
-      // T8.9: registra la dimensione degli schemi PRIMA di potare la history, così
-      // pruneHistory ragiona sul budget realmente occupato (messaggi + tool).
       this.updateToolsSize(toolsForRequest);
-
-      // Mantiene il contesto entro la finestra configurata prima di ogni chiamata API
       this.pruneHistory();
 
       try {
-        // Richiesta all'LLM (invia messaggi storici e l'elenco dei tool disponibili)
         const response = await this.provider.chatWithTools(
           this.messages,
           toolsForRequest,
@@ -551,21 +395,12 @@ export class Agent {
 
         const { content, toolCalls, stats, reasoningText } = response;
 
-        // T9.12: pensiero completo di questo round, se sufficientemente lungo —
-        // vedi persistReasoningTrace(). Non blocca né rallenta il turno: è una
-        // scrittura su file "a lato", il ciclo agentico prosegue subito dopo.
         if (reasoningText) {
           this.persistReasoningTrace(reasoningText, userMessage, false);
         }
 
-        // Taratura del rapporto caratteri/token: this.messages è ancora esattamente
-        // il prompt appena inviato (il push del turno corrente avviene sotto), quindi
-        // è il denominatore corretto per calibrare su promptTokens reale dell'API.
         this.calibrateCharsPerToken(this.messages, (stats as any)?.promptTokens);
 
-        // Sanificazione dei tool_calls prima del salvataggio in cronologia:
-        // Se il modello ha generato JSON non valido o troncato, lo ripariamo o incapsuliamo
-        // per evitare che llama-server o altri backend vadano in HTTP 500 nei round successivi.
         const parsedArgsList: any[] = [];
         if (toolCalls && toolCalls.length > 0) {
           for (const tc of toolCalls) {
@@ -575,7 +410,6 @@ export class Agent {
           }
         }
 
-        // Aggiunge la risposta dell'assistente alla storia locale
         const assistantMessage: ChatMessage = { role: 'assistant', content: content || null };
         if (toolCalls && toolCalls.length > 0) {
           assistantMessage.tool_calls = toolCalls;
@@ -586,11 +420,9 @@ export class Agent {
           finalAnswer = content;
         }
 
-        // Invia i dati statistici della generazione se disponibili
         if (stats && onStats) {
           cumStats.durationMs += stats.durationMs;
           cumStats.tokenCount += stats.tokenCount;
-          // promptTokens = dimensione contesto di input: prendi il max (ultimo round è il più grande)
           cumStats.promptTokens = Math.max(cumStats.promptTokens, (stats as any).promptTokens ?? 0);
           cumStats.totalTokens = Math.max(cumStats.totalTokens, (stats as any).totalTokens ?? 0);
           const tps = cumStats.durationMs > 0
@@ -605,33 +437,19 @@ export class Agent {
           });
         }
 
-        // Se l'LLM non richiede nessun tool, il ciclo è terminato — a meno che
-        // il chiamante non abbia dato un modo per riconoscere una risposta
-        // testuale LEGITTIMA (T9.10, acceptTextOnlyIf) e questa risposta non lo
-        // sia: un turno di membro che produce solo ragionamento, senza mai una
-        // tool call né il marker di stato del protocollo, non ha ancora fatto
-        // il lavoro assegnato. Un solo nudge, poi si accetta comunque la
-        // risposta com'è: non è un modo per forzare il modello a oltranza, solo
-        // per dargli una seconda occasione esplicita di agire invece di
-        // scambiare un vicolo cieco per "nessun lavoro necessario".
         if (!toolCalls || toolCalls.length === 0) {
           const textIsAcceptable = everCalledTool || !this.acceptTextOnlyIf || this.acceptTextOnlyIf(content || '');
           if (!textIsAcceptable && !noToolNudgeUsed) {
             noToolNudgeUsed = true;
-            // CoT Recovery (T11.10): il modello ha già speso il pensiero, il retry di azione
-            // deve girare a reasoning effort 'none' per produrre immediatamente la tool call.
             currentRoundEffortOverride = 'none';
-            // 'report_status' non è sempre fra i tool consentiti a questo agente:
-            // menzionarlo quando non c'è insegnerebbe una chiamata destinata a
-            // fallire per permesso negato.
             const closingHint = this.allowedTools?.includes('report_status')
-              ? "chiama 'report_status' con lo stato corretto per chiudere il turno esplicitamente"
-              : 'scrivi un riepilogo testuale chiaro di cosa hai fatto (o perché non è stato possibile) per chiudere il turno';
+              ? "call 'report_status' with the appropriate status to explicitly complete your turn"
+              : 'write a clear summary of what you did (or why progress could not be made) to complete the turn';
             this.messages.push({
               role: 'user',
-              content: 'Non hai chiamato nessun tool in questa risposta. Se stavi pianificando, ora AGISCI: chiama il tool ' +
-                'giusto per farlo davvero (es. write_file, edit_file, execute_command). Se il compito è già completato o non ' +
-                `è possibile portarlo avanti, ${closingHint}.`
+              content: 'You did not call any tools in this response. If you were planning, ACT NOW: call the appropriate ' +
+                'tool (e.g. write_file, edit_file, execute_command). If the task is already completed or cannot proceed further, ' +
+                `${closingHint}.`
             });
             continue;
           }
@@ -640,31 +458,25 @@ export class Agent {
         }
         everCalledTool = true;
 
-        // Esegue le chiamate ai tool richieste dal modello
         for (let i = 0; i < toolCalls.length; i++) {
           const toolCall = toolCalls[i];
           const toolName = toolCall.function.name;
           const toolArgs: any = parsedArgsList[i] ?? {};
 
-          // Interruzione utente: i tool rimanenti non vengono eseguiti, ma ogni
-          // tool_call riceve comunque la sua risposta 'tool' (cronologia coerente:
-          // un tool_call orfano farebbe rifiutare la successiva chiamata API)
           if (signal?.aborted) {
             this.messages.push({
               role: 'tool',
               tool_call_id: toolCall.id,
               name: toolName,
-              content: '[Esecuzione annullata: generazione interrotta dall\'utente]'
+              content: '[Execution cancelled: generation interrupted by user]'
             });
             continue;
           }
 
           emit({ type: 'tool_start', name: toolName, args: toolArgs });
 
-          // Esecuzione del tool con verifica dei permessi integrata
           const result = await this.registry.executeTool(toolName, toolArgs, this.permissionManager, this.provider, this.agentLabel, this.commandCtx);
 
-          // Aggiunge l'output del tool alla cronologia dei messaggi
           this.messages.push({
             role: 'tool',
             tool_call_id: toolCall.id,
@@ -675,40 +487,27 @@ export class Agent {
           emit({ type: 'tool_end', name: toolName, args: toolArgs, success: result.success, output: result.output });
         }
 
-        // Dopo i tool: se nel frattempo è arrivata l'interruzione, stop pulito
         if (signal?.aborted) break;
 
-        // Guardia anti loop-infinito: se il modello continua a richiedere tool oltre
-        // il limite, interrompiamo il ciclo con un messaggio esplicito all'utente.
-        // La cronologia resta coerente: tutti i tool_calls dell'ultimo giro hanno già
-        // ricevuto il rispettivo messaggio 'tool' nel for-loop qui sopra.
         toolRounds++;
         if (toolRounds >= this.maxToolRounds) {
           const stopMessage =
-            `[Interruzione di sicurezza] Ho raggiunto il limite massimo di ${this.maxToolRounds} ` +
-            `cicli consecutivi di esecuzione tool per questa richiesta. Il processo è stato fermato ` +
-            `per evitare un loop infinito. Riformula la richiesta o spezzala in passi più piccoli.`;
+            `[Safety limit reached] Reached maximum of ${this.maxToolRounds} ` +
+            `consecutive tool execution rounds for this request. Process stopped to avoid infinite loops.`;
           emit({ type: 'max_rounds', limit: this.maxToolRounds });
           this.messages.push({ role: 'assistant', content: stopMessage });
           finalAnswer = stopMessage;
           break;
         }
 
-        // Il loop continua: segnala al renderer che l'agente sta rielaborando i risultati
         emit({ type: 'round_continue', round: toolRounds });
 
       } catch (error: any) {
-        // Interruzione richiesta dall'utente (Esc): uscita pulita, non è un errore
         if (signal?.aborted) break;
-        // T9.12: il pensiero prodotto prima dell'interruzione (timeout, tool call
-        // JSON malformato, ecc. — vedi Error.partialReasoning in provider.ts) va
-        // salvato PRIMA di rilanciare: è già stato generato per intero, perderlo
-        // insieme all'errore sprecherebbe gli stessi minuti che questo salvataggio
-        // esiste apposta per non ripagare al turno successivo.
         if ((error as any)?.partialReasoning) {
           this.persistReasoningTrace((error as any).partialReasoning, userMessage, true);
         }
-        throw new Error(`Errore nel ciclo agentico: ${error.message}`);
+        throw new Error(`Error in agentic loop: ${error.message}`);
       }
     }
 

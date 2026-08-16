@@ -63,7 +63,7 @@ async function run() {
       path: testDest
     }, pm);
 
-    check('DL.3', result.success && result.output.includes('scaricato con successo') && result.output.includes(testDest), 'Esecuzione download_file con salvataggio nel workspace');
+    check('DL.3', result.success && (result.output.includes('scaricato con successo') || result.output.includes('downloaded successfully')) && result.output.includes(testDest), 'Esecuzione download_file con salvataggio nel workspace');
     check('DL.4', fs.existsSync(testDest) && fs.readFileSync(testDest, 'utf-8').includes('Contenuto binario di test'), 'File creato fisicamente su disco con contenuto corretto');
 
     // 4. Test deduzione automatica nome file quando path è omesso
@@ -78,7 +78,7 @@ async function run() {
       url: 'https://example.com/payload.sh',
       path: '../../../../windows/system32/cmd.exe'
     }, pm);
-    const jailBlocked = !failResult.success && failResult.output.toLowerCase().includes('negato');
+    const jailBlocked = !failResult.success && (failResult.output.toLowerCase().includes('negato') || failResult.output.toLowerCase().includes('denied'));
     check('DL.6', jailBlocked, 'Protezione workspace jail: rifiutati path traversal all\'esterno della root');
 
   } finally {

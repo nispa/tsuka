@@ -1,19 +1,19 @@
 import { ChildProcess } from 'child_process';
 
 /**
- * Astrazione della shell di sistema per l'esecuzione di comandi.
- * Windows resta la piattaforma primaria (PowerShell), ma l'harness funziona
- * anche su Linux e macOS tramite /bin/sh.
+ * System shell abstraction for command execution.
+ * Windows remains the primary platform (PowerShell), but the harness also
+ * works on Linux and macOS via /bin/sh.
  */
 
 export interface ShellConfig {
-  /** Eseguibile della shell */
+  /** Shell executable name/path */
   shell: string;
-  /** Costruisce gli argomenti per eseguire un comando come stringa */
+  /** Constructs arguments to execute a command string */
   buildArgs: (command: string) => string[];
-  /** Opzioni extra per spawn (es. detached per il process group kill su POSIX) */
+  /** Extra spawn options (e.g. detached for process group kill on POSIX) */
   spawnOptions: { detached?: boolean; windowsHide?: boolean };
-  /** Termina il processo (e il suo gruppo su POSIX) in modo affidabile */
+  /** Terminates the process (and its process group on POSIX) reliably */
   kill: (child: ChildProcess) => void;
 }
 
@@ -49,11 +49,11 @@ export function getShellConfig(): ShellConfig {
     };
   }
 
-  // Linux / macOS: /bin/sh è garantito su qualsiasi sistema POSIX
+  // Linux / macOS: /bin/sh is standard across POSIX environments
   return {
     shell: '/bin/sh',
     buildArgs: (command: string) => ['-c', command],
-    // detached crea un nuovo process group: permette di uccidere l'intero albero
+    // detached creates a new process group: allows killing entire subtree
     spawnOptions: { detached: true },
     kill: (child) => {
       try {

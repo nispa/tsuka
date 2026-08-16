@@ -1,6 +1,5 @@
 import chalk from 'chalk';
 import { CommandCtx } from '../types';
-import { CLITheme } from '../../ui';
 import { StreamRenderer } from '../../stream';
 import { GenerationInterrupt } from '../../interrupt';
 import { loadSystemPrompt, resolveCharacter } from '../../shared';
@@ -12,13 +11,11 @@ import { sanitizeToolCallArguments } from '../../../tools/jsonRepair';
 import { logSink } from '../../../core/logSink';
 
 /**
- * Modalità ibrida (T4.2, PLANNING-QUALITA.md): non è un `mode` a sé — è un round di
- * discussione stile `/call` (senza tool) che roundRobin.ts/orchestrated.ts inseriscono
- * dopo ogni round quando il team ha `discussionRounds > 0`. Con `voting: true` include
- * anche il voto (`cast_vote` o marker `VOTO:`).
+ * Hybrid team mode: discussion round (/call style, no tools) inserted
+ * after each work round when discussionRounds > 0.
  */
 
-/** Estrae il voto da una eventuale tool_call `cast_vote` nella risposta del round di discussione. */
+/** Extracts vote from `cast_vote` tool call in discussion round. */
 function extractCastVoteCall(toolCalls?: ToolCall[]): Vote | null {
   if (!Array.isArray(toolCalls)) return null;
   for (const tc of toolCalls) {
@@ -30,15 +27,10 @@ function extractCastVoteCall(toolCalls?: ToolCall[]): Vote | null {
       if (vote === 'APPROVO' || vote === 'MODIFICARE' || vote === 'RIFIUTO') {
         return vote as Vote;
       }
-    } catch {
-      // Argomenti non parseabili: ignora, si ricade sulla regex
-    }
+    } catch {}
   }
   return null;
 }
-
-// ── Helper: turno di discussione (stile /call, senza tool) ──
-// Se voting è attivo, la discussione include anche il voto alla fine
 
 export async function runDiscussionRound(
   ctx: CommandCtx,
@@ -50,11 +42,9 @@ export async function runDiscussionRound(
   votingEnabled: boolean,
   turnLog?: ProtocolLogEntry[]
 ): Promise<'all_approve' | 'continue' | 'interrupted'> {
-  logSink.log(chalk.bold.magenta(`\n═══ DISCUSSIONE ROUND ${round} ═══`));
+  logSink.log(chalk.bold.magenta(`\n═══ DISCUSSION ROUND ${round} ═══`));
 
   let allApproved = true;
-  // Tool cast_vote offerto solo quando il voto è attivo: nella discussione senza
-  // voting non ci sono tool disponibili (resta "solo la voce" del personaggio).
   const voteTools = votingEnabled ? ctx.registry.listForLLM(ctx.provider.getCurrentModel(), ['cast_vote']) : [];
 
   for (const memberName of members) {
@@ -108,7 +98,7 @@ VOTO: MODIFICARE — Add unit tests before deploy`;
       logSink.log('');
     } catch (err: any) {
       renderer.abort();
-      logSink.log(chalk.red(`[Errore discussione ${memberChar.aiName}: ${err.message}]`));
+      logSink.log(chalk.red(`[Discussion error for ${memberChar.aiName}: ${err.message}]`));
       continue;
     }
 
@@ -117,7 +107,6 @@ VOTO: MODIFICARE — Add unit tests before deploy`;
       teamMessages.push({ role: 'user', content: `${memberChar.aiName}: "${responseText}"` });
     }
 
-    // Controllo voto se voting attivo: tool call cast_vote → regex VOTO: → nessun voto rilevato
     if (votingEnabled) {
       const toolVote = extractCastVoteCall(toolCalls);
       if (toolVote) {
@@ -133,7 +122,7 @@ VOTO: MODIFICARE — Add unit tests before deploy`;
             allApproved = false;
           }
         } else {
-          turnLog?.push({ agent: memberChar.aiName, role: 'vote', protocol: 'fallback', outcome: 'nessun voto rilevato' });
+          turnLog?.push({ agent: memberChar.aiName, role: 'vote', protocol: 'fallback', outcome: 'no vote detected' });
           warnProtocolDegrade('cast_vote', memberChar.aiName, 'fallback');
         }
       }
@@ -142,17 +131,17 @@ VOTO: MODIFICARE — Add unit tests before deploy`;
 
   if (votingEnabled) {
     if (allApproved) {
-      logSink.log(chalk.green.bold(`\n✔ VOTAZIONE: tutti i membri approvano il lavoro.`));
+      logSink.log(chalk.green.bold(`\n✔ VOTE: all members approve the work.`));
       return 'all_approve';
     } else {
-      logSink.log(chalk.yellow(`\n⚠ VOTAZIONE: alcuni membri richiedono modifiche o rifiutano. Si procede.`));
+      logSink.log(chalk.yellow(`\n⚠ VOTE: some members requested modifications or rejected. Continuing.`));
     }
   }
 
   return 'continue';
 }
 
-/** Cerca nelle discussioni i voti e ritorna true se tutti approvano */
+/** Checks whether all votes in messages are approvals */
 export function hasUnanimousApproval(messages: ChatMessage[]): boolean {
   const votingMessages = messages.filter(
     (m) => m.role === 'user' && /VOTO:\s*(APPROVO|MODIFICARE|RIFIUTO)/i.test(m.content || '')

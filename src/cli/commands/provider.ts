@@ -6,12 +6,6 @@ import { notifyIfUnprofiled } from '../shared';
 import chalk from 'chalk';
 import prompts from 'prompts';
 
-/**
- * Se il modello scelto è su un server locale e non è quello caricato in RAM,
- * propone di caricarlo subito (richiesta minima da 1 token): il server con
- * caricamento just-in-time fa lo swap ora, invece che a sorpresa alla prima
- * chat. `loadedModel` = modello attualmente in RAM (null se non rilevabile).
- */
 async function maybeWarmUp(ctx: CommandCtx, selectedModel: string, loadedModel: string | null): Promise<void> {
   const baseUrl = ctx.provider.getBaseUrl();
   if (!isLocalUrl(baseUrl) || !loadedModel || loadedModel === selectedModel) return;
@@ -20,22 +14,22 @@ async function maybeWarmUp(ctx: CommandCtx, selectedModel: string, loadedModel: 
   const confirm = await prompts({
     type: 'confirm',
     name: 'ok',
-    message: chalk.yellow(`Sul server è caricato '${loadedModel}'. Caricare adesso '${selectedModel}'? (lo swap può richiedere minuti)`),
+    message: chalk.yellow(`Server currently has '${loadedModel}' loaded in RAM. Warm up '${selectedModel}' now? (model swap may take minutes)`),
     initial: true
   });
   if (!confirm.ok) {
-    CLITheme.info('Il modello verrà caricato dal server alla prima richiesta.');
+    CLITheme.info('Model will be loaded by the server upon first request.');
     return;
   }
 
-  const spinner = CLITheme.createSpinner(`Caricamento di '${selectedModel}' sul server...`);
+  const spinner = CLITheme.createSpinner(`Loading '${selectedModel}' on server...`);
   spinner.start();
   const ok = await warmUpModel(baseUrl, ctx.configManager.getApiKey(), selectedModel);
   if (ok) {
-    spinner.succeed(chalk.green(`Modello '${selectedModel}' caricato e pronto.`));
+    spinner.succeed(chalk.green(`Model '${selectedModel}' loaded and ready.`));
   } else {
-    spinner.fail(chalk.red('Caricamento non riuscito (timeout o errore del server).'));
-    CLITheme.warning('Il server proverà comunque a caricarlo alla prima richiesta.');
+    spinner.fail(chalk.red('Warm up request failed (timeout or server error).'));
+    CLITheme.warning('Server will attempt loading upon first chat request.');
   }
 }
 
@@ -46,11 +40,11 @@ export async function handleProvider(ctx: CommandCtx, arg: string): Promise<void
     const currentProvider = ctx.configManager.getActiveProviderName();
     console.log();
     const selected = await InteractiveMenu.select<'ollama' | 'openrouter' | 'unsloth' | string>(
-      'Seleziona il provider attivo (usa le frecce):',
+      'Select active provider (use arrow keys):',
       [
-        { title: `Ollama ${currentProvider === 'ollama' ? '(selezionato)' : ''}`, value: 'ollama' },
-        { title: `OpenRouter ${currentProvider === 'openrouter' ? '(selezionato)' : ''}`, value: 'openrouter' },
-        { title: `Unsloth Studio ${currentProvider === 'unsloth' ? '(selezionato)' : ''}`, value: 'unsloth' }
+        { title: `Ollama ${currentProvider === 'ollama' ? '(selected)' : ''}`, value: 'ollama' },
+        { title: `OpenRouter ${currentProvider === 'openrouter' ? '(selected)' : ''}`, value: 'openrouter' },
+        { title: `Unsloth Studio ${currentProvider === 'unsloth' ? '(selected)' : ''}`, value: 'unsloth' }
       ],
       currentProvider
     );
@@ -59,7 +53,7 @@ export async function handleProvider(ctx: CommandCtx, arg: string): Promise<void
   }
 
   if (targetProvider !== 'ollama' && targetProvider !== 'openrouter' && targetProvider !== 'unsloth') {
-    CLITheme.error('Specificare un provider valido: /provider ollama, openrouter o unsloth');
+    CLITheme.error('Please specify a valid provider: /provider ollama, openrouter, or unsloth');
     return;
   }
 
@@ -67,57 +61,54 @@ export async function handleProvider(ctx: CommandCtx, arg: string): Promise<void
   ctx.configManager.setActiveProvider(target);
   const newConfig = ctx.configManager.getActiveProviderConfig();
 
-  // Ripunta l'istanza condivisa al nuovo endpoint: i riferimenti esistenti restano validi
   ctx.provider.reconfigure(newConfig.baseUrl, ctx.configManager.getApiKey(), newConfig.model);
 
   ctx.agent.current = ctx.recreateAgent();
-  CLITheme.success(`Provider cambiato a: ${chalk.green(target.toUpperCase())}`);
+  CLITheme.success(`Provider changed to: ${chalk.green(target.toUpperCase())}`);
 
-  const checkSpinner = CLITheme.createSpinner(`Verifica connessione a ${target}...`);
+  const checkSpinner = CLITheme.createSpinner(`Checking connection to ${target}...`);
   checkSpinner.start();
   try {
     const models = await ctx.provider.listModels();
     ctx.availableModels.current = models;
-    checkSpinner.succeed(chalk.green('Connessione stabilita!'));
+    checkSpinner.succeed(chalk.green('Connection established!'));
     if (models.length > 0 && !models.includes(newConfig.model)) {
       ctx.provider.setCurrentModel(models[0]);
       ctx.configManager.updateActiveModel(models[0]);
       ctx.agent.current = ctx.recreateAgent();
     }
-    CLITheme.success(`Modello attivo: ${chalk.green(ctx.provider.getCurrentModel())}`);
+    CLITheme.success(`Active model: ${chalk.green(ctx.provider.getCurrentModel())}`);
     notifyIfUnprofiled(ctx.provider.getCurrentModel(), ctx.agent.current.getReasoningEffort());
   } catch (err: any) {
-    checkSpinner.fail(chalk.red(`Impossibile verificare la connessione per ${target}.`));
-    CLITheme.warning('Il provider è stato aggiornato, ma il server non risponde.');
+    checkSpinner.fail(chalk.red(`Could not verify connection for ${target}.`));
+    CLITheme.warning('Provider configuration updated, but server is not responding.');
   }
 }
 
 async function pickModel(ctx: CommandCtx): Promise<boolean> {
-  const spinner = CLITheme.createSpinner('Recupero dei modelli...');
+  const spinner = CLITheme.createSpinner('Fetching available models...');
   spinner.start();
   try {
-    // probeProvider fornisce sia la lista sia il modello caricato in RAM
-    // (flag "loaded" di Unsloth/LM Studio, /api/ps di Ollama)
     const name = ctx.configManager.getActiveProviderName();
     const scan = await probeProvider(name, ctx.configManager.getActiveProviderConfig(), ctx.configManager.getApiKey());
     const models = scan ? scan.models : await ctx.provider.listModels();
     const loadedModel = scan?.loadedModel ?? null;
     ctx.availableModels.current = models;
-    spinner.succeed(chalk.green('Modelli trovati!'));
+    spinner.succeed(chalk.green('Models retrieved!'));
 
     if (models.length === 0) {
-      CLITheme.warning('Nessun modello disponibile su questo server.');
+      CLITheme.warning('No models available on this server.');
       return false;
     }
 
     const current = ctx.provider.getCurrentModel();
     console.log();
     const selectedModel = await InteractiveMenu.select<string>(
-      'Seleziona il modello da utilizzare (usa le frecce):',
+      'Select model to activate (use arrow keys):',
       models.map((m) => {
         const tags = [
-          m === loadedModel ? chalk.green('● caricato') : '',
-          m === current ? chalk.gray('(selezionato)') : '',
+          m === loadedModel ? chalk.green('● loaded') : '',
+          m === current ? chalk.gray('(selected)') : '',
         ].filter(Boolean).join(' ');
         return { title: tags ? `${m} ${tags}` : m, value: m };
       }),
@@ -133,14 +124,14 @@ async function pickModel(ctx: CommandCtx): Promise<boolean> {
       const dynamicCtx = scan?.contextWindow ?? (await detectContextWindow(ctx.configManager.getActiveProviderConfig().baseUrl, ctx.configManager.getApiKey(), selectedModel));
       if (dynamicCtx) {
         ctx.configManager.setRuntimeContextTokens(dynamicCtx);
-        CLITheme.info(`Finestra di contesto attiva: ${chalk.green(dynamicCtx.toLocaleString())} token (rilevata dal server)`);
+        CLITheme.info(`Active context window: ${chalk.green(dynamicCtx.toLocaleString())} tokens (detected from server)`);
       }
       await maybeWarmUp(ctx, selectedModel, loadedModel);
       notifyIfUnprofiled(selectedModel, ctx.agent.current.getReasoningEffort());
       return true;
     }
   } catch (err: any) {
-    spinner.fail(chalk.red('Errore nel recupero della lista modelli.'));
+    spinner.fail(chalk.red('Failed to fetch models list.'));
     CLITheme.error(err.message);
   }
   return false;
@@ -152,7 +143,7 @@ export async function handleModels(ctx: CommandCtx, arg: string): Promise<void> 
     return;
   }
 
-  const spinner = CLITheme.createSpinner(`Controllo del modello '${arg}'...`);
+  const spinner = CLITheme.createSpinner(`Checking model '${arg}'...`);
   spinner.start();
   try {
     const name = ctx.configManager.getActiveProviderName();
@@ -170,13 +161,13 @@ export async function handleModels(ctx: CommandCtx, arg: string): Promise<void> 
       const dynamicCtx = scan?.contextWindow ?? (await detectContextWindow(ctx.configManager.getActiveProviderConfig().baseUrl, ctx.configManager.getApiKey(), arg));
       if (dynamicCtx) {
         ctx.configManager.setRuntimeContextTokens(dynamicCtx);
-        CLITheme.info(`Finestra di contesto attiva: ${chalk.green(dynamicCtx.toLocaleString())} token (rilevata dal server)`);
+        CLITheme.info(`Active context window: ${chalk.green(dynamicCtx.toLocaleString())} tokens (detected from server)`);
       }
       await maybeWarmUp(ctx, arg, scan?.loadedModel ?? null);
       notifyIfUnprofiled(arg, ctx.agent.current.getReasoningEffort());
     } else {
-      CLITheme.error(`Il modello '${arg}' non è presente su questo server.`);
-      console.log(chalk.gray(`Usa ${chalk.cyan('/models')} senza argomenti per vedere l'elenco interattivo.`));
+      CLITheme.error(`Model '${arg}' not found on active server.`);
+      console.log(chalk.gray(`Use ${chalk.cyan('/models')} without arguments to open interactive menu.`));
     }
   } catch (err: any) {
     spinner.stop();
@@ -185,7 +176,7 @@ export async function handleModels(ctx: CommandCtx, arg: string): Promise<void> 
     ctx.configManager.updateActiveModel(arg);
     ctx.agent.current = ctx.recreateAgent();
     CLITheme.printModelChanged(oldModel, arg);
-    CLITheme.warning(`Modello impostato forzatamente a '${arg}' (errore di verifica server).`);
+    CLITheme.warning(`Model set to '${arg}' (server verification failed).`);
     notifyIfUnprofiled(arg, ctx.agent.current.getReasoningEffort());
   }
 }
@@ -194,18 +185,18 @@ export async function handleSearchEngine(ctx: CommandCtx, _arg: string): Promise
   const currentEngine = ctx.configManager.getWebSearchProvider();
   console.log();
   const selected = await InteractiveMenu.select<'duckduckgo' | 'tavily' | 'google'>(
-    'Seleziona il motore di ricerca web (usa le frecce):',
+    'Select web search provider (use arrow keys):',
     [
-      { title: `DuckDuckGo ${currentEngine === 'duckduckgo' ? '(selezionato)' : ''} - (Gratuito, nessun setup)`, value: 'duckduckgo' },
-      { title: `Google Search ${currentEngine === 'google' ? '(selezionato)' : ''} - (Richiede GOOGLE_SEARCH_API_KEY in .env)`, value: 'google' },
-      { title: `Tavily API ${currentEngine === 'tavily' ? '(selezionato)' : ''} - (Richiede TAVILY_API_KEY in .env)`, value: 'tavily' }
+      { title: `DuckDuckGo ${currentEngine === 'duckduckgo' ? '(selected)' : ''} - (Free, no setup required)`, value: 'duckduckgo' },
+      { title: `Google Search ${currentEngine === 'google' ? '(selected)' : ''} - (Requires GOOGLE_SEARCH_API_KEY in .env)`, value: 'google' },
+      { title: `Tavily API ${currentEngine === 'tavily' ? '(selected)' : ''} - (Requires TAVILY_API_KEY in .env)`, value: 'tavily' }
     ],
     currentEngine
   );
 
   if (selected) {
     ctx.configManager.setWebSearchProvider(selected);
-    CLITheme.success(`Motore di ricerca web cambiato a: ${chalk.green(selected.toUpperCase())}`);
+    CLITheme.success(`Web search provider updated to: ${chalk.green(selected.toUpperCase())}`);
   }
 }
 
@@ -218,15 +209,15 @@ function formatScore(score: number): string {
 
 function printProfile(p: ModelProfile): void {
   const tierColor = p.tier === 'large' ? chalk.green : p.tier === 'medium' ? chalk.yellow : chalk.red;
-  console.log(`  Effort:      ${chalk.magenta(p.reasoningEffort)}`);
-  console.log(`  Tier misurato: ${tierColor(p.tier.toUpperCase())}`);
+  console.log(`  Effort:          ${chalk.magenta(p.reasoningEffort)}`);
+  console.log(`  Measured Tier:   ${tierColor(p.tier.toUpperCase())}`);
   console.log(`  ├─ Instruction following: ${formatScore(p.scores.instruction)}`);
   console.log(`  ├─ Output JSON:           ${formatScore(p.scores.json)}`);
   console.log(`  ├─ Tool calling:          ${formatScore(p.scores.toolCalling)}`);
-  console.log(`  ├─ Velocità:              ${chalk.cyan(p.tokensPerSecond + ' tok/s')}`);
-  console.log(`  └─ Token di completamento medi: ${chalk.cyan(p.avgCompletionTokens)}`);
+  console.log(`  ├─ Speed:                 ${chalk.cyan(p.tokensPerSecond + ' tok/s')}`);
+  console.log(`  └─ Avg Completion Tokens: ${chalk.cyan(p.avgCompletionTokens)}`);
   if (p.testResults && p.testResults.length > 0) {
-    console.log(chalk.gray(`  Test eseguiti (${p.testResults.length}, da benchmarks/):`));
+    console.log(chalk.gray(`  Tests executed (${p.testResults.length}, from benchmarks/):`));
     for (const t of p.testResults) {
       console.log(`    • ${t.name} ${chalk.gray(`[${t.category}]`)} → ${formatScore(t.score)}`);
     }
@@ -236,39 +227,38 @@ function printProfile(p: ModelProfile): void {
 export async function handleBenchmark(ctx: CommandCtx, arg: string): Promise<void> {
   const currentModel = ctx.provider.getCurrentModel();
 
-  // Determina i modelli da testare
   let targets: string[] = [];
   if (!arg) {
     targets = [currentModel];
   } else if (arg.toLowerCase() === 'all') {
-    const spinner = CLITheme.createSpinner('Recupero lista modelli...');
+    const spinner = CLITheme.createSpinner('Retrieving models list...');
     spinner.start();
     try {
       targets = await ctx.provider.listModels();
-      spinner.succeed(chalk.green(`${targets.length} modelli da testare.`));
+      spinner.succeed(chalk.green(`${targets.length} model(s) to benchmark.`));
     } catch (err: any) {
-      spinner.fail(chalk.red('Impossibile recuperare la lista modelli.'));
+      spinner.fail(chalk.red('Failed to retrieve models list.'));
       return;
     }
     if (targets.length === 0) {
-      CLITheme.warning('Nessun modello disponibile sul server.');
+      CLITheme.warning('No models available on server.');
       return;
     }
-    CLITheme.warning(`Il benchmark di ${targets.length} modelli richiede più chiamate LLM per modello (l'intero set di test × 4 livelli di reasoning_effort): può durare diversi minuti.`);
+    CLITheme.warning(`Benchmarking ${targets.length} models across 4 effort levels may take several minutes.`);
   } else {
     targets = [arg];
   }
 
-  console.log(chalk.bold('\n📊 [CAPABILITY FINGERPRINTING — Benchmark oggettivo del modello]\n'));
+  console.log(chalk.bold('\n📊 [CAPABILITY FINGERPRINTING — Model Benchmark]\n'));
 
   for (const model of targets) {
-    const spinner = CLITheme.createSpinner(`Benchmark di '${model}'...`);
+    const spinner = CLITheme.createSpinner(`Benchmarking '${model}'...`);
     spinner.start();
     try {
       const { profiles, recommendedEffort } = await runBenchmark(ctx.provider, model, (step) => {
-        spinner.text = chalk.cyan(`Benchmark di '${model}' — ${step}`);
+        spinner.text = chalk.cyan(`Benchmarking '${model}' — ${step}`);
       });
-      spinner.succeed(chalk.green(`Benchmark completato per '${model}' (${profiles.length} livelli di reasoning_effort)`));
+      spinner.succeed(chalk.green(`Benchmark completed for '${model}' (${profiles.length} effort levels)`));
       for (const profile of profiles) {
         printProfile(profile);
         console.log();
@@ -277,20 +267,18 @@ export async function handleBenchmark(ctx: CommandCtx, arg: string): Promise<voi
         const bestProfile = profiles.find((p) => p.reasoningEffort === recommendedEffort) ?? profiles[0];
         const tierStr = bestProfile?.tier ? bestProfile.tier.toUpperCase() : 'STANDARD';
         const speedStr = bestProfile?.tokensPerSecond ? `${bestProfile.tokensPerSecond} tok/s` : '';
-        console.log(chalk.bold(`  🎯 Sforzo di pensiero consigliato: ${chalk.magenta(recommendedEffort.toUpperCase())}`));
-        console.log(chalk.gray(`     ├─ Spiegazione: a livello '${recommendedEffort}' il modello ottiene già il tier massimo (${tierStr})`));
-        console.log(chalk.gray(`     │  e supera tutti i test, garantendo la massima reattività${speedStr ? ` (~${speedStr})` : ''} senza sprecare token in ragionamenti superflui.`));
-        console.log(chalk.cyan(`     └─ 👉 Usa `) + chalk.bold.green(`/effort ${recommendedEffort}`) + chalk.cyan(` per ottenere il meglio da questo modello.`));
+        console.log(chalk.bold(`  🎯 Recommended reasoning effort: ${chalk.magenta(recommendedEffort.toUpperCase())}`));
+        console.log(chalk.gray(`     ├─ Rationale: at '${recommendedEffort}' effort, model reaches max tier (${tierStr})`));
+        console.log(chalk.gray(`     │  and passes tests with optimal speed${speedStr ? ` (~${speedStr})` : ''}.`));
+        console.log(chalk.cyan(`     └─ 👉 Use `) + chalk.bold.green(`/effort ${recommendedEffort}`) + chalk.cyan(` to apply recommended setting.`));
       }
       console.log();
     } catch (err: any) {
-      spinner.fail(chalk.red(`Benchmark fallito per '${model}': ${err.message}`));
+      spinner.fail(chalk.red(`Benchmark failed for '${model}': ${err.message}`));
     }
   }
 
-  CLITheme.success('Profili salvati in models_profile.json (uno per livello di reasoning_effort). Il tier dei tool ora usa le capacità MISURATE del modello, alla condizione in cui gira davvero.');
-
-  // Ricrea l'agente: il system prompt e i tool disponibili possono cambiare col nuovo tier
+  CLITheme.success('Profiles saved in models_profile.json. Tool tiers now calibrated from measured capability profiles.');
   ctx.agent.current = ctx.recreateAgent();
   console.log();
 }

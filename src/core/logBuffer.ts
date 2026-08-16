@@ -1,29 +1,27 @@
 import { AsyncLocalStorage } from 'async_hooks';
 
 /**
- * Buffer dell'output console per branch (T3.2, PLANNING-QUALITA.md): durante un
- * blocco PARALLELO più agenti scrivono con console.log concorrentemente — senza
- * buffering l'output si interfoglia in modo illeggibile. Ogni branch accumula le
- * proprie righe in un buffer isolato (AsyncLocalStorage, non un contatore globale:
- * branch concorrenti nello stesso processo non si mescolano), che viene stampato
- * ("flush") in ordine solo a fine blocco.
+ * Per-branch console output buffer (T3.2): during a PARALLEL block, multiple agents
+ * write with console.log concurrently — without buffering, output would interleave
+ * unreadably. Each branch accumulates its lines into an isolated buffer (AsyncLocalStorage,
+ * not a global counter: concurrent branches in the same process do not mix), which is
+ * flushed in order only when the parallel block completes.
  */
 const logBufferStorage = new AsyncLocalStorage<string[]>();
 
-/** Esegue `fn` accumulando in `buffer` ogni riga scritta con console.log durante
- * la sua closure asincrona, invece di stamparla subito. Richiede che
- * `installLogBuffering()` sia attivo, altrimenti non ha effetto. */
+/**
+ * Executes `fn`, capturing any lines logged via console.log into `buffer` during
+ * its asynchronous closure instead of printing immediately. Requires `installLogBuffering()`.
+ */
 export function runWithLogBuffer<T>(buffer: string[], fn: () => Promise<T>): Promise<T> {
   return logBufferStorage.run(buffer, fn);
 }
 
 /**
- * Sostituisce temporaneamente console.log: se la chiamata avviene dentro un
- * `runWithLogBuffer` attivo, accoda la riga nel buffer del branch corrente
- * invece di stamparla; altrimenti si comporta normalmente (nessun cambio fuori
- * da un blocco parallelo). Ritorna una funzione di ripristino, da chiamare
- * sempre — anche in caso di errore — per non lasciare il patch attivo oltre il
- * blocco parallelo.
+ * Temporarily patches console.log: if called inside an active `runWithLogBuffer`,
+ * appends the line into the current branch's buffer instead of printing;
+ * otherwise behaves normally. Returns a restore function that should always be
+ * called in a `finally` block.
  */
 export function installLogBuffering(): () => void {
   const original = console.log;
@@ -38,7 +36,7 @@ export function installLogBuffering(): () => void {
   return () => { console.log = original; };
 }
 
-/** Stampa (con l'attuale console.log) tutte le righe di un buffer, in ordine. */
+/** Prints all buffered lines in order to the active console.log. */
 export function flushLogBuffer(buffer: string[]): void {
   for (const line of buffer) {
     console.log(line);

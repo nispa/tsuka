@@ -8,7 +8,7 @@ import { runLoop } from '../../../core/loop';
 import { TeamRunConfig, ProtocolLogEntry, TeamResult, TeamStrategy, runMemberTurn } from './common';
 import { logSink } from '../../../core/logSink';
 
-// ── Modalità pipeline (catena di montaggio) ──
+// Pipeline mode implementation (assembly line)
 
 export async function runPipeline(
   ctx: CommandCtx,
@@ -18,23 +18,22 @@ export async function runPipeline(
   teamMessages: ChatMessage[],
   turnLog?: ProtocolLogEntry[]
 ): Promise<TeamResult> {
-  logSink.log(chalk.bold.yellow(`\n═══ PIPELINE: ${team.members.length} stazioni ═══`));
+  logSink.log(chalk.bold.yellow(`\n═══ PIPELINE: ${team.members.length} stations ═══`));
 
   for (let i = 0; i < team.members.length; i++) {
     if (interrupt.aborted) break;
     const memberName = team.members[i];
     const memberChar = resolveCharacter(memberName);
     if (!memberChar) {
-      CLITheme.warning(`Stazione '${memberName}' non trovata. Saltata.`);
+      CLITheme.warning(`Station '${memberName}' not found. Skipped.`);
       continue;
     }
-    logSink.log(chalk.bold.blue(`\n[STAZIONE ${i + 1}/${team.members.length}: ${memberChar.displayName}]`));
+    logSink.log(chalk.bold.blue(`\n[STATION ${i + 1}/${team.members.length}: ${memberChar.displayName}]`));
 
-    // Inietta descrizione stazione nella history
     const desc = i === 0
       ? `You are first in the pipeline. Work on the initial task.`
       : `You receive work from the previous station. Analyze, refine, and pass it on.`;
-    teamMessages.push({ role: 'user', content: `[Pipeline stazione ${i + 1} - ${memberChar.aiName}]: ${desc}` });
+    teamMessages.push({ role: 'user', content: `[Pipeline station ${i + 1} - ${memberChar.aiName}]: ${desc}` });
 
     const stationConfig = team.stations?.[memberName];
     const acceptance = stationConfig?.acceptance || (i === team.members.length - 1 ? team.acceptance : undefined);
@@ -52,35 +51,35 @@ export async function runPipeline(
           if (attemptIdx > 0) {
             teamMessages.push({
               role: 'user',
-              content: `[Pipeline stazione ${i + 1} - ${memberChar.aiName} Tentativo ${attemptIdx + 1}]:\n${prompt}`
+              content: `[Pipeline station ${i + 1} - ${memberChar.aiName} Attempt ${attemptIdx + 1}]:\n${prompt}`
             });
           }
           const turnOutcome = await runMemberTurn(ctx, memberName, prompt, i + 1, team.members.length, teamMessages, interrupt, i === 0 && attemptIdx === 0, undefined, turnLog);
           const lastMsg = teamMessages[teamMessages.length - 1];
           const answer = typeof lastMsg?.content === 'string' ? lastMsg.content : '';
-          const issues = turnOutcome === 'failed' ? ['La stazione ha dichiarato il compito FALLITO.'] : [];
+          const issues = turnOutcome === 'failed' ? ['Station declared task FAILED.'] : [];
           return { answer, issues };
         }
       });
 
       if (loopRes.outcome === 'success') {
         if (i === team.members.length - 1) {
-          logSink.log(chalk.green.bold(`\n✔ Pipeline completata da ${memberChar.aiName}.`));
+          logSink.log(chalk.green.bold(`\n✔ Pipeline completed by ${memberChar.aiName}.`));
           return { completed: true, roundsDone: i + 1 };
         }
         continue;
       } else {
-        logSink.log(chalk.red.bold(`\n✘ Pipeline interrotta alla stazione ${i + 1} (${memberChar.aiName}): verifiche non superate (${loopRes.outcome}).`));
+        logSink.log(chalk.red.bold(`\n✘ Pipeline failed at station ${i + 1} (${memberChar.aiName}): checks failed (${loopRes.outcome}).`));
         return { completed: false, roundsDone: i + 1, failed: true };
       }
     } else {
       const result = await runMemberTurn(ctx, memberName, task, i + 1, team.members.length, teamMessages, interrupt, i === 0, undefined, turnLog);
       if (result === 'completed') {
-        logSink.log(chalk.green.bold(`\n✔ Pipeline completata da ${memberChar.aiName}.`));
+        logSink.log(chalk.green.bold(`\n✔ Pipeline completed by ${memberChar.aiName}.`));
         return { completed: true, roundsDone: i + 1 };
       }
       if (result === 'failed') {
-        logSink.log(chalk.red.bold(`\n✘ Pipeline interrotta: ${memberChar.aiName} ha dichiarato il compito FALLITO alla stazione ${i + 1}.`));
+        logSink.log(chalk.red.bold(`\n✘ Pipeline stopped: ${memberChar.aiName} declared task FAILED at station ${i + 1}.`));
         return { completed: false, roundsDone: i + 1, failed: true };
       }
       if (result === 'interrupted') break;

@@ -9,25 +9,25 @@ export const requestTeamTool: Tool = {
   execute: async (args: { team_name?: string; task: string; reason?: string }, context?: ToolExecutionContext) => {
     const task = (args.task || '').trim();
     if (!task) {
-      throw new Error("Parametro 'task' obbligatorio per convocare un team.");
+      throw new Error("Parameter 'task' is required to convene a team.");
     }
 
-    // Freno anti-ricorsione (Depth Guard): mai consentire l'avvio di un /team dall'interno di un altro workflow
+    // Depth Guard anti-recursion check: prevent nested /team workflows
     if (WorkflowScope.isInsideWorkflow()) {
       throw new Error(
-        `Richiesta rifiutata: Impossibile convocare un /team ricorsivo. Un workflow di tipo '${WorkflowScope.getCurrentType()}' (profondità: ${WorkflowScope.getDepth()}) è già in esecuzione.`
+        `Request rejected: recursive /team is not permitted. A '${WorkflowScope.getCurrentType()}' workflow (depth: ${WorkflowScope.getDepth()}) is already active.`
       );
     }
 
     const teamName = (args.team_name || '').trim();
-    const reason = args.reason ? ` Motivo: ${args.reason}` : '';
-    logSink.log(`\n🚀 [CONVOCAZIONE TEAM AUTORIZZATA DALL'UTENTE]${reason}`);
+    const reason = args.reason ? ` Reason: ${args.reason}` : '';
+    logSink.log(`\n🚀 [TEAM CONVENTION AUTHORIZED BY USER]${reason}`);
 
     if (context?.commandCtx) {
       await handleTeam(context.commandCtx, teamName, task);
-      return `Workflow di team completato per il compito: "${task}".`;
+      return `Team workflow completed for task: "${task}".`;
     }
 
-    return `Richiesta di convocazione team (${teamName || 'custom'}) accettata per il compito: "${task}".`;
+    return `Team convention request (${teamName || 'custom'}) accepted for task: "${task}".`;
   }
 };

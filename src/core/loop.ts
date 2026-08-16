@@ -9,54 +9,53 @@ import { Blackboard } from './blackboard';
 import { logSink } from './logSink';
 
 export interface AcceptanceCriteria {
-  /** Comando shell da eseguire (deve restituire exit code 0 per superare l'acceptance). */
+  /** Shell command to execute (must return exit code 0 to pass acceptance). */
   command?: string;
-  /** Path relativo o assoluto ad un file che deve esistere sul disco. */
+  /** Relative or absolute path to a file that must exist on disk. */
   fileExists?: string;
-  /** Path relativo o assoluto ad un file JSON che deve esistere ed essere parsabile senza errori. */
+  /** Relative or absolute path to a JSON file that must exist and parse cleanly. */
   jsonValid?: string;
 }
 
 export interface RunLoopOptions {
-  /** Compito o obiettivo iniziale. */
+  /** Initial task or goal. */
   task: string;
-  /** Numero massimo di tentativi (default: 3). */
+  /** Maximum number of attempts (default: 3). */
   maxAttempts?: number;
-  /** Criteri oggettivi di accettazione (opzionale). */
+  /** Objective acceptance criteria (optional). */
   acceptance?: AcceptanceCriteria;
   /**
-   * Funzione per eseguire un singolo tentativo.
-   * Riceve il prompt (che include gli eventuali feedback di errore dei tentativi precedenti) ed il numero di tentativo (0-indexed).
+   * Execution function for a single attempt.
+   * Receives prompt (including issue feedback from prior attempts) and attempt index (0-indexed).
    */
   executeAttempt: (
     prompt: string,
     attemptIndex: number
   ) => Promise<{ answer: string; issues?: string[]; modifiedFiles?: string[] }>;
-  /** Etichetta dell'agente o del run (usata per permission manager e log). */
+  /** Agent or run label (for permission manager and logs). */
   agentLabel?: string;
-  /** PermissionManager per autorizzare comandi in acceptance (opzionale). */
+  /** PermissionManager for authorizing acceptance commands (optional). */
   permissionManager?: PermissionManager;
-  /** Provider LLM per autorizzare comandi in acceptance (opzionale). */
+  /** LLM Provider for authorizing acceptance commands (optional). */
   provider?: ILLMProvider;
 }
 
 export interface RunLoopResult {
-  /** Esito del ciclo: success (tutto approvato), failed (maxAttempts raggiunto), no_progress (stallo/tentativo identico). */
+  /** Execution outcome: success (passed), failed (maxAttempts reached), no_progress (stalled/identical). */
   outcome: 'success' | 'failed' | 'no_progress';
-  /** Numero totale di tentativi eseguiti. */
+  /** Total number of attempts executed. */
   attemptsCount: number;
-  /** Risposta finale fornita dall'esecutore nell'ultimo tentativo. */
+  /** Final answer returned by executor in the last attempt. */
   finalAnswer: string;
-  /** Eventuali problemi o rilievi rimasti aperti a fine run. */
+  /** Issues remaining open at end of run. */
   issues: string[];
-  /** Firma del tentativo finale (per diagnostica/test). */
+  /** Deterministic signature of the final attempt (for diagnostics/tests). */
   lastSignature?: string;
 }
 
 /**
-  * Calcola una firma deterministica del tentativo basata sul testo della risposta
-  * (normalizzato nei caratteri spaziali) e sull'elenco ordinato dei file modificati.
-  */
+ * Calculates a deterministic attempt signature based on normalized answer text and modified files.
+ */
 export function calculateAttemptSignature(answer: string, modifiedFiles: string[] = []): string {
   const normText = (answer || '').replace(/\s+/g, ' ').trim();
   const sortedFiles = [...modifiedFiles].sort().join(';');
@@ -65,8 +64,8 @@ export function calculateAttemptSignature(answer: string, modifiedFiles: string[
 }
 
 /**
- * Esegue la verifica dei criteri oggettivi di accettazione (Acceptance Criteria).
- * Ritorna un elenco di issue/errori riscontrati (vuoto se tutti i criteri sono superati).
+ * Verifies objective acceptance criteria.
+ * Returns an array of issues found (empty if all passed).
  */
 export async function checkAcceptance(
   acceptance: AcceptanceCriteria,
@@ -76,30 +75,30 @@ export async function checkAcceptance(
 ): Promise<string[]> {
   const issues: string[] = [];
 
-  // 1) Verifica esistenza file
+  // 1) File existence check
   if (acceptance.fileExists) {
     const safePath = resolveSafePath(acceptance.fileExists);
     if (!fs.existsSync(safePath)) {
-      issues.push(`File richiesto non trovato sul disco: '${acceptance.fileExists}'.`);
+      issues.push(`Required file not found on disk: '${acceptance.fileExists}'.`);
     }
   }
 
-  // 2) Verifica validità JSON
+  // 2) JSON validity check
   if (acceptance.jsonValid) {
     const safePath = resolveSafePath(acceptance.jsonValid);
     if (!fs.existsSync(safePath)) {
-      issues.push(`File JSON richiesto non trovato sul disco: '${acceptance.jsonValid}'.`);
+      issues.push(`Required JSON file not found on disk: '${acceptance.jsonValid}'.`);
     } else {
       try {
         const raw = fs.readFileSync(safePath, 'utf-8');
         JSON.parse(raw);
       } catch (err: any) {
-        issues.push(`Il file '${acceptance.jsonValid}' contiene JSON non valido: ${err.message}.`);
+        issues.push(`File '${acceptance.jsonValid}' contains invalid JSON: ${err.message}.`);
       }
     }
   }
 
-  // 3) Verifica comando shell (exit code 0)
+  // 3) Shell command check (exit code 0)
   if (acceptance.command) {
     try {
       if (permissionManager) {
@@ -110,16 +109,16 @@ export async function checkAcceptance(
           agentLabel || 'RunController'
         );
         if (!allowed) {
-          issues.push(`Comando di acceptance '${acceptance.command}' rifiutato dall'utente o dal PermissionManager.`);
+          issues.push(`Acceptance command '${acceptance.command}' rejected by user or PermissionManager.`);
           return issues;
         }
       }
       const output = await executeCommandTool.execute({ command: acceptance.command });
       if (output.includes('[Il processo è terminato con codice di errore:') || output.includes('[ERRORE:')) {
-        issues.push(`Il comando di verifica '${acceptance.command}' ha fallito. Output:\n${output.slice(0, 1000)}`);
+        issues.push(`Verification command '${acceptance.command}' failed. Output:\n${output.slice(0, 1000)}`);
       }
     } catch (err: any) {
-      issues.push(`Errore durante l'esecuzione del comando di verifica '${acceptance.command}': ${err.message}.`);
+      issues.push(`Error executing verification command '${acceptance.command}': ${err.message}.`);
     }
   }
 
@@ -127,7 +126,7 @@ export async function checkAcceptance(
 }
 
 /**
- * Esegue il loop di controllo agentico (RunController): esegui → verifica → correggi.
+ * Executes the iterative agentic control loop (RunController): execute -> verify -> correct.
  */
 export async function runLoop(options: RunLoopOptions): Promise<RunLoopResult> {
   const maxAttempts = Math.max(1, options.maxAttempts ?? 3);
@@ -137,34 +136,34 @@ export async function runLoop(options: RunLoopOptions): Promise<RunLoopResult> {
   let lastIssues: string[] = [];
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    logSink.log(chalk.gray(`\n[RunController] Tentativo ${attempt + 1} di ${maxAttempts}...`));
+    logSink.log(chalk.gray(`\n[RunController] Attempt ${attempt + 1} of ${maxAttempts}...`));
 
-    // Esegue il tentativo corrente
+    // Execute current attempt
     const attemptResult = await options.executeAttempt(currentPrompt, attempt);
     lastAnswer = attemptResult.answer || '';
     const currentIssues: string[] = [...(attemptResult.issues || [])];
 
-    // Calcolo della firma anti-stallo
+    // Anti-stall signature check
     const signature = calculateAttemptSignature(lastAnswer, attemptResult.modifiedFiles);
     if (previousSignature !== null && signature === previousSignature) {
-      logSink.log(chalk.yellow(`\n[RunController] Rilevato stallo (no_progress): la risposta ed i file prodotti nel tentativo ${attempt + 1} sono identici al precedente.`));
+      logSink.log(chalk.yellow(`\n[RunController] Stall detected (no_progress): answer and modified files in attempt ${attempt + 1} are identical to previous attempt.`));
       
       const bb = Blackboard.current();
       if (bb) {
-        bb.post('loop_stalled', `Stallo rilevato al tentativo ${attempt + 1}: risposta e file identici.`, options.agentLabel || 'RunController');
+        bb.post('loop_stalled', `Stall detected at attempt ${attempt + 1}: identical answer and files.`, options.agentLabel || 'RunController');
       }
 
       return {
         outcome: 'no_progress',
         attemptsCount: attempt + 1,
         finalAnswer: lastAnswer,
-        issues: ['Stallo rilevato: nessuna modifica o progresso rispetto al tentativo precedente.'],
+        issues: ['Stall detected: no changes or progress compared to prior attempt.'],
         lastSignature: signature
       };
     }
     previousSignature = signature;
 
-    // Se opzionalmente definiti, esegue i controlli di acceptance oggettivi
+    // Check acceptance criteria if defined
     if (options.acceptance) {
       const acceptanceIssues = await checkAcceptance(
         options.acceptance,
@@ -177,9 +176,9 @@ export async function runLoop(options: RunLoopOptions): Promise<RunLoopResult> {
 
     lastIssues = currentIssues;
 
-    // Se non ci sono problemi/issues, il task è completato con successo
+    // If no issues, task succeeded
     if (currentIssues.length === 0) {
-      logSink.log(chalk.green(`\n[RunController] Tentativo ${attempt + 1} superato con successo!`));
+      logSink.log(chalk.green(`\n[RunController] Attempt ${attempt + 1} passed successfully!`));
       return {
         outcome: 'success',
         attemptsCount: attempt + 1,
@@ -189,28 +188,24 @@ export async function runLoop(options: RunLoopOptions): Promise<RunLoopResult> {
       };
     }
 
-    // Se ci sono problemi ed abbiamo ancora tentativi disponibili, prepariamo il prompt di correzione
-    logSink.log(chalk.yellow(`\n[RunController] Tentativo ${attempt + 1} non superato. Trovate ${currentIssues.length} issue da correggere.`));
+    // If issues remain, prepare feedback prompt for next attempt
+    logSink.log(chalk.yellow(`\n[RunController] Attempt ${attempt + 1} failed. Found ${currentIssues.length} issue(s) to correct.`));
 
-    // Registra le issue sulla lavagna di run se attiva
     const bb = Blackboard.current();
     if (bb) {
       bb.post(
         'loop_issues',
-        `Tentativo ${attempt + 1} fallito. Issue: ${currentIssues.join(' | ')}`,
+        `Attempt ${attempt + 1} failed. Issues: ${currentIssues.join(' | ')}`,
         options.agentLabel || 'RunController'
       );
     }
 
-    // Costruisce il prompt arricchito con il feedback puntuale sui problemi riscontrati
     const formattedIssues = currentIssues.map((issue) => `- ${issue}`).join('\n');
-    currentPrompt = `${options.task}\n\n[SISTEMA — FEEDBACK DI CORREZIONE DAI TENTATIVI PRECEDENTI]:
-Nel tentativo precedente sono stati riscontrati i seguenti problemi concreti. Correggili nel tuo prossimo intervento:
-${formattedIssues}`;
+    currentPrompt = `${options.task}\n\n[SYSTEM — CORRECTION FEEDBACK FROM PREVIOUS ATTEMPTS]:\nThe following concrete issues were found in the previous attempt. Fix them in your next action:\n${formattedIssues}`;
   }
 
-  // Budget di tentativi esaurito senza superare le verifiche
-  logSink.log(chalk.red(`\n[RunController] Esauriti i ${maxAttempts} tentativi disponibili senza superare tutte le verifiche.`));
+  // Attempts exhausted without passing verification
+  logSink.log(chalk.red(`\n[RunController] Exhausted ${maxAttempts} available attempts without satisfying all criteria.`));
   return {
     outcome: 'failed',
     attemptsCount: maxAttempts,

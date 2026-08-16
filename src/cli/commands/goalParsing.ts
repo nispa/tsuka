@@ -35,24 +35,18 @@ function lookupValidName(name: string, validMap?: Map<string, string> | (Charact
   return null;
 }
 
-/** Parsa una riga AGENTE: / AGENT: / @name tollerando markdown, numeri di lista e separatori vari. */
+/** Parses an AGENTE: / AGENT: / @name line across varying formatting. */
 export function parseAgentLine(
   lines: string[],
   startIdx: number,
   validMap?: Map<string, string> | (CharacterConfig | string)[]
 ): { realName: string; name: string; task: string; consumed: number } | null {
   const rawLine = lines[startIdx].trim();
-  // Pulizia prefissi markdown (es. "1. **AGENTE:** @nome — ...", "- AGENTE: nome: ...", "@nome - ...")
   const cleanLine = rawLine
     .replace(/^(?:\d+\.|\*|-)\s*/, '')
     .replace(/\*\*/g, '')
     .trim();
 
-  // Pattern flessibile:
-  // 1) Opzionale "AGENTE:" o "AGENT:"
-  // 2) @nome (con trattini/spazi/underscore ammessi)
-  // 3) Separatore: —, –, -, :, ->, => o |
-  // 4) Task descrittivo
   const FLEXIBLE_RE = /^(?:AGENTE|AGENT)?:\s*@?([a-zA-Z0-9_\-\s]+?)\s*(?:[—–\-:]|->|=>|\|)\s*(.*)/i;
   const AT_DIRECT_RE = /^@([a-zA-Z0-9_\-\s]+?)\s*(?:[—–\-:]|->|=>|\|)\s*(.*)/i;
 
@@ -70,7 +64,6 @@ export function parseAgentLine(
   let task = match[2]?.trim() || '';
   let consumed = 1;
 
-  // Se il task è vuoto o un separatore isolato, accumula le righe successive
   if (!task || /^[—–\-:]\s*$/.test(task)) {
     const taskLines: string[] = [];
     for (let j = startIdx + 1; j < lines.length; j++) {
@@ -108,10 +101,9 @@ export function parsePlan(
 
   while (i < lines.length) {
     const rawLine = lines[i].trim();
-    // Pulisci markdown formatting (bullet, bold, numbers)
     const line = rawLine.replace(/^(?:\d+\.|\*|-)\s*/, '').replace(/\*\*/g, '').trim();
 
-    // Blocco parallelo
+    // Parallel block
     if (/^PARALLELO/i.test(line)) {
       i++;
       const parallelSteps: PlanStep[] = [];
@@ -135,24 +127,17 @@ export function parsePlan(
             label: `Parallelo (${parallelSteps.map((s) => s.agentName).join(' + ')})`
           });
         } else {
-          // T9.10: parallelExecutionEnabled=false (default) — il blocco PARALLELO
-          // resta riconosciuto (il piano del modello non cambia), ma i suoi step
-          // vengono eseguiti in sequenza come step normali, uno per gruppo, invece
-          // che con Promise.all su workspace isolati. Su una singola GPU il
-          // parallelismo reale non c'è comunque (contesa sulla stessa scheda), quindi
-          // eseguire in sequenza evita l'overhead di branch/merge della workspace
-          // senza perdere nessuno step del piano.
           for (const step of parallelSteps) {
             groups.push({ mode: 'sequential', steps: [step], label: step.task });
           }
         }
         flatSteps += parallelSteps.length;
       }
-      i++; // salta FINE PARALLELO
+      i++;
       continue;
     }
 
-    // Riga agente singolo
+    // Single agent step
     const step = parseAgentLine(lines, i, validMap);
     if (step) {
       groups.push({

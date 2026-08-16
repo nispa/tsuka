@@ -6,39 +6,35 @@ import { repairJsonString, sanitizeToolCallArguments } from '../tools/jsonRepair
 import type { ILLMProvider, ChatOptions } from './provider';
 
 /**
- * Benchmark guidato da file: i test di capability fingerprinting vivono in
- * `benchmarks/*.json` (home dell'app) e si possono aggiungere/modificare al
- * volo senza toccare il codice. Ogni file è un test con prompt (o passi
- * concatenati), tool offerti al modello e una lista di check dichiarativi
- * pesati che producono un punteggio 0..1.
+ * File-driven benchmark: capability fingerprinting tests live in `benchmarks/*.json`
+ * and can be customized or added without code changes. Each file declares prompts,
+ * offered tools, and declarative weighted checks producing a 0..1 score.
  *
- * L'hash del set di test è salvato nel profilo del modello: modificare un
- * test invalida automaticamente i profili misurati col set precedente.
+ * The test suite hash is saved inside model profiles: altering benchmark files
+ * automatically invalidates previous benchmark runs.
  */
 
 export type BenchCategory = 'instruction' | 'json' | 'toolCalling';
 
 export interface BenchCheck {
-  /** Tipo di verifica (vedi CHECK_TYPES) */
+  /** Verification type (see CHECK_TYPES) */
   type: string;
-  /** Valore atteso (parola, numero, pattern regex, nome tool, ...) */
+  /** Expected value (word, number, regex pattern, tool name, etc.) */
   value?: any;
-  /** Per i check tool_arg_*: nome dell'argomento della tool call */
+  /** For tool_arg_* checks: argument name of the tool call */
   arg?: string;
-  /** Per i check json_path_*: percorso nel JSON, es. "economici[0].nome" */
+  /** For json_path_* checks: object path in parsed JSON (e.g. "items[0].name") */
   path?: string;
-  /** Flag regex (default "i" per contains/not_contains, "" per regex) */
+  /** Regex flags (default "i" for contains/not_contains, "" for regex) */
   flags?: string;
-  /** Peso del check nel punteggio del test (default 1) */
+  /** Check weight in overall test score (default: 1) */
   weight?: number;
 }
 
 export interface BenchStep {
-  /** Messaggio utente che apre il passo */
+  /** User message initiating the step */
   prompt?: string;
-  /** In alternativa: risultato (contenuto del messaggio 'tool') da restituire
-   *  alla tool call del passo precedente. Se il passo precedente non ha
-   *  emesso tool call, il passo è saltato e i suoi check valgono 0. */
+  /** Tool result content to return for previous step's tool call */
   toolResult?: string;
   checks: BenchCheck[];
 }
@@ -47,14 +43,14 @@ export interface BenchTest {
   name: string;
   description?: string;
   category: BenchCategory;
-  /** Peso del test nella media della sua categoria (default 1) */
+  /** Weight of the test within its category average (default: 1) */
   weight?: number;
-  /** Tool (schema OpenAI) offerti al modello durante il test */
+  /** Tools (OpenAI schema) provided to the model during the test */
   tools?: any[];
-  /** Forma breve: prompt singolo + checks (equivale a steps con un solo passo) */
+  /** Short form: single prompt + checks */
   prompt?: string;
   checks?: BenchCheck[];
-  /** Forma estesa: passi concatenati (catene di tool multi-turno) */
+  /** Extended form: multi-turn tool calling steps */
   steps?: BenchStep[];
 }
 
@@ -74,11 +70,11 @@ export const CHECK_TYPES = [
 const CATEGORIES: BenchCategory[] = ['instruction', 'json', 'toolCalling'];
 const BENCH_DIR = homePath('benchmarks');
 
-// ── Caricamento e hash del set di test ──
+// ── Test loading and suite hashing ──
 
 /**
- * Carica e valida tutti i test da benchmarks/*.json (ordinati per nome file).
- * Lancia un errore descrittivo (con nome file) sul primo test malformato.
+ * Loads and validates all tests from benchmarks/*.json (sorted by filename).
+ * Throws a descriptive error on the first malformed test.
  */
 export function loadBenchmarkTests(dir: string = BENCH_DIR): BenchTest[] {
   if (!fs.existsSync(dir)) return [];
@@ -90,7 +86,7 @@ export function loadBenchmarkTests(dir: string = BENCH_DIR): BenchTest[] {
     try {
       test = JSON.parse(fs.readFileSync(full, 'utf-8'));
     } catch (e: any) {
-      throw new Error(`Test di benchmark malformato (${file}): ${e.message}`);
+      throw new Error(`Malformed benchmark test file (${file}): ${e.message}`);
     }
     validateTest(test, file);
     tests.push(test);
@@ -99,17 +95,17 @@ export function loadBenchmarkTests(dir: string = BENCH_DIR): BenchTest[] {
 }
 
 function validateTest(test: BenchTest, file: string): void {
-  const fail = (msg: string) => { throw new Error(`Test di benchmark non valido (${file}): ${msg}`); };
-  if (!test.name || typeof test.name !== 'string') fail('campo "name" mancante');
-  if (!CATEGORIES.includes(test.category)) fail(`"category" deve essere una tra: ${CATEGORIES.join(', ')}`);
+  const fail = (msg: string) => { throw new Error(`Invalid benchmark test (${file}): ${msg}`); };
+  if (!test.name || typeof test.name !== 'string') fail('missing "name" field');
+  if (!CATEGORIES.includes(test.category)) fail(`"category" must be one of: ${CATEGORIES.join(', ')}`);
   const steps = normalizeSteps(test);
-  if (steps.length === 0) fail('serve "prompt"+"checks" oppure "steps"');
-  if (!steps[0].prompt) fail('il primo passo deve avere un "prompt"');
+  if (steps.length === 0) fail('must provide "prompt"+"checks" or "steps"');
+  if (!steps[0].prompt) fail('first step must include a "prompt"');
   for (const step of steps) {
-    if (!step.prompt && !step.toolResult) fail('ogni passo deve avere "prompt" o "toolResult"');
-    if (!Array.isArray(step.checks) || step.checks.length === 0) fail('ogni passo deve avere almeno un check');
+    if (!step.prompt && !step.toolResult) fail('each step requires "prompt" or "toolResult"');
+    if (!Array.isArray(step.checks) || step.checks.length === 0) fail('each step requires at least one check');
     for (const c of step.checks) {
-      if (!CHECK_TYPES.includes(c.type as any)) fail(`tipo di check sconosciuto: "${c.type}"`);
+      if (!CHECK_TYPES.includes(c.type as any)) fail(`unknown check type: "${c.type}"`);
     }
   }
 }
@@ -121,8 +117,7 @@ export function normalizeSteps(test: BenchTest): BenchStep[] {
 }
 
 /**
- * Hash breve (8 hex) del contenuto di tutti i file di test: cambia se un test
- * viene aggiunto, rimosso o modificato. Cache su nomi+mtime.
+ * Short hash (8 hex chars) of all test files to detect test suite changes.
  */
 let hashCache: { key: string; hash: string } | null = null;
 export function getBenchmarkTestsHash(dir: string = BENCH_DIR): string {
@@ -145,7 +140,7 @@ export function getBenchmarkTestsHash(dir: string = BENCH_DIR): string {
   }
 }
 
-// ── Valutazione dei check ──
+// ── Check evaluations ──
 
 function words(text: string): string[] {
   return text.trim().split(/\s+/).filter((w) => w.length > 0);
@@ -155,12 +150,12 @@ function nonEmptyLines(text: string): string[] {
   return text.split('\n').map((l) => l.trim()).filter((l) => l.length > 0);
 }
 
-/** Rimuove la punteggiatura ai bordi di una parola (es. "blu." → "blu"). */
+/** Strips edge punctuation from a word (e.g. "blue." -> "blue"). */
 function stripEdgePunct(w: string): string {
   return w.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '');
 }
 
-/** Estrae il primo blocco JSON dal testo e lo parsa applicando riparazione automatica (null se invalido). */
+/** Extracts and parses the first JSON block from text with auto-repair. */
 export function extractJson(text: string): any | null {
   try {
     const outcome = repairJsonString(text);
@@ -170,7 +165,7 @@ export function extractJson(text: string): any | null {
   }
 }
 
-/** Naviga un percorso tipo "economici[0].nome" dentro un oggetto. */
+/** Navigates nested path notation like "items[0].name" within an object. */
 export function deepGet(obj: any, pathStr: string): any {
   const tokens = pathStr.split('.').flatMap((seg) => seg.split(/[\[\]]/).filter((t) => t.length > 0));
   let cur = obj;
@@ -187,7 +182,7 @@ function parseArgs(tc: any): any {
   return typeof raw === 'string' ? sanitizeToolCallArguments(raw).parsed : (raw || {});
 }
 
-/** Confronto tollerante: numeri confrontati come numeri, il resto come stringhe. */
+/** Lenient equality: compares numbers as numbers, other types as string values. */
 function looseEquals(actual: any, expected: any): boolean {
   if (typeof expected === 'number') return Number(actual) === expected;
   return String(actual) === String(expected);
@@ -239,24 +234,17 @@ function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-// ── Esecuzione di un test ──
+// ── Test execution ──
 
 export interface BenchRunOutcome {
   score: number; // 0..1
   tokensPerSecond?: number;
-  /** Media dei token di completamento sui passi eseguiti (T8.10): a differenza di
-   *  tokensPerSecond, questa metrica rileva l'over-thinking — a effort più alto la
-   *  velocità di generazione può restare identica, ma i token emessi per arrivare
-   *  alla stessa risposta sono molti di più. undefined se nessun passo ha girato. */
+  /** Average completion tokens across executed steps (T8.10). */
   avgCompletionTokens?: number;
 }
 
 /**
- * Esegue un singolo test contro il provider: passi in sequenza, con i
- * risultati tool dichiarati nel test restituiti alla tool call del passo
- * precedente. Punteggio = somma pesata dei check superati / peso totale.
- * `chatOptions` (T8.10) viaggia invariato ad ogni passo: serve al chiamante
- * (runBenchmark) per far girare l'intero test a un dato livello di reasoning_effort.
+ * Executes a single benchmark test against the provider.
  */
 export async function runBenchTest(provider: ILLMProvider, test: BenchTest, chatOptions?: ChatOptions): Promise<BenchRunOutcome> {
   const steps = normalizeSteps(test);
@@ -272,7 +260,7 @@ export async function runBenchTest(provider: ILLMProvider, test: BenchTest, chat
   for (const step of steps) {
     const stepWeight = step.checks.reduce((s, c) => s + (c.weight ?? 1), 0);
     total += stepWeight;
-    if (chainBroken) continue; // i check del passo pesano comunque (valgono 0)
+    if (chainBroken) continue;
 
     if (step.toolResult !== undefined) {
       if (!prevToolCall) { chainBroken = true; continue; }

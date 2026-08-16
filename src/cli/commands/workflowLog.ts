@@ -13,16 +13,11 @@ interface WorkflowLogInput {
   roundsDone: number;
   teamMessages: ChatMessage[];
   turnLog: ProtocolLogEntry[];
-  /** Snapshot della blackboard del run (T6.2, TASKS.md — FASE 2): stato condiviso
-   * *di questo run*, muore col run — qui viene solo fotografato per il log, non
-   * riletto né riusato altrove. */
   blackboard: BlackboardNote[];
 }
 
 /**
- * Salva il report JSON di un workflow `/team` in `workflow_logs/` (silenzioso su
- * errore: un log mancato non deve far fallire il workflow). Include `protocolLog`
- * (T2.1): il meccanismo di decisione — tool_call/regex/fallback — di ogni turno.
+ * Saves JSON report of a `/team` workflow into `workflow_logs/`.
  */
 export function writeWorkflowLog(input: WorkflowLogInput): void {
   try {
@@ -64,7 +59,7 @@ export interface GoalLogInput {
 }
 
 /**
- * Salva il report JSON di un workflow `/goal` in `workflow_logs/`
+ * Saves JSON report of a `/goal` workflow into `workflow_logs/`.
  */
 export function writeGoalLog(input: GoalLogInput): string | null {
   try {
@@ -90,7 +85,7 @@ export function writeGoalLog(input: GoalLogInput): string | null {
 }
 
 /**
- * Recupera gli ultimi report di workflow salvati in `workflow_logs/`
+ * Retrieves recent workflow logs from `workflow_logs/`.
  */
 export function getLatestWorkflowLogs(limit: number = 5): { file: string; data: any }[] {
   try {

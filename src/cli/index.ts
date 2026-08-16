@@ -47,15 +47,13 @@ import { handleInitCmd } from './initCmd';
 export { RoleConfig, TraitConfig, CharacterConfig, TeamConfig };
 export { loadRole, loadTrait, loadCharacter, loadTeam, loadSystemPrompt, listAvailableItems };
 
-// Carica variabili d'ambiente (.env per le API key protette) dalla home
-// dell'app, non dalla cwd: il comando globale `tsuka` può essere lanciato
-// da qualsiasi cartella e deve comunque trovare le chiavi.
+// Load environment variables (.env) from app home directory
 dotenv.config({ path: homePath('.env') });
 
-// Ctrl+C durante la generazione: ripristina il terminale (riga di stato, cursore)
+// SIGINT handler: resets terminal cursor and status line
 process.on('SIGINT', () => {
   StatusLine.emergencyReset();
-  console.log(chalk.yellow('\nUscita in corso... Arrivederci!'));
+  console.log(chalk.yellow('\nExiting... Goodbye!'));
   process.exit(130);
 });
 
@@ -66,17 +64,14 @@ async function main() {
     process.exit(success ? 0 : 1);
   }
 
-  // Blocca il raw mode per tutta la sessione: evita il wedge dell'input su
-  // Windows causato dai passaggi raw→cooked di readline/prompts (vedi rawlock.ts)
+  // Lock raw mode across whole session to prevent Windows readline input wedge
   lockRawMode();
 
   CLITheme.banner();
 
-  // Inizializza gestori e registri
+  // Initialize managers and registries
   const configManager = new ConfigManager();
   setLlmTimeoutMs(configManager.getLlmTimeoutMs());
-
-
 
   const permissionManager = new PermissionManager();
   const registry = await createDefaultRegistry();
@@ -84,10 +79,9 @@ async function main() {
   let activeProvider = configManager.getActiveProviderName();
   let activeConfig = configManager.getActiveProviderConfig();
   
-  // Carica provider LLM
   let provider = new LLMProvider(activeConfig.baseUrl, configManager.getApiKey(), activeConfig.model);
 
-  // Helper locale per ricreare l'agente al volo rileggendo la configurazione corrente
+  // Helper to recreate agent dynamically with active settings
   const recreateAgent = (): Agent => {
     const charName = configManager.getActiveCharacter();
     const char = loadCharacter(charName);
@@ -99,12 +93,7 @@ async function main() {
     const trait = loadTrait(traitName);
     const model = provider.getCurrentModel();
 
-    // T8.10: cascata override chiamante (nessuno, qui — è la chat normale) →
-    // personaggio → ruolo → default di tsuka.config.json.
     const cascadedEffort = resolveReasoningEffort(undefined, char, role, configManager.getDefaultReasoningEffort());
-    // T8.14: il pin globale (/effort, in memoria di processo) si applica SOPRA
-    // questa cascata — resolveReasoningEffort resta invariata, il pin vince solo
-    // se presente (withEffortPin torna cascadedEffort quando non c'è pin).
     const reasoningEffort = withEffortPin(cascadedEffort);
 
     const a = new Agent(
@@ -128,14 +117,11 @@ async function main() {
 
   let commandCtx: CommandCtx;
 
-  // Inizializzazione iniziale dell'agente
   let agent = recreateAgent();
   
-  // Scansione dei server all'avvio: prova il provider attivo e, se spento,
-  // gli altri server locali configurati, agganciandosi al volo a quello vivo
-  // e al modello disponibile (o già caricato in memoria) in quel momento.
+  // Scan servers on startup
   let availableModels: string[] = [];
-  let initSpinner = CLITheme.createSpinner(`Scansione dei server LLM (attivo: ${activeProvider})...`);
+  let initSpinner = CLITheme.createSpinner(`Scanning LLM servers (active: ${activeProvider})...`);
   initSpinner.start();
 
   const candidates = configManager.getProviderNames().map((name) => ({
@@ -147,21 +133,20 @@ async function main() {
 
   if (scan) {
     if (scan.name !== activeProvider) {
-      initSpinner.succeed(chalk.green(`Server '${scan.name}' attivo`) + chalk.gray(` (il provider configurato '${activeProvider}' non risponde)`));
+      initSpinner.succeed(chalk.green(`Server '${scan.name}' online`) + chalk.gray(` (configured provider '${activeProvider}' unreachable)`));
       activeProvider = scan.name;
       configManager.setActiveProvider(scan.name);
       activeConfig = configManager.getActiveProviderConfig();
       provider.reconfigure(activeConfig.baseUrl, configManager.getApiKey(), activeConfig.model);
       agent = recreateAgent();
     } else {
-      initSpinner.succeed(chalk.green(`Connessione stabilita con ${activeProvider}.`));
+      initSpinner.succeed(chalk.green(`Connection established with ${activeProvider}.`));
     }
 
     availableModels = scan.models;
     if (availableModels.length === 0) {
-      CLITheme.warning('Nessun modello trovato sul server.');
+      CLITheme.warning('No models found on server.');
     } else {
-      // Priorità: modello già caricato in RAM > modello configurato se presente > primo disponibile
       const configured = activeConfig.model;
       const chosen = scan.loadedModel ?? (availableModels.includes(configured) ? configured : availableModels[0]);
       if (chosen !== provider.getCurrentModel()) {
@@ -170,33 +155,30 @@ async function main() {
         agent = recreateAgent();
       }
       if (scan.loadedModel && scan.loadedModel !== configured) {
-        CLITheme.success(`Agganciato al modello già caricato sul server: ${chalk.green(chosen)}`);
+        CLITheme.success(`Attached to model already loaded in server RAM: ${chalk.green(chosen)}`);
       } else if (!availableModels.includes(configured) && chosen !== configured) {
-        CLITheme.warning(`Il modello configurato '${configured}' non è presente. Impostato fallback a '${chosen}'.`);
+        CLITheme.warning(`Configured model '${configured}' not available. Falling back to '${chosen}'.`);
       } else {
-        const loadedHint = scan.loadedModel === chosen ? chalk.gray(' (già caricato in memoria)') : '';
-        CLITheme.success(`Modello attivo: ${chalk.green(chosen)}${loadedHint}`);
+        const loadedHint = scan.loadedModel === chosen ? chalk.gray(' (loaded in RAM)') : '';
+        CLITheme.success(`Active model: ${chalk.green(chosen)}${loadedHint}`);
       }
 
-      // Rilevamento dinamico della finestra di contesto (T11.5)
       const dynamicCtx = scan.contextWindow ?? (await detectContextWindow(activeConfig.baseUrl, configManager.getApiKey(), chosen));
       if (dynamicCtx) {
         configManager.setRuntimeContextTokens(dynamicCtx);
         agent = recreateAgent();
       }
 
-      // Suggerisce /benchmark se il modello attivo non è mai stato profilato
       notifyIfUnprofiled(provider.getCurrentModel(), agent.getReasoningEffort());
     }
   } else {
-    initSpinner.fail(chalk.red('Nessun server LLM raggiungibile (Ollama, Unsloth, OpenRouter).'));
-    CLITheme.warning('💡 Come iniziare:');
-    console.log(chalk.gray('  • Se usi Ollama: avvialo con ') + chalk.cyan('ollama serve') + chalk.gray(' e carica un modello (es. ') + chalk.cyan('ollama run qwen2.5-coder:7b') + chalk.gray(')'));
-    console.log(chalk.gray('  • Se usi OpenRouter: configura la chiave API in ') + chalk.cyan('.env') + chalk.gray(' o digita ') + chalk.cyan('/provider'));
-    console.log(chalk.gray('  • Per inizializzare un set di agenti nel workspace: ') + chalk.cyan('tsuka init --preset core\n'));
+    initSpinner.fail(chalk.red('No LLM server reachable (Ollama, Unsloth, OpenRouter).'));
+    CLITheme.warning('💡 Getting started:');
+    console.log(chalk.gray('  • If using Ollama: start with ') + chalk.cyan('ollama serve') + chalk.gray(' and load a model (e.g. ') + chalk.cyan('ollama run qwen2.5-coder:7b') + chalk.gray(')'));
+    console.log(chalk.gray('  • If using OpenRouter: configure API key in ') + chalk.cyan('.env') + chalk.gray(' or type ') + chalk.cyan('/provider'));
+    console.log(chalk.gray('  • To initialize a preset roster in workspace: ') + chalk.cyan('tsuka init --preset core\n'));
   }
 
-  // Pannello di stato con i dati effettivi post-scansione
   const initialCharName = configManager.getActiveCharacter();
   const initialChar = loadCharacter(initialCharName);
   {
@@ -208,29 +190,27 @@ async function main() {
     const currentM = scan ? provider.getCurrentModel() : '';
     const recEffort = currentM ? getRecommendedEffort(currentM) : null;
     const effortLabel = recEffort
-      ? `${recEffort.toUpperCase()} (consigliato da benchmark)`
+      ? `${recEffort.toUpperCase()} (benchmark recommended)`
       : 'standard';
 
     const rows: { label: string; value: string; color?: (s: string) => string }[] = [
       { label: 'Provider', value: activeProvider.toUpperCase(), color: chalk.green },
       { label: 'Server', value: activeConfig.baseUrl, color: chalk.cyan },
-      { label: 'Modello', value: scan ? provider.getCurrentModel() : 'nessuno (server offline)', color: scan ? chalk.green : chalk.red },
-      { label: 'Contesto', value: ctxLabel, color: runtimeCtx ? chalk.green : chalk.gray },
-      { label: 'Sforzo (Effort)', value: effortLabel, color: recEffort ? chalk.magenta : chalk.gray },
+      { label: 'Model', value: scan ? provider.getCurrentModel() : 'none (offline)', color: scan ? chalk.green : chalk.red },
+      { label: 'Context', value: ctxLabel, color: runtimeCtx ? chalk.green : chalk.gray },
+      { label: 'Effort', value: effortLabel, color: recEffort ? chalk.magenta : chalk.gray },
     ];
     if (initialChar) {
-      rows.push({ label: 'Personaggio', value: `${initialChar.displayName} (${initialChar.aiName})`, color: chalk.green });
+      rows.push({ label: 'Character', value: `${initialChar.displayName} (${initialChar.aiName})`, color: chalk.green });
     } else {
-      rows.push({ label: 'Ruolo', value: loadRole(configManager.getActiveRole()).displayName, color: chalk.green });
-      rows.push({ label: 'Attitudine', value: loadTrait(configManager.getActiveTrait()).displayName, color: chalk.green });
+      rows.push({ label: 'Role', value: loadRole(configManager.getActiveRole()).displayName, color: chalk.green });
+      rows.push({ label: 'Trait', value: loadTrait(configManager.getActiveTrait()).displayName, color: chalk.green });
     }
     CLITheme.statusPanel(rows);
   }
 
-  // Visualizza la guida ai comandi
   CLITheme.help();
 
-  // Costruisce il contesto condiviso per tutti i comandi slash
   commandCtx = {
     configManager,
     provider,
@@ -248,7 +228,6 @@ async function main() {
   };
   agent.setCommandCtx(commandCtx);
 
-  // Mappa dei comandi: ogni handler riceve il contesto e l'argomento
   const commandMap: Record<string, (ctx: CommandCtx, arg: string) => Promise<void>> = {
     '/provider':   handleProvider,
     '/models':     handleModels,
@@ -266,8 +245,6 @@ async function main() {
     '/search-engine': handleSearchEngine,
   };
 
-  // Autocompletamento con Tab: nomi comando + argomenti dinamici + mention @personaggi/@ruoli.
-  // I comandi inline (gestiti direttamente nel loop REPL) vanno aggiunti a mano.
   setCompletionSource({
     commands: [...new Set([
       ...Object.keys(commandMap),
@@ -295,34 +272,26 @@ async function main() {
     }
   });
 
-  // Avvia il loop REPL (readline nativo: history navigabile con frecce su/giù)
   while (true) {
     const input = await askInput('User ❯');
 
-    // Gestione dell'interruzione (Ctrl+C / Ctrl+D)
     if (input === undefined) {
-      console.log(chalk.yellow('\nUscita in corso... Arrivederci!'));
+      console.log(chalk.yellow('\nExiting... Goodbye!'));
       break;
     }
 
     const trimmedInput = input.trim();
     if (!trimmedInput) continue;
 
-    // Messaggio effettivo da inviare all'agente in questo giro: di norma è
-    // trimmedInput così com'è, ma /continue lo sostituisce con la direttiva
-    // di ripresa forzata e "cade" nel turno di chat normale sotto invece di
-    // consumare l'input con un `continue` come fanno gli altri comandi.
     let messageToSend: string | null = null;
 
-    // Gestione dei comandi Slash
     if (trimmedInput.startsWith('/')) {
       const parts = trimmedInput.split(' ');
       const command = parts[0].toLowerCase();
       const arg = parts.slice(1).join(' ').trim();
 
-      // Comandi semplici inline
       if (command === '/exit') {
-        console.log(chalk.yellow('Uscita in corso... Arrivederci!'));
+        console.log(chalk.yellow('Exiting... Goodbye!'));
         process.exit(0);
       }
       if (command === '/clear') {
@@ -338,30 +307,30 @@ async function main() {
         agent = recreateAgent();
         commandCtx.agent.current = agent;
         permissionManager.resetSession();
-        CLITheme.success('Sessione resettata con successo (cronologia e autorizzazioni azzerate).');
+        CLITheme.success('Session reset successfully (history and permissions cleared).');
         continue;
       }
       if (command === '/info') {
         const charName = configManager.getActiveCharacter();
         const char = loadCharacter(charName);
-        console.log(chalk.bold('\nInformazioni di Sessione:'));
-        console.log(`- Provider Attivo: ${chalk.green(configManager.getActiveProviderName().toUpperCase())}`);
-        console.log(`- Endpoint Server: ${chalk.cyan(provider.getBaseUrl())}`);
-        console.log(`- Modello Attivo:  ${chalk.green(provider.getCurrentModel())}`);
+        console.log(chalk.bold('\nSession Information:'));
+        console.log(`- Active Provider: ${chalk.green(configManager.getActiveProviderName().toUpperCase())}`);
+        console.log(`- Server Endpoint: ${chalk.cyan(provider.getBaseUrl())}`);
+        console.log(`- Active Model:    ${chalk.green(provider.getCurrentModel())}`);
         const profile = getModelProfile(provider.getCurrentModel());
         if (profile) {
           const tierColor = profile.tier === 'large' ? chalk.green : profile.tier === 'medium' ? chalk.yellow : chalk.red;
-          console.log(`- Profilo Misurato: tier ${tierColor(profile.tier.toUpperCase())} (${profile.tokensPerSecond} tok/s, testato il ${profile.testedAt.slice(0, 10)})`);
+          console.log(`- Measured Profile: tier ${tierColor(profile.tier.toUpperCase())} (${profile.tokensPerSecond} tok/s, tested on ${profile.testedAt.slice(0, 10)})`);
         } else {
-          console.log(chalk.gray('- Profilo Misurato: assente (usa /benchmark per misurare le capacità del modello)'));
+          console.log(chalk.gray('- Measured Profile: none (use /benchmark to measure model capabilities)'));
         }
         if (char) {
-          console.log(`- Personaggio:     ${chalk.green(char.displayName)} (${chalk.yellow(char.aiName)})`);
-          console.log(`  └─ Ruolo collegato:  ${char.role}`);
-          console.log(`  └─ Tratto collegato: ${char.trait}`);
+          console.log(`- Character:       ${chalk.green(char.displayName)} (${chalk.yellow(char.aiName)})`);
+          console.log(`  └─ Linked Role:   ${char.role}`);
+          console.log(`  └─ Linked Trait:  ${char.trait}`);
         } else {
-          console.log(`- Ruolo Agente:    ${chalk.green(loadRole(configManager.getActiveRole()).displayName)}`);
-          console.log(`- Attitudine:      ${chalk.green(loadTrait(configManager.getActiveTrait()).displayName)}`);
+          console.log(`- Agent Role:      ${chalk.green(loadRole(configManager.getActiveRole()).displayName)}`);
+          console.log(`- Trait:           ${chalk.green(loadTrait(configManager.getActiveTrait()).displayName)}`);
         }
         console.log();
         continue;
@@ -369,31 +338,27 @@ async function main() {
       if (command === '/continue') {
         const traces = listThinkingTraces();
         if (traces.length === 0) {
-          CLITheme.warning('Nessun ragionamento salvato da riprendere (memory/thinking/ è vuota).');
+          CLITheme.warning('No saved reasoning traces to resume (memory/thinking/ is empty).');
           continue;
         }
         const trace = await resolveThinkingTrace(arg, traces);
         if (!trace) {
-          CLITheme.error(`Nessuna traccia trovata per '${arg}'. Usa /continue senza argomenti per l'elenco.`);
+          CLITheme.error(`No trace found for '${arg}'. Use /continue without arguments to see the list.`);
           continue;
         }
         let traceContent: string;
         try {
           traceContent = fs.readFileSync(trace.fullPath, 'utf-8');
         } catch (err: any) {
-          CLITheme.error(`Impossibile leggere ${trace.filename}: ${err.message}`);
+          CLITheme.error(`Unable to read ${trace.filename}: ${err.message}`);
           continue;
         }
-        CLITheme.info(`Ripresa forzata da: ${chalk.cyan(trace.filename)} (${trace.interrupted ? chalk.yellow('interrotto') : chalk.green('completo')})`);
+        CLITheme.info(`Forced resumption from: ${chalk.cyan(trace.filename)} (${trace.interrupted ? chalk.yellow('interrupted') : chalk.green('complete')})`);
         messageToSend = buildResumeDirective(traceContent);
-        // Nessun `continue` qui: si cade di proposito nel turno di chat
-        // normale più sotto, con messageToSend al posto di trimmedInput.
       } else {
-        // Dispatch ai moduli estratti per i comandi complessi
         const handler = commandMap[command];
         if (handler) {
           await handler(commandCtx, arg);
-          // Aggiorna i riferimenti mutabili dopo l'esecuzione del comando
           agent = commandCtx.agent.current;
           if (commandCtx.availableModels.current !== availableModels) {
             availableModels = commandCtx.availableModels.current;
@@ -401,7 +366,7 @@ async function main() {
           continue;
         }
 
-        CLITheme.error(`Comando sconosciuto: ${command}. Digita /help per vedere i comandi.`);
+        CLITheme.error(`Unknown command: ${command}. Type /help to see available commands.`);
         continue;
       }
     } else {
@@ -410,16 +375,10 @@ async function main() {
 
     if (messageToSend === null) continue;
 
-     // Determina il prompt con il nome proprio del personaggio se disponibile
      const charName = configManager.getActiveCharacter();
      const activeCharObj = loadCharacter(charName);
      const agentHeaderName = activeCharObj ? activeCharObj.aiName : 'Tsuka';
 
-     // T8.14: rende visibile (o chiede conferma, in modalità ask) quando l'effort
-     // di questo turno diverge dal livello di riferimento (pin, o default di
-     // configurazione se non c'è pin). SOLO qui: è l'unico punto della chat
-     // interattiva vera — /team, /goal e i figli di spawn_agent passano invece
-     // da logEffortDivergence (mai un prompt, vincolo esplicito del task).
      const turnEffortOverride: ReasoningEffort | undefined = await confirmEffortDivergence(
        agentHeaderName,
        agent.getReasoningEffort(),
@@ -427,10 +386,10 @@ async function main() {
        async (effective, reference) => {
          console.log();
          const decision = await InteractiveMenu.select<'yes' | 'no'>(
-           `Questo turno girerebbe a effort '${effective ?? 'nessuno'}' (riferimento: '${reference ?? 'nessuno'}'). Procedere?`,
+           `This turn would run with effort '${effective ?? 'none'}' (reference: '${reference ?? 'none'}'). Proceed?`,
            [
-             { title: `Procedi con '${effective ?? 'nessuno'}'`, value: 'yes' },
-             { title: `Usa il riferimento '${reference ?? 'nessuno'}' solo per questo turno`, value: 'no' }
+             { title: `Proceed with '${effective ?? 'none'}'`, value: 'yes' },
+             { title: `Use reference '${reference ?? 'none'}' only for this turn`, value: 'no' }
            ],
            'yes'
          );
@@ -438,15 +397,11 @@ async function main() {
        }
      );
 
-     // Streaming live con status line animata; a fine risposta il renderer
-    // sostituisce lo stream grezzo con il pannello markdown definitivo.
-    // Esc interrompe la generazione e torna al prompt (Ctrl+C esce).
     const renderer = new StreamRenderer({ headerName: agentHeaderName });
     const interrupt = new GenerationInterrupt();
     interrupt.arm();
     renderer.begin();
 
-    // Accumula stats per context tracker
     let agentRunStats: any = null;
 
     try {
@@ -454,29 +409,22 @@ async function main() {
          messageToSend,
          (chunk, channel) => renderer.onDelta(chunk, channel ?? 'content'),
          (stats) => { renderer.setStats(stats); agentRunStats = stats; },
-         // rearm: i prompt di autorizzazione disattivano il raw mode alla chiusura,
-         // riattivarlo a ogni evento mantiene Esc/Ctrl+X funzionanti per tutto il run
          (ev) => { renderer.onAgentEvent(ev); interrupt.rearm(); },
          interrupt.signal,
-         // Override SOLO per questo turno se l'utente ha rifiutato in modalità
-         // ask (torna sempre agent.getReasoningEffort() quando non c'è
-         // divergenza o l'ask mode è spenta: nessun comportamento nuovo).
          turnEffortOverride !== agent.getReasoningEffort() ? turnEffortOverride : undefined
        );
        if (interrupt.aborted) {
-         // Conserva in cronologia l'eventuale risposta parziale già streammata
          const partial = renderer.getFullText().trim();
          if (partial) {
-           agent.getMessages().push({ role: 'assistant', content: partial + '\n[risposta interrotta dall\'utente]' });
+           agent.getMessages().push({ role: 'assistant', content: partial + '\n[response interrupted by user]' });
          }
          renderer.abort();
-         CLITheme.warning('Generazione interrotta (Esc).');
+         CLITheme.warning('Generation interrupted (Esc).');
        } else {
          renderer.finish();
        }
        console.log();
 
-       // Traccia l'attività nel context tracker
        try {
          if (agentRunStats) {
            ContextTracker.getInstance().addEntry({
@@ -489,7 +437,6 @@ async function main() {
          }
        } catch {}
 
-       // Compressione automatica se il contesto supera la soglia
        try {
          await agent.compressHistory(0.75);
        } catch {}
@@ -499,13 +446,13 @@ async function main() {
       console.log();
       const msg = error?.message || String(error);
       if (msg.includes('ECONNREFUSED') || msg.includes('fetch failed')) {
-        CLITheme.error(`Impossibile connettersi al provider ${activeProvider.toUpperCase()} (${activeConfig.baseUrl}).`);
-        CLITheme.warning(`Assicurati che il server sia attivo o usa /provider per cambiare endpoint.`);
+        CLITheme.error(`Unable to connect to provider ${activeProvider.toUpperCase()} (${activeConfig.baseUrl}).`);
+        CLITheme.warning(`Ensure server is running or use /provider to switch endpoint.`);
       } else if (msg.includes('401') || msg.includes('Incorrect API key') || msg.includes('Unauthorized')) {
-        CLITheme.error(`Autenticazione fallita per il provider ${activeProvider.toUpperCase()}.`);
-        CLITheme.warning(`Verifica la chiave API in .env o configurala tramite /provider.`);
+        CLITheme.error(`Authentication failed for provider ${activeProvider.toUpperCase()}.`);
+        CLITheme.warning(`Verify API key in .env or configure via /provider.`);
       } else {
-        CLITheme.error(`Errore durante l'elaborazione: ${msg}`);
+        CLITheme.error(`Error during execution: ${msg}`);
       }
     } finally {
       interrupt.disarm();
@@ -516,6 +463,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  CLITheme.error(`Errore fatal: ${err.message}`);
+  CLITheme.error(`Fatal error: ${err.message}`);
   process.exit(1);
 });

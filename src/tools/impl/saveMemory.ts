@@ -7,14 +7,14 @@ export const saveMemoryTool: Tool = {
   execute: async (args: { content: string }) => {
     const content = (args.content || '').trim();
     if (!content) {
-      throw new Error("Il contenuto del ricordo non può essere vuoto.");
+      throw new Error("Memory content cannot be empty.");
     }
     if (content.length > 500) {
-      throw new Error('Ricordo troppo lungo (max 500 caratteri): sintetizza il fatto essenziale.');
+      throw new Error('Memory content too long (max 500 characters): summarize essential facts.');
     }
 
     const store = MemoryStore.getInstance();
-    const fact = store.addFact(content, 'agente');
-    return `Fatto salvato nella memoria condivisa persistente (id: ${fact.id}). Sarà disponibile a tutti gli agenti e anche nelle sessioni future.`;
+    const fact = store.addFact(content, 'agent');
+    return `Fact saved to shared persistent memory (id: ${fact.id}). It will be accessible across sessions.`;
   }
 };

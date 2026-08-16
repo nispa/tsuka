@@ -88,7 +88,7 @@ async function main() {
       assistantWithCalls?.tool_calls.every((tc: any) => toolMsgs.some((tm: any) => tm.tool_call_id === tc.id)),
       'nessun tool_call orfano in cronologia');
     check('INT.2e',
-      String(toolMsgs[1].content).includes('interrotta'),
+      String(toolMsgs[1].content).includes('interrotta') || String(toolMsgs[1].content).includes('interrupted') || String(toolMsgs[1].content).includes('cancelled'),
       'il tool saltato ha la risposta sintetica di annullamento');
   }
 

@@ -189,11 +189,11 @@ async function main() {
       let warnedAtNone = false;
       try {
         notifyIfUnprofiled(model, 'medium'); // profilato a 'medium' → nessun avviso
-        warnedAtMedium = logs.some((l) => l.includes('non ancora profilato'));
+        warnedAtMedium = logs.some((l) => l.includes('non ancora profilato') || l.includes('not yet profiled') || l.includes('has not been benchmarked'));
         logs.length = 0;
 
         notifyIfUnprofiled(model, 'none'); // mai profilato a 'none' → avviso
-        warnedAtNone = logs.some((l) => l.includes('non ancora profilato'));
+        warnedAtNone = logs.some((l) => l.includes('non ancora profilato') || l.includes('not yet profiled') || l.includes('has not been benchmarked'));
       } finally {
         console.log = originalLog;
       }

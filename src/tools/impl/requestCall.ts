@@ -9,29 +9,29 @@ export const requestCallTool: Tool = {
   execute: async (args: { participants: string[]; topic: string; reason?: string }, context?: ToolExecutionContext) => {
     const topic = (args.topic || '').trim();
     if (!topic) {
-      throw new Error("Parametro 'topic' obbligatorio per avviare una conferenza.");
+      throw new Error("Parameter 'topic' is required to start a call.");
     }
 
     const participants = Array.isArray(args.participants) ? args.participants.map((p) => p.trim()).filter(Boolean) : [];
     if (participants.length < 2) {
-      throw new Error("Specificare almeno 2 partecipanti per la conferenza (es. ['@spock', '@geordi']).");
+      throw new Error("Specify at least 2 participants for the call (e.g. ['@spock', '@geordi']).");
     }
 
-    // Freno anti-ricorsione (Depth Guard): mai consentire l'avvio di una /call dall'interno di un altro workflow
+    // Depth Guard anti-recursion check: prevent nested /call workflows
     if (WorkflowScope.isInsideWorkflow()) {
       throw new Error(
-        `Richiesta rifiutata: Impossibile avviare una /call ricorsiva. Un workflow di tipo '${WorkflowScope.getCurrentType()}' (profondità: ${WorkflowScope.getDepth()}) è già in esecuzione.`
+        `Request rejected: recursive /call is not permitted. A '${WorkflowScope.getCurrentType()}' workflow (depth: ${WorkflowScope.getDepth()}) is already active.`
       );
     }
 
-    const reason = args.reason ? ` Motivo: ${args.reason}` : '';
-    logSink.log(`\n📞 [CONFERENZA AUTORIZZATA DALL'UTENTE]${reason}`);
+    const reason = args.reason ? ` Reason: ${args.reason}` : '';
+    logSink.log(`\n📞 [CONFERENCE CALL AUTHORIZED BY USER]${reason}`);
 
     if (context?.commandCtx) {
       await handleCall(context.commandCtx, participants.join(' '), topic);
-      return `Conferenza conclusa tra ${participants.join(', ')} sul tema: "${topic}".`;
+      return `Conference call finished between ${participants.join(', ')} on: "${topic}".`;
     }
 
-    return `Richiesta di conferenza tra ${participants.join(', ')} accettata sul tema: "${topic}".`;
+    return `Conference call request between ${participants.join(', ')} accepted on: "${topic}".`;
   }
 };

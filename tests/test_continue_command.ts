@@ -80,8 +80,8 @@ async function run() {
   // 7. buildResumeDirective: contiene il contenuto originale e l'istruzione esplicita di non ripartire da capo
   const directive = buildResumeDirective('Il mio ragionamento completo su come strutturare levels.js.');
   check('CONT.11', directive.includes('Il mio ragionamento completo su come strutturare levels.js.'), 'buildResumeDirective include il testo integrale della traccia');
-  check('CONT.12', /non ripartire da capo/i.test(directive), 'buildResumeDirective istruisce esplicitamente di non ripartire da capo');
-  check('CONT.13', /esegui subito/i.test(directive), 'buildResumeDirective istruisce di agire subito se il ragionamento converge già a una decisione');
+  check('CONT.12', /(non ripartire da capo|do not restart)/i.test(directive), 'buildResumeDirective istruisce esplicitamente di non ripartire da capo');
+  check('CONT.13', /(esegui subito|act IMMEDIATELY|proceed to act)/i.test(directive), 'buildResumeDirective istruisce di agire subito se il ragionamento converge già a una decisione');
 
   // 8. buildResumeDirective con whitespace superfluo: il contenuto viene trimmato
   const trimmedDirective = buildResumeDirective('   testo con spazi tutt\'intorno   \n\n');

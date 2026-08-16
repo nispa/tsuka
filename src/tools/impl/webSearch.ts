@@ -3,10 +3,6 @@ import { ConfigManager, CONFIG_PATH } from '../../core/config';
 import { capForContext } from '../../core/contextBudget';
 import * as fs from 'fs';
 
-// dotenv caricato dal punto di ingresso (cli/index.ts)
-
-// Istanza condivisa del ConfigManager, ricaricata solo se il file su disco cambia
-// (evita di istanziare — e riscrivere — la configurazione a ogni ricerca web)
 let cachedConfigManager: ConfigManager | null = null;
 let cachedConfigMtime = -1;
 
@@ -32,7 +28,7 @@ async function searchDuckDuckGo(query: string): Promise<string> {
     });
 
     if (!response.ok) {
-      throw new Error(`Errore HTTP di DuckDuckGo: ${response.status}`);
+      throw new Error(`DuckDuckGo HTTP error: ${response.status}`);
     }
 
     const html = await response.text();
@@ -66,14 +62,14 @@ async function searchDuckDuckGo(query: string): Promise<string> {
     }
 
     if (results.length === 0) {
-      return 'Nessun risultato utile trovato su DuckDuckGo.';
+      return 'No useful results found on DuckDuckGo.';
     }
 
     return results
       .map((r, i) => `${i + 1}. **[${r.title}](${r.url})**\n   ${r.snippet}`)
       .join('\n\n');
   } catch (error: any) {
-    throw new Error(`Errore durante la ricerca DuckDuckGo: ${error.message}`);
+    throw new Error(`Error during DuckDuckGo search: ${error.message}`);
   }
 }
 
@@ -81,36 +77,36 @@ async function searchGoogle(query: string): Promise<string> {
   const apiKey = process.env.GOOGLE_SEARCH_API_KEY;
   const cx = process.env.GOOGLE_SEARCH_CX;
   if (!apiKey || !cx) {
-    throw new Error('Chiave API GOOGLE_SEARCH_API_KEY o ID motore GOOGLE_SEARCH_CX non trovati nel file .env.');
+    throw new Error('GOOGLE_SEARCH_API_KEY or GOOGLE_SEARCH_CX not configured in .env.');
   }
 
   try {
     const url = `https://www.googleapis.com/customsearch/v1?key=${apiKey}&cx=${cx}&q=${encodeURIComponent(query)}`;
     const response = await fetch(url);
     if (!response.ok) {
-      throw new Error(`Errore API Google Custom Search: ${response.status}`);
+      throw new Error(`Google Custom Search API error: ${response.status}`);
     }
 
     const data = await response.json() as { items?: Array<{ title: string; link: string; snippet: string }> };
     if (data.items && Array.isArray(data.items)) {
       if (data.items.length === 0) {
-        return 'Nessun risultato trovato su Google.';
+        return 'No results found on Google.';
       }
       return data.items
         .map((item, i) => `${i + 1}. **[${item.title}](${item.link})**\n   ${item.snippet}`)
         .join('\n\n');
     }
     
-    return 'Risposta Google Search in formato vuoto o non supportato.';
+    return 'Google Search returned an empty or unsupported response format.';
   } catch (error: any) {
-    throw new Error(`Errore durante la ricerca Google: ${error.message}`);
+    throw new Error(`Error during Google search: ${error.message}`);
   }
 }
 
 async function searchTavily(query: string): Promise<string> {
   const apiKey = process.env.TAVILY_API_KEY;
   if (!apiKey) {
-    throw new Error('Chiave API TAVILY_API_KEY non trovata nel file .env. Configura la chiave o cambia motore di ricerca.');
+    throw new Error('TAVILY_API_KEY not found in .env. Configure the key or change search engine.');
   }
 
   try {
@@ -128,22 +124,22 @@ async function searchTavily(query: string): Promise<string> {
     });
 
     if (!response.ok) {
-      throw new Error(`Errore API Tavily: ${response.status}`);
+      throw new Error(`Tavily API error: ${response.status}`);
     }
 
     const data = await response.json() as { results?: Array<{ title: string; url: string; content: string }> };
     if (data.results && Array.isArray(data.results)) {
       if (data.results.length === 0) {
-        return 'Nessun risultato trovato su Tavily.';
+        return 'No results found on Tavily.';
       }
       return data.results
         .map((r, i) => `${i + 1}. **[${r.title}](${r.url})**\n   ${r.content}`)
         .join('\n\n');
     }
     
-    return 'Risposta Tavily in formato non supportato.';
+    return 'Tavily returned an unsupported response format.';
   } catch (error: any) {
-    throw new Error(`Errore durante la ricerca Tavily: ${error.message}`);
+    throw new Error(`Error during Tavily search: ${error.message}`);
   }
 }
 
@@ -163,11 +159,9 @@ export const webSearchTool: Tool = {
       result = await searchDuckDuckGo(args.query);
     }
 
-    // T8.8: normalmente pochi risultati brevi, ma un motore può restituire snippet
-    // molto lunghi (es. Tavily con contenuto esteso) — stesso tetto degli altri tool.
     return capForContext(result, undefined, {
-      label: `i risultati di ricerca per "${args.query}"`,
-      recoveryHint: `Restringi la query di web_search, oppure usa browse_url sull'URL più promettente tra i risultati.`
+      label: `search results for "${args.query}"`,
+      recoveryHint: `Narrow your web_search query, or use browse_url on the most promising result URL.`
     });
   }
 };

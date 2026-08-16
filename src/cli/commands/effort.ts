@@ -9,21 +9,11 @@ import {
 } from '../../core/effortControl';
 
 /**
- * Comando `/effort` (T8.14, TASKS.md — FASE 3): controllo globale del
- * reasoning_effort a runtime. Tre forme:
- *  - `/effort`               → mostra il livello attivo, la provenienza e il
- *    tier di tool che ne consegue;
- *  - `/effort <livello>`     → fissa il pin (in memoria di processo, non in
- *    tsuka.config.json — sparisce al riavvio);
- *  - `/effort auto`          → rimuove il pin, torna alla cascata di T8.10;
- *  - `/effort ask`           → alterna la modalità ask (conferma quando un
- *    turno di CHAT diverge dal riferimento; MAI in /team, /goal o nei figli
- *    di spawn_agent, che degradano sempre a riga di log).
+ * `/effort` command: runtime control of reasoning effort.
  */
 
 const VALID_LEVELS: ReasoningEffort[] = ['none', 'low', 'medium', 'xhigh'];
 
-/** Ruolo/personaggio attivi ORA, secondo la stessa logica di recreateAgent (index.ts). */
 function activeRoleAndCharacter(ctx: CommandCtx) {
   const charName = ctx.configManager.getActiveCharacter();
   const char = ctx.loadCharacter(charName);
@@ -32,7 +22,6 @@ function activeRoleAndCharacter(ctx: CommandCtx) {
   return { char, role };
 }
 
-/** Nomi dei tool visibili al modello attivo, a un dato livello di effort. */
 function toolNamesAt(ctx: CommandCtx, allowedTools: string[] | undefined, effort: ReasoningEffort | undefined): string[] {
   return ctx.registry.listForLLM(ctx.provider.getCurrentModel(), allowedTools, effort)
     .map((t) => t.function.name)
@@ -47,24 +36,23 @@ function printStatus(ctx: CommandCtx): void {
   const tierColor = tier === 'large' ? chalk.green : tier === 'medium' ? chalk.yellow : chalk.red;
 
   const sourceLabel: Record<string, string> = {
-    pin: 'pin globale (/effort)',
-    personaggio: `personaggio (${char?.displayName ?? char?.name ?? '—'})`,
-    ruolo: `ruolo (${role.displayName})`,
-    default: 'default di configurazione (tsuka.config.json)',
-    nessuno: 'nessuno — decide il modello'
+    pin: 'global pin (/effort)',
+    personaggio: `character (${char?.displayName ?? char?.name ?? '—'})`,
+    ruolo: `role (${role.displayName})`,
+    default: 'config default (tsuka.config.json)',
+    nessuno: 'none — model default'
   };
 
-  console.log(chalk.bold('\n🎚️  EFFORT DI RAGIONAMENTO'));
-  console.log(`  Livello attivo: ${chalk.magenta(effort ?? 'nessuno (decide il modello)')}`);
-  console.log(`  Provenienza:    ${chalk.cyan(sourceLabel[source])}`);
-  console.log(`  Tier dei tool:  ${tierColor(tier.toUpperCase())} (per il modello '${ctx.provider.getCurrentModel()}')`);
-  console.log(`  Pin globale:    ${getEffortPin() ? chalk.magenta(getEffortPin()) : chalk.gray('nessuno')}`);
-  console.log(`  Modalità ask:   ${isAskModeEnabled() ? chalk.green('attiva') : chalk.gray('disattiva')} ${chalk.gray('(solo nella chat interattiva)')}`);
-  console.log(chalk.gray('  Uso: /effort <none|low|medium|xhigh> · /effort auto · /effort ask'));
+  console.log(chalk.bold('\n🎚️  REASONING EFFORT'));
+  console.log(`  Active level:   ${chalk.magenta(effort ?? 'none (model default)')}`);
+  console.log(`  Source:         ${chalk.cyan(sourceLabel[source])}`);
+  console.log(`  Tool tier:      ${tierColor(tier.toUpperCase())} (for model '${ctx.provider.getCurrentModel()}')`);
+  console.log(`  Global pin:     ${getEffortPin() ? chalk.magenta(getEffortPin()) : chalk.gray('none')}`);
+  console.log(`  Ask mode:       ${isAskModeEnabled() ? chalk.green('enabled') : chalk.gray('disabled')} ${chalk.gray('(interactive chat only)')}`);
+  console.log(chalk.gray('  Usage: /effort <none|low|medium|xhigh> · /effort auto · /effort ask'));
   console.log();
 }
 
-/** Applica un nuovo pin (o lo rimuove con undefined), ricrea l'agente e annuncia l'eventuale cambio di tool visibili. */
 function applyPinAndAnnounce(ctx: CommandCtx, newPin: ReasoningEffort | undefined, label: string): void {
   const { role } = activeRoleAndCharacter(ctx);
   const before = toolNamesAt(ctx, role.allowedTools, ctx.agent.current.getReasoningEffort());
@@ -77,12 +65,9 @@ function applyPinAndAnnounce(ctx: CommandCtx, newPin: ReasoningEffort | undefine
 
   CLITheme.success(label);
   if (diff) {
-    // È l'effetto collaterale meno intuibile del comando (T8.14): l'effort non
-    // regola solo il ragionamento, decide anche quali tool il modello vede
-    // (T8.12) — va detto subito, non lasciato scoprire a sorpresa.
-    CLITheme.warning(`Cambiano i tool visibili al modello: ${diff}`);
+    CLITheme.warning(`Visible tools changed: ${diff}`);
   } else {
-    CLITheme.info('Nessun cambiamento nel set di tool visibili al modello.');
+    CLITheme.info('No changes in visible tools.');
   }
 }
 
@@ -96,10 +81,10 @@ export async function handleEffort(ctx: CommandCtx, arg: string): Promise<void> 
 
   if (normalized === 'auto') {
     if (getEffortPin() === undefined) {
-      CLITheme.info('Nessun pin attivo: già in modalità automatica (cascata personaggio → ruolo → default).');
+      CLITheme.info('No pin active: already in automatic cascade mode.');
       return;
     }
-    applyPinAndAnnounce(ctx, undefined, 'Pin rimosso: ripristinata la cascata automatica (personaggio → ruolo → default di configurazione).');
+    applyPinAndAnnounce(ctx, undefined, 'Pin removed: restored automatic cascade.');
     return;
   }
 
@@ -107,19 +92,19 @@ export async function handleEffort(ctx: CommandCtx, arg: string): Promise<void> 
     const nowEnabled = !isAskModeEnabled();
     setAskMode(nowEnabled);
     if (nowEnabled) {
-      CLITheme.success('Modalità ask attivata: la chat chiederà conferma quando un turno diverge dal livello di riferimento.');
-      CLITheme.info('Non si applica a /team, /goal né ai figli di spawn_agent: lì la divergenza resta solo una riga di log, mai un blocco.');
+      CLITheme.success('Ask mode enabled: chat will request confirmation when turn diverges from default effort.');
+      CLITheme.info('Does not block /team or /goal (logs divergence without prompting).');
     } else {
-      CLITheme.success('Modalità ask disattivata: le divergenze tornano a essere solo segnalate, non chieste.');
+      CLITheme.success('Ask mode disabled: divergences will only be logged.');
     }
     return;
   }
 
   if (!VALID_LEVELS.includes(normalized as ReasoningEffort)) {
-    CLITheme.error(`Livello non valido: '${arg}'. Valori ammessi: ${VALID_LEVELS.join(', ')}, oppure 'auto' o 'ask'.`);
+    CLITheme.error(`Invalid effort level: '${arg}'. Allowed values: ${VALID_LEVELS.join(', ')}, 'auto', or 'ask'.`);
     return;
   }
 
   const level = normalized as ReasoningEffort;
-  applyPinAndAnnounce(ctx, level, `Pin di effort impostato a '${level}' (vale per l'intera sessione, sopra personaggio/ruolo/default; non sopravvive al riavvio).`);
+  applyPinAndAnnounce(ctx, level, `Reasoning effort pinned to '${level}' for this session.`);
 }

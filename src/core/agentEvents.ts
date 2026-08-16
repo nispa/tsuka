@@ -1,7 +1,7 @@
 /**
- * Eventi emessi dal ciclo agentico (Agent.run) verso il layer di presentazione.
- * Il core non stampa più direttamente: chi invoca l'agente decide come
- * visualizzare tool call, round intermedi e interruzioni di sicurezza.
+ * Events emitted by the agentic loop (Agent.run) towards the presentation layer.
+ * The core does not print directly: the caller invoking the agent decides
+ * how to display tool calls, intermediate rounds, and safety stops.
  */
 
 export type AgentEvent =

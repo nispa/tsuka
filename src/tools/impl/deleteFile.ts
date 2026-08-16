@@ -8,13 +8,13 @@ export const deleteFileTool: Tool = {
   execute: async (args: { path: string }) => {
     const fullPath = resolveSafePath(args.path);
     if (!fs.existsSync(fullPath)) {
-      throw new Error(`Il file '${args.path}' non esiste.`);
+      throw new Error(`File '${args.path}' does not exist.`);
     }
     if (fs.statSync(fullPath).isDirectory()) {
-      throw new Error(`Il percorso '${args.path}' è una directory, usa list_dir.`);
+      throw new Error(`Path '${args.path}' is a directory; use list_dir instead.`);
     }
 
     fs.unlinkSync(fullPath);
-    return `File '${args.path}' eliminato con successo.`;
+    return `File '${args.path}' deleted successfully.`;
   }
 };

@@ -6,10 +6,7 @@ import { Agent } from '../../core/agent';
 import { RoleConfig, TraitConfig, CharacterConfig, TeamConfig } from '../index';
 
 /**
- * Contesto condiviso passato a ogni handler dei comandi slash.
- * provider è tipato sull'interfaccia minima ILLMProvider (non sulla classe concreta
- * LLMProvider) proprio per permettere di iniettare un MockLLMProvider nei test di
- * team.ts/goal.ts senza toccare il comportamento reale (vedi tests/mocks/).
+ * Shared context passed to every slash command handler.
  */
 export interface CommandCtx {
   configManager: ConfigManager;

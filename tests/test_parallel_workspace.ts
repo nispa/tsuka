@@ -253,7 +253,7 @@ async function main() {
     );
     check(
       'G2b',
-      logs.some((l) => l.includes('Conflitti nel blocco parallelo')) && logs.some((l) => l.includes('conflict.txt')),
+      logs.some((l) => l.includes('Conflitti nel blocco parallelo') || l.includes('Conflicts in parallel block')) && logs.some((l) => l.includes('conflict.txt')),
       'il conflitto viene segnalato in console (agenti coinvolti + path)'
     );
   }

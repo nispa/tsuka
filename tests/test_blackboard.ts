@@ -191,7 +191,7 @@ async function main() {
     );
     check(
       'BB-c-4',
-      !!yToolMsg && typeof yToolMsg.content === 'string' && /nessuna nota/i.test(yToolMsg.content),
+      !!yToolMsg && typeof yToolMsg.content === 'string' && (/nessuna nota/i.test(yToolMsg.content) || /no notes/i.test(yToolMsg.content)),
       `read_notes nel run Y ritorna "nessuna nota" (la sua blackboard è vuota) (${JSON.stringify(yToolMsg?.content)})`
     );
     check('BB-c-5', Blackboard.forRun(runIdX).snapshot().length === 1, 'la blackboard del run X contiene la nota scritta al suo interno');

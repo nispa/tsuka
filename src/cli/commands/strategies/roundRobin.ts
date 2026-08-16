@@ -6,7 +6,7 @@ import { TeamRunConfig, ProtocolLogEntry, TeamResult, TeamStrategy, runMemberTur
 import { runDiscussionRound } from './hybrid';
 import { logSink } from '../../../core/logSink';
 
-// ── Modalità round-robin (originale) ──
+// Round-robin strategy implementation
 
 export async function runRoundRobin(
   ctx: CommandCtx,
@@ -29,7 +29,6 @@ export async function runRoundRobin(
     logSink.log(chalk.bold.yellow(`\n═══ ROUND ${round}/${maxRounds} ═══`));
 
     for (const memberName of team.members) {
-      // Limite turni per membro
       const turns = (memberTurnCount.get(memberName) ?? 0);
       if (maxPerMember > 0 && turns >= maxPerMember) {
         continue;
@@ -42,7 +41,6 @@ export async function runRoundRobin(
       if (result === 'interrupted') break outer;
     }
 
-    // Discussione dopo ogni round se configurata
     if ((team.discussionRounds ?? 0) > 0 && !completed && !interrupt.aborted) {
       const discResult = await runDiscussionRound(ctx, team.members, task, round, teamMessages, interrupt, !!team.voting, turnLog);
       if (discResult === 'all_approve') { completed = true; break outer; }

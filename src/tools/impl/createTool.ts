@@ -5,27 +5,18 @@ import { homePath } from '../../core/apphome';
 import { Tool, ToolExecutionContext } from '../registry';
 
 /**
- * create_tool: self-authoring dei tool.
- * L'agente genera il corpo di una funzione execute; l'harness lo incapsula in un
- * modulo tool completo, lo valida in sandbox (vm), lo salva in impl/ + schema JSON
- * e lo registra a caldo nel registry corrente (utilizzabile subito).
- *
- * Misure di sicurezza:
- * - creazione RESTRICTED (richiede approvazione utente)
- * - blocklist di pattern pericolosi nel codice generato
- * - validazione di forma in sandbox PRIMA di scrivere su disco
- * - i tool generati non possono essere DANGEROUS né sovrascrivere tool core (.ts)
- * - backup automatico in tools_backup/ prima di una sovrascrittura
+ * create_tool: self-authoring of agent tools.
+ * Generates and validates an execute function inside a VM sandbox,
+ * persists the implementation and schema, and hot-registers into the active registry.
  */
 
-// Pattern vietati nel codice generato (niente processi figli, eval, env, require arbitrari)
 const FORBIDDEN_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
-  { pattern: /child_process/, reason: 'child_process non consentito (usa il tool execute_command)' },
-  { pattern: /\beval\s*\(/, reason: 'eval() non consentito' },
-  { pattern: /new\s+Function/, reason: 'Function() non consentito' },
-  { pattern: /process\.exit/, reason: 'process.exit non consentito' },
-  { pattern: /process\.env/, reason: 'accesso a process.env non consentito (possibili segreti)' },
-  { pattern: /\brequire\s*\(/, reason: 'require() non consentito: fs e path sono già disponibili nel modulo' }
+  { pattern: /child_process/, reason: 'child_process is not permitted (use execute_command tool instead)' },
+  { pattern: /\beval\s*\(/, reason: 'eval() is not permitted' },
+  { pattern: /new\s+Function/, reason: 'Function() constructor is not permitted' },
+  { pattern: /process\.exit/, reason: 'process.exit is not permitted' },
+  { pattern: /process\.env/, reason: 'direct process.env access is not permitted' },
+  { pattern: /\brequire\s*\(/, reason: 'require() is not permitted: fs and path are already injected' }
 ];
 
 const MAX_BODY_LENGTH = 4000;
@@ -34,10 +25,6 @@ function toCamelCase(snake: string): string {
   return snake.replace(/_([a-z0-9])/g, (_, c) => c.toUpperCase());
 }
 
-/**
- * Verifica se nella cartella impl/ esiste un file .ts il cui basename corrisponde
- * al nome tool richiesto (normalizzando camelCase e snake_case: readFile.ts ↔ read_file).
- */
 function hasCoreFileConflict(implDir: string, cleanName: string): boolean {
   const normalizedTarget = cleanName.replace(/_/g, '');
   try {
@@ -64,57 +51,52 @@ export const createToolTool: Tool = {
     },
     context?: ToolExecutionContext
   ) => {
-    // ── 1. Validazione e sanitizzazione del nome ──
+    // 1. Validate and sanitize name
     const cleanName = (args.name || '').toLowerCase().replace(/[^a-z0-9_]/g, '');
     if (!cleanName) {
-      throw new Error("Il nome del tool fornito non è valido (usa solo lettere minuscole, numeri e underscore).");
+      throw new Error("Invalid tool name (use lowercase letters, numbers, and underscores only).");
     }
 
     const implDir = __dirname;
     const targetPath = path.join(implDir, `${cleanName}.js`);
 
-    // Conflitto con tool core: consentita la sovrascrittura SOLO se esiste già un
-    // file .js generato in precedenza (versioning); mai sopra un tool core (.ts)
-    // né sopra un tool già registrato che non sia un generato.
     const generatedExists = fs.existsSync(targetPath);
     if (!generatedExists) {
       const registeredCore = context?.registry?.getTool(cleanName) !== undefined;
       if (registeredCore || hasCoreFileConflict(implDir, cleanName)) {
-        throw new Error(`Esiste già un tool core chiamato '${cleanName}'. Scegli un altro nome.`);
+        throw new Error(`A core tool named '${cleanName}' already exists. Please choose a different name.`);
       }
     }
 
-    // ── 2. Validazione argomenti base ──
+    // 2. Validate arguments
     if (!args.description || args.description.trim().length === 0) {
-      throw new Error("La descrizione del tool è obbligatoria.");
+      throw new Error("Tool description is required.");
     }
     const body = (args.executeBody || '').trim();
     if (!body) {
-      throw new Error("Il corpo della funzione execute (executeBody) non può essere vuoto.");
+      throw new Error("Function executeBody cannot be empty.");
     }
     if (body.length > MAX_BODY_LENGTH) {
-      throw new Error(`Il corpo della funzione è troppo lungo (max ${MAX_BODY_LENGTH} caratteri).`);
+      throw new Error(`executeBody exceeds limit (max ${MAX_BODY_LENGTH} characters).`);
     }
 
-    // I tool generati non possono essere DANGEROUS
     let riskLevel: 'SAFE' | 'RESTRICTED' = 'SAFE';
     if (args.riskLevel && args.riskLevel.toUpperCase() === 'RESTRICTED') {
       riskLevel = 'RESTRICTED';
     }
 
-    // ── 3. Blocklist di sicurezza sul codice generato ──
+    // 3. Security blocklist check
     for (const { pattern, reason } of FORBIDDEN_PATTERNS) {
       if (pattern.test(body)) {
-        throw new Error(`Codice rifiutato dalla policy di sicurezza: ${reason}.`);
+        throw new Error(`Code rejected by security policy: ${reason}.`);
       }
     }
 
-    // ── 4. Costruzione del modulo (plain JS CommonJS: funziona in dev tsx e in dist compilato) ──
+    // 4. Construct tool module
     const exportName = `${toCamelCase(cleanName)}Tool`;
     const indentedBody = body.split('\n').map((l) => '    ' + l).join('\n');
     const moduleCode =
-      `// Tool generato automaticamente da create_tool il ${new Date().toISOString()}\n` +
-      `// Rigenera o elimina questo file per rimuoverlo. Backup in tools_backup/.\n` +
+      `// Auto-generated tool by create_tool on ${new Date().toISOString()}\n` +
       `const fs = require('fs');\n` +
       `const path = require('path');\n\n` +
       `exports.${exportName} = {\n` +
@@ -125,27 +107,27 @@ export const createToolTool: Tool = {
       `  }\n` +
       `};\n`;
 
-    // ── 5. Validazione di forma in sandbox (senza registrare il modulo) ──
+    // 5. Sandbox shape validation
     const sandbox: { exports: Record<string, any> } = { exports: {} };
     const sandboxRequire = (mod: string) => {
       if (mod === 'fs') return require('fs');
       if (mod === 'path') return require('path');
-      throw new Error(`Modulo non consentito: ${mod}`);
+      throw new Error(`Module not allowed: ${mod}`);
     };
     try {
       vm.runInNewContext(moduleCode, { exports: sandbox.exports, require: sandboxRequire, console }, { timeout: 1000 });
     } catch (err: any) {
-      throw new Error(`Il codice generato non è valido: ${err.message}`);
+      throw new Error(`Generated code is invalid: ${err.message}`);
     }
 
     const exported = Object.values(sandbox.exports).find(
       (v: any) => v && typeof v.name === 'string' && typeof v.execute === 'function' && typeof v.riskLevel === 'string'
     ) as any;
     if (!exported || exported.name !== cleanName) {
-      throw new Error("Validazione fallita: il modulo non esporta un tool conforme (name/riskLevel/execute).");
+      throw new Error("Validation failed: module does not export a valid Tool instance.");
     }
 
-    // ── 6. Backup della versione precedente (versioning/rollback) ──
+    // 6. Versioning backup
     let backupNote = '';
     if (fs.existsSync(targetPath)) {
       const backupDir = homePath('tools_backup');
@@ -155,10 +137,10 @@ export const createToolTool: Tool = {
       const stamp = new Date().toISOString().replace(/[:.]/g, '-');
       const backupPath = path.join(backupDir, `${cleanName}.${stamp}.js.bak`);
       fs.copyFileSync(targetPath, backupPath);
-      backupNote = `\nVersione precedente salvata in tools_backup/${path.basename(backupPath)}.`;
+      backupNote = `\nPrevious version backed up in tools_backup/${path.basename(backupPath)}.`;
     }
 
-    // ── 7. Scrittura del modulo e dello schema ──
+    // 7. Write tool file and schema
     fs.writeFileSync(targetPath, moduleCode, 'utf-8');
 
     const schemaDir = homePath('tools_schemas');
@@ -175,33 +157,31 @@ export const createToolTool: Tool = {
     };
     fs.writeFileSync(path.join(schemaDir, `${cleanName}.json`), JSON.stringify(schemaContent, null, 2), 'utf-8');
 
-    // ── 8. Registrazione a caldo nel registry corrente (utilizzabile subito) ──
+    // 8. Hot-register into active registry
     let hotNote = '';
     if (context?.registry) {
       try {
         const existing = context.registry.getTool(cleanName);
         if (existing && generatedExists) {
-          // Sovrascrittura di un tool generato: sostituisci la registrazione con la nuova versione
           context.registry.unregister(cleanName);
         }
         if (!context.registry.getTool(cleanName)) {
           context.registry.register(exported as Tool, { alwaysAllow: true });
-          hotNote = '\nTool registrato a caldo: utilizzabile SUBITO in questa sessione.';
+          hotNote = '\nTool hot-registered: available immediately in this session.';
         } else {
-          hotNote = '\nNome occupato da un tool core: la nuova versione NON è stata registrata (conflitto).';
+          hotNote = '\nName conflict with core tool: not hot-registered.';
         }
       } catch {
-        hotNote = '\nNota: registrazione a caldo non riuscita, sarà attivo dal prossimo avvio.';
+        hotNote = '\nNote: hot registration failed; will be loaded on next startup.';
       }
     }
 
     return (
-      `Tool '${cleanName}' creato e validato con successo.\n` +
-      `- Modulo: src/tools/impl/${cleanName}.js\n` +
-      `- Schema: tools_schemas/${cleanName}.json (tier: small, rischio: ${riskLevel})` +
+      `Tool '${cleanName}' created and validated successfully.\n` +
+      `- Module: src/tools/impl/${cleanName}.js\n` +
+      `- Schema: tools_schemas/${cleanName}.json (tier: small, risk: ${riskLevel})` +
       hotNote + backupNote +
-      `\nAl prossimo avvio verrà caricato dall'auto-discovery e sarà soggetto agli allowedTools del ruolo attivo ` +
-      `(aggiungi '${cleanName}' in roles/*.json per renderlo permanente).`
+      `\nAdd '${cleanName}' to roles/*.json allowedTools to make it permanently accessible.`
     );
   }
 };

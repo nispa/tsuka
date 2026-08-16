@@ -85,7 +85,7 @@ async function run() {
 
   // 6. Sezione Media Integrata nel Markdown
   const fullMd = htmlToMarkdown(sampleHtml, 'https://example.com');
-  check('BROWSE.9', fullMd.includes('### 📎 Media & Risorse della Pagina') && fullMd.includes('![Architettura](https://example.com/assets/diagram.png)'), 'Sezione Media allegata in calce per agenti multimodali/Vision');
+  check('BROWSE.9', (fullMd.includes('### 📎 Media & Risorse della Pagina') || fullMd.includes('### 📎 Page Media & Resources') || fullMd.includes('### 📎 Media & Page Resources')) && fullMd.includes('![Architettura](https://example.com/assets/diagram.png)'), 'Sezione Media allegata in calce per agenti multimodali/Vision');
 
   console.log(`\n=== Risultato: ${passed} passati, ${failed} falliti ===`);
   process.exit(failed > 0 ? 1 : 0);

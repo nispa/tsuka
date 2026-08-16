@@ -1,14 +1,13 @@
 import { CharacterConfig, loadRole, listAvailableTeams } from '../shared';
 
-/** Mestieri (ruoli/skill) coperti da un personaggio: multi-skill se presenti, altrimenti il ruolo singolo. */
+/** Returns roles/skills covered by a character (multi-skill list or single role). */
 export function rolesOf(c: CharacterConfig): string[] {
   if (c.roles && c.roles.length > 0) return c.roles;
   return c.role ? [c.role] : [];
 }
 
 /**
- * Genera la firma sintetica compatta di un agente per il catalogo dell'orchestrator.
- * Include nome, ruolo/skills, descrizione operativa ad alto segnale e tool essenziali.
+ * Formats a concise character signature for the orchestrator prompt catalog.
  */
 export function formatAgentSignature(c: CharacterConfig): string {
   if (c.signature && typeof c.signature === 'string' && c.signature.trim()) {
@@ -16,11 +15,10 @@ export function formatAgentSignature(c: CharacterConfig): string {
   }
 
   const roleNames = rolesOf(c);
-
   const allTools = new Set<string>();
   const roleSummaries: string[] = [];
 
-  // Tool generici/omnipresenti che non differenziano la specializzazione
+  // Ambient tools that don't differentiate specialization
   const AMBIENT_TOOLS = new Set(['save_memory', 'recall_memory', 'send_message', 'list_dir', 'read_file', 'browse_url']);
 
   for (const rName of roleNames) {
@@ -45,19 +43,7 @@ export function formatAgentSignature(c: CharacterConfig): string {
 }
 
 /**
- * Blueprint dei team, letti da quelli REALMENTE installati (`teams/*.json`,
- * dipende dal preset scelto a `tsuka init`) e descritti per MESTIERE.
- *
- * Un solo concetto di squadra: il team è quello di `/team`, non un archetipo
- * separato inventato nel prompt. Due vincoli, entrambi deliberati:
- * - derivato, mai hard-coded: un elenco fisso citerebbe agenti che l'utente non ha
- *   installato, e l'orchestrator pianificherebbe con @nomi che `parsePlan` deve poi
- *   scartare (piano silenziosamente dimezzato);
- * - il team è una catena di RUOLI, non di personaggi: il modello sceglie la
- *   competenza, l'@handle designa solo CHI la esercita — e con il multi-skill
- *   (T9.1) un handle può coprire più mestieri, evitando il passaggio di consegne
- *   fatto solo per raggiungere il tool di un altro ruolo.
- * Un team è incluso solo se almeno 2 dei suoi membri esistono nel catalogo.
+ * Builds installed team blueprints from `teams/*.json`.
  */
 export function buildTeamBlueprints(allCharacters: CharacterConfig[]): string {
   const byName = new Map(allCharacters.map((c) => [c.name, c]));
@@ -95,8 +81,6 @@ export function buildGoalOrchestratorPrompt(allCharacters: CharacterConfig[], go
     ? '1. Reason by CRAFT: list the roles the goal requires, then reuse the team whose role chain matches, or compose your own from AVAILABLE AGENTS.\n'
     : '1. Reason by CRAFT: list the roles the goal requires, then pick the agents that cover them.\n';
 
-  // Esempio costruito sul catalogo reale: un esempio con @nomi non installati
-  // insegnerebbe al modello a pianificare con agenti inesistenti.
   const supervisor = allCharacters.find((c) => rolesOf(c).includes('supervisor'));
   const workers = allCharacters.filter((c) => c !== supervisor).slice(0, 3);
   const ex = (i: number, fallback: string) => {

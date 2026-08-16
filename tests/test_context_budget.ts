@@ -83,7 +83,7 @@ async function main() {
     const maxChars100 = Math.floor(100 * CHARS_PER_TOKEN); // 350
     check('CB1b', capped.length <= maxChars100, `risultato tagliato (${capped.length} car.) resta sotto il tetto (${maxChars100} car.)`);
     check('CB1c', capped.length < longText.length, 'il risultato tagliato è più corto del testo originale');
-    check('CB1d', capped.includes('TAGLIATO'), 'la nota di taglio è presente');
+    check('CB1d', capped.includes('TAGLIATO') || capped.includes('TRUNCATED'), 'la nota di taglio è presente');
     check('CB1e', capped.includes('USA_QUESTO_SUGGERIMENTO'), 'il recoveryHint passato esplicitamente compare nella nota');
     check('CB1f', capped.startsWith('AAAA'), 'la testa del testo originale è preservata');
     check('CB1g', capped.endsWith('BBBB'), 'la coda del testo originale è preservata');
@@ -107,7 +107,7 @@ async function main() {
 
     check('RF1', result.length <= defaultMaxChars, `read_file su file grande resta sotto il tetto (${result.length} <= ${defaultMaxChars} caratteri)`);
     check('RF2', Math.ceil(result.length / CHARS_PER_TOKEN) <= defaultMaxTokens, 'stima in token del risultato entro maxToolResultTokens');
-    check('RF3', result.includes('TAGLIATO'), 'nota di taglio presente');
+    check('RF3', result.includes('TAGLIATO') || result.includes('TRUNCATED'), 'nota di taglio presente');
     check('RF4', /offset/i.test(result) && /grep_search/i.test(result), "la nota spiega come recuperare il resto (offset / grep_search)");
     check('RF5', result.includes('HEAD_MARKER_LINE'), "la testa del file (inizio) è preservata nel risultato");
     check('RF6', result.includes('TAIL_MARKER_LINE'), "la coda del file (fine) è preservata nel risultato");
@@ -124,23 +124,23 @@ async function main() {
 
     // offset + limit: finestra esatta [10..14]
     const windowed: string = await readFileTool.execute({ path: 'small.txt', offset: 10, limit: 5 });
-    check('RF7a', windowed.includes('Righe 10-14 di 30'), `intestazione corretta: ${windowed.split('\n')[0]}`);
+    check('RF7a', windowed.includes('Righe 10-14 di 30') || windowed.includes('Lines 10-14 of 30'), `intestazione corretta: ${windowed.split('\n')[0]}`);
     for (let i = 10; i <= 14; i++) check(`RF7a-${i}`, windowed.includes(`LINE_${i}_END`), `contiene LINE_${i}_END`);
     check('RF7b', !windowed.includes('LINE_9_END'), 'non contiene la riga precedente alla finestra');
     check('RF7c', !windowed.includes('LINE_15_END'), 'non contiene la riga successiva alla finestra');
-    check('RF7d', !windowed.includes('TAGLIATO'), 'finestra piccola: nessuna nota di taglio spuria');
+    check('RF7d', !windowed.includes('TAGLIATO') && !windowed.includes('TRUNCATED'), 'finestra piccola: nessuna nota di taglio spuria');
 
     // solo offset (senza limit): dalla riga 25 a fine file
     const fromOffset: string = await readFileTool.execute({ path: 'small.txt', offset: 25 });
-    check('RF8', fromOffset.includes('Righe 25-30 di 30'), `solo offset: ${fromOffset.split('\n')[0]}`);
+    check('RF8', fromOffset.includes('Righe 25-30 di 30') || fromOffset.includes('Lines 25-30 of 30'), `solo offset: ${fromOffset.split('\n')[0]}`);
 
     // solo limit (senza offset): dalla riga 1, prime 3 righe
     const onlyLimit: string = await readFileTool.execute({ path: 'small.txt', limit: 3 });
-    check('RF9', onlyLimit.includes('Righe 1-3 di 30'), `solo limit: ${onlyLimit.split('\n')[0]}`);
+    check('RF9', onlyLimit.includes('Righe 1-3 di 30') || onlyLimit.includes('Lines 1-3 of 30'), `solo limit: ${onlyLimit.split('\n')[0]}`);
 
     // regressione: startLine/endLine restano invariati (comportamento pre-T8.8)
     const legacyRange: string = await readFileTool.execute({ path: 'small.txt', startLine: 2, endLine: 4 });
-    check('RF10', legacyRange.includes('Righe 2-4 di 30') && legacyRange.includes('LINE_2_END') && legacyRange.includes('LINE_4_END'),
+    check('RF10', (legacyRange.includes('Righe 2-4 di 30') || legacyRange.includes('Lines 2-4 of 30')) && legacyRange.includes('LINE_2_END') && legacyRange.includes('LINE_4_END'),
       'startLine/endLine (comportamento legacy) invariato');
 
     // file piccolo intero: nessuna nota di taglio, nessun cambio di comportamento
@@ -160,13 +160,13 @@ async function main() {
 
     const cmdOut: string = await executeCommandTool.execute({ command: bigCmd });
     check('EC1', cmdOut.length <= defaultMaxChars, `execute_command su output enorme resta sotto il tetto (${cmdOut.length} <= ${defaultMaxChars} caratteri)`);
-    check('EC2', cmdOut.includes('TAGLIATO'), 'nota di taglio presente sull\'output enorme');
+    check('EC2', cmdOut.includes('TAGLIATO') || cmdOut.includes('TRUNCATED'), 'nota di taglio presente sull\'output enorme');
 
     // Regressione: comando con output piccolo invariato (nessuna nota spuria)
     const marker = `probe_ctxbudget_${Date.now()}`;
     const echoCmd = isWindows() ? `Write-Output ${marker}` : `echo ${marker}`;
     const smallOut: string = await executeCommandTool.execute({ command: echoCmd });
-    check('EC3', smallOut.includes(marker) && !smallOut.includes('TAGLIATO'), 'output piccolo di execute_command invariato');
+    check('EC3', smallOut.includes(marker) && !smallOut.includes('TAGLIATO') && !smallOut.includes('TRUNCATED'), 'output piccolo di execute_command invariato');
   }
 
   // ============================================================
@@ -182,11 +182,11 @@ async function main() {
 
     const grepOut: string = await grepSearchTool.execute({ query: 'NEEDLE_MARKER', path: 'grepbig' });
     check('GS1', grepOut.length <= defaultMaxChars, `grep_search su molti risultati lunghi resta sotto il tetto (${grepOut.length} <= ${defaultMaxChars} caratteri)`);
-    check('GS2', grepOut.includes('TAGLIATO'), 'nota di taglio presente sui risultati grep enormi');
+    check('GS2', grepOut.includes('TAGLIATO') || grepOut.includes('TRUNCATED'), 'nota di taglio presente sui risultati grep enormi');
 
     // Regressione: risultato piccolo invariato (nessuna nota spuria)
     const smallGrep: string = await grepSearchTool.execute({ query: 'HEAD_MARKER_LINE' });
-    check('GS3', smallGrep.includes('HEAD_MARKER_LINE') && !smallGrep.includes('TAGLIATO'), 'risultato piccolo di grep_search invariato');
+    check('GS3', smallGrep.includes('HEAD_MARKER_LINE') && !smallGrep.includes('TAGLIATO') && !smallGrep.includes('TRUNCATED'), 'risultato piccolo di grep_search invariato');
   }
 
   // ============================================================

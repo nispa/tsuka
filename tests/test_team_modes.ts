@@ -120,7 +120,7 @@ async function main() {
     );
     check(
       'OR2a',
-      logs.some((l) => l.includes('risposta non riconosciuta')),
+      logs.some((l) => l.includes('risposta non riconosciuta') || l.includes('unrecognized response') || l.includes('Fallback')),
       '[verifica T2.1] il fallback a round-robin è visibile in log, non silenzioso'
     );
     check('OR2b', r.completed === true, `il fallback ha comunque chiamato @${WORKER} (unico worker) e completato (completed=${r.completed})`);
@@ -228,7 +228,7 @@ async function main() {
       runRoundRobin(ctx, team, 'task testuale', 2, interrupt, seedTeamMessages('task testuale'))
     );
     check('RRT2a', r.completed === true && r.roundsDone === 1, `nessuna tool call: fallback a regex STATO: COMPLETATO → comunque completato (completed=${r.completed})`);
-    check('RRT2b', logs.some((l) => l.includes("non ha usato la tool call 'report_status'")), 'caduta di livello a regex segnalata in UI (riga gialla)');
+    check('RRT2b', logs.some((l) => l.includes("non ha usato la tool call 'report_status'") || l.includes("did not invoke 'report_status'")), 'caduta di livello a regex segnalata in UI (riga gialla)');
   }
 
   // ORT1: orchestrated, felice — route_next(@${WORKER}) via tool call, nessun marker AGENTE: testuale
@@ -257,7 +257,7 @@ async function main() {
       runOrchestrated(ctx, team, 'compito testuale', 1, interrupt, seedTeamMessages('compito testuale'))
     );
     check('ORT2a', r.completed === true, `nessuna tool call route_next: fallback a regex AGENTE: @${WORKER} → comunque instradato (completed=${r.completed})`);
-    check('ORT2b', logs.some((l) => l.includes("non ha usato la tool call 'route_next'")), 'caduta di livello a regex segnalata in UI (riga gialla)');
+    check('ORT2b', logs.some((l) => l.includes("non ha usato la tool call 'route_next'") || l.includes("did not invoke 'route_next'")), 'caduta di livello a regex segnalata in UI (riga gialla)');
   }
 
   // PLT1: pipeline, felice — report_status(COMPLETATO) via tool call ferma la catena alla prima stazione
@@ -303,7 +303,7 @@ async function main() {
       runPipeline(ctx, team, 'catena testuale', interrupt, seedTeamMessages('catena testuale'))
     );
     check('PLT3a', r.completed === true && r.roundsDone === 2, `nessuna tool call su nessuna stazione: catena portata avanti via marker testuali (completed=${r.completed}, roundsDone=${r.roundsDone})`);
-    const degradeCount = logs.filter((l) => l.includes("non ha usato la tool call 'report_status'")).length;
+    const degradeCount = logs.filter((l) => l.includes("non ha usato la tool call 'report_status'") || l.includes("did not invoke 'report_status'")).length;
     check('PLT3b', degradeCount === 2, `caduta di livello segnalata per entrambe le stazioni (trovate ${degradeCount} righe)`);
   }
 
@@ -333,7 +333,7 @@ async function main() {
       runRoundRobin(ctx, team, 'task con voto testuale', 2, interrupt, seedTeamMessages('task con voto testuale'))
     );
     check('HVT2a', r.completed === true && r.roundsDone === 1, `nessuna tool call cast_vote: fallback a regex VOTO: APPROVO → comunque unanime (completed=${r.completed})`);
-    check('HVT2b', logs.some((l) => l.includes("non ha usato la tool call 'cast_vote'")), 'caduta di livello a regex segnalata in UI (riga gialla)');
+    check('HVT2b', logs.some((l) => l.includes("non ha usato la tool call 'cast_vote'") || l.includes("did not invoke 'cast_vote'")), 'caduta di livello a regex segnalata in UI (riga gialla)');
   }
 
   // PLT4: pipeline con acceptance e retry loop (T6.4) — tent. 1 fallisce (FALLITO), tent. 2 passa

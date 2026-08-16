@@ -7,38 +7,25 @@ import {
 } from './benchmarkTests';
 
 /**
- * Capability Fingerprinting: misura OGGETTIVAMENTE le capacità di un modello
- * (instruction following, output JSON, function calling, velocità) tramite un
- * piccolo benchmark, invece di indovinarle dal nome (euristica "9b"/"70b").
+ * Capability Fingerprinting: objectively measures model capabilities
+ * (instruction following, JSON output, function calling, speed) via a focused
+ * benchmark instead of heuristics from the model name string.
  *
- * Il profilo è salvato in models_profile.json e usato dal ToolRegistry per
- * decidere il tier dei tool (small/medium/large) in modo misurato.
+ * Profiles are saved in `models_profile.json` and used by `ToolRegistry` to
+ * select the appropriate tool tier (small/medium/large).
  */
 
-/**
- * Versione del MOTORE di benchmark: incrementarla invalida i profili misurati
- * con le versioni precedenti (trattati come assenti → riproporre /benchmark).
- * v2: test hardcoded più severi dei 3 originali (che ogni modello moderno
- * passava, assegnando LARGE anche a modelli da 4B).
- * v3: test dichiarativi caricati da `benchmarks/*.json` (modificabili al volo);
- * oltre alla versione del motore, il profilo salva l'hash del set di test:
- * cambiare un test invalida automaticamente i profili misurati col set vecchio.
- * v4 (T8.10): il benchmark spazza i 4 livelli di reasoning_effort invece di
- * misurarne uno solo (quello di default, mai esplicitato prima d'ora) — un
- * profilo v3 è stato misurato a un effort ignoto e applicato a un altro:
- * va rifatto, non solo riletto con soglie diverse.
- */
 export const BENCHMARK_VERSION = 4;
 
-/** I 4 livelli spazzati dal benchmark, in ordine crescente di sforzo/costo. */
+/** The 4 reasoning effort levels swept by benchmark in increasing order. */
 export const REASONING_EFFORT_LEVELS: ReasoningEffort[] = ['none', 'low', 'medium', 'xhigh'];
 
 export interface ModelScores {
-  /** 0..1: media pesata dei test di categoria "instruction" in benchmarks/ */
+  /** 0..1: weighted average of "instruction" category tests in benchmarks/ */
   instruction: number;
-  /** 0..1: media pesata dei test di categoria "json" in benchmarks/ */
+  /** 0..1: weighted average of "json" category tests in benchmarks/ */
   json: number;
-  /** 0..1: media pesata dei test di categoria "toolCalling" in benchmarks/ */
+  /** 0..1: weighted average of "toolCalling" category tests in benchmarks/ */
   toolCalling: number;
 }
 
@@ -50,16 +37,13 @@ export interface ModelProfile {
   tokensPerSecond: number;
   testedAt: string; // ISO 8601
   benchmarkVersion?: number;
-  /** Hash del set di test in benchmarks/ al momento della misura */
+  /** Test suite hash in benchmarks/ at time of measurement */
   testsHash?: string;
-  /** Punteggio di ogni singolo test eseguito */
+  /** Score of each individual test executed */
   testResults?: BenchTestResult[];
-  /** Livello di reasoning_effort con cui QUESTO profilo è stato misurato (T8.10).
-   *  Chiave di indicizzazione insieme al nome modello (vedi profileKey). */
+  /** Reasoning effort level at which this profile was measured (T8.10) */
   reasoningEffort: ReasoningEffort;
-  /** Media dei token di completamento sui test eseguiti a questo livello (T8.10):
-   *  tokensPerSecond da solo non rileva l'over-thinking (stessa velocità, molti
-   *  più token emessi per la stessa risposta a un effort più alto). */
+  /** Average completion tokens across tests executed at this level */
   avgCompletionTokens: number;
 }
 
@@ -97,7 +81,7 @@ function loadProfiles(): Record<string, ModelProfile> {
 }
 
 /**
- * Restituisce lo sforzo di ragionamento consigliato misurato dal benchmark per un dato modello.
+ * Returns the recommended reasoning effort measured by benchmark for a given model.
  */
 export function getRecommendedEffort(modelName: string): ReasoningEffort | null {
   if (!modelName) return null;
@@ -107,7 +91,6 @@ export function getRecommendedEffort(modelName: string): ReasoningEffort | null 
     const profile = getModelProfile(modelName, rec);
     if (profile) return rec;
   }
-  // Se non esplicito in recommendations, cerca tra i profili validi
   for (const effort of REASONING_EFFORT_LEVELS) {
     const p = getModelProfile(modelName, effort);
     if (p && p.tier === 'large') return effort;
@@ -120,26 +103,15 @@ export function getRecommendedEffort(modelName: string): ReasoningEffort | null 
 }
 
 /**
- * Chiave di indicizzazione dei profili in models_profile.json (T8.10):
- * "modello@effort" invece del solo nome modello — un profilo misurato a un
- * livello di reasoning_effort non deve mai essere applicato girando a un altro
- * (il difetto che T8.10 corregge, vedi TASKS.md).
+ * Composite index key for model profiles in models_profile.json (T8.10):
+ * "model@effort" prevents cross-effort tier contamination.
  */
 export function profileKey(modelName: string, effort: ReasoningEffort): string {
   return `${modelName}@${effort}`;
 }
 
 /**
- * Restituisce il profilo misurato del modello per un dato livello di
- * reasoning_effort, se presente e misurato con la versione corrente del
- * benchmark (i profili di versioni precedenti sono trattati come assenti: i
- * vecchi test erano troppo facili, o non specificavano affatto l'effort usato
- * — sovrastimavano il tier — serve rimisurare con /benchmark).
- * `effort` di default: 'xhigh', il livello più costoso — è anche il default
- * documentato di alcuni modelli locali (vedi TASKS.md T8.10): un chiamante che
- * non conosce l'effort realmente in uso deve assumere lo scenario peggiore,
- * non quello più comodo, per non riconcedere un tier che il modello non ha
- * mai dimostrato di meritare a quel livello.
+ * Returns the measured profile of the model for a given reasoning effort level.
  */
 export function getModelProfile(modelName: string, effort: ReasoningEffort = 'xhigh'): ModelProfile | null {
   const profiles = loadProfiles();
@@ -147,12 +119,9 @@ export function getModelProfile(modelName: string, effort: ReasoningEffort = 'xh
   if (profile && (profile.benchmarkVersion ?? 1) !== BENCHMARK_VERSION) {
     return null;
   }
-  // Set di test cambiato dopo la misura → profilo stantio, va rimisurato
   if (profile && profile.testsHash !== getBenchmarkTestsHash()) {
     return null;
   }
-  // Il tier è sempre ricalcolato dai punteggi: se le soglie di computeTier
-  // cambiano, i profili già misurati si adeguano senza dover rimisurare
   return profile ? { ...profile, tier: computeTier(profile.scores) } : null;
 }
 
@@ -169,9 +138,7 @@ function saveProfile(profile: ModelProfile, recommendedEffort?: ReasoningEffort 
 }
 
 /**
- * Deriva il tier dai punteggi misurati (v2: criteri combinati, non solo toolCalling).
- * LARGE richiede la catena di tool quasi perfetta E precisione su formato/JSON:
- * sono le capacità che servono davvero per execute_command e create_tool.
+ * Derives capability tier from measured benchmark scores.
  */
 export function computeTier(scores: ModelScores): 'small' | 'medium' | 'large' {
   if (scores.toolCalling >= 0.9 && scores.instruction >= 0.85 && scores.json >= 0.85) {
@@ -183,27 +150,19 @@ export function computeTier(scores: ModelScores): 'small' | 'medium' | 'large' {
   return 'small';
 }
 
-/** Ordina i tier per confrontarli ("il tier più alto" della raccomandazione). */
 function tierRank(tier: 'small' | 'medium' | 'large'): number {
   return tier === 'large' ? 2 : tier === 'medium' ? 1 : 0;
 }
 
 export interface BenchmarkSweepResult {
-  /** Un profilo per ciascuno dei 4 livelli di reasoning_effort, nell'ordine di REASONING_EFFORT_LEVELS. */
+  /** One profile for each of the 4 reasoning effort levels. */
   profiles: ModelProfile[];
-  /** Livello più basso che raggiunge il tier più alto osservato fra i 4 (T8.10):
-   *  la risposta misurata a "quanto deve pensare il modello", non indovinata dal
-   *  nome. null solo se non è stato possibile misurare nessun livello. */
+  /** Lowest effort level achieving the highest tier observed. */
   recommendedEffort: ReasoningEffort | null;
 }
 
 /**
- * Esegue il benchmark di capability fingerprinting su un modello (v4, T8.10).
- * A differenza di v3 (che misurava un solo run al reasoning_effort di default,
- * mai esplicitato), spazza TUTTI e 4 i livelli (REASONING_EFFORT_LEVELS): ogni
- * livello esegue l'intero set di `benchmarks/*.json` e produce un profilo
- * proprio, salvato con chiave "modello@effort" (vedi profileKey) — un profilo
- * misurato a un livello non si applica mai a un altro.
+ * Executes a capability fingerprinting benchmark across all reasoning effort levels.
  */
 export async function runBenchmark(
   provider: ILLMProvider,
@@ -212,14 +171,14 @@ export async function runBenchmark(
 ): Promise<BenchmarkSweepResult> {
   const tests = loadBenchmarkTests();
   if (tests.length === 0) {
-    throw new Error('Nessun test trovato in benchmarks/ — aggiungi almeno un file .json di test.');
+    throw new Error('No tests found in benchmarks/ — please provide at least one benchmark JSON file.');
   }
 
   const previousModel = provider.getCurrentModel();
   provider.setCurrentModel(model);
 
   try {
-    onProgress?.(`${tests.length} test caricati da benchmarks/, × ${REASONING_EFFORT_LEVELS.length} livelli di reasoning_effort...`);
+    onProgress?.(`${tests.length} tests loaded from benchmarks/, sweeping ${REASONING_EFFORT_LEVELS.length} reasoning effort levels...`);
 
     const profiles: ModelProfile[] = [];
 
@@ -247,8 +206,6 @@ export async function runBenchmark(
         });
       }
 
-      // Media pesata per categoria (peso del test: campo "weight", default 1).
-      // Una categoria senza test vale 0: il set deve coprire tutte e tre.
       const categoryScore = (cat: BenchCategory): number => {
         let sum = 0;
         let weight = 0;
@@ -283,16 +240,12 @@ export async function runBenchmark(
       profiles.push(profile);
     }
 
-    // Raccomandazione: fra i livelli misurati, il tier più alto raggiunto da
-    // qualcuno di essi, e fra quelli che lo raggiungono il più economico
-    // (REASONING_EFFORT_LEVELS è già in ordine crescente di sforzo).
     let recommendedEffort: ReasoningEffort | null = null;
     if (profiles.length > 0) {
       const maxRank = Math.max(...profiles.map((p) => tierRank(p.tier)));
       const best = profiles.find((p) => tierRank(p.tier) === maxRank);
       recommendedEffort = best?.reasoningEffort ?? null;
       if (recommendedEffort && profiles.length > 0) {
-        // Riassegna e persiste la raccomandazione nel file
         saveProfile(profiles[0], recommendedEffort);
       }
     }

@@ -3,33 +3,23 @@ import { ConfigManager, CONFIG_PATH } from './config';
 import { ChatMessage } from './types';
 
 /**
- * Tetto di contesto per un singolo risultato di tool (T8.8).
+ * Context ceiling for individual tool execution results (T8.8).
  *
- * I limiti già esistenti nei singoli tool (5MB per `read_file`/`grep_search`, 50KB per
- * `execute_command`) sono guardie di sicurezza pensate per una finestra di contesto molto
- * più grande di quella reale del modello locale in uso (46k token): un solo risultato di
- * tool può saturarla prima che la potatura della history (`Agent.pruneHistory`) abbia la
- * possibilità di intervenire, perché a quel punto il messaggio con il risultato è già
- * stato costruito e inviato al modello.
+ * Built-in byte limits in individual tools (5MB for `read_file`/`grep_search`, 50KB for
+ * `execute_command`) protect against unbounded process memory, but can still overflow
+ * the active LLM context window.
  *
- * `capForContext` aggiunge un tetto più stretto, **in token stimati** (stessa convenzione
- * ~3,5 caratteri/token di `Agent.charsPerToken`, src/core/agent.ts), applicato all'INGRESSO
- * da ogni tool che può produrre output arbitrariamente grande. Non è un vicolo cieco: la
- * nota inserita al centro del testo tagliato dice sempre come recuperare la parte omessa
- * (`grep_search` per cercare un termine, `read_file` con `offset`/`limit` per paginare) —
- * il modello non deve mai accorciare da solo un contenuto, gli basta chiederne il resto.
+ * `capForContext` enforces a strict token budget (~3.5 chars/token convention matching
+ * `Agent.charsPerToken`). A truncation note explains omitted content and how to query remaining
+ * portions using `grep_search` or `read_file` with offset/limit pagination.
  */
 
-// Stima caratteri→token: fissa (non adattiva come Agent.charsPerToken) perché questo
-// helper agisce prima che un Agent esista — è il primo filtro, non l'ultimo.
 const CHARS_PER_TOKEN = 3.5;
 
 const DEFAULT_RECOVERY_HINT =
-  "Per il resto: usa grep_search per cercare un termine specifico, oppure read_file con " +
-  "offset/limit (o startLine/endLine) per leggere la porzione successiva.";
+  "To read the rest: use grep_search to find specific terms, or read_file with " +
+  "offset/limit (or startLine/endLine) to page through subsequent lines.";
 
-// Istanza condivisa del ConfigManager, ricaricata solo se il file su disco cambia
-// (stesso schema di webSearch.ts: evita di istanziare/ricaricare la config a ogni chiamata tool)
 let cachedConfigManager: ConfigManager | null = null;
 let cachedConfigMtime = -1;
 
@@ -45,12 +35,12 @@ function getSharedConfigManager(): ConfigManager {
   return cachedConfigManager;
 }
 
-/** Tetto configurato (o di default) per un singolo risultato di tool, in token stimati. */
+/** Returns the configured context cap for a single tool result in estimated tokens. */
 export function getMaxToolResultTokens(): number {
   return getSharedConfigManager().getMaxToolResultTokens();
 }
 
-/** Somma i caratteri di un array di messaggi (content + tool_calls serializzati). */
+/** Calculates total raw character count across a message array. */
 export function sumMessageChars(msgs: Array<Pick<ChatMessage, 'content' | 'tool_calls'>>): number {
   let chars = 0;
   for (const m of msgs) {
@@ -63,16 +53,7 @@ export function sumMessageChars(msgs: Array<Pick<ChatMessage, 'content' | 'tool_
 }
 
 /**
- * Stima i token di un array di messaggi. Unica implementazione della formula
- * caratteri→token condivisa da `Agent`, `/goal` e `/context` (prima erano tre
- * copie sincronizzate a mano da un commento).
- *
- * Default `charsPerToken = CHARS_PER_TOKEN` (fisso): per stime che vivono FUORI
- * da un `Agent` o prima che ne esista uno — `/goal` attraversa più agenti
- * effimeri (uno per membro del team), quindi non c'è "il" rapporto calibrato di
- * uno solo da applicare a tutta la history condivisa. Chi ha un `Agent` a
- * disposizione passa invece il proprio rapporto tarato a runtime
- * (`Agent.estimateMessagesTokens` fa esattamente questo con `this.charsPerToken`).
+ * Estimates token count for an array of messages using the specified or default character ratio.
  */
 export function estimateMessagesTokens(
   msgs: Array<Pick<ChatMessage, 'content' | 'tool_calls'>>,
@@ -82,20 +63,14 @@ export function estimateMessagesTokens(
 }
 
 export interface CapForContextOptions {
-  /** Cosa si sta tagliando, usato nella nota (es. "file 'x.txt'", "output del comando"). */
+  /** Target content description in the truncation note (e.g. "file 'x.txt'"). */
   label?: string;
-  /** Suggerimento su come recuperare la parte omessa. Sostituisce il default generico. */
+  /** Custom recovery hint to include in the truncation note. */
   recoveryHint?: string;
 }
 
 /**
- * Se `text` supera il tetto (in token stimati), ritorna testa + coda con al centro una
- * nota esplicita che dichiara quanto è stato tagliato e come recuperare il resto.
- * Sotto il tetto, ritorna `text` invariato.
- *
- * @param text Il testo da limitare.
- * @param maxTokens Tetto in token stimati; default: `getMaxToolResultTokens()`.
- * @param options Etichetta e suggerimento di recupero da inserire nella nota di taglio.
+ * Truncates text exceeding the token limit, retaining head and tail with an informative notice.
  */
 export function capForContext(text: string, maxTokens?: number, options: CapForContextOptions = {}): string {
   const limit = maxTokens ?? getMaxToolResultTokens();
@@ -104,18 +79,15 @@ export function capForContext(text: string, maxTokens?: number, options: CapForC
     return text;
   }
 
-  const label = options.label || 'questo contenuto';
+  const label = options.label || 'this content';
   const recoveryHint = options.recoveryHint || DEFAULT_RECOVERY_HINT;
   const totalTokensEst = Math.ceil(text.length / CHARS_PER_TOKEN);
 
   const note =
-    `\n\n[--- TAGLIATO per restare sotto il tetto di contesto: ${label} è di ~${totalTokensEst} ` +
-    `token stimati, qui mostrato solo un tetto di ~${limit} token. NON è un vicolo cieco: ${recoveryHint} ---]\n\n`;
+    `\n\n[--- TRUNCATED to remain within context budget: ${label} is ~${totalTokensEst} ` +
+    `estimated tokens; showing ~${limit} token slice. ${recoveryHint} ---]\n\n`;
 
-  // Testa + coda: il centro (dove finiscono la maggior parte dei risultati non rilevanti
-  // in output lunghi) è la parte sacrificata. 60/40 tra testa e coda: la testa contiene
-  // di solito l'intestazione/i primi risultati, la coda l'esito finale (es. errori a fondo
-  // output di un comando).
+  // Retain head and tail (60/40 ratio) to keep headers and final exit codes/errors
   const remaining = Math.max(0, maxChars - note.length);
   const headChars = Math.ceil(remaining * 0.6);
   const tailChars = remaining - headChars;
@@ -129,19 +101,19 @@ export function capForContext(text: string, maxTokens?: number, options: CapForC
 export type ReasoningEffortLevel = 'none' | 'low' | 'medium' | 'xhigh' | 'high';
 
 export interface ReasoningBudgetResult {
-  /** Livello di reasoning effort effettivo (eventualmente ridotto per evitare overflow) */
+  /** Effective reasoning effort level (dynamically throttled if context is constrained). */
   effectiveEffort?: string;
-  /** Indica se iniettare la direttiva di sintesi nel prompt */
+  /** Whether concision directive should be injected into prompt. */
   concisionRequired: boolean;
-  /** Tetto massimo stimato di token di reasoning consentiti per questo round */
+  /** Estimated maximum allowed reasoning tokens for this round. */
   maxReasoningTokens: number;
-  /** Percentuale di contesto libero residuo */
+  /** Percentage of remaining free context window. */
   freeContextPercent: number;
 }
 
 /**
- * Calcola il budget e l'effort di ragionamento consentito in base al contesto residuo (T11.10).
- * Previene context overflow e troncamenti a metà CoT.
+ * Calculates allowed reasoning effort and token budget based on remaining context (T11.10).
+ * Prevents mid-CoT truncation and unexpected context overflow errors.
  */
 export function calculateReasoningBudget(
   promptTokens: number,
@@ -152,10 +124,9 @@ export function calculateReasoningBudget(
   const remaining = Math.max(0, safeMax - promptTokens);
   const freePercent = Math.round((remaining / safeMax) * 100);
 
-  // Default se non specificato o se non è stringa
   const effort = typeof requestedEffort === 'string' ? requestedEffort.toLowerCase() : undefined;
 
-  // Spazio abbondante (> 55% libero): nessun throttling
+  // Plentiful context (> 55% free): no throttling
   if (freePercent > 55) {
     return {
       effectiveEffort: requestedEffort,
@@ -165,7 +136,7 @@ export function calculateReasoningBudget(
     };
   }
 
-  // Spazio medio (30% - 55% libero): consiglia concisione, abbassa solo se xhigh
+  // Moderate context (30% - 55% free): advise concision, cap xhigh at medium
   if (freePercent >= 30) {
     let throttledEffort = requestedEffort;
     if (effort === 'xhigh' || effort === 'high') {
@@ -179,7 +150,7 @@ export function calculateReasoningBudget(
     };
   }
 
-  // Spazio critico (< 30% libero): throttling aggressivo (low o none) e concisione obbligatoria
+  // Critical context (< 30% free): aggressive throttling and mandatory concision
   let throttledEffort: string | undefined = 'none';
   if (effort === 'xhigh' || effort === 'high' || effort === 'medium') {
     throttledEffort = freePercent >= 15 ? 'low' : 'none';
@@ -196,4 +167,3 @@ export function calculateReasoningBudget(
     freeContextPercent: freePercent
   };
 }
-

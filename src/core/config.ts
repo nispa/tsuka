@@ -3,8 +3,6 @@ import * as path from 'path';
 import { homePath } from './apphome';
 import { logSink } from './logSink';
 
-// dotenv caricato dal punto di ingresso (cli/index.ts)
-
 export interface ProviderConfig {
   baseUrl: string;
   model: string;
@@ -28,28 +26,21 @@ export interface AppConfig {
   maxHistoryMessages?: number;
   maxHistoryTokens?: number;
   maxToolResultTokens?: number;
-  /** Limite massimo di cicli consecutivi di esecuzione tool per singola richiesta utente (evita loop infiniti). Default: 15. */
+  /** Maximum consecutive tool execution rounds per user turn. Default: 15. */
   maxToolRounds?: number;
-  /** Numero massimo di fatti conservati nella memoria persistente prima dell'eviction. Default: 200. */
+  /** Maximum facts retained in persistent memory before score-based eviction. Default: 200. */
   memoryMaxFacts?: number;
   workspaceRoot?: string;
   memoryMaxChars?: number;
-  /** Ultimo livello della cascata di reasoning_effort (T8.10): usato solo se né
-   *  il personaggio né il ruolo attivo specificano "reasoningEffort". Valori
-   *  validi: 'none' | 'low' | 'medium' | 'xhigh' (vedi src/core/provider.ts). */
+  /** Final level of reasoning effort cascade (T8.10). */
   reasoningEffort?: string;
-  /** Timeout a orologio sull'intera generazione LLM in ms (T8.16). Default: 120000. */
+  /** Wall-clock timeout for LLM generation in ms (T8.16). Default: 120000. */
   llmTimeoutMs?: number;
-  /** Timeout massimo di default per i comandi shell eseguiti con execute_command in ms. Default: 120000. */
+  /** Default command timeout for execute_command in ms. Default: 120000. */
   commandTimeoutMs?: number;
-  /** Preset di creatività predefinito ('precise' | 'balanced' | 'creative' | 'low' | 'medium' | 'high'). */
+  /** Default creativity preset ('precise' | 'balanced' | 'creative' | 'low' | 'medium' | 'high'). */
   creativity?: string;
-  /** Esecuzione parallela dei blocchi PARALLELO in `goal` (T9.10). Default: false —
-   *  su una singola GPU/singolo modello in VRAM il parallelismo tra agenti non è
-   *  performante (gli agenti finiscono comunque a contendersi la stessa scheda),
-   *  quindi resta disattivato finché non lo si abilita esplicitamente. Quando
-   *  false, un blocco PARALLELO viene comunque riconosciuto ma eseguito come
-   *  sequenza di step normali (vedi parsePlan in cli/commands/goal.ts). */
+  /** Enables true parallel execution for PARALLEL blocks in /goal (T9.10). Default: false. */
   parallelExecutionEnabled?: boolean;
 }
 
@@ -68,8 +59,6 @@ export class ConfigManager {
       if (fs.existsSync(CONFIG_PATH)) {
         const raw = fs.readFileSync(CONFIG_PATH, 'utf-8');
         this.config = JSON.parse(raw);
-        // Applica i default mancanti e salva SOLO se il file è stato effettivamente corretto
-        // (evita riscritture spurie del config a ogni avvio o a ogni caricamento)
         let dirty = false;
         if (!this.config.webSearch) {
           this.config.webSearch = { provider: 'duckduckgo' };
@@ -91,7 +80,7 @@ export class ConfigManager {
           this.save();
         }
       } else {
-        // Fallback predefinito se il file viene eliminato
+        // Clean default fallback when configuration file is missing
         this.config = {
           activeProvider: 'ollama',
           providers: {
@@ -118,7 +107,7 @@ export class ConfigManager {
         this.save();
       }
     } catch (error: any) {
-      logSink.error(`Errore nel caricamento di tsuka.config.json: ${error.message}. Uso configurazione di fallback.`);
+      logSink.error(`Error loading tsuka.config.json: ${error.message}. Using default fallback configuration.`);
     }
   }
 
@@ -126,7 +115,7 @@ export class ConfigManager {
     try {
       fs.writeFileSync(CONFIG_PATH, JSON.stringify(this.config, null, 2), 'utf-8');
     } catch (error: any) {
-      logSink.error(`Errore nel salvataggio della configurazione: ${error.message}`);
+      logSink.error(`Error saving configuration: ${error.message}`);
     }
   }
 
@@ -215,9 +204,8 @@ export class ConfigManager {
   }
 
   /**
-   * Numero massimo di messaggi mantenuti nella cronologia di sessione (system prompt incluso).
-   * Default: 500 (guardia estrema: il limite primario è guidato dai token maxHistoryTokens).
-   * Configurabile con "maxHistoryMessages" in tsuka.config.json.
+   * Maximum message count retained in session history.
+   * Default: 500 (guard limit; primary compaction is token-driven via maxHistoryTokens).
    */
   getMaxHistoryMessages(): number {
     const value = this.config.maxHistoryMessages;
@@ -228,11 +216,7 @@ export class ConfigManager {
   }
 
   /**
-   * Budget massimo di token stimati (~3,5 caratteri/token) mantenuti in cronologia.
-   * Protegge la context window quando pochi messaggi contengono output tool molto
-   * grandi, caso in cui il limite a conteggio messaggi non basta.
-  /**
-   * Imposta il limite di contesto rilevato dinamicamente a runtime dal server attivo.
+   * Sets dynamically detected runtime context window tokens from the server.
    */
   setRuntimeContextTokens(tokens: number | null): void {
     this.runtimeContextTokens = typeof tokens === 'number' && Number.isFinite(tokens) && tokens >= 1024
@@ -241,16 +225,14 @@ export class ConfigManager {
   }
 
   /**
-   * Ritorna il limite di contesto rilevato dal server a runtime, o null se non disponibile.
+   * Returns dynamically detected runtime context window tokens.
    */
   getRuntimeContextTokens(): number | null {
     return this.runtimeContextTokens;
   }
 
   /**
-   * Finestra di contesto massima totale per la sessione: se il server ha esposto
-   * dinamicamente il proprio context window reale (T11.5), usa quello; altrimenti
-   * ricade sul default configurato in "maxHistoryTokens" di tsuka.config.json (default 65536).
+   * Maximum session context window tokens: uses detected runtime size or config default (65536).
    */
   getMaxHistoryTokens(): number {
     if (this.runtimeContextTokens !== null && this.runtimeContextTokens >= 1024) {
@@ -264,13 +246,7 @@ export class ConfigManager {
   }
 
   /**
-   * Tetto di contesto per un SINGOLO risultato di tool (T8.8), in token stimati
-   * (~3,5 caratteri/token, stessa convenzione di `Agent.charsPerToken`). Più stretto
-   * dei limiti di sicurezza in byte già esistenti in ogni tool (5MB per read_file/
-   * grep_search, 50KB per execute_command), che restano invariati come guardia
-   * superiore: qui si taglia PRIMA che il risultato entri in cronologia, perché la
-   * potatura di `Agent` interviene solo dopo che il messaggio è già stato costruito.
-   * Default: 4000. Configurabile con "maxToolResultTokens" in tsuka.config.json (min 256).
+   * Single tool result context cap in estimated tokens (T8.8). Default: 4000.
    */
   getMaxToolResultTokens(): number {
     const value = this.config.maxToolResultTokens;
@@ -281,9 +257,7 @@ export class ConfigManager {
   }
 
   /**
-   * Numero massimo di cicli consecutivi di esecuzione tool per singola richiesta utente.
-   * Evita loop infiniti se il modello continua a richiedere tool senza generare risposta finale.
-   * Default: 15. Configurabile con "maxToolRounds" in tsuka.config.json (min 1).
+   * Maximum consecutive tool execution rounds per user turn. Default: 15.
    */
   getMaxToolRounds(): number {
     const value = this.config.maxToolRounds;
@@ -294,9 +268,7 @@ export class ConfigManager {
   }
 
   /**
-   * Numero massimo di fatti conservati nella memoria persistente (MemoryStore).
-   * Superato questo limite, scatta l'eviction basata su punteggio (kind/hits/lastUsed).
-   * Default: 200. Configurabile con "memoryMaxFacts" in tsuka.config.json (min 10).
+   * Maximum facts retained in persistent memory (MemoryStore). Default: 200.
    */
   getMemoryMaxFacts(): number {
     const value = this.config.memoryMaxFacts;
@@ -307,9 +279,7 @@ export class ConfigManager {
   }
 
   /**
-   * Numero massimo di round (giri completi di tutti i membri) in un workflow /team.
-   * Il team si ferma prima se un membro dichiara STATO: COMPLETATO.
-   * Default: 3. Configurabile con "teamMaxRounds" in tsuka.config.json.
+   * Maximum rounds in a /team workflow. Default: 3.
    */
   getTeamMaxRounds(): number {
     const value = (this.config as any).teamMaxRounds;
@@ -320,17 +290,7 @@ export class ConfigManager {
   }
 
   /**
-   * Root del workspace per la jail di sicurezza dei file tool.
-   * Tutti i path di write/edit/delete/list_dir/grep_search/read_file sono vincolati
-   * a questa directory (o sue sottocartelle).
-   *
-   * Default (nessun "workspaceRoot" in tsuka.config.json): la cwd del processo —
-   * coerente con la distinzione app home / workspace di apphome.ts, dove il workspace
-   * è "la cartella da cui il comando viene lanciato". Non un path fisso nel config
-   * condiviso, altrimenti l'uso come comando globale (`tsuka` da un'altra cartella)
-   * resterebbe agganciato alla prima cartella di installazione.
-   * Esplicitare "workspaceRoot" nel config sovrascrive il default (es. per restringere
-   * a una sottocartella specifica indipendentemente da dove si lancia il comando).
+   * Base workspace directory root for file sandbox security checks.
    */
   getWorkspaceRoot(): string {
     const root = this.config.workspaceRoot;
@@ -341,10 +301,7 @@ export class ConfigManager {
   }
 
   /**
-   * Tetto in caratteri della sezione di memoria iniettata nel system prompt
-   * (T8.3), sia dal fallback per recenza (`formatForPrompt`) sia dall'iniezione
-   * per rilevanza (`formatRelevant`) di `MemoryStore`. Prima era fisso a 600.
-   * Default: 600. Configurabile con "memoryMaxChars" in tsuka.config.json (min 100).
+   * Maximum character cap for memory sections injected into system prompts (T8.3). Default: 600.
    */
   getMemoryMaxChars(): number {
     const value = this.config.memoryMaxChars;
@@ -355,12 +312,7 @@ export class ConfigManager {
   }
 
   /**
-   * Ultimo livello della cascata di reasoning_effort (T8.10, TASKS.md): override
-   * chiamante → personaggio → ruolo → QUESTO default. undefined se non impostato
-   * (nessun default silenzioso a un valore fisso: senza "reasoningEffort" in
-   * tsuka.config.json e senza che personaggio/ruolo lo specifichino, il
-   * comportamento resta quello di sempre — decide il modello).
-   * Configurabile con "reasoningEffort" in tsuka.config.json ('none'|'low'|'medium'|'xhigh').
+   * Final fallback reasoning effort level from configuration.
    */
   getDefaultReasoningEffort(): 'none' | 'low' | 'medium' | 'xhigh' | undefined {
     const value = this.config.reasoningEffort;
@@ -368,8 +320,7 @@ export class ConfigManager {
   }
 
   /**
-   * Timeout a orologio sull'intera generazione LLM in millisecondi (T8.16).
-   * Default: 120000 ms (2 minuti). Configurabile con "llmTimeoutMs" in tsuka.config.json.
+   * Wall-clock LLM generation timeout in milliseconds (T8.16). Default: 120000.
    */
   getLlmTimeoutMs(): number {
     const value = this.config.llmTimeoutMs;
@@ -380,8 +331,7 @@ export class ConfigManager {
   }
 
   /**
-   * Timeout massimo di default per i comandi shell eseguiti con execute_command in millisecondi.
-   * Default: 120000 ms (2 minuti). Configurabile con "commandTimeoutMs" in tsuka.config.json.
+   * Shell command execution timeout in milliseconds for execute_command. Default: 120000.
    */
   getCommandTimeoutMs(): number {
     const value = this.config.commandTimeoutMs;
@@ -392,18 +342,14 @@ export class ConfigManager {
   }
 
   /**
-   * Esecuzione parallela dei blocchi PARALLELO in `goal` (T9.10). Default:
-   * false — vedi il commento su AppConfig.parallelExecutionEnabled. Va
-   * abilitata esplicitamente con "parallelExecutionEnabled": true in
-   * tsuka.config.json solo su hardware che la sostiene davvero (più GPU, o
-   * più modelli caricati in VRAM contemporaneamente).
+   * Parallel execution flag for PARALLEL blocks in /goal (T9.10). Default: false.
    */
   isParallelExecutionEnabled(): boolean {
     return this.config.parallelExecutionEnabled === true;
   }
 
   /**
-   * Preset di creatività predefinito ('precise' | 'balanced' | 'creative' | 'low' | 'medium' | 'high').
+   * Default creativity preset ('precise' | 'balanced' | 'creative' | 'low' | 'medium' | 'high').
    */
   getDefaultCreativity(): 'precise' | 'balanced' | 'creative' | 'low' | 'medium' | 'high' | undefined {
     const value = this.config.creativity?.toLowerCase();

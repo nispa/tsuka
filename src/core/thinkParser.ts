@@ -1,15 +1,13 @@
 /**
- * Parser incrementale per i blocchi di reasoning `<think>...</think>` emessi
- * da modelli come deepseek-r1 dentro lo stream di contenuto.
+ * Incremental parser for `<think>...</think>` reasoning blocks emitted
+ * by models like deepseek-r1 within the content stream.
  *
- * Separa lo stream in due canali:
- *  - 'content':   testo destinato all'utente (e alla cronologia)
- *  - 'reasoning': catena di pensiero, da mostrare solo come indicatore live
+ * Separates the stream into two channels:
+ *  - 'content':   User-facing response text (and chat history)
+ *  - 'reasoning': Chain of thought, displayed as a live progress indicator
  *
- * Gestisce i tag spezzati tra chunk consecutivi (es. un chunk termina con
- * "<thi" e il successivo inizia con "nk>"): il possibile prefisso di tag viene
- * trattenuto e riconsiderato al chunk successivo. `flush()` rilascia
- * l'eventuale residuo a fine stream.
+ * Handles split tags across consecutive chunks (e.g. chunk 1 ends with "<thi"
+ * and chunk 2 begins with "nk>"). `flush()` releases any leftover buffer at stream end.
  */
 
 export type StreamChannel = 'content' | 'reasoning';
@@ -17,7 +15,7 @@ export type StreamChannel = 'content' | 'reasoning';
 const OPEN_TAG = '<think>';
 const CLOSE_TAG = '</think>';
 
-/** Lunghezza del più lungo suffisso di `buf` che è prefisso proprio di `tag`. */
+/** Length of the longest suffix of `buf` that is a proper prefix of `tag`. */
 function trailingTagPrefixLen(buf: string, tag: string): number {
   const max = Math.min(buf.length, tag.length - 1);
   for (let len = max; len > 0; len--) {
@@ -45,15 +43,14 @@ export class ThinkTagParser {
         this.emitText(buf.slice(0, idx), this.state);
         buf = buf.slice(idx + tag.length);
         if (this.state === 'reasoning') {
-          // Fine reasoning: il primo contenuto successivo va ripulito dal
-          // whitespace che i modelli lasciano dopo </think>
+          // Reasoning ended: trim leading whitespace often left by models after </think>
           this.trimNextContent = true;
         }
         this.state = this.state === 'content' ? 'reasoning' : 'content';
         continue;
       }
 
-      // Nessun tag completo: trattiene un eventuale prefisso di tag in coda
+      // No complete tag found: hold trailing prefix if present
       const holdLen = trailingTagPrefixLen(buf, tag);
       this.held = holdLen > 0 ? buf.slice(buf.length - holdLen) : '';
       this.emitText(buf.slice(0, buf.length - holdLen), this.state);
@@ -61,10 +58,10 @@ export class ThinkTagParser {
     }
   }
 
-  /** Da chiamare a fine stream: rilascia il residuo trattenuto (es. un '<' letterale). */
+  /** Call at end of stream: releases held residue (e.g. literal '<'). */
   flush(): void {
     if (this.held) {
-      // Un <think> mai chiuso lascia lo stato su 'reasoning': il residuo resta reasoning
+      // An unclosed <think> leaves state in 'reasoning'
       this.emitText(this.held, this.state);
       this.held = '';
     }
@@ -82,9 +79,8 @@ export class ThinkTagParser {
 }
 
 /**
- * Rimuove i blocchi <think> da un testo completo (path non-streaming).
- * Gestisce anche i tag orfani: un <think> mai chiuso scarta tutto ciò che segue,
- * un </think> senza apertura scarta tutto ciò che precede.
+ * Removes <think> blocks from complete text (non-streaming path).
+ * Also handles orphan tags.
  */
 export function stripThinkBlocks(text: string): string {
   let out = text.replace(/<think>[\s\S]*?<\/think>/g, '');

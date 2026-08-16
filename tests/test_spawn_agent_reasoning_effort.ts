@@ -201,7 +201,7 @@ async function main() {
     } catch (e: any) {
       errMsg2 = e.message;
     }
-    check('SE.4d', errMsg2 === 'Provider non disponibile nel contesto.', `un valore valido con spazi/maiuscole viene normalizzato, non rifiutato (${errMsg2})`);
+    check('SE.4d', errMsg2 === 'Provider non disponibile nel contesto.' || errMsg2 === 'Provider not available in execution context.', `un valore valido con spazi/maiuscole viene normalizzato, non rifiutato (${errMsg2})`);
   }
 
   // ============================================================
@@ -228,7 +228,7 @@ async function main() {
       context
     );
 
-    check('SE.5a', typeof result === 'string' && result.includes('SUB-AGENTE'), `spawn_agent completa e ritorna un resoconto (${JSON.stringify(String(result).slice(0, 120))})`);
+    check('SE.5a', typeof result === 'string' && (result.includes('SUB-AGENTE') || result.includes('SUB-AGENT')), `spawn_agent completa e ritorna un resoconto (${JSON.stringify(String(result).slice(0, 120))})`);
     check(
       'SE.5b',
       capturedParams[0]?.reasoning_effort === 'low',

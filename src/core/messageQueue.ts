@@ -1,7 +1,7 @@
 /**
- * Coda messaggi tra agenti (effimera, solo sessione corrente).
- * Permette a un agente di lasciare un messaggio per un collega,
- * che lo riceverà all'inizio del suo prossimo turno.
+ * Inter-agent message queue (ephemeral, current session only).
+ * Allows an agent to leave a message for a colleague, which will be received
+ * at the start of their next turn.
  */
 
 export interface PendingMessage {
@@ -11,9 +11,9 @@ export interface PendingMessage {
   timestamp: number;
 }
 
-let currentSenderName = 'agente';
+let currentSenderName = 'agent';
 
-/** Imposta il nome del mittente corrente (chiamato prima di ogni turno agente). */
+/** Sets the current sender name (called before each agent turn). */
 export function setCurrentSenderName(name: string): void {
   currentSenderName = name;
 }
@@ -34,7 +34,7 @@ export function dequeueMessages(agentName: string): PendingMessage[] {
   const target = agentName.toLowerCase();
   const idx = queue.findIndex((m) => m.to === target);
   if (idx === -1) return [];
-  // Raccoglie TUTTI i messaggi per questo agente (non solo il primo)
+  // Collect all messages for this agent (not just the first one)
   const all: PendingMessage[] = [];
   let i = queue.length;
   while (i--) {
@@ -49,7 +49,7 @@ export function dequeueMessages(agentName: string): PendingMessage[] {
 export function formatPendingMessages(messages: PendingMessage[]): string {
   if (messages.length === 0) return '';
   return messages
-    .map((m) => `[Messaggio da @${m.from}]: ${m.message}`)
+    .map((m) => `[Message from @${m.from}]: ${m.message}`)
     .join('\n');
 }
 

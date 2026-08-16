@@ -191,10 +191,10 @@ async function main() {
     const char = { reasoningEffort: 'xhigh' as ReasoningEffort };
     const role = { reasoningEffort: 'medium' as ReasoningEffort };
 
-    check('C.1a', describeEffortSource(char, role, 'low').source === 'personaggio', 'senza pin, vince il personaggio (come la cascata)');
-    check('C.1b', describeEffortSource(null, role, 'low').source === 'ruolo', 'senza personaggio, vince il ruolo');
+    check('C.1a', describeEffortSource(char, role, 'low').source === 'personaggio' || describeEffortSource(char, role, 'low').source === 'character', 'senza pin, vince il personaggio (come la cascata)');
+    check('C.1b', describeEffortSource(null, role, 'low').source === 'ruolo' || describeEffortSource(null, role, 'low').source === 'role', 'senza personaggio, vince il ruolo');
     check('C.1c', describeEffortSource(null, null, 'low').source === 'default', 'senza personaggio né ruolo, vince il default di configurazione');
-    check('C.1d', describeEffortSource(null, null, undefined).source === 'nessuno', 'nessun livello specificato in nessun posto → source "nessuno"');
+    check('C.1d', describeEffortSource(null, null, undefined).source === 'nessuno' || describeEffortSource(null, null, undefined).source === 'none', 'nessun livello specificato in nessun posto → source "nessuno"');
 
     setEffortPin('xhigh');
     const withPin = describeEffortSource(char, role, 'low');
@@ -253,7 +253,7 @@ async function main() {
     // Divergenza, ask mode ATTIVA, utente rifiuta → ripiega sul riferimento SOLO per questo turno
     const { result: r4, logs: l4 } = await captureLogs(() => confirmEffortDivergence('X', 'xhigh', 'low', async () => false));
     check('E.4a', r4 === 'low', 'rifiutato: il turno usa il riferimento, non l\'effettivo originale');
-    check('E.4b', l4.some((line) => /rifiutat/i.test(line)), 'rifiutato: una riga di log lo segnala');
+    check('E.4b', l4.some((line) => /rifiutat|rejected/i.test(line)), 'rifiutato: una riga di log lo segnala');
     check('E.4c', getEffortPin() === undefined, 'un rifiuto in modalità ask NON tocca il pin (vale solo per quel turno)');
 
     resetEffortControlForTest();
@@ -367,7 +367,7 @@ async function main() {
       const match = /runs[\\\/]([^\\\/]+)[\\\/]/.exec(String(result));
       if (match) createdRunDirs.push(homePath('runs', match[1]));
 
-      check('G.1a', typeof result === 'string' && result.includes('SUB-AGENTE'), 'spawn_agent completa normalmente');
+      check('G.1a', typeof result === 'string' && (result.includes('SUB-AGENTE') || result.includes('SUB-AGENT')), 'spawn_agent completa normalmente');
       check('G.1b',
         provider.callLog[0]?.options?.reasoningEffort === 'none',
         `Accettazione: il pin ('none') vince anche sull'override esplicito del tool ('xhigh') (ricevuto: ${JSON.stringify(provider.callLog[0]?.options)})`
@@ -414,8 +414,8 @@ async function main() {
         const { logs } = await captureLogs(() => handleEffort(ctx, ''));
         const text = logs.join('\n');
         check('H.1a', /medium/.test(text), `mostra il livello attivo risolto dal ruolo sysadmin (ricevuto: ${JSON.stringify(logs)})`);
-        check('H.1b', /ruolo/i.test(text), 'dichiara la provenienza corretta: "ruolo"');
-        check('H.1c', /nessuno|disattiva/i.test(text), 'dichiara che nessun pin è attivo e la modalità ask è spenta');
+        check('H.1b', /ruolo|role/i.test(text), 'dichiara la provenienza corretta: "ruolo"');
+        check('H.1c', /nessuno|disattiva|none|disabled/i.test(text), 'dichiara che nessun pin è attivo e la modalità ask è spenta');
       }
 
       // H2 — /effort <livello>: fissa il pin, ricrea l'agente, annuncia un
@@ -453,7 +453,7 @@ async function main() {
         const text = logs.join('\n');
         check('H.2a', getEffortPin() === 'medium', 'il pin è stato fissato a \'medium\'');
         check('H.2b', ctx.agent.current.getReasoningEffort() === 'medium', 'l\'agente è stato ricreato con l\'effort pinnato');
-        check('H.2c', /Cambiano i tool/i.test(text), `Accettazione: un pin che cambia il tier produce un messaggio che nomina la differenza (ricevuto: ${JSON.stringify(logs)})`);
+        check('H.2c', /(Cambiano i tool|Visible tools changed)/i.test(text), `Accettazione: un pin che cambia il tier produce un messaggio che nomina la differenza (ricevuto: ${JSON.stringify(logs)})`);
         check('H.2d', /execute_command/.test(text), 'il messaggio nomina il tool coinvolto (execute_command)');
       }
 
@@ -474,7 +474,7 @@ async function main() {
         const text = logs.join('\n');
         check('H.3a', getEffortPin() === undefined, '/effort auto rimuove il pin');
         check('H.3b', ctx.agent.current.getReasoningEffort() === 'medium', 'senza pin, l\'agente torna alla cascata (ruolo sysadmin → medium)');
-        check('H.3c', /Nessun cambiamento/i.test(text), `nessun profilo per questo modello: il tier resta lo stesso, il comando lo dichiara esplicitamente (ricevuto: ${JSON.stringify(logs)})`);
+        check('H.3c', /(Nessun cambiamento|No changes in visible tools)/i.test(text), `nessun profilo per questo modello: il tier resta lo stesso, il comando lo dichiara esplicitamente (ricevuto: ${JSON.stringify(logs)})`);
       }
 
       // H3b — /effort auto quando non c'è già nessun pin: no-op dichiarato, non un errore.
@@ -483,7 +483,7 @@ async function main() {
         const configManager = fakeConfigManager({ activeCharacter: 'custom', activeRole: 'sysadmin' });
         const ctx = buildEffortCtx(new MockLLMProvider([], { model: 'x' }), new ToolRegistry(), configManager);
         const { logs } = await captureLogs(() => handleEffort(ctx, 'auto'));
-        check('H.3d', logs.some((l) => /già in modalità automatica/i.test(l)), 'auto senza pin attivo: messaggio esplicito, nessun errore');
+        check('H.3d', logs.some((l) => /(già in modalità automatica|already in automatic cascade)/i.test(l)), 'auto senza pin attivo: messaggio esplicito, nessun errore');
       }
 
       // H4 — /effort ask: alterna la modalità, messaggi distinti nei due sensi.
@@ -494,11 +494,11 @@ async function main() {
 
         const { logs: onLogs } = await captureLogs(() => handleEffort(ctx, 'ask'));
         check('H.4a', isAskModeEnabled() === true, "/effort ask attiva la modalità (era spenta)");
-        check('H.4b', onLogs.some((l) => /attivata/i.test(l)), 'messaggio di attivazione');
+        check('H.4b', onLogs.some((l) => /(attivata|Ask mode enabled)/i.test(l)), 'messaggio di attivazione');
 
         const { logs: offLogs } = await captureLogs(() => handleEffort(ctx, 'ask'));
         check('H.4c', isAskModeEnabled() === false, '/effort ask la disattiva di nuovo (toggle)');
-        check('H.4d', offLogs.some((l) => /disattivata/i.test(l)), 'messaggio di disattivazione');
+        check('H.4d', offLogs.some((l) => /(disattivata|Ask mode disabled)/i.test(l)), 'messaggio di disattivazione');
         resetEffortControlForTest();
       }
 
@@ -509,7 +509,7 @@ async function main() {
         const ctx = buildEffortCtx(new MockLLMProvider([], { model: 'x' }), new ToolRegistry(), configManager);
         const { logs } = await captureLogs(() => handleEffort(ctx, 'ultra'));
         check('H.5a', getEffortPin() === undefined, 'un livello non valido non tocca il pin');
-        check('H.5b', logs.some((l) => /non valido/i.test(l)), 'errore esplicito per un livello fuori enum');
+        check('H.5b', logs.some((l) => /(non valido|Invalid effort level)/i.test(l)), 'errore esplicito per un livello fuori enum');
       }
     } finally {
       if (backup !== null) {

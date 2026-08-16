@@ -6,26 +6,20 @@ export type RiskLevel = 'SAFE' | 'RESTRICTED' | 'DANGEROUS';
 
 export class PermissionManager {
   private allowAllWrite: boolean = false;
-  // Promise-chain interna (T3.1, PLANNING-QUALITA.md): le richieste che generano
-  // un prompt interattivo (RESTRICTED/DANGEROUS) si accodano qui invece di
-  // chiamare InteractiveMenu.select/prompts in parallelo. Senza questa coda, due
-  // agenti eseguiti in parallelo (blocco PARALLELO di /goal, Promise.all in
-  // goal.ts) condividendo lo stesso PermissionManager sovrapponevano due prompt
-  // sullo stesso stdin, producendo un'interfaccia rotta e risposte imprevedibili.
+  // Internal promise chain (T3.1): requests triggering interactive prompts
+  // (RESTRICTED/DANGEROUS) are queued sequentially rather than colliding on stdin.
   private promptQueue: Promise<void> = Promise.resolve();
 
   constructor() {}
 
-  /**
-   * Resetta lo stato delle autorizzazioni per una nuova sessione.
-   */
+  /** Resets permission state for a new session. */
   resetSession(): void {
     this.allowAllWrite = false;
   }
 
   /**
-   * Abilita o disabilita l'auto-approvazione delle scritture/modifiche file (RESTRICTED).
-   * Utile per workflow autonomi come /goal o /team dove la jail del workspace è attiva.
+   * Toggles auto-approval of file modifications/writes (RESTRICTED).
+   * Useful for autonomous /goal or /team workflows within the workspace jail.
    */
   setAllowAllWrite(allow: boolean): void {
     this.allowAllWrite = allow;
@@ -36,10 +30,8 @@ export class PermissionManager {
   }
 
   /**
-   * Accoda `task` dopo l'eventuale prompt già in corso: un solo prompt alla volta,
-   * nell'ordine di arrivo delle richieste. La coda avanza sempre e comunque, anche
-   * se `task` rifiuta, altrimenti una richiesta fallita bloccherebbe tutte quelle
-   * successive.
+   * Enqueues `task` after any ongoing interactive prompt.
+   * Ensures prompt order is preserved and subsequent requests are not blocked by a single rejection.
    */
   private enqueuePrompt<T>(task: () => Promise<T>): Promise<T> {
     const result = this.promptQueue.then(task, task);
@@ -48,19 +40,17 @@ export class PermissionManager {
   }
 
   /**
-   * Controlla se l'agente ha il permesso di eseguire un determinato tool.
-   * @param toolName Nome del tool richiesto
-   * @param details Dettagli dell'operazione (es. il file da scrivere o il comando da lanciare)
-   * @param riskLevel Livello di rischio del tool
-   * @param requesterLabel Nome/etichetta dell'agente richiedente, mostrato nel prompt
-   *   quando più agenti sono attivi in parallelo (es. blocco PARALLELO di /goal)
-   * @returns Un booleano che indica se l'azione è autorizzata
+   * Verifies if the agent has permission to execute a tool.
+   * @param toolName Name of requested tool
+   * @param details Operation details (e.g. target path or command)
+   * @param riskLevel Risk classification of tool
+   * @param requesterLabel Requesting agent label displayed in interactive prompts
+   * @returns Boolean indicating authorization
    */
   async checkPermission(toolName: string, details: string, riskLevel: RiskLevel, requesterLabel?: string): Promise<boolean> {
     if (riskLevel === 'SAFE') {
       return true;
     }
-    // RESTRICTED e DANGEROUS mostrano un prompt interattivo: si accodano.
     return this.enqueuePrompt(() => this.promptForDecision(toolName, details, riskLevel, requesterLabel));
   }
 
@@ -72,16 +62,16 @@ export class PermissionManager {
         return true;
       }
 
-      console.log(chalk.yellow(`\n🛡️  [Richiesta Autorizzazione]${who} L'agente richiede il tool di modifica:`));
+      console.log(chalk.yellow(`\n🛡️  [Authorization Request]${who} The agent requests modification tool:`));
       console.log(`   Tool: ${chalk.cyan(toolName)}`);
-      console.log(`   Azione: ${chalk.white(details)}`);
+      console.log(`   Action: ${chalk.white(details)}`);
 
       const decision = await InteractiveMenu.select<string>(
-        'Scegli come procedere:',
+        'Choose how to proceed:',
         [
-          { title: 'Approva questa volta (y)', value: 'yes' },
-          { title: 'Nega questa volta (n)', value: 'no' },
-          { title: 'Approva sempre per questa sessione (a)', value: 'always' }
+          { title: 'Approve this time (y)', value: 'yes' },
+          { title: 'Deny this time (n)', value: 'no' },
+          { title: 'Always approve for this session (a)', value: 'always' }
         ],
         'yes'
       );
@@ -90,30 +80,30 @@ export class PermissionManager {
         return true;
       } else if (decision === 'always') {
         this.allowAllWrite = true;
-        console.log(chalk.green('✔ Permesso di scrittura concesso per tutta la sessione.'));
+        console.log(chalk.green('✔ Write permission granted for the rest of the session.'));
         return true;
       } else {
-        console.log(chalk.red('✘ Operazione rifiutata dall\'utente.'));
+        console.log(chalk.red('✘ Operation denied by user.'));
         return false;
       }
     }
 
     if (riskLevel === 'DANGEROUS') {
-      console.log(chalk.red.bold(`\n⚠️  [AUTORIZZAZIONE CRITICA RICHIESTA]${who} L'agente vuole eseguire un comando di sistema:`));
-      console.log(`   Comando: ${chalk.yellow(details)}`);
+      console.log(chalk.red.bold(`\n⚠️  [CRITICAL AUTHORIZATION REQUIRED]${who} The agent requests system command execution:`));
+      console.log(`   Command: ${chalk.yellow(details)}`);
 
       const response = await prompts({
         type: 'confirm',
         name: 'confirm',
-        message: chalk.red('Vuoi consentire l\'esecuzione?'),
+        message: chalk.red('Do you want to allow execution?'),
         initial: false
       });
 
       if (response.confirm) {
-        console.log(chalk.green('✔ Comando autorizzato.'));
+        console.log(chalk.green('✔ Command authorized.'));
         return true;
       } else {
-        console.log(chalk.red('✘ Comando rifiutato.'));
+        console.log(chalk.red('✘ Command rejected.'));
         return false;
       }
     }
