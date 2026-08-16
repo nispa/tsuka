@@ -167,12 +167,12 @@
       <div class="facts">
         <div><b>23</b><span>Tool</span></div>
         <div><b>22</b><span>Comandi REPL</span></div>
-        <div><b>20</b><span>Moduli core</span></div>
+        <div><b>21</b><span>Moduli core</span></div>
         <div><b>21</b><span>Ruoli</span></div>
         <div><b>9</b><span>Tratti</span></div>
         <div><b>28</b><span>Personaggi</span></div>
         <div><b>10</b><span>Team</span></div>
-        <div><b>42</b><span>Suite di test</span></div>
+        <div><b>46</b><span>Suite di test</span></div>
       </div>
     </header>
 
@@ -203,7 +203,7 @@
           </tbody>
         </table>
         <p>Il confine è dichiarato in <code>src/core/agentEvents.ts</code>: <em>«Il core non stampa più direttamente: chi invoca l'agente decide come visualizzare»</em>. <code>Agent.run</code> accetta infatti <code>onChunk</code>, <code>onStats</code>, <code>onEvent</code> e un <code>AbortSignal</code> — cioè tutto ciò che serve a un'interfaccia qualunque.</p>
-        <div class="warn"><strong>Il confine è però violato in 23 punti</strong>: restano <code>console.log</code>/<code>error</code>/<code>warn</code> dentro <code>src/core/</code> e <code>src/tools/</code>. In una CLI a scorrimento non si notano; per qualunque altra interfaccia sono un problema. Vedi §14.</div>
+        <div class="callout"><strong>Il confine era violato in 21 punti</strong> (i restanti 3, in <code>agent.ts</code>, sono il renderer di default usato solo quando nessun <code>onEvent</code> è fornito — legittimo, non una violazione): restavano <code>console.log</code>/<code>error</code>/<code>warn</code> diretti dentro <code>src/core/</code> e <code>src/tools/</code>, in classi (<code>MemoryStore</code>, <code>ConfigManager</code>, <code>ToolRegistry</code>, <code>RunController</code>, i tool stessi) che non girano dentro un <code>Agent.run()</code> e non hanno un <code>AgentEventHandler</code> a disposizione. Risolto instradando tutti quei punti su <code>src/core/logSink.ts</code>, un sink iniettabile con lo stesso comportamento di default (stampa su console) ma sostituibile da chi vuole intercettare.</div>
       </section>
 
       <section id="s3">
@@ -366,6 +366,7 @@ FINE</code></pre>
             <tr><td><code>logBuffer.ts</code></td><td>buffering dell'output per branch paralleli</td></tr>
             <tr><td><code>messageQueue.ts</code></td><td>messaggi punto-punto fra agenti</td></tr>
             <tr><td><code>agentEvents.ts</code></td><td>contratto degli eventi verso l'interfaccia</td></tr>
+            <tr><td><code>logSink.ts</code></td><td>sink di logging iniettabile per classi fuori dal ciclo agentico</td></tr>
             <tr><td><code>apphome.ts</code></td><td>app home vs workspace</td></tr>
             <tr><td><code>contextTracker.ts</code></td><td>tracciamento del contesto</td></tr>
             <tr><td><code>types.ts</code></td><td>tipi condivisi</td></tr>
@@ -389,7 +390,6 @@ FINE</code></pre>
         <h2><span class="n">14</span> Limiti noti e debito tecnico</h2>
         <p class="lead">Onestà sullo stato, perché è ciò che serve per decidere dove andare.</p>
         <ul>
-          <li><strong>23 <code>console.*</code> nel core e nei tool.</strong> Il confine dichiarato in <code>agentEvents.ts</code> non è rispettato. Irrilevante per la CLI, bloccante per qualunque altra interfaccia: quei messaggi finirebbero nel terminale del server, invisibili a chi guarda altrove.</li>
           <li><strong>Lo stato di sessione è globale.</strong> <code>activeRole</code>, <code>activeTrait</code> e <code>activeCharacter</code> vivono in <code>tsuka.config.json</code>; il pin di effort è stato di processo. Con un solo utente e una sola sessione va bene; con due client concorrenti si sovrascrivono. È il vincolo principale per una interfaccia web multi-scheda, e non ha nulla a che vedere con la grafica.</li>
           <li><strong>8 file di test non registrati</strong> in <code>run_tests.ts</code> (<code>test_browser</code>, <code>test_call</code>, <code>test_falco_live</code>, <code>test_ollama</code>, <code>test_safe_tools</code>, <code>test_search</code>, <code>test_search_debug</code>, <code>test_team</code>): alcuni richiedono un server o la rete, ma non tutti — e nel frattempo non proteggono da nulla.</li>
           <li><strong>L'effort non è propagato da tutti i chiamanti</strong> a <code>loadSystemPrompt</code>/<code>notifyIfUnprofiled</code>: il default prudente <code>xhigh</code> rende la cosa sicura, ma è capacità non sfruttata.</li>
@@ -407,7 +407,6 @@ FINE</code></pre>
             <tr><td><span class="tag todo">Da fare</span></td><td><b>T8.15</b> — divergenza contro la cascata</td><td>Con un pin attivo l'effort effettivo <em>è</em> il pin, quindi la segnalazione non compare mai proprio quando serve: va confrontato il pin con ciò che la cascata avrebbe prodotto.</td></tr>
             <tr><td><span class="tag todo">Da fare</span></td><td><b>T8.16</b> — catalogo selezionabile</td><td>Descrizioni da ~85 caratteri su cui <code>/goal</code> sceglie fra 28 personaggi; più ruoli hanno due personaggi e nessuna descrizione dice cosa li separa.</td></tr>
             <tr><td><span class="tag todo">Da fare</span></td><td><b>T8.17</b> — suggeritore di modalità</td><td>Proporre chat / <code>/team</code> / <code>/goal</code> in base alla richiesta, con classificazione a <code>reasoning_effort: none</code> per non aggiungere minuti a ogni messaggio.</td></tr>
-            <tr><td><span class="tag todo">Da fare</span></td><td>I 23 <code>console.*</code> nel core</td><td>Instradarli su <code>AgentEvent</code> o su un sink iniettato; <code>logBuffer.ts</code> offre già l'aggancio.</td></tr>
             <tr><td><span class="tag decide">Da decidere</span></td><td>Stato di sessione globale</td><td><code>activeRole</code>/<code>activeTrait</code>/<code>activeCharacter</code> in configurazione, pin di effort di processo: con due client concorrenti si sovrascrivono. È una decisione, non un bug.</td></tr>
             <tr><td><span class="tag todo">Da fare</span></td><td>Rifiniture</td><td>Propagare l'effort ai chiamanti mancanti; registrare gli 8 test orfani; impostare i parametri di campionamento.</td></tr>
           </tbody>

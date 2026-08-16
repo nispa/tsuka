@@ -7,8 +7,8 @@
 > Questo file descrive **come funziona il sistema**. Per le regole di lavoro sul codice vedi
 > `AGENTS.md`; per lo stato dei lavori e il debito aperto vedi `TASKS.md`.
 
-**In numeri:** 23 tool · 22 comandi REPL · 20 moduli core · 21 ruoli · 9 tratti ·
-28 personaggi · 10 team · 42 suite di test.
+**In numeri:** 23 tool · 22 comandi REPL · 21 moduli core · 21 ruoli · 9 tratti ·
+28 personaggi · 10 team · 46 suite di test.
 
 ---
 
@@ -47,9 +47,15 @@ Il confine è dichiarato in `src/core/agentEvents.ts`: *«Il core non stampa pi�
 chi invoca l'agente decide come visualizzare»*. `Agent.run` accetta infatti `onChunk`,
 `onStats`, `onEvent` e un `AbortSignal` — cioè tutto ciò che serve a un'interfaccia qualunque.
 
-**Il confine è però violato in 23 punti**: restano `console.log`/`error`/`warn` dentro
-`src/core/` e `src/tools/`. In una CLI a scorrimento non si notano; per qualunque altra
-interfaccia sono un problema. Vedi §14.
+**Il confine era violato in 21 punti** (i restanti 3, in `agent.ts`, sono il renderer di default
+usato solo quando nessun `onEvent` è fornito — legittimo, non una violazione): restavano
+`console.log`/`error`/`warn` diretti dentro `src/core/` e `src/tools/`, in classi (`MemoryStore`,
+`ConfigManager`, `ToolRegistry`, `RunController`, i tool stessi) che non girano dentro un
+`Agent.run()` e non hanno un `AgentEventHandler` a disposizione. Risolto instradando tutti quei
+punti su `src/core/logSink.ts`, un sink iniettabile con lo stesso comportamento di default
+(stampa su console) ma sostituibile da chi vuole intercettare — l'alternativa più leggera già
+indicata qui accanto a `AgentEvent`, che avrebbe richiesto cambiare la firma pubblica di mezza
+codebase per classi che nascono fuori dal ciclo agentico.
 
 ---
 
@@ -324,6 +330,7 @@ tempo, non finestra.
 | `logBuffer.ts` | buffering dell'output per branch paralleli |
 | `messageQueue.ts` | messaggi punto-punto fra agenti |
 | `agentEvents.ts` | contratto degli eventi verso l'interfaccia |
+| `logSink.ts` | sink di logging iniettabile per classi fuori dal ciclo agentico |
 | `apphome.ts` | app home vs workspace |
 | `contextTracker.ts` | tracciamento del contesto |
 | `types.ts` | tipi condivisi |
@@ -345,9 +352,6 @@ tempo, non finestra.
 
 Onestà sullo stato, perché è ciò che serve per decidere dove andare.
 
-- **23 `console.*` nel core e nei tool.** Il confine dichiarato in `agentEvents.ts` non è
-  rispettato. Irrilevante per la CLI, bloccante per qualunque altra interfaccia: quei messaggi
-  finirebbero nel terminale del server, invisibili a chi guarda altrove.
 - **Lo stato di sessione è globale.** `activeRole`, `activeTrait` e `activeCharacter` vivono in
   `tsuka.config.json`; il pin di effort è stato di processo. Con un solo utente e una sola
   sessione va bene; con due client concorrenti si sovrascrivono. È il vincolo principale per una
@@ -377,7 +381,6 @@ accettazione e fuori scope; qui c'è il perché, non il come.
 | **DA IMPLEMENTARE** | **T8.15** — divergenza contro la cascata | Con un pin attivo l'effort effettivo *è* il pin, quindi la segnalazione non compare mai proprio quando serve: va confrontato il pin con ciò che la cascata avrebbe prodotto. |
 | **DA IMPLEMENTARE** | **T8.16** — catalogo selezionabile | Descrizioni da ~85 caratteri su cui `/goal` sceglie fra 28 personaggi; più ruoli hanno due personaggi e nessuna descrizione dice cosa li separa. |
 | **DA IMPLEMENTARE** | **T8.17** — suggeritore di modalità | Proporre chat / `/team` / `/goal` in base alla richiesta, con classificazione a `reasoning_effort: none` per non aggiungere minuti a ogni messaggio. |
-| **DA IMPLEMENTARE** | I 23 `console.*` nel core | Instradarli su `AgentEvent` o su un sink iniettato; `logBuffer.ts` offre già l'aggancio. |
 | **DA DECIDERE** | Stato di sessione globale | `activeRole`/`activeTrait`/`activeCharacter` in configurazione, pin di effort di processo: con due client concorrenti si sovrascrivono. È una decisione, non un bug. |
 | **DA IMPLEMENTARE** | Rifiniture | Propagare l'effort ai chiamanti mancanti; registrare gli 8 test orfani; impostare i parametri di campionamento. |
 
