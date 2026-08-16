@@ -185,7 +185,7 @@ harness/
 }
 ```
 
-`maxHistoryMessages` (default 40) e `maxHistoryTokens` (default 65536) in `ConfigManager`. `teamMaxRounds` default 3 nel config.
+`maxHistoryMessages` (default 500, guardia token-driven) e `maxHistoryTokens` (default dinamico da server, fallback 65536) in `ConfigManager`. `teamMaxRounds` default 3 nel config.
 
 ## Comandi REPL
 

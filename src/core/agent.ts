@@ -245,20 +245,16 @@ export class Agent {
    * Ritorna il numero di messaggi rimossi.
    */
   pruneHistory(): number {
-    // 1) Limite a conteggio messaggi
+    // 1) Limite a conteggio messaggi (guardia superiore di sicurezza)
     let start = 1;
     if (this.messages.length > this.maxHistoryMessages) {
       start = this.messages.length - (this.maxHistoryMessages - 1);
     }
 
-    // 2) Limite a token stimati: avanza il punto di taglio finché il budget è
-    //    rispettato, senza mai scendere sotto gli ultimi 3 messaggi (un output
+    // 2) Limite a token stimati (driver primario): avanza il punto di taglio finché
+    //    il budget è rispettato, senza mai scendere sotto gli ultimi 3 messaggi (un output
     //    recente sopra budget da solo resta: rimuoverlo romperebbe il turno in corso)
     if (this.maxHistoryTokens > 0) {
-      // T8.9: gli schemi tool viaggiano nella stessa richiesta dei messaggi — un
-      // baseline fisso non prunabile (non fa parte del while sotto: potare i
-      // messaggi non riduce i tool), ma va contato nel budget o le soglie
-      // ragionano su un contesto più piccolo di quello davvero inviato.
       let total = this.estimateToolsTokens() + this.estimateTokens(this.messages[0]);
       for (let i = start; i < this.messages.length; i++) {
         total += this.estimateTokens(this.messages[i]);
@@ -281,7 +277,7 @@ export class Agent {
 
     this.messages = [this.messages[0], ...this.messages.slice(start)];
     console.log(
-      chalk.gray(`[Cronologia: rimossi ${removed} messaggi meno recenti per restare entro i limiti di contesto (${this.maxHistoryMessages} messaggi / ~${this.maxHistoryTokens} token)]`)
+      chalk.gray(`[Cronologia: rimossi ${removed} messaggi meno recenti per restare entro la context window (~${this.maxHistoryTokens} token)]`)
     );
     return removed;
   }

@@ -209,14 +209,15 @@ export class ConfigManager {
 
   /**
    * Numero massimo di messaggi mantenuti nella cronologia di sessione (system prompt incluso).
-   * Default: 40. Configurabile con "maxHistoryMessages" in tsuka.config.json.
+   * Default: 500 (guardia estrema: il limite primario è guidato dai token maxHistoryTokens).
+   * Configurabile con "maxHistoryMessages" in tsuka.config.json.
    */
   getMaxHistoryMessages(): number {
     const value = this.config.maxHistoryMessages;
     if (typeof value === 'number' && Number.isFinite(value) && value >= 4) {
       return Math.floor(value);
     }
-    return 40;
+    return 500;
   }
 
   /**
