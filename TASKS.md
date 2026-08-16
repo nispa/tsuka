@@ -38,8 +38,9 @@
 | T11.5 | ✅ Fatto | Dynamic Context Window Auto-Detection: implementato `detectContextWindow` per llama-server (`/props`, `/slots`), Ollama (`/api/show` model_info e num_ctx), OpenRouter e vLLM (`/models`); `ConfigManager` applica precedenza runtime con fallback statico da config; visualizzazione sorgente limite in `/context` e pannello di avvio; 10/10 check in `tests/test_context_detection.ts`. |
 | T11.6 | ✅ Fatto | Token-Driven History & Dynamic Command Timeout: potatura cronologia guidata dai token effettivi con soffitto a 500 messaggi; timeout di `execute_command` reso dinamico via parametro `timeout_ms` e configurabile con `commandTimeoutMs` in `tsuka.config.json`. |
 | T11.7 | ✅ Fatto | Blackboard Visibility & Goal Persistence: salvataggio report `/goal` con snapshot blackboard in `workflow_logs/`; visualizzazione note a fine goal; comando `/blackboard` per consultare gli ultimi workflow. |
+| T11.8 | ✅ Fatto | Self-Healing History & Malformed Tool Call Sanitization: auto-riparazione euristica di stringhe JSON troncate e sanificazione preventiva degli argomenti salvati in `this.messages` per scongiurare crash HTTP 500 dal parser C++/Jinja di llama-server su chiamate successive; suite `tests/test_toolcall_sanitization.ts`. |
 
-Tutti i task del piano qualità e della Fase 6 di ottimizzazione sono completati (46 suite di test verdi, package pulito e pronto per il rilascio).
+Tutti i task del piano qualità e della Fase 6 di ottimizzazione sono completati (47 suite di test verdi, package pulito e pronto per il rilascio).
 
 ---
 
@@ -1528,6 +1529,23 @@ Rilevare dinamicamente e in tempo reale la dimensione della finestra di contesto
 - Allineamento documentale in `AGENTS.md` e persistenza dello snapshot della lavagna.
 
 **Accettazione:** Tutti i workflow (/team e /goal) salvano i report e le note della blackboard in modo consultabile in `workflow_logs/` e tramite il comando `/blackboard`.
+
+## T11.8 — Self-Healing History & Malformed Tool Call Sanitization
+
+**Dipende da:** T9.8 · **Sforzo:** medio · **Priorità:** alta
+
+Prevenire il crash a cascata (HTTP 500 `Failed to parse tool call arguments as JSON: missing closing quote`) su `llama-server` e altri backend con parser C++/Jinja rigorosi quando un modello genera tool call con JSON malformato o troncato.
+
+- Implementare `sanitizeAndParseToolArgs(rawArguments)` in `src/core/agent.ts`:
+  1. Tentativo di parse diretto JSON.
+  2. Tentativo di riparazione euristica per stringhe/oggetti troncati (chiusura automatica di virgolette e parentesi graffe mancanti).
+  3. In caso di fallimento della riparazione, incapsulamento automatico in un payload JSON valido `{ _error: 'invalid_json_arguments', _raw_malformed_input: raw }`.
+- Garantire che la proprietà `function.arguments` di ogni `tool_call` salvata in `this.messages` (`role: 'assistant'`) sia sempre un JSON valido al 100%, eliminando la contaminazione della cronologia che causava risposte 500 su tutti i retry successivi.
+- Gestire in `ToolRegistry.executeTool` e `validateToolArgs` l'errore esplicito di argomenti malformati con messaggio informativo per l'agente.
+- Scrivere la suite di test `tests/test_toolcall_sanitization.ts`.
+
+**Accettazione:** Quando un modello produce una tool call con JSON troncato o non valido, la cronologia non viene corrotta e il server locale non va in HTTP 500 nei round successivi, consentendo all'agente di ricevere l'errore e correggersi.
+
 
 
 

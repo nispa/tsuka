@@ -71,7 +71,8 @@ const suites = [
   'test_malformed_toolcall_retry.ts',
   'test_write_file_append.ts',
   'test_reasoning_memory.ts',
-  'test_context_detection.ts'
+  'test_context_detection.ts',
+  'test_toolcall_sanitization.ts'
 ];
 
 let passed = 0;

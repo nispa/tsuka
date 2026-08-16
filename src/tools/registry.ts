@@ -118,6 +118,10 @@ function validateToolArgs(args: any, schema: any, toolName: string): string | nu
     return "Argomenti assenti o non validi (atteso un oggetto JSON)";
   }
 
+  if (args._error === 'invalid_json_arguments') {
+    return `Argomenti JSON non validi o malformati generati dal modello. Riprova ad eseguire '${toolName}' con sintassi JSON corretta ed escaping adeguato`;
+  }
+
   // Validazione required
   const required: string[] = schema.required || [];
   for (const field of required) {

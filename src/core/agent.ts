@@ -70,6 +70,65 @@ function plainEventRenderer(ev: AgentEvent): void {
   }
 }
 
+/**
+ * Tenta di riparare e sanificare gli argomenti JSON di una tool call.
+ * 1. Se è un JSON valido: ritorna l'oggetto parsato e la stringa inalterata.
+ * 2. Se è malformato (es. stringa non chiusa, parentesi mancanti):
+ *    tenta una riparazione euristica (chiusura virgolette / parentesi graffe).
+ * 3. Se la riparazione fallisce:
+ *    restituisce un oggetto con `_error: 'invalid_json_arguments'` e una stringa JSON SEMPRE valida,
+ *    così da non avvelenare la cronologia per i server con parser rigidi (es. llama-server).
+ */
+export function sanitizeAndParseToolArgs(rawArguments: string | undefined): {
+  parsedArgs: any;
+  sanitizedJsonString: string;
+  isMalformed: boolean;
+} {
+  const raw = (rawArguments || '').trim();
+  if (!raw) {
+    return { parsedArgs: {}, sanitizedJsonString: '{}', isMalformed: false };
+  }
+
+  // 1. Tentativo parsing diretto
+  try {
+    const parsed = JSON.parse(raw);
+    return { parsedArgs: parsed, sanitizedJsonString: raw, isMalformed: false };
+  } catch {}
+
+  // 2. Tentativo riparazione euristica per stringhe/oggetti troncati
+  const repairCandidates: string[] = [
+    raw + '"\n}',
+    raw + '"}',
+    raw + '"} }',
+    raw + '}',
+    raw + '"',
+  ];
+
+  for (const candidate of repairCandidates) {
+    try {
+      const repaired = JSON.parse(candidate);
+      if (repaired && typeof repaired === 'object') {
+        return {
+          parsedArgs: repaired,
+          sanitizedJsonString: JSON.stringify(repaired),
+          isMalformed: false,
+        };
+      }
+    } catch {}
+  }
+
+  // 3. Riparazione fallita: crea un JSON valido di fallback per evitare HTTP 500 su llama-server
+  const fallbackObj = {
+    _raw_malformed_input: raw,
+    _error: 'invalid_json_arguments',
+  };
+  return {
+    parsedArgs: fallbackObj,
+    sanitizedJsonString: JSON.stringify(fallbackObj),
+    isMalformed: true,
+  };
+}
+
 export class Agent {
   // Limite di sicurezza: massimo numero di cicli consecutivi di esecuzione tool
   // per singola richiesta utente (evita loop infiniti se il modello continua a richiedere tool)
@@ -532,6 +591,18 @@ export class Agent {
         // è il denominatore corretto per calibrare su promptTokens reale dell'API.
         this.calibrateCharsPerToken(this.messages, (stats as any)?.promptTokens);
 
+        // Sanificazione dei tool_calls prima del salvataggio in cronologia:
+        // Se il modello ha generato JSON non valido o troncato, lo ripariamo o incapsuliamo
+        // per evitare che llama-server o altri backend vadano in HTTP 500 nei round successivi.
+        const parsedArgsList: any[] = [];
+        if (toolCalls && toolCalls.length > 0) {
+          for (const tc of toolCalls) {
+            const { parsedArgs, sanitizedJsonString } = sanitizeAndParseToolArgs(tc.function.arguments);
+            tc.function.arguments = sanitizedJsonString;
+            parsedArgsList.push(parsedArgs);
+          }
+        }
+
         // Aggiunge la risposta dell'assistente alla storia locale
         const assistantMessage: ChatMessage = { role: 'assistant', content: content || null };
         if (toolCalls && toolCalls.length > 0) {
@@ -595,15 +666,10 @@ export class Agent {
         everCalledTool = true;
 
         // Esegue le chiamate ai tool richieste dal modello
-        for (const toolCall of toolCalls) {
+        for (let i = 0; i < toolCalls.length; i++) {
+          const toolCall = toolCalls[i];
           const toolName = toolCall.function.name;
-          let toolArgs: any = {};
-
-          try {
-            toolArgs = JSON.parse(toolCall.function.arguments);
-          } catch {
-            toolArgs = toolCall.function.arguments;
-          }
+          const toolArgs: any = parsedArgsList[i] ?? {};
 
           // Interruzione utente: i tool rimanenti non vengono eseguiti, ma ogni
           // tool_call riceve comunque la sua risposta 'tool' (cronologia coerente:
