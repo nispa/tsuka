@@ -158,9 +158,13 @@ export const browseUrlTool: Tool = {
       targetUrl = 'https://' + targetUrl;
     }
 
-    const FETCH_TIMEOUT_MS = 30_000;
+    let fetchTimeoutMs = 30_000;
+    try {
+      const { ConfigManager } = require('../../core/config');
+      fetchTimeoutMs = new ConfigManager().getBrowseFetchTimeoutMs();
+    } catch {}
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    const timeout = setTimeout(() => controller.abort(), fetchTimeoutMs);
 
     try {
       const response = await fetch(targetUrl, {
@@ -204,7 +208,7 @@ export const browseUrlTool: Tool = {
       });
     } catch (error: any) {
       if (error?.name === 'AbortError') {
-        throw new Error(`Timeout: page '${targetUrl}' did not respond within ${FETCH_TIMEOUT_MS / 1000} seconds.`);
+        throw new Error(`Timeout: page '${targetUrl}' did not respond within ${fetchTimeoutMs / 1000} seconds.`);
       }
       throw new Error(`Failed to read page '${targetUrl}': ${error.message}`);
     } finally {

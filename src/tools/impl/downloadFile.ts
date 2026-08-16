@@ -39,9 +39,13 @@ export const downloadFileTool: Tool = {
       targetUrl = 'https://' + targetUrl;
     }
 
-    const FETCH_TIMEOUT_MS = 60_000;
+    let fetchTimeoutMs = 60_000;
+    try {
+      const { ConfigManager } = require('../../core/config');
+      fetchTimeoutMs = new ConfigManager().getDownloadFetchTimeoutMs();
+    } catch {}
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    const timeout = setTimeout(() => controller.abort(), fetchTimeoutMs);
 
     try {
       const response = await fetch(targetUrl, {
@@ -82,7 +86,7 @@ export const downloadFileTool: Tool = {
       return `✔ File downloaded successfully from '${targetUrl}' to '${destPath}' (${sizeFormatted}, type: ${contentType || 'binary'}).`;
     } catch (error: any) {
       if (error?.name === 'AbortError') {
-        throw new Error(`Timeout: download from '${targetUrl}' exceeded limit of ${FETCH_TIMEOUT_MS / 1000}s.`);
+        throw new Error(`Timeout: download from '${targetUrl}' exceeded limit of ${fetchTimeoutMs / 1000}s.`);
       }
       throw new Error(`Failed to download file from '${targetUrl}': ${error.message}`);
     } finally {

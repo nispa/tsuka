@@ -29,5 +29,13 @@
   "activeRole": "developer",
   "activeTrait": "creative",
   "activeCharacter": "geordi",
-  "parallelExecutionEnabled": false
+  "parallelExecutionEnabled": false,
+  "contextTrackerMaxEntries": 100,
+  "cliMaxHistory": 100,
+  "goalCondensedHistoryCharLimit": 1500,
+  "firstTokenTimeoutMs": 120000,
+  "llmMaxRetries": 3,
+  "llmMaxTokensCeiling": 8192,
+  "browseFetchTimeoutMs": 30000,
+  "downloadFetchTimeoutMs": 60000
 }

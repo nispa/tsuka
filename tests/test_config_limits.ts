@@ -110,6 +110,29 @@ async function run() {
   check('CFG.12', invalidConfig.getMaxToolRounds() === 15, 'maxToolRounds invalido (<1) ricade su default 15');
   check('CFG.13', invalidConfig.getMemoryMaxFacts() === 200, 'memoryMaxFacts invalido (<10) ricade su default 200');
 
+  // 7. Nuove costanti centralizzate: ContextTracker, history, LLM limits
+  check('CFG.14', config.getContextTrackerMaxEntries() === 100, `default contextTrackerMaxEntries è 100 (trovato: ${config.getContextTrackerMaxEntries()})`);
+  check('CFG.15', config.getCliMaxHistory() === 100, `default cliMaxHistory è 100 (trovato: ${config.getCliMaxHistory()})`);
+  check('CFG.16', config.getGoalCondensedHistoryCharLimit() === 1500, `default goalCondensedHistoryCharLimit è 1500 (trovato: ${config.getGoalCondensedHistoryCharLimit()})`);
+  check('CFG.17', config.getFirstTokenTimeoutMs() === 120000, `default firstTokenTimeoutMs è 120000 (trovato: ${config.getFirstTokenTimeoutMs()})`);
+  check('CFG.18', config.getLlmMaxRetries() === 3, `default llmMaxRetries è 3 (trovato: ${config.getLlmMaxRetries()})`);
+  check('CFG.19', config.getLlmMaxTokensCeiling() === 8192, `default llmMaxTokensCeiling è 8192 (trovato: ${config.getLlmMaxTokensCeiling()})`);
+  check('CFG.20', config.getBrowseFetchTimeoutMs() === 30000, `default browseFetchTimeoutMs è 30000 (trovato: ${config.getBrowseFetchTimeoutMs()})`);
+  check('CFG.21', config.getDownloadFetchTimeoutMs() === 60000, `default downloadFetchTimeoutMs è 60000 (trovato: ${config.getDownloadFetchTimeoutMs()})`);
+
+  const { ContextTracker } = await import('../src/core/contextTracker');
+  const tracker = new ContextTracker(15);
+  for (let i = 1; i <= 25; i++) {
+    tracker.addEntry({
+      timestamp: new Date().toISOString(),
+      agentName: `agent_${i}`,
+      tokenCount: 10,
+      promptTokens: 5,
+      action: `action_${i}`
+    });
+  }
+  check('CFG.22', tracker.getAll().length === 15, `ContextTracker rispetta la capacità massima personalizzata (trovati: ${tracker.getAll().length})`);
+
   delete process.env.TSUKA_HOME;
   try { fs.rmSync(tmpHome, { recursive: true, force: true }); } catch {}
 

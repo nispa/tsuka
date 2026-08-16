@@ -2,6 +2,7 @@ import * as readline from 'readline';
 import * as fs from 'fs';
 import chalk from 'chalk';
 import { homePath } from '../core/apphome';
+import { ConfigManager } from '../core/config';
 
 /**
  * Main REPL input handler based on Node.js native readline.
@@ -9,7 +10,14 @@ import { homePath } from '../core/apphome';
  */
 
 const HISTORY_FILE = homePath('.tsuka_history');
-const MAX_HISTORY = 100;
+
+function getMaxHistory(): number {
+  try {
+    return new ConfigManager().getCliMaxHistory();
+  } catch {
+    return 100;
+  }
+}
 
 export interface CompletionSource {
   commands: string[];
@@ -58,13 +66,14 @@ export function completeLine(line: string): [string[], string] {
 let history: string[] = loadHistory();
 
 function loadHistory(): string[] {
+  const limit = getMaxHistory();
   try {
     return fs
       .readFileSync(HISTORY_FILE, 'utf-8')
       .split('\n')
       .map((l) => l.trim())
       .filter((l) => l.length > 0)
-      .slice(-MAX_HISTORY)
+      .slice(-limit)
       .reverse();
   } catch {
     return [];
@@ -81,8 +90,9 @@ function addToHistory(line: string): void {
   const trimmed = line.trim();
   if (!trimmed) return;
   if (history[0] === trimmed) return;
+  const limit = getMaxHistory();
   history.unshift(trimmed);
-  if (history.length > MAX_HISTORY) history = history.slice(0, MAX_HISTORY);
+  if (history.length > limit) history = history.slice(0, limit);
   saveHistory();
 }
 
@@ -92,12 +102,13 @@ function addToHistory(line: string): void {
 export function askInput(message: string): Promise<string | undefined> {
   return new Promise((resolve) => {
     const interactive = !!(process.stdin.isTTY && process.stdout.isTTY);
+    const limit = getMaxHistory();
     const rl = readline.createInterface({
       input: process.stdin,
       output: process.stdout,
       terminal: interactive,
       history: interactive ? [...history] : undefined,
-      historySize: MAX_HISTORY,
+      historySize: limit,
       removeHistoryDuplicates: true,
       completer: interactive ? completeLine : undefined,
     });

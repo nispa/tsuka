@@ -42,6 +42,22 @@ export interface AppConfig {
   creativity?: string;
   /** Enables true parallel execution for PARALLEL blocks in /goal (T9.10). Default: false. */
   parallelExecutionEnabled?: boolean;
+  /** Maximum number of activity records kept in the in-memory ContextTracker ring buffer. Default: 100. */
+  contextTrackerMaxEntries?: number;
+  /** Maximum command history lines retained in REPL history file. Default: 100. */
+  cliMaxHistory?: number;
+  /** Character threshold above which agent turn outputs in /goal are condensed into persistent memory. Default: 1500. */
+  goalCondensedHistoryCharLimit?: number;
+  /** Timeout in ms to wait for the first streaming token before considering the LLM non-responsive. Default: 120000. */
+  firstTokenTimeoutMs?: number;
+  /** Maximum retry attempts on network failures or malformed tool call JSON. Default: 3. */
+  llmMaxRetries?: number;
+  /** Ceiling for maximum completion tokens requested in streaming LLM calls. Default: 8192. */
+  llmMaxTokensCeiling?: number;
+  /** HTTP request timeout in ms for browse_url tool. Default: 30000. */
+  browseFetchTimeoutMs?: number;
+  /** HTTP request timeout in ms for download_file tool. Default: 60000. */
+  downloadFetchTimeoutMs?: number;
 }
 
 export const CONFIG_PATH = homePath('tsuka.config.json');
@@ -357,5 +373,93 @@ export class ConfigManager {
       return value as any;
     }
     return undefined;
+  }
+
+  /**
+   * Maximum activity entries in ContextTracker ring buffer. Default: 100.
+   */
+  getContextTrackerMaxEntries(): number {
+    const value = this.config.contextTrackerMaxEntries;
+    if (typeof value === 'number' && Number.isFinite(value) && value >= 10) {
+      return Math.floor(value);
+    }
+    return 100;
+  }
+
+  /**
+   * Maximum command history lines retained in REPL history file. Default: 100.
+   */
+  getCliMaxHistory(): number {
+    const value = this.config.cliMaxHistory;
+    if (typeof value === 'number' && Number.isFinite(value) && value >= 10) {
+      return Math.floor(value);
+    }
+    return 100;
+  }
+
+  /**
+   * Character threshold above which agent turn outputs in /goal are condensed. Default: 1500.
+   */
+  getGoalCondensedHistoryCharLimit(): number {
+    const value = this.config.goalCondensedHistoryCharLimit;
+    if (typeof value === 'number' && Number.isFinite(value) && value >= 100) {
+      return Math.floor(value);
+    }
+    return 1500;
+  }
+
+  /**
+   * Initial streaming token timeout in ms. Default: 120000.
+   */
+  getFirstTokenTimeoutMs(): number {
+    const value = this.config.firstTokenTimeoutMs;
+    if (typeof value === 'number' && Number.isFinite(value) && value >= 1000) {
+      return Math.floor(value);
+    }
+    return 120000;
+  }
+
+  /**
+   * Maximum retry attempts on network failures or malformed tool call JSON. Default: 3.
+   */
+  getLlmMaxRetries(): number {
+    const value = this.config.llmMaxRetries;
+    if (typeof value === 'number' && Number.isFinite(value) && value >= 1) {
+      return Math.floor(value);
+    }
+    return 3;
+  }
+
+  /**
+   * Maximum completion tokens ceiling requested in LLM calls. Default: 8192.
+   */
+  getLlmMaxTokensCeiling(): number {
+    const value = this.config.llmMaxTokensCeiling;
+    if (typeof value === 'number' && Number.isFinite(value) && value >= 256) {
+      return Math.floor(value);
+    }
+    return 8192;
+  }
+
+  /**
+   * HTTP request timeout in ms for browse_url tool. Default: 30000.
+   */
+  getBrowseFetchTimeoutMs(): number {
+    const value = this.config.browseFetchTimeoutMs;
+    if (typeof value === 'number' && Number.isFinite(value) && value >= 1000) {
+      return Math.floor(value);
+    }
+    return 30000;
+  }
+
+  /**
+   * HTTP request timeout in ms for download_file tool. Default: 60000.
+   */
+  getDownloadFetchTimeoutMs(): number {
+    const value = this.config.downloadFetchTimeoutMs;
+    if (typeof value === 'number' && Number.isFinite(value) && value >= 1000) {
+      return Math.floor(value);
+    }
+    return 60000;
   }
 }

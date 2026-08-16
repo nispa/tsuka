@@ -31,17 +31,22 @@ function getCharDisplayName(allCharacters: CharacterConfig[], agentName: string)
 /**
  * Saves a fact to memory and trims the last assistant message if excessively long.
  */
-function condenseAgentOutput(agentName: string, teamMessages: ChatMessage[], allCharacters: CharacterConfig[], maxTokens: number): void {
+function condenseAgentOutput(
+  agentName: string,
+  teamMessages: ChatMessage[],
+  allCharacters: CharacterConfig[],
+  maxTokens: number,
+  maxKeepChars: number = 1500
+): void {
   const displayName = getCharDisplayName(allCharacters, agentName);
   const before = estimateMessagesTokens(teamMessages);
-  const MAX_KEEP = 1500;
   for (let i = teamMessages.length - 1; i >= 0; i--) {
     const msg = teamMessages[i];
     if (msg.role === 'assistant' && typeof msg.content === 'string') {
       const full = msg.content;
       MemoryStore.getInstance().addFact(`[Goal] ${displayName}: ${full.replace(/\s+/g, ' ').slice(0, 300).trim()}`, 'goal_orchestrator', { kind: 'run' });
-      if (full.length > MAX_KEEP) {
-        const kept = full.slice(0, MAX_KEEP).trim();
+      if (full.length > maxKeepChars) {
+        const kept = full.slice(0, maxKeepChars).trim();
         msg.content = `${kept}\n\n[... output shortened. Complete details: recall_memory "Goal ${displayName}"]`;
       }
       break;
@@ -204,6 +209,7 @@ export async function handleGoal(ctx: CommandCtx, arg: string): Promise<void> {
 
     const runId = Blackboard.newRunId();
     let blackboardNotes: BlackboardNote[] = [];
+    const condenseLimit = ctx.configManager.getGoalCondensedHistoryCharLimit();
     try {
       await Blackboard.withRun(runId, async () => {
         for (let g = 0; g < groups.length; g++) {
@@ -284,7 +290,7 @@ export async function handleGoal(ctx: CommandCtx, arg: string): Promise<void> {
               if (pr.result === 'completed') completed = true;
             }
             for (const pr of parallelResults) {
-              condenseAgentOutput(pr.agentName, teamMessages, allCharacters, maxTokens);
+              condenseAgentOutput(pr.agentName, teamMessages, allCharacters, maxTokens, condenseLimit);
             }
             overallStep += group.steps.length;
 
@@ -323,7 +329,7 @@ export async function handleGoal(ctx: CommandCtx, arg: string): Promise<void> {
               CLITheme.contextBar(lastPromptTokens, maxTokens, `Peak context (${char.aiName}):`);
             }
 
-            condenseAgentOutput(step.agentName, teamMessages, allCharacters, maxTokens);
+            condenseAgentOutput(step.agentName, teamMessages, allCharacters, maxTokens, condenseLimit);
 
             if (result === 'completed') completed = true;
 
@@ -350,7 +356,7 @@ export async function handleGoal(ctx: CommandCtx, arg: string): Promise<void> {
                     ctx, targetStep.agentName, goal,
                     overallStep, flatSteps + 2, teamMessages, interrupt, false
                   );
-                  condenseAgentOutput(targetStep.agentName, teamMessages, allCharacters, maxTokens);
+                  condenseAgentOutput(targetStep.agentName, teamMessages, allCharacters, maxTokens, condenseLimit);
 
                   overallStep++;
                   logSink.log(chalk.bold.yellow(`\n═══ POST-REWORK SUPERVISOR REVIEW ═══`));
@@ -360,7 +366,7 @@ export async function handleGoal(ctx: CommandCtx, arg: string): Promise<void> {
                     overallStep, flatSteps + 2, teamMessages, interrupt, false
                   );
                   if (finalOverseerOutcome === 'completed') completed = true;
-                  condenseAgentOutput(step.agentName, teamMessages, allCharacters, maxTokens);
+                  condenseAgentOutput(step.agentName, teamMessages, allCharacters, maxTokens, condenseLimit);
                 }
               }
             }

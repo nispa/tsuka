@@ -4,10 +4,37 @@ import { ThinkTagParser, stripThinkBlocks, StreamChannel } from './thinkParser';
 import { ChatMessage, ChatRole, ToolCall } from './types';
 import { logSink } from './logSink';
 
-const FIRST_TOKEN_TIMEOUT_MS = 120_000; // 2 minutes wait time for the first token
-const MAX_RETRIES = 3;                  // Attempts before raising non-responsive error
+import { ConfigManager } from './config';
+
+export const DEFAULT_FIRST_TOKEN_TIMEOUT_MS = 120_000; // 2 minutes wait time for the first token
+export const DEFAULT_MAX_RETRIES = 3;                  // Attempts before raising non-responsive error
+export const DEFAULT_MAX_TOKENS_CEILING = 8192;        // Generous token ceiling for completions
 
 let MAX_GENERATION_MS = 120_000; // 2 minutes default generation timeout (llmTimeoutMs in config)
+
+export function getFirstTokenTimeoutMs(): number {
+  try {
+    return new ConfigManager().getFirstTokenTimeoutMs();
+  } catch {
+    return DEFAULT_FIRST_TOKEN_TIMEOUT_MS;
+  }
+}
+
+export function getMaxRetries(): number {
+  try {
+    return new ConfigManager().getLlmMaxRetries();
+  } catch {
+    return DEFAULT_MAX_RETRIES;
+  }
+}
+
+export function getMaxTokensCeiling(): number {
+  try {
+    return new ConfigManager().getLlmMaxTokensCeiling();
+  } catch {
+    return DEFAULT_MAX_TOKENS_CEILING;
+  }
+}
 
 /**
  * Configures the wall-clock timeout for the entire LLM generation process (T8.16).
@@ -24,8 +51,6 @@ export function setLlmTimeoutMs(ms: number): void {
 export function __setMaxGenerationMsForTest(ms: number): void {
   MAX_GENERATION_MS = ms;
 }
-
-const MAX_TOKENS_CEILING = 8192;
 
 /**
  * Identifies malformed tool call JSON syntax errors from model output (T9.8).
@@ -218,8 +243,11 @@ export class LLMProvider implements ILLMProvider {
   ): Promise<ChatResponse> {
     const startTime = Date.now();
     let allReasoningText = '';
+    const maxRetries = getMaxRetries();
+    const firstTokenTimeout = getFirstTokenTimeoutMs();
+    const maxTokensCeiling = getMaxTokensCeiling();
 
-    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
       if (signal?.aborted) break;
 
       const attemptAbort = new AbortController();
@@ -236,7 +264,7 @@ export class LLMProvider implements ILLMProvider {
       const firstTokenTimer = setTimeout(() => {
         timedOut = true;
         attemptAbort.abort();
-      }, FIRST_TOKEN_TIMEOUT_MS);
+      }, firstTokenTimeout);
 
       const generationTimer = setTimeout(() => {
         generationTimedOut = true;
@@ -251,7 +279,7 @@ export class LLMProvider implements ILLMProvider {
           tool_choice: tools && tools.length > 0 ? 'auto' : undefined,
           stream: !!onChunk,
           ...(onChunk ? { stream_options: { include_usage: true } } : {}),
-          max_tokens: MAX_TOKENS_CEILING,
+          max_tokens: maxTokensCeiling,
           ...(options?.reasoningEffort ? { reasoning_effort: options.reasoningEffort as any } : {}),
           ...resolveSamplingParams(options)
         }, { signal: attemptAbort.signal });
@@ -388,34 +416,34 @@ export class LLMProvider implements ILLMProvider {
         }
 
         if (timedOut) {
-          if (attempt < MAX_RETRIES) {
+          if (attempt < maxRetries) {
             process.stdout.write('\n');
             logSink.log(
-              chalk.yellow(`[Attempt ${attempt}/${MAX_RETRIES}] Model '${this.currentModel}' did not respond in time, retrying...`)
+              chalk.yellow(`[Attempt ${attempt}/${maxRetries}] Model '${this.currentModel}' did not respond in time, retrying...`)
             );
             continue;
           }
           throw Object.assign(
             new Error(
-              `[No response] Model '${this.currentModel}' produced no tokens after ${MAX_RETRIES} attempts ` +
-              `(timeout: ${FIRST_TOKEN_TIMEOUT_MS / 1000}s per attempt).`
+              `[No response] Model '${this.currentModel}' produced no tokens after ${maxRetries} attempts ` +
+              `(timeout: ${firstTokenTimeout / 1000}s per attempt).`
             ),
             { partialReasoning: allReasoningText || undefined }
           );
         }
 
         if (isMalformedToolCallJsonError(error.message)) {
-          if (attempt < MAX_RETRIES) {
+          if (attempt < maxRetries) {
             process.stdout.write('\n');
             logSink.log(
-              chalk.yellow(`[Attempt ${attempt}/${MAX_RETRIES}] Server rejected malformed tool call JSON, retrying...`)
+              chalk.yellow(`[Attempt ${attempt}/${maxRetries}] Server rejected malformed tool call JSON, retrying...`)
             );
             continue;
           }
           throw Object.assign(
             new Error(
               `[Malformed JSON] Model '${this.currentModel}' repeatedly generated malformed tool call JSON ` +
-              `after ${MAX_RETRIES} attempts. Server error: ${error.message}`
+              `after ${maxRetries} attempts. Server error: ${error.message}`
             ),
             { partialReasoning: allReasoningText || undefined }
           );
@@ -433,8 +461,8 @@ export class LLMProvider implements ILLMProvider {
     }
 
     throw new Error(
-      `[No response] Model '${this.currentModel}' produced no tokens after ${MAX_RETRIES} attempts ` +
-      `(timeout: ${FIRST_TOKEN_TIMEOUT_MS / 1000}s per attempt).`
+      `[No response] Model '${this.currentModel}' produced no tokens after ${maxRetries} attempts ` +
+      `(timeout: ${firstTokenTimeout / 1000}s per attempt).`
     );
   }
 }
