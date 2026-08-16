@@ -1,7 +1,7 @@
 {
   "name": "content",
   "displayName": "✍️ Content — copy, SEO, social, traduzione",
-  "description": "Personaggi Star Trek per produzione di contenuti: copywriting persuasivo (Kirk, McCoy), SEO (Quark), social (Ortegas, Chapel) e traduzione universale (Uhura).",
+  "description": "Personaggi Star Trek per produzione di contenuti: copywriting persuasivo (Kirk), SEO (Quark), social (Ortegas) e traduzione universale (Uhura).",
   "roles": [
     "copywriter",
     "seo_specialist",
@@ -18,10 +18,8 @@
   ],
   "characters": [
     "kirk",
-    "mccoy",
     "quark",
     "ortegas",
-    "chapel",
     "uhura",
     "deanna_troi"
   ],

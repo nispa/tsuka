@@ -7,7 +7,7 @@ import chalk from 'chalk';
 import { MemoryStore } from './memory';
 import { logSink } from './logSink';
 import { ChatMessage } from './types';
-import { calculateReasoningBudget } from './contextBudget';
+import { calculateReasoningBudget, sumMessageChars } from './contextBudget';
 import * as fs from 'fs';
 import * as path from 'path';
 import { homePath } from './apphome';
@@ -159,6 +159,13 @@ export class Agent {
     this.clearHistory(systemPrompt);
   }
 
+  private commandCtx?: any;
+
+  /** Imposta il contesto dei comandi CLI (usato dai tool di escalation come request_goal/team/call). */
+  setCommandCtx(ctx: any): void {
+    this.commandCtx = ctx;
+  }
+
   /** Sforzo di ragionamento risolto per questo agente (diagnostica/test). */
   getReasoningEffort(): ReasoningEffort | undefined {
     return this.reasoningEffort;
@@ -166,11 +173,7 @@ export class Agent {
 
   /** Conta i caratteri "grezzi" di un messaggio (content + tool_calls serializzati). */
   private static messageChars(m: Pick<ChatMessage, 'content' | 'tool_calls'>): number {
-    let chars = typeof m.content === 'string' ? m.content.length : 0;
-    if (m.tool_calls) {
-      try { chars += JSON.stringify(m.tool_calls).length; } catch {}
-    }
-    return chars;
+    return sumMessageChars([m]);
   }
 
   /**
@@ -308,8 +311,7 @@ export class Agent {
    * mostrare stime di contesto coerenti con la calibrazione di questo agente.
    */
   estimateMessagesTokens(msgs: Array<Pick<ChatMessage, 'content' | 'tool_calls'>>): number {
-    const chars = msgs.reduce((sum, m) => sum + Agent.messageChars(m), 0);
-    return Math.ceil(chars / this.charsPerToken);
+    return Math.ceil(sumMessageChars(msgs) / this.charsPerToken);
   }
 
   /** Rapporto caratteri/token correntemente tarato (per diagnostica/test). */
@@ -652,7 +654,7 @@ export class Agent {
           emit({ type: 'tool_start', name: toolName, args: toolArgs });
 
           // Esecuzione del tool con verifica dei permessi integrata
-          const result = await this.registry.executeTool(toolName, toolArgs, this.permissionManager, this.provider, this.agentLabel);
+          const result = await this.registry.executeTool(toolName, toolArgs, this.permissionManager, this.provider, this.agentLabel, this.commandCtx);
 
           // Aggiunge l'output del tool alla cronologia dei messaggi
           this.messages.push({

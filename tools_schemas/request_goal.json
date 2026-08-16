@@ -1,0 +1,20 @@
+{
+  "name": "request_goal",
+  "description": "Proponi all'utente di scalare il compito a un workflow '/goal' completo quando il task è troppo complesso, multidisciplinare o richiede pianificazione a più fasi con un supervisore e ruoli specialistici. Richiede approvazione esplicita dell'utente.",
+  "requiredTier": "medium",
+  "riskLevel": "RESTRICTED",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "goal": {
+        "type": "string",
+        "description": "L'obiettivo completo e dettagliato da far pianificare ed eseguire al Goal Orchestrator."
+      },
+      "reason": {
+        "type": "string",
+        "description": "La motivazione chiara del perché è consigliabile scalare a un workflow /goal invece di procedere come agente singolo (es. necessità di audit di sicurezza, modifiche multidisciplinari, verifica supervisore)."
+      }
+    },
+    "required": ["goal", "reason"]
+  }
+}

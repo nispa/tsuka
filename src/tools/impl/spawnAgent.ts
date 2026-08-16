@@ -134,7 +134,15 @@ export const spawnAgentTool: Tool = {
       ? [...(roleObj.allowedTools || []), 'post_note', 'read_notes']
       : roleObj.allowedTools;
 
-    let sysPrompt = loadSystemPrompt(roleObj, traitObj, provider.getCurrentModel?.() || 'default', registry, char, task) +
+    // T8.14: il pin globale vince anche sull'override esplicito del chiamante
+    // (l'argomento reasoningEffort qui sopra) — è il livello più alto della
+    // cascata finale. Nessun pin attivo → comportamento identico a T8.13.
+    // Log-only per vincolo esplicito del task: i figli di spawn_agent non
+    // chiedono MAI conferma, a prescindere dalla modalità ask globale.
+    const effectiveOverride = withEffortPin(reasoningEffortOverride);
+    logEffortDivergence(label, effectiveOverride, configManager.getDefaultReasoningEffort());
+
+    let sysPrompt = loadSystemPrompt(roleObj, traitObj, provider.getCurrentModel?.() || 'default', registry, char, task, effectiveOverride) +
       `\n\nQuesto è un compito subordinato. Completalo e riporta il risultato in modo conciso. Al termine scrivi solo il resoconto di ciò che hai fatto.`;
 
     if (blackboard) {
@@ -146,14 +154,6 @@ export const spawnAgentTool: Tool = {
       configManager.getMaxHistoryMessages(), configManager.getMaxHistoryTokens(),
       label
     );
-
-    // T8.14: il pin globale vince anche sull'override esplicito del chiamante
-    // (l'argomento reasoningEffort qui sopra) — è il livello più alto della
-    // cascata finale. Nessun pin attivo → comportamento identico a T8.13.
-    // Log-only per vincolo esplicito del task: i figli di spawn_agent non
-    // chiedono MAI conferma, a prescindere dalla modalità ask globale.
-    const effectiveOverride = withEffortPin(reasoningEffortOverride);
-    logEffortDivergence(label, effectiveOverride, configManager.getDefaultReasoningEffort());
 
     const result = await subAgent.run(
       `Esegui questo compito: ${task}`,

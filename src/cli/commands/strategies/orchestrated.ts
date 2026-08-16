@@ -9,6 +9,7 @@ import { TeamRunConfig, ProtocolLogEntry, TeamResult, TeamStrategy, runMemberTur
 import { sanitizeToolCallArguments } from '../../../tools/jsonRepair';
 import { runRoundRobin } from './roundRobin';
 import { runDiscussionRound } from './hybrid';
+import { logSink } from '../../../core/logSink';
 
 // ── Helper: prompt per l'orchestrator ──
 
@@ -156,7 +157,7 @@ export async function runOrchestrated(
   outer:
   for (let round = 1; round <= maxRounds; round++) {
     roundsDone = round;
-    console.log(chalk.bold.yellow(`\n═══ ROUND ${round}/${maxRounds} (Orchestrato) ═══`));
+    logSink.log(chalk.bold.yellow(`\n═══ ROUND ${round}/${maxRounds} (Orchestrato) ═══`));
     seenThisRound.clear();
 
     while (true) {
@@ -174,7 +175,7 @@ export async function runOrchestrated(
         orcMessages.push(teamMessages[i]);
       }
 
-      console.log(chalk.bold.cyan(`\n[ORCHESTRATOR: ${orchestratorChar.aiName} decide il prossimo turno]`));
+      logSink.log(chalk.bold.cyan(`\n[ORCHESTRATOR: ${orchestratorChar.aiName} decide il prossimo turno]`));
 
       const renderer = new StreamRenderer({ headerName: orchestratorChar.aiName, headerColor: chalk.cyan });
       renderer.begin();
@@ -191,7 +192,7 @@ export async function runOrchestrated(
         renderer.finish();
         decisionText = response.content?.trim() || '';
         decisionToolCalls = response.toolCalls;
-        console.log();
+        logSink.log('');
       } catch (err: any) {
         renderer.abort();
         if (interrupt.aborted) break outer;
@@ -224,7 +225,7 @@ export async function runOrchestrated(
       });
 
       if (doneSignal) {
-        console.log(chalk.green.bold(`\n✔ ${orchestratorChar.aiName} ha dichiarato il compito COMPLETATO.`));
+        logSink.log(chalk.green.bold(`\n✔ ${orchestratorChar.aiName} ha dichiarato il compito COMPLETATO.`));
         completed = true;
         break outer;
       }
@@ -238,7 +239,7 @@ export async function runOrchestrated(
           CLITheme.warning('Nessun worker disponibile.');
           break;
         }
-        console.log(chalk.gray(`Fallback: ${fallback}\n`));
+        logSink.log(chalk.gray(`Fallback: ${fallback}\n`));
         const result = await runMemberTurn(ctx, fallback, task, round, maxRounds, teamMessages, interrupt, round === 1 && seenThisRound.size === 0, undefined, turnLog);
         if (result === 'completed') { completed = true; break outer; }
         if (result === 'failed') { failed = true; break outer; }
@@ -248,7 +249,7 @@ export async function runOrchestrated(
       }
 
       const chosen = decision.agent;
-      console.log(chalk.gray(`Scelto: @${chosen}\n`));
+      logSink.log(chalk.gray(`Scelto: @${chosen}\n`));
 
       // Loop detection: stesso agente due volte di fila
       if (seenThisRound.has(chosen)) {

@@ -1,0 +1,25 @@
+{
+  "name": "request_call",
+  "description": "Proponi all'utente di convocare una conferenza a tavola rotonda tra più agenti su un argomento specifico per confrontare pareri o fare brainstorming. Richiede approvazione esplicita dell'utente.",
+  "requiredTier": "medium",
+  "riskLevel": "RESTRICTED",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "participants": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Lista dei partecipanti (almeno 2) da invitare (es. ['@geordi', '@spock', '@worf'])."
+      },
+      "topic": {
+        "type": "string",
+        "description": "Il tema o la domanda di confronto su cui incentrare la discussione della conferenza."
+      },
+      "reason": {
+        "type": "string",
+        "description": "La motivazione chiara del perché è utile avviare un confronto collegiale su questo argomento."
+      }
+    },
+    "required": ["participants", "topic", "reason"]
+  }
+}

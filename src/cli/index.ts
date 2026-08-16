@@ -24,13 +24,15 @@ import { GenerationInterrupt } from './interrupt';
 import { ContextTracker } from '../core/contextTracker';
 import {
   RoleConfig, TraitConfig, CharacterConfig, TeamConfig,
-  loadJsonFile, listAvailableItems, listAvailableCharacters, resolveCharacter,
+  loadJsonFile, listAvailableItems, listAvailableCharacters, listAvailableTeams, listAvailableRoles, resolveCharacter,
   loadRole, loadTrait, loadCharacter, loadTeam, loadSystemPrompt, notifyIfUnprofiled
 } from './shared';
 import { CommandCtx } from './commands/types';
 import { handleExit, handleInfo, handleReset } from './commands/session';
-import { handleProvider, handleModels, handleUse, handleSearchEngine, handleBenchmark } from './commands/provider';
-import { handleCharacter, handleRenameChar, handleRole, handleTrait, handleSkill } from './commands/persona';
+import { handleProvider, handleModels, handleSearchEngine, handleBenchmark } from './commands/provider';
+import { handleAgent } from './commands/persona';
+import { handleTools } from './commands/tools';
+import { handleRuns } from './commands/runs';
 import { handleMemory } from './commands/memory';
 import { handleContext } from './commands/session';
 import { handleCall } from './commands/call';
@@ -41,7 +43,6 @@ import { handleBlackboard } from './commands/blackboard';
 
 import { handleInitCmd } from './initCmd';
 
-// Re-esporta interfacce per retrocompatibilità
 export { RoleConfig, TraitConfig, CharacterConfig, TeamConfig };
 export { loadRole, loadTrait, loadCharacter, loadTeam, loadSystemPrompt, listAvailableItems };
 
@@ -105,18 +106,24 @@ async function main() {
     // se presente (withEffortPin torna cascadedEffort quando non c'è pin).
     const reasoningEffort = withEffortPin(cascadedEffort);
 
-    return new Agent(
+    const a = new Agent(
       provider,
       registry,
       permissionManager,
-      loadSystemPrompt(role, trait, model, registry, char),
+      loadSystemPrompt(role, trait, model, registry, char, undefined, reasoningEffort),
       role.allowedTools,
       configManager.getMaxHistoryMessages(),
       configManager.getMaxHistoryTokens(),
       undefined,
       reasoningEffort
     );
+    if (typeof commandCtx !== 'undefined') {
+      a.setCommandCtx(commandCtx);
+    }
+    return a;
   };
+
+  let commandCtx: CommandCtx;
 
   // Inizializzazione iniziale dell'agente
   let agent = recreateAgent();
@@ -176,7 +183,7 @@ async function main() {
       }
 
       // Suggerisce /benchmark se il modello attivo non è mai stato profilato
-      notifyIfUnprofiled(provider.getCurrentModel());
+      notifyIfUnprofiled(provider.getCurrentModel(), agent.getReasoningEffort());
     }
   } else {
     initSpinner.fail(chalk.red('Nessun server LLM raggiungibile (Ollama, Unsloth, OpenRouter).'));
@@ -221,7 +228,7 @@ async function main() {
   CLITheme.help();
 
   // Costruisce il contesto condiviso per tutti i comandi slash
-  const commandCtx: CommandCtx = {
+  commandCtx = {
     configManager,
     provider,
     registry,
@@ -236,42 +243,52 @@ async function main() {
     listAvailableCharacters,
     listAvailableItems
   };
+  agent.setCommandCtx(commandCtx);
 
   // Mappa dei comandi: ogni handler riceve il contesto e l'argomento
   const commandMap: Record<string, (ctx: CommandCtx, arg: string) => Promise<void>> = {
     '/provider':   handleProvider,
     '/models':     handleModels,
-    '/use':        handleUse,
     '/call':       handleCall,
     '/team':       handleTeam,
     '/goal':       handleGoal,
-    '/character':  handleCharacter,
-    '/rename-char': handleRenameChar,
-    '/role':       handleRole,
-    '/trait':      handleTrait,
-    '/skill':      handleSkill,
-    '/search-engine': handleSearchEngine,
+    '/agent':      handleAgent,
+    '/tools':      handleTools,
+    '/runs':       handleRuns,
     '/benchmark':  handleBenchmark,
     '/memory':     handleMemory,
     '/context':    handleContext,
     '/effort':     handleEffort,
     '/blackboard': handleBlackboard,
+    '/search-engine': handleSearchEngine,
   };
 
-  // Autocompletamento con Tab: nomi comando + argomenti dinamici.
+  // Autocompletamento con Tab: nomi comando + argomenti dinamici + mention @personaggi/@ruoli.
   // I comandi inline (gestiti direttamente nel loop REPL) vanno aggiunti a mano.
   setCompletionSource({
     commands: [...new Set([
       ...Object.keys(commandMap),
-      '/clear', '/help', '/reset', '/info', '/memory', '/forget', '/context',
+      '/clear', '/help', '/reset', '/info', '/exit',
     ])].sort(),
     argumentsFor: (command) => {
-      if (command === '/use' || command === '/benchmark') return commandCtx.availableModels.current;
+      if (command === '/models' || command === '/benchmark') return commandCtx.availableModels.current;
       if (command === '/provider') return configManager.getProviderNames();
-      if (command === '/forget') return ['all'];
+      if (command === '/agent') return commandCtx.listAvailableCharacters().map(c => c.name);
+      if (command === '/team') return listAvailableTeams().map(t => t.name);
+      if (command === '/call') {
+        const chars = commandCtx.listAvailableCharacters().map(c => `@${c.name}`);
+        const roles = listAvailableRoles().map(r => `@${r.name}`);
+        return [...new Set([...chars, ...roles])];
+      }
+      if (command === '/memory') return ['clear'];
       if (command === '/effort') return ['none', 'low', 'medium', 'xhigh', 'auto', 'ask'];
       return [];
     },
+    mentions: () => {
+      const chars = commandCtx.listAvailableCharacters().map(c => `@${c.name}`);
+      const roles = listAvailableRoles().map(r => `@${r.name}`);
+      return [...new Set([...chars, ...roles])];
+    }
   });
 
   // Avvia il loop REPL (readline nativo: history navigabile con frecce su/giù)
@@ -337,35 +354,6 @@ async function main() {
           console.log(`- Attitudine:      ${chalk.green(loadTrait(configManager.getActiveTrait()).displayName)}`);
         }
         console.log();
-        continue;
-      }
-      if (command === '/forget') {
-        if (!arg) {
-          CLITheme.error('Specificare l\'id del ricordo da eliminare, oppure "all" per svuotare la memoria. Es: /forget all');
-          continue;
-        }
-        const store = MemoryStore.getInstance();
-        if (arg.toLowerCase() === 'all') {
-          console.log();
-          const confirm = await prompts({
-            type: 'confirm',
-            name: 'ok',
-            message: chalk.red(`Eliminare TUTTI i ${store.count()} ricordi dalla memoria condivisa?`),
-            initial: false
-          });
-          if (confirm.ok) {
-            store.clear();
-            CLITheme.success('Memoria condivisa svuotata.');
-          } else {
-            CLITheme.info('Operazione annullata.');
-          }
-        } else {
-          if (store.remove(arg)) {
-            CLITheme.success(`Ricordo '${arg}' eliminato.`);
-          } else {
-            CLITheme.error(`Nessun ricordo trovato con id '${arg}'. Usa /memory per vedere gli id.`);
-          }
-        }
         continue;
       }
 

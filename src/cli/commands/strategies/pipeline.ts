@@ -6,6 +6,7 @@ import { resolveCharacter } from '../../shared';
 import { ChatMessage } from '../../../core/types';
 import { runLoop } from '../../../core/loop';
 import { TeamRunConfig, ProtocolLogEntry, TeamResult, TeamStrategy, runMemberTurn } from './common';
+import { logSink } from '../../../core/logSink';
 
 // ── Modalità pipeline (catena di montaggio) ──
 
@@ -17,7 +18,7 @@ export async function runPipeline(
   teamMessages: ChatMessage[],
   turnLog?: ProtocolLogEntry[]
 ): Promise<TeamResult> {
-  console.log(chalk.bold.yellow(`\n═══ PIPELINE: ${team.members.length} stazioni ═══`));
+  logSink.log(chalk.bold.yellow(`\n═══ PIPELINE: ${team.members.length} stazioni ═══`));
 
   for (let i = 0; i < team.members.length; i++) {
     if (interrupt.aborted) break;
@@ -27,7 +28,7 @@ export async function runPipeline(
       CLITheme.warning(`Stazione '${memberName}' non trovata. Saltata.`);
       continue;
     }
-    console.log(chalk.bold.blue(`\n[STAZIONE ${i + 1}/${team.members.length}: ${memberChar.displayName}]`));
+    logSink.log(chalk.bold.blue(`\n[STAZIONE ${i + 1}/${team.members.length}: ${memberChar.displayName}]`));
 
     // Inietta descrizione stazione nella history
     const desc = i === 0
@@ -64,22 +65,22 @@ export async function runPipeline(
 
       if (loopRes.outcome === 'success') {
         if (i === team.members.length - 1) {
-          console.log(chalk.green.bold(`\n✔ Pipeline completata da ${memberChar.aiName}.`));
+          logSink.log(chalk.green.bold(`\n✔ Pipeline completata da ${memberChar.aiName}.`));
           return { completed: true, roundsDone: i + 1 };
         }
         continue;
       } else {
-        console.log(chalk.red.bold(`\n✘ Pipeline interrotta alla stazione ${i + 1} (${memberChar.aiName}): verifiche non superate (${loopRes.outcome}).`));
+        logSink.log(chalk.red.bold(`\n✘ Pipeline interrotta alla stazione ${i + 1} (${memberChar.aiName}): verifiche non superate (${loopRes.outcome}).`));
         return { completed: false, roundsDone: i + 1, failed: true };
       }
     } else {
       const result = await runMemberTurn(ctx, memberName, task, i + 1, team.members.length, teamMessages, interrupt, i === 0, undefined, turnLog);
       if (result === 'completed') {
-        console.log(chalk.green.bold(`\n✔ Pipeline completata da ${memberChar.aiName}.`));
+        logSink.log(chalk.green.bold(`\n✔ Pipeline completata da ${memberChar.aiName}.`));
         return { completed: true, roundsDone: i + 1 };
       }
       if (result === 'failed') {
-        console.log(chalk.red.bold(`\n✘ Pipeline interrotta: ${memberChar.aiName} ha dichiarato il compito FALLITO alla stazione ${i + 1}.`));
+        logSink.log(chalk.red.bold(`\n✘ Pipeline interrotta: ${memberChar.aiName} ha dichiarato il compito FALLITO alla stazione ${i + 1}.`));
         return { completed: false, roundsDone: i + 1, failed: true };
       }
       if (result === 'interrupted') break;

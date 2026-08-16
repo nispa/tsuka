@@ -1,30 +1,50 @@
+/**
+ * Test per i tool SAFE (lettura filesystem, ispezione processi).
+ * Esecuzione: npx tsx tests/test_safe_tools.ts
+ */
 import { createDefaultRegistry } from '../src/tools/index';
 import { PermissionManager } from '../src/safety/permissions';
 
-async function run() {
-  console.log("=== Testing SAFE Tools ===");
-  const registry = await createDefaultRegistry();
-  const pm = new PermissionManager(); // auto-approva i tool SAFE
+let passed = 0;
+let failed = 0;
 
-  console.log("\n1. Esecuzione 'list_dir'...");
-  const listResult = await registry.executeTool('list_dir', {}, pm);
-  console.log(listResult.output);
-
-  console.log("\n2. Lettura prime 10 righe di package.json con 'read_file'...");
-  const readResult = await registry.executeTool('read_file', { path: 'package.json', startLine: 1, endLine: 10 }, pm);
-  console.log(readResult.output);
-
-  console.log("\n3. Recupero processi di sistema con 'get_ps_info'...");
-  const psResult = await registry.executeTool('get_ps_info', { category: 'processes' }, pm);
-  try {
-    const parsed = JSON.parse(psResult.output);
-    const count = Array.isArray(parsed) ? parsed.length : 1;
-    console.log(`\n✔ Successo! Recuperati ${count} processi in formato JSON.`);
-    console.log("Esempi di processi attivi:");
-    console.log((Array.isArray(parsed) ? parsed : [parsed]).slice(0, 3));
-  } catch {
-    console.log("Output non JSON o errore:\n", psResult.output);
+function check(id: string, condition: boolean, detail: string) {
+  if (condition) {
+    passed++;
+    console.log(`✔ ${id} PASS — ${detail}`);
+  } else {
+    failed++;
+    console.log(`✘ ${id} FAIL — ${detail}`);
   }
 }
 
-run().catch(console.error);
+async function run() {
+  console.log('=== Test SAFE Tools ===\n');
+  const registry = await createDefaultRegistry();
+  const pm = new PermissionManager();
+
+  // 1. list_dir
+  const listResult = await registry.executeTool('list_dir', {}, pm);
+  check('SAFE.1', listResult.success && listResult.output.includes('package.json'), 'list_dir restituisce l\'elenco file contenente package.json');
+
+  // 2. read_file
+  const readResult = await registry.executeTool('read_file', { path: 'package.json', startLine: 1, endLine: 10 }, pm);
+  check('SAFE.2', readResult.success && readResult.output.includes('"name": "tsuka"'), 'read_file legge le prime righe di package.json');
+
+  // 3. get_ps_info
+  const psResult = await registry.executeTool('get_ps_info', { category: 'processes' }, pm);
+  let parsedOk = false;
+  try {
+    const parsed = JSON.parse(psResult.output);
+    parsedOk = Array.isArray(parsed) && parsed.length > 0;
+  } catch {}
+  check('SAFE.3', psResult.success && parsedOk, 'get_ps_info restituisce un array JSON di processi validi');
+
+  console.log(`\n=== Risultato: ${passed} passati, ${failed} falliti ===`);
+  process.exit(failed > 0 ? 1 : 0);
+}
+
+run().catch((err) => {
+  console.error('Errore fatale:', err);
+  process.exit(1);
+});

@@ -5,8 +5,12 @@ import { CLITheme } from '../ui';
 import { StreamRenderer } from '../stream';
 import { GenerationInterrupt } from '../interrupt';
 import { loadSystemPrompt } from '../shared';
+import { resolveReasoningEffort } from '../../core/agent';
+import { withEffortPin } from '../../core/effortControl';
+import { WorkflowScope } from '../../core/workflowScope';
+import { logSink } from '../../core/logSink';
 
-export async function handleCall(ctx: CommandCtx, arg: string): Promise<void> {
+export async function handleCall(ctx: CommandCtx, arg: string, directTopic?: string): Promise<void> {
   const availableChars = ctx.listAvailableCharacters();
 
   if (availableChars.length === 0) {
@@ -17,7 +21,7 @@ export async function handleCall(ctx: CommandCtx, arg: string): Promise<void> {
   let selectedNames: string[] = [];
 
   if (!arg) {
-    console.log();
+    logSink.log('');
     const response = await prompts({
       type: 'multiselect',
       name: 'chars',
@@ -61,22 +65,27 @@ export async function handleCall(ctx: CommandCtx, arg: string): Promise<void> {
     return;
   }
 
-  console.log();
-  const topicResp = await prompts({
-    type: 'text',
-    name: 'topic',
-    message: chalk.cyan.bold('Tema o argomento della conferenza? ❯'),
-  });
+  let topic = (directTopic || '').trim();
+  if (!topic) {
+    logSink.log('');
+    const topicResp = await prompts({
+      type: 'text',
+      name: 'topic',
+      message: chalk.cyan.bold('Tema o argomento della conferenza? ❯'),
+    });
+    topic = topicResp.topic?.trim() || '';
+  }
 
-  const topic = topicResp.topic?.trim();
   if (!topic) {
     CLITheme.warning('Conferenza annullata: nessun tema inserito.');
     return;
   }
 
-  console.log(chalk.bold('\n📞 [AVVIO CONFERENZA MULTI-AGENTE]'));
-  console.log(`Partecipanti: ${participants.map((p: any) => chalk.green(`${p.displayName} (${p.aiName})`)).join(', ')}`);
-  console.log(`Argomento:    "${chalk.yellow(topic)}"\n`);
+  return WorkflowScope.withScope('call', async () => {
+
+  logSink.log(chalk.bold('\n📞 [AVVIO CONFERENZA MULTI-AGENTE]'));
+  logSink.log(`Partecipanti: ${participants.map((p: any) => chalk.green(`${p.displayName} (${p.aiName})`)).join(', ')}`);
+  logSink.log(`Argomento:    "${chalk.yellow(topic)}"\n`);
 
   // Preparazione cronologia temporanea
   const callMessages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
@@ -93,12 +102,15 @@ export async function handleCall(ctx: CommandCtx, arg: string): Promise<void> {
 
   conf:
   for (let r = 1; r <= rounds; r++) {
-    console.log(chalk.gray(`--- Round ${r}/${rounds} ---`));
+    logSink.log(chalk.gray(`--- Round ${r}/${rounds} ---`));
     for (const p of participants) {
       const roleObj = ctx.loadRole(p.role);
       const traitObj = ctx.loadTrait(p.trait);
 
-      let sysPrompt = loadSystemPrompt(roleObj, traitObj, ctx.provider.getCurrentModel(), ctx.registry, p, topic);
+      const cascadedEffort = resolveReasoningEffort(undefined, p, roleObj, ctx.configManager.getDefaultReasoningEffort());
+      const reasoningEffort = withEffortPin(cascadedEffort);
+
+      let sysPrompt = loadSystemPrompt(roleObj, traitObj, ctx.provider.getCurrentModel(), ctx.registry, p, topic, reasoningEffort);
       sysPrompt += '\n\n[CONTESTO]: Stai partecipando ad una chiamata di gruppo con altri colleghi. Rispondi alle battute precedenti rivolgendoti direttamente agli altri partecipanti se necessario. Mantieni il tuo intervento breve (max 4 frasi) e rispetta fedelmente la tua identità e il tuo stile.';
 
       callMessages[0] = { role: 'system', content: sysPrompt };
@@ -112,7 +124,8 @@ export async function handleCall(ctx: CommandCtx, arg: string): Promise<void> {
           callMessages,
           [],
           (chunk, channel) => renderer.onDelta(chunk, channel ?? 'content'),
-          interrupt.signal
+          interrupt.signal,
+          { reasoningEffort }
         );
         renderer.finish();
       } catch (err: any) {
@@ -121,7 +134,7 @@ export async function handleCall(ctx: CommandCtx, arg: string): Promise<void> {
           CLITheme.warning('Conferenza interrotta (Esc).');
           break conf;
         }
-        console.log(chalk.red(`\n[Errore durante la risposta di ${p.aiName}: ${err.message}]`));
+        logSink.log(chalk.red(`\n[Errore durante la risposta di ${p.aiName}: ${err.message}]`));
         continue;
       }
 
@@ -130,12 +143,12 @@ export async function handleCall(ctx: CommandCtx, arg: string): Promise<void> {
         callMessages.push({ role: 'user', content: `${p.aiName}: "${responseText}"` });
         fullTranscript.push(`${p.aiName}: "${responseText}"`);
       }
-      console.log();
+      logSink.log('');
     }
   }
 
   interrupt.disarm();
-  console.log(chalk.bold('📞 [FINE CONFERENZA MULTI-AGENTE]\n'));
+  logSink.log(chalk.bold('📞 [FINE CONFERENZA MULTI-AGENTE]\n'));
 
   const transcriptText = `Ho assistito a una conferenza tra gli agenti (${participants.map((p: any) => p.aiName).join(', ')}) sul tema "${topic}". Ecco la trascrizione completa del dibattito:\n\n` +
     fullTranscript.map((line: string) => `- ${line}`).join('\n') +
@@ -143,4 +156,5 @@ export async function handleCall(ctx: CommandCtx, arg: string): Promise<void> {
 
   ctx.agent.current.getMessages().push({ role: 'user', content: `Tema del dibattito di gruppo: "${topic}"` });
   ctx.agent.current.getMessages().push({ role: 'assistant', content: transcriptText });
+  });
 }

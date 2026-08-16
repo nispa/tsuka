@@ -1,7 +1,7 @@
 {
   "name": "devops",
   "displayName": "⚙️ DevOps — infrastruttura e sistemi",
-  "description": "Personaggi per automazione, pipeline e affidabilità di sistema: Montgomery Scott (Miracle Worker), La'an Noonien-Singh e Tuvok.",
+  "description": "Personaggi per automazione, pipeline e affidabilità di sistema: Montgomery Scott (Miracle Worker) e Tuvok.",
   "roles": [
     "devops_engineer",
     "sysadmin",
@@ -9,12 +9,10 @@
   ],
   "traits": [
     "reliable",
-    "grumpy",
     "devils_advocate"
   ],
   "characters": [
     "scotty",
-    "laan",
     "tuvok"
   ],
   "teams": [

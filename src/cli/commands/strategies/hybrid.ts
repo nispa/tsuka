@@ -4,9 +4,12 @@ import { CLITheme } from '../../ui';
 import { StreamRenderer } from '../../stream';
 import { GenerationInterrupt } from '../../interrupt';
 import { loadSystemPrompt, resolveCharacter } from '../../shared';
+import { resolveReasoningEffort } from '../../../core/agent';
+import { withEffortPin } from '../../../core/effortControl';
 import { ChatMessage, ToolCall, Vote } from '../../../core/types';
 import { ProtocolLogEntry, warnProtocolDegrade } from './common';
 import { sanitizeToolCallArguments } from '../../../tools/jsonRepair';
+import { logSink } from '../../../core/logSink';
 
 /**
  * Modalità ibrida (T4.2, PLANNING-QUALITA.md): non è un `mode` a sé — è un round di
@@ -47,7 +50,7 @@ export async function runDiscussionRound(
   votingEnabled: boolean,
   turnLog?: ProtocolLogEntry[]
 ): Promise<'all_approve' | 'continue' | 'interrupted'> {
-  console.log(chalk.bold.magenta(`\n═══ DISCUSSIONE ROUND ${round} ═══`));
+  logSink.log(chalk.bold.magenta(`\n═══ DISCUSSIONE ROUND ${round} ═══`));
 
   let allApproved = true;
   // Tool cast_vote offerto solo quando il voto è attivo: nella discussione senza
@@ -63,7 +66,10 @@ export async function runDiscussionRound(
     const roleObj = ctx.loadRole(memberChar.role);
     const traitObj = ctx.loadTrait(memberChar.trait);
 
-    let sysPrompt = loadSystemPrompt(roleObj, traitObj, ctx.provider.getCurrentModel(), ctx.registry, memberChar, task);
+    const cascadedEffort = resolveReasoningEffort(undefined, memberChar, roleObj, ctx.configManager.getDefaultReasoningEffort());
+    const reasoningEffort = withEffortPin(cascadedEffort);
+
+    let sysPrompt = loadSystemPrompt(roleObj, traitObj, ctx.provider.getCurrentModel(), ctx.registry, memberChar, task, reasoningEffort);
     sysPrompt += `\n\n[DISCUSSION CONTEXT]: You are in a team discussion on: "${task}".
 You are debating with colleagues about the work done so far (round ${round}). Express your opinion, constructive criticism or suggestions.
 Keep it brief (max 4 sentences) and true to your identity and style.
@@ -94,14 +100,15 @@ VOTO: MODIFICARE — Add unit tests before deploy`;
         discMessages,
         voteTools.length > 0 ? voteTools : [],
         (chunk, channel) => renderer.onDelta(chunk, channel ?? 'content'),
-        interrupt.signal
+        interrupt.signal,
+        { reasoningEffort }
       );
       toolCalls = response.toolCalls;
       renderer.finish();
-      console.log();
+      logSink.log('');
     } catch (err: any) {
       renderer.abort();
-      console.log(chalk.red(`[Errore discussione ${memberChar.aiName}: ${err.message}]`));
+      logSink.log(chalk.red(`[Errore discussione ${memberChar.aiName}: ${err.message}]`));
       continue;
     }
 
@@ -135,10 +142,10 @@ VOTO: MODIFICARE — Add unit tests before deploy`;
 
   if (votingEnabled) {
     if (allApproved) {
-      console.log(chalk.green.bold(`\n✔ VOTAZIONE: tutti i membri approvano il lavoro.`));
+      logSink.log(chalk.green.bold(`\n✔ VOTAZIONE: tutti i membri approvano il lavoro.`));
       return 'all_approve';
     } else {
-      console.log(chalk.yellow(`\n⚠ VOTAZIONE: alcuni membri richiedono modifiche o rifiutano. Si procede.`));
+      logSink.log(chalk.yellow(`\n⚠ VOTAZIONE: alcuni membri richiedono modifiche o rifiutano. Si procede.`));
     }
   }
 

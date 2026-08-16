@@ -40,9 +40,15 @@
 | T11.7 | ✅ Fatto | Blackboard Visibility & Goal Persistence: salvataggio report `/goal` con snapshot blackboard in `workflow_logs/`; visualizzazione note a fine goal; comando `/blackboard` per consultare gli ultimi workflow. |
 | T11.8 | ✅ Fatto | Self-Healing History & Malformed Tool Call Sanitization: auto-riparazione euristica di stringhe JSON troncate e sanificazione preventiva degli argomenti salvati in `this.messages` per scongiurare crash HTTP 500 dal parser C++/Jinja di llama-server su chiamate successive; suite `tests/test_toolcall_sanitization.ts`. |
 | T11.9 | ✅ Fatto | Codebase-Wide JSON Resilience & Protocol Hardening: estensione del motore `jsonRepair.ts` alle strategie di coordinamento multi-agente (`report_status`, `cast_vote`, `route_next`), al benchmark runner DSL (`extractJson`, `parseArgs`) e all'esecuzione runtime dei tool in `ToolRegistry.executeTool`. |
-| T11.10 | ✅ Fatto | Context-Aware Reasoning Budgeting, Throttling & CoT Recovery: calcolo preventivo del budget di reasoning residuo con throttling dinamico dell'effort (`calculateReasoningBudget`); recupero automatico su risposta di solo pensiero a effort `none` per forzare l'emissione immediata della tool call; suite `tests/test_reasoning_budget.ts`. |
+| T12.1 | ✅ Fatto | Evoluzione `browse_url`: Parsing HTML strutturato ad alta fedeltà con `node-html-markdown`, estrazione Reader View (scarto nav, footer, script, cookie banner), conversione tabelle GFM, estrazione immagini/video con URL assoluti per agenti Vision LLM; suite `tests/test_browser_evolution.ts` (9 check OK). |
+| T12.2 | ✅ Fatto | Fix di code review pre-release v0.3.0: `characters/neelix.json` ricostruito con i campi richiesti da `CharacterConfig` (`aiName`, `creativity`, `reasoningEffort`) — la versione precedente, priva di `aiName`, avrebbe prodotto un system prompt `"You are undefined"` per quel personaggio; allineamento colonne in `/tools` (`src/cli/commands/tools.ts`) corretto sostituendo `.padEnd()` su stringhe già colorate chalk (i codici ANSI ne gonfiavano la lunghezza) con padding calcolato via `CLITheme.cleanLen()`. |
+| T12.3 | ✅ Fatto | Leggibilità: split di `src/cli/commands/goal.ts` (821 righe, il file più grande del progetto) sul modello già usato da `/team` (`strategies/{common,hybrid,orchestrated}.ts`) — prompt-building (`formatAgentSignature`, `buildTeamBlueprints`, `buildGoalOrchestratorPrompt`, `rolesOf`) estratto in `goalPrompts.ts`; parsing dell'output del modello (`parsePlan`, `parseAgentLine`, normalizzazione nomi) estratto in `goalParsing.ts`; `goal.ts` ridotto a orchestrazione (`handleGoal` + helper di display, 517 righe) e ri-esporta i nomi spostati per compatibilità con `tests/test_goal_orchestrator.ts` e `tests/test_protocol_parsing.ts`, invariati. Nessuna modifica di comportamento: 55/55 suite verdi, `tsc --noEmit` pulito. |
+| T12.4 | ✅ Fatto | Consolidamento post-split T12.3: `showContextBar` (era locale a `goal.ts`) diventa `CLITheme.contextBar` in `src/cli/ui.ts`, riusata anche da `/context` (`handleContext`, prima disegnava la sua barra a mano) con un `suffix` opzionale per la sorgente del limite di contesto. Deduplicata la formula caratteri→token, prima triplicata a mano (`Agent.estimateMessagesTokens`, l'helper locale di `goal.ts`, il calcolo inline di `handleContext`): estratta come `sumMessageChars`/`estimateMessagesTokens` in `src/core/contextBudget.ts` (rapporto fisso, per stime fuori da un `Agent` o su più agenti effimeri come `/goal`); `Agent` la riusa internamente passando il proprio rapporto calibrato a runtime, e lo stesso rapporto calibrato è ora usato anche da `/context` (più preciso della costante fissa, avendo un `Agent` singolo a disposizione). Migrati a `logSink` (invece di `console.log`) tutti i punti toccati in `goal.ts`, `session.ts` e il nuovo `CLITheme.contextBar` — coerente con la direzione già scritta in `docs/architecture.md` §16 (passo 2, "chiudere i `console.*`", verso un transport condiviso CLI/TUI). Il resto dei `console.*` nel resto della codebase (~24 file) resta backlog invariato, non nel perimetro di questo task. 55/55 suite verdi, `tsc --noEmit` pulito. |
+| T13.1 | ✅ Fatto | Escalation Multi-Agente & Orchestrazione Proattiva con Depth Guard: implementati i tool `request_goal`, `request_team`, `request_call` (RESTRICTED) per permettere all'agente singolo di proporre l'escalation su task complessi/multidisciplinari previa autorizzazione utente; introdotto `WorkflowScope` (`AsyncLocalStorage`) come freno anti-ricorsione che esclude/blocca i tool di escalation quando un workflow padre è già attivo (`depth >= 1`); suite `tests/test_escalation_tools.ts` (13 check OK). |
+| T13.2 | ✅ Fatto | Estesa la migrazione a `logSink` (T12.4) a tutta la famiglia multi-agente: `call.ts`, `team.ts`, `strategies/{common,hybrid,orchestrated,roundRobin,pipeline}.ts` e i tre tool di escalation `request_{goal,team,call}.ts` (che invocano proprio `handleGoal`/`handleTeam`/`handleCall` — lasciarli su `console.log` diretto avrebbe rotto la coerenza appena introdotta). `CLITheme` stessa (banner, box, success/error/warning/info, ecc., ~30 chiamate) resta backlog: sono le primitive di rendering di base, un cambio più ampio e a sé stante. 55/55 suite verdi, `tsc --noEmit` pulito. |
+| T13.3 | ✅ Fatto | `CLITheme` (`src/cli/ui.ts`) migrata a `logSink`: banner, box, agentPanel, success/error/warning/info, badge, agentThought/agentAction, printModelChanged, printDivider, help — tutte le primitive di rendering di base ora passano dal sink, intercettabili da un `setLogSink()` futuro. Lasciati intenzionalmente fuori: `console.clear()` in `banner()` (nessun equivalente in `LogSink`, che ha solo `log/warn/error`; uno "svuota schermo" è comunque legato al terminale) e `createSpinner`/`InteractiveMenu.select` (`ora`/`prompts` fanno rendering interattivo in-place sullo stdout, non "una riga di log" — problema diverso, non nel perimetro di questo task). Console.* rimanenti nel resto della codebase (`cli/index.ts`, `initCmd.ts`, `interrupt.ts`, `shared.ts`, `stream.ts`, comandi `blackboard/effort/memory/provider`, `core/agent.ts`, `safety/permissions.ts`) restano backlog — `core/logSink.ts` e `core/logBuffer.ts` invece **non vanno toccati**: sono l'infrastruttura stessa (il sink di default e l'intercettore di `console.log` per il buffering dei branch paralleli di `/goal`). 55/55 suite verdi, `tsc --noEmit` pulito. |
 
-Tutti i task del piano qualità e della Fase 6 di ottimizzazione sono completati (48 suite di test verdi, package pulito e pronto per il rilascio).
+Tutti i task pianificati e di backlog sono completati con 55 suite di test verdi.
 
 ---
 
@@ -1580,6 +1586,27 @@ Implementare la protezione a più livelli contro il sovraccarico di contesto cau
   - 5 test dedicati che coprono throttling su contesti ampi, medi e critici, e il passaggio deterministico a effort `none` nel round di recovery di `Agent.run`.
 
 **Accettazione:** Quando un modello affronta contesti stretti o produce risposte con solo CoT, l'effort viene regolato dinamicamente per prevenire overflow e il recovery spinge all'azione immediata a costo computazionale nullo.
+
+## T12.1 — Evoluzione browse_url: HTML-to-Markdown strutturato & Media Extraction
+
+**Dipende da:** nessuno · **Sforzo:** medio · **Priorità:** media
+
+Sostituire l'attuale funzione Regex in [`src/tools/impl/browseUrl.ts`](file:///f:/progetti_ai/harness/src/tools/impl/browseUrl.ts) con una libreria avanzata di parsing HTML e content extraction (`node-html-markdown`).
+
+- Estrarre in modo pulito il contenuto principale del documento (modalità Reader View), scartando parti non rilevanti (navigation, footer, ad, sidebar, cookie banner).
+- Preservare e formattare correttamente gli elementi strutturati ed i media:
+  - Immagini `![alt](url)` con risoluzione URL assoluti ed esclusione spacer/tracking pixel.
+  - Link a video ed anteprime (tag `<video>`, `<source>`, `<iframe>` player tipo YouTube/Vimeo).
+  - Tabelle HTML in sintassi Markdown GFM allineate.
+- Mantenere l'integrazione con `capForContext` per la gestione del budget di token.
+- Offrire agli agenti con capacità visive (Vision LLM / Multimodali) una sezione riassuntiva `### 📎 Media & Risorse della Pagina` con gli URL assoluti delle immagini e dei video.
+
+**Implementazione & Test:**
+- `src/tools/impl/browseUrl.ts`: implementata pipeline Reader View (`cleanHtmlForReader`), estrazione media (`extractMedia`), risoluzione URL assoluti (`resolveAbsoluteUrl`) e traduzione Markdown GFM (`NodeHtmlMarkdown`).
+- `tests/test_browser_evolution.ts`: 9 check deterministici a copertura completa.
+
+**Accettazione:** `browse_url` converte pagine HTML complesse senza fragilità da Regex, mantenendo pulizia di contesto ed estraendo immagini/video leggibili dagli agenti. Suite di test con 52/52 suite verdi.
+
 
 
 

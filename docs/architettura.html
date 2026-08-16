@@ -170,7 +170,7 @@
         <div><b>21</b><span>Moduli core</span></div>
         <div><b>21</b><span>Ruoli</span></div>
         <div><b>9</b><span>Tratti</span></div>
-        <div><b>28</b><span>Personaggi</span></div>
+        <div><b>22</b><span>Personaggi</span></div>
         <div><b>10</b><span>Team</span></div>
         <div><b>46</b><span>Suite di test</span></div>
       </div>
@@ -236,7 +236,7 @@
 
       <section id="s5">
         <h2><span class="n">05</span> Il sistema dei tool</h2>
-        <p><strong>23 tool</strong>, con una separazione netta:</p>
+        <p><strong>27 tool</strong>, con una separazione netta:</p>
         <ul>
           <li><strong>schema</strong> in <code>tools_schemas/&lt;nome&gt;.json</code> — descrizione, parametri JSON Schema, <code>requiredTier</code>, <code>riskLevel</code>. Modificabile a caldo (cache invalidata su mtime).</li>
           <li><strong>implementazione</strong> in <code>src/tools/impl/&lt;nome&gt;.ts</code> — solo la logica.</li>
@@ -377,12 +377,11 @@ FINE</code></pre>
       <section id="s13">
         <h2><span class="n">13</span> Comandi</h2>
         <ul>
-          <li><strong>Sessione</strong>: <code>/help</code> <code>/info</code> <code>/context</code> <code>/clear</code> <code>/reset</code> <code>/exit</code></li>
-          <li><strong>Identità</strong>: <code>/role</code> <code>/trait</code> <code>/character</code> <code>/rename-char</code> <code>/use</code></li>
-          <li><strong>Multi-agente</strong>: <code>/call</code> <code>/team</code> <code>/goal</code></li>
-          <li><strong>Modello</strong>: <code>/provider</code> <code>/models</code> <code>/benchmark</code> <code>/effort</code></li>
-          <li><strong>Memoria</strong>: <code>/memory</code> <code>/forget</code></li>
-          <li><strong>Altro</strong>: <code>/search-engine</code></li>
+          <li><strong>Esecuzione & Multi-agente</strong>: <code>/goal</code> <code>/team</code> <code>/call</code></li>
+          <li><strong>Modello & Inferenza</strong>: <code>/models</code> <code>/provider</code> <code>/effort</code> <code>/benchmark</code></li>
+          <li><strong>Agente & Strumenti</strong>: <code>/agent</code> <code>/tools</code></li>
+          <li><strong>Memoria & Storico</strong>: <code>/context</code> <code>/memory</code> <code>/blackboard</code> <code>/runs</code></li>
+          <li><strong>Sessione & Altro</strong>: <code>/info</code> <code>/reset</code> <code>/clear</code> <code>/exit</code> <code>/search-engine</code> <code>/help</code></li>
         </ul>
       </section>
 

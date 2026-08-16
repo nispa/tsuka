@@ -4,6 +4,7 @@ import { GenerationInterrupt } from '../../interrupt';
 import { ChatMessage } from '../../../core/types';
 import { TeamRunConfig, ProtocolLogEntry, TeamResult, TeamStrategy, runMemberTurn } from './common';
 import { runDiscussionRound } from './hybrid';
+import { logSink } from '../../../core/logSink';
 
 // ── Modalità round-robin (originale) ──
 
@@ -25,7 +26,7 @@ export async function runRoundRobin(
   outer:
   for (let round = 1; round <= maxRounds; round++) {
     roundsDone = round;
-    console.log(chalk.bold.yellow(`\n═══ ROUND ${round}/${maxRounds} ═══`));
+    logSink.log(chalk.bold.yellow(`\n═══ ROUND ${round}/${maxRounds} ═══`));
 
     for (const memberName of team.members) {
       // Limite turni per membro

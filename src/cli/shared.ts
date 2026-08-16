@@ -158,6 +158,11 @@ export function listAvailableTeams(): TeamConfig[] {
   return listAvailableItems('teams', loadTeam);
 }
 
+/** Ruoli effettivamente installati in `roles/`. */
+export function listAvailableRoles(): RoleConfig[] {
+  return listAvailableItems('roles', loadRole);
+}
+
 /**
  * Risolve un riferimento a un agente, dal più specifico al più generico:
  * nome file → nome visibile (aiName) → MESTIERE (ruolo).

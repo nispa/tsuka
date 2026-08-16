@@ -7,8 +7,8 @@
 > Questo file descrive **come funziona il sistema**. Per le regole di lavoro sul codice vedi
 > `AGENTS.md`; per lo stato dei lavori e il debito aperto vedi `TASKS.md`.
 
-**In numeri:** 23 tool · 22 comandi REPL · 21 moduli core · 21 ruoli · 9 tratti ·
-28 personaggi · 10 team · 46 suite di test.
+**In numeri:** 27 tool · 22 comandi REPL · 21 moduli core · 21 ruoli · 9 tratti ·
+22 personaggi · 10 team · 46 suite di test.
 
 ---
 
@@ -100,7 +100,7 @@ sottoinsiemi installabili — `core` copre una competenza distinta per personagg
 
 ## 5. Il sistema dei tool
 
-**23 tool**, con una separazione netta:
+**27 tool**, con una separazione netta:
 
 - **schema** in `tools_schemas/<nome>.json` — descrizione, parametri JSON Schema,
   `requiredTier`, `riskLevel`. Modificabile a caldo (cache invalidata su mtime).
@@ -339,12 +339,11 @@ tempo, non finestra.
 
 ## 13. Comandi
 
-**Sessione**: `/help` `/info` `/context` `/clear` `/reset` `/exit`
-**Identità**: `/role` `/trait` `/character` `/rename-char` `/use`
-**Multi-agente**: `/call` `/team` `/goal`
-**Modello**: `/provider` `/models` `/benchmark` `/effort`
-**Memoria**: `/memory` `/forget`
-**Altro**: `/search-engine`
+**Esecuzione & Multi-agente**: `/goal` `/team` `/call`
+**Modello & Inferenza**: `/models` `/provider` `/effort` `/benchmark`
+**Agente & Strumenti**: `/agent` `/tools`
+**Memoria & Storico**: `/context` `/memory` `/blackboard` `/runs`
+**Sessione & Altro**: `/info` `/reset` `/clear` `/exit` `/search-engine` `/help`
 
 ---
 
@@ -356,12 +355,12 @@ Onestà sullo stato, perché è ciò che serve per decidere dove andare.
   `tsuka.config.json`; il pin di effort è stato di processo. Con un solo utente e una sola
   sessione va bene; con due client concorrenti si sovrascrivono. È il vincolo principale per una
   interfaccia web multi-scheda, e non ha nulla a che vedere con la grafica.
-- **8 file di test non registrati** in `run_tests.ts` (`test_browser`, `test_call`,
-  `test_falco_live`, `test_ollama`, `test_safe_tools`, `test_search`, `test_search_debug`,
-  `test_team`): alcuni richiedono un server o la rete, ma non tutti — e nel frattempo non
-  proteggono da nulla.
-- **L'effort non è propagato da tutti i chiamanti** a `loadSystemPrompt`/`notifyIfUnprofiled`:
-  il default prudente `xhigh` rende la cosa sicura, ma è capacità non sfruttata.
+- **Suite di test deterministica e isolata.** Tutti i 51 file di test automatici offline sono
+  registrati ed eseguiti in `run_tests.ts`. Gli script che richiedono server live o connessione di
+  rete sono organizzati e documentati separatamente in `tests/manual/`.
+- **Propagazione rigorosa dell'effort.** Tutti i chiamanti (`call.ts`, `strategies/`, `spawnAgent.ts`,
+  `provider.ts`, `index.ts`) calcolano e propagano il livello effettivo di `ReasoningEffort` a
+  `loadSystemPrompt`, `notifyIfUnprofiled` e `chatWithTools`.
 - **Attenzione ai timestamp come chiave di cache.** La risoluzione dell'orologio su Windows
   (~15 ms) ha già prodotto due difetti reali in questo codice: l'ordinamento della memoria (che
   per questo usa un contatore logico) e l'invalidazione dei profili (che ora confronta il
@@ -371,18 +370,15 @@ Lo stato aggiornato dei lavori è sempre in `TASKS.md`.
 
 ---
 
-## 15. Da implementare
+## 15. Roadmap e Backlog
 
-Lavoro specificato ma non ancora realizzato. Ogni voce è un task in `TASKS.md` con criteri di
-accettazione e fuori scope; qui c'è il perché, non il come.
+Lavoro specificato in `TASKS.md` con criteri di accettazione:
 
 | | Voce | In una riga |
 |---|---|---|
-| **DA IMPLEMENTARE** | **T8.15** — divergenza contro la cascata | Con un pin attivo l'effort effettivo *è* il pin, quindi la segnalazione non compare mai proprio quando serve: va confrontato il pin con ciò che la cascata avrebbe prodotto. |
-| **DA IMPLEMENTARE** | **T8.16** — catalogo selezionabile | Descrizioni da ~85 caratteri su cui `/goal` sceglie fra 28 personaggi; più ruoli hanno due personaggi e nessuna descrizione dice cosa li separa. |
-| **DA IMPLEMENTARE** | **T8.17** — suggeritore di modalità | Proporre chat / `/team` / `/goal` in base alla richiesta, con classificazione a `reasoning_effort: none` per non aggiungere minuti a ogni messaggio. |
+| **COMPLETATO** | **T12.1** — evoluzione `browse_url` | Parsing HTML-to-Markdown strutturato (`node-html-markdown`), Reader View, tabelle GFM ed estrazione media/immagini per modelli Vision. |
 | **DA DECIDERE** | Stato di sessione globale | `activeRole`/`activeTrait`/`activeCharacter` in configurazione, pin di effort di processo: con due client concorrenti si sovrascrivono. È una decisione, non un bug. |
-| **DA IMPLEMENTARE** | Rifiniture | Propagare l'effort ai chiamanti mancanti; registrare gli 8 test orfani; impostare i parametri di campionamento. |
+| **COMPLETATO** | Rifiniture & Test Coverage | Propagazione effort estesa a tutti i chiamanti, formalizzazione suite a 52 test verdi, isolamento test live in `tests/manual/`. |
 
 ## 16. Verso una nuova interfaccia — IN STANDBY
 

@@ -11,6 +11,8 @@ import { runPipeline, pipelineStrategy } from './strategies/pipeline';
 import { runDiscussionRound, hasUnanimousApproval } from './strategies/hybrid';
 import { writeWorkflowLog } from './workflowLog';
 import { Blackboard } from '../../core/blackboard';
+import { WorkflowScope } from '../../core/workflowScope';
+import { logSink } from '../../core/logSink';
 
 /**
  * Dispatcher di `/team` (T4.2, PLANNING-QUALITA.md): carica il team JSON, sceglie la
@@ -28,16 +30,16 @@ export type { TurnStats, ProtocolLogEntry };
 
 // ── Entry point ──
 
-export async function handleTeam(ctx: CommandCtx, arg: string): Promise<void> {
+export async function handleTeam(ctx: CommandCtx, arg: string, directTask?: string): Promise<void> {
   const availableTeams = ctx.listAvailableItems('teams', ctx.loadTeam);
   if (availableTeams.length === 0) {
     CLITheme.warning('Nessun team configurato trovato nella cartella teams/.');
     return;
   }
 
-  let selectedTeamName = arg.toLowerCase();
+  let selectedTeamName = arg.toLowerCase().trim();
   if (!selectedTeamName) {
-    console.log();
+    logSink.log('');
     const selected = await InteractiveMenu.select<string>(
       'Seleziona il team collaborativo da attivare (usa le frecce):',
       availableTeams.map((t) => ({ title: `${t.displayName} - ${t.description}`, value: t.name })),
@@ -53,30 +55,36 @@ export async function handleTeam(ctx: CommandCtx, arg: string): Promise<void> {
     return;
   }
 
-  console.log();
-  const taskResp = await prompts({
-    type: 'text',
-    name: 'task',
-    message: chalk.cyan.bold('Descrivi il compito da assegnare al Team ❯'),
-  });
-  const task = taskResp.task?.trim();
+  let task = (directTask || '').trim();
+  if (!task) {
+    logSink.log('');
+    const taskResp = await prompts({
+      type: 'text',
+      name: 'task',
+      message: chalk.cyan.bold('Descrivi il compito da assegnare al Team ❯'),
+    });
+    task = taskResp.task?.trim() || '';
+  }
+
   if (!task) {
     CLITheme.warning('Operazione annullata: nessun compito specificato.');
     return;
   }
 
+  return WorkflowScope.withScope('team', async () => {
+
   const maxRounds = ctx.configManager.getTeamMaxRounds();
   const modeLabel = team.mode === 'orchestrated' ? 'Orchestrato' : team.mode === 'pipeline' ? 'Pipeline' : 'Round-robin';
   const hybridInfo = (team.discussionRounds ?? 0) > 0 ? ` + ${team.discussionRounds} discussione/i per round` : '';
-  console.log(chalk.bold('\n🚀 [AVVIO WORKFLOW COLLABORATIVO DI TEAM]'));
-  console.log(`Team:        ${chalk.green(team.displayName)}`);
-  console.log(`Modalità:    ${chalk.cyan(modeLabel)}${hybridInfo}`);
-  console.log(`Membri:      ${team.members.map((m: string) => chalk.cyan(m)).join(', ')}`);
+  logSink.log(chalk.bold('\n🚀 [AVVIO WORKFLOW COLLABORATIVO DI TEAM]'));
+  logSink.log(`Team:        ${chalk.green(team.displayName)}`);
+  logSink.log(`Modalità:    ${chalk.cyan(modeLabel)}${hybridInfo}`);
+  logSink.log(`Membri:      ${team.members.map((m: string) => chalk.cyan(m)).join(', ')}`);
   if (team.orchestrator && team.mode === 'orchestrated') {
-    console.log(`Orchestrator: ${chalk.magenta(team.orchestrator)}`);
+    logSink.log(`Orchestrator: ${chalk.magenta(team.orchestrator)}`);
   }
-  console.log(`Obiettivo:   "${chalk.yellow(task)}"`);
-  console.log(`Round max:   ${chalk.cyan(maxRounds)} (stop anticipato a compito risolto)\n`);
+  logSink.log(`Obiettivo:   "${chalk.yellow(task)}"`);
+  logSink.log(`Round max:   ${chalk.cyan(maxRounds)} (stop anticipato a compito risolto)\n`);
 
   // Cronologia condivisa tra tutti i membri e tutti i round
   const teamMessages: ChatMessage[] = seedTeamMessages(task);
@@ -119,7 +127,7 @@ export async function handleTeam(ctx: CommandCtx, arg: string): Promise<void> {
     Blackboard.endRun(runId);
   }
 
-  console.log(chalk.bold('🚀 [FINE WORKFLOW COLLABORATIVO DI TEAM]\n'));
+  logSink.log(chalk.bold('🚀 [FINE WORKFLOW COLLABORATIVO DI TEAM]\n'));
   writeWorkflowLog({ team, task, completed, failed, roundsDone, teamMessages, turnLog, blackboard: blackboardSnapshot });
 
   const finalReport = completed
@@ -141,4 +149,5 @@ export async function handleTeam(ctx: CommandCtx, arg: string): Promise<void> {
 
   ctx.agent.current.getMessages().push({ role: 'user', content: `Lavoro di team completato per: "${task}"` });
   ctx.agent.current.getMessages().push({ role: 'assistant', content: finalReport });
+  });
 }

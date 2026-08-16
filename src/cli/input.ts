@@ -24,8 +24,10 @@ const MAX_HISTORY = 100;
  */
 export interface CompletionSource {
   commands: string[];
-  /** Opzioni di completamento per l'argomento di un dato comando (es. '/use' → modelli). */
+  /** Opzioni di completamento per l'argomento di un dato comando (es. '/agent' → personaggi). */
   argumentsFor?: (command: string) => string[];
+  /** Opzioni di completamento per le menzioni con @ (es. '@geordi', '@developer'). */
+  mentions?: () => string[];
 }
 
 let completionSource: CompletionSource | null = null;
@@ -36,21 +38,34 @@ export function setCompletionSource(source: CompletionSource): void {
 
 /** Esportata per i test. Formato readline: [candidati, sottostringa da sostituire]. */
 export function completeLine(line: string): [string[], string] {
-  if (!completionSource || !line.startsWith('/')) return [[], line];
+  if (!completionSource) return [[], line];
 
   const parts = line.split(' ');
-  if (parts.length === 1) {
-    // Completa il nome del comando
-    const hits = completionSource.commands.filter((c) => c.startsWith(line));
-    return [hits, line];
+  const last = parts[parts.length - 1];
+
+  // 1. Completamento mention @ in qualsiasi punto della riga (es. /call @g, @sp, parlane con @w)
+  if (last.startsWith('@')) {
+    const allMentions = completionSource.mentions?.() ?? [];
+    const hits = allMentions.filter((m) => m.toLowerCase().startsWith(last.toLowerCase()));
+    return [hits, last];
   }
 
-  // Completa l'ultima parola come argomento del comando
-  const command = parts[0].toLowerCase();
-  const last = parts[parts.length - 1];
-  const options = completionSource.argumentsFor?.(command) ?? [];
-  const hits = options.filter((o) => o.toLowerCase().startsWith(last.toLowerCase()));
-  return [hits, last];
+  // 2. Completamento comandi slash
+  if (line.startsWith('/')) {
+    if (parts.length === 1) {
+      // Completa il nome del comando (es. /mo -> /models)
+      const hits = completionSource.commands.filter((c) => c.startsWith(line));
+      return [hits, line];
+    }
+
+    // Completa l'ultima parola come argomento del comando
+    const command = parts[0].toLowerCase();
+    const options = completionSource.argumentsFor?.(command) ?? [];
+    const hits = options.filter((o) => o.toLowerCase().startsWith(last.toLowerCase()));
+    return [hits, last];
+  }
+
+  return [[], line];
 }
 
 // History in memoria, dal più recente al più vecchio (formato readline)

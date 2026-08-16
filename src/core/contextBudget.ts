@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import { ConfigManager, CONFIG_PATH } from './config';
+import { ChatMessage } from './types';
 
 /**
  * Tetto di contesto per un singolo risultato di tool (T8.8).
@@ -47,6 +48,37 @@ function getSharedConfigManager(): ConfigManager {
 /** Tetto configurato (o di default) per un singolo risultato di tool, in token stimati. */
 export function getMaxToolResultTokens(): number {
   return getSharedConfigManager().getMaxToolResultTokens();
+}
+
+/** Somma i caratteri di un array di messaggi (content + tool_calls serializzati). */
+export function sumMessageChars(msgs: Array<Pick<ChatMessage, 'content' | 'tool_calls'>>): number {
+  let chars = 0;
+  for (const m of msgs) {
+    if (typeof m.content === 'string') chars += m.content.length;
+    if (m.tool_calls) {
+      try { chars += JSON.stringify(m.tool_calls).length; } catch {}
+    }
+  }
+  return chars;
+}
+
+/**
+ * Stima i token di un array di messaggi. Unica implementazione della formula
+ * caratteri→token condivisa da `Agent`, `/goal` e `/context` (prima erano tre
+ * copie sincronizzate a mano da un commento).
+ *
+ * Default `charsPerToken = CHARS_PER_TOKEN` (fisso): per stime che vivono FUORI
+ * da un `Agent` o prima che ne esista uno — `/goal` attraversa più agenti
+ * effimeri (uno per membro del team), quindi non c'è "il" rapporto calibrato di
+ * uno solo da applicare a tutta la history condivisa. Chi ha un `Agent` a
+ * disposizione passa invece il proprio rapporto tarato a runtime
+ * (`Agent.estimateMessagesTokens` fa esattamente questo con `this.charsPerToken`).
+ */
+export function estimateMessagesTokens(
+  msgs: Array<Pick<ChatMessage, 'content' | 'tool_calls'>>,
+  charsPerToken: number = CHARS_PER_TOKEN
+): number {
+  return Math.ceil(sumMessageChars(msgs) / charsPerToken);
 }
 
 export interface CapForContextOptions {

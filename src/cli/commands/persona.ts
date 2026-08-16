@@ -1,25 +1,53 @@
-import * as fs from 'fs';
-import { homePath } from '../../core/apphome';
 import { CommandCtx } from './types';
 import { CLITheme, InteractiveMenu } from '../ui';
 import chalk from 'chalk';
-import { RoleConfig, TraitConfig } from '../index';
+import { logSink } from '../../core/logSink';
 
-export async function handleCharacter(ctx: CommandCtx, _arg: string): Promise<void> {
+/**
+ * Comando `/agent`: gestore unificato dell'agente attivo.
+ * Permette di selezionare o commutare il profilo agente/personaggio attivo.
+ */
+export async function handleAgent(ctx: CommandCtx, arg: string): Promise<void> {
   const availableChars = ctx.listAvailableCharacters();
 
-  const menuOptions = [
-    ...availableChars.map((c) => ({
-      title: `${c.displayName} [Ruolo: ${c.role} | Stile: ${c.trait}] - ${c.description}`,
-      value: c.name
-    })),
-    { title: '⚙️ Modalità Personalizzata (Usa ruolo e attitudine impostati singolarmente)', value: 'custom' }
-  ];
+  if (arg) {
+    const target = arg.trim().toLowerCase().replace(/^@/, '');
+    const found = availableChars.find(
+      (c) => c.name.toLowerCase() === target || c.aiName.toLowerCase() === target || c.displayName.toLowerCase() === target
+    );
+
+    if (!found) {
+      CLITheme.error(`Personaggio/Agente '${arg}' non trovato.`);
+      logSink.log(chalk.gray(`Disponibili: ${availableChars.map((c) => c.displayName).join(', ')}`));
+      return;
+    }
+
+    ctx.configManager.setActiveCharacter(found.name);
+    ctx.agent.current = ctx.recreateAgent();
+    CLITheme.success(`Agente attivo: ${chalk.green(found.displayName)} (${chalk.yellow(found.aiName)})`);
+    CLITheme.info(`Ruolo: ${chalk.cyan(found.role)} · Stile: ${chalk.gray(found.trait)}`);
+    return;
+  }
 
   const currentCharName = ctx.configManager.getActiveCharacter();
-  console.log();
+  const currentChar = ctx.loadCharacter(currentCharName);
+
+  logSink.log(chalk.bold('\n👤 Configurazione Agente'));
+  if (currentChar) {
+    logSink.log(`  • Attivo:      ${chalk.green(currentChar.displayName)} (${chalk.yellow(currentChar.aiName)})`);
+    logSink.log(`  • Ruolo:       ${chalk.cyan(currentChar.role)}`);
+    logSink.log(`  • Stile:       ${chalk.gray(currentChar.trait)}`);
+    logSink.log(`  • Descrizione: ${chalk.white(currentChar.description)}`);
+  }
+  logSink.log('');
+
+  const menuOptions = availableChars.map((c) => ({
+    title: `${c.displayName.padEnd(16)} [${c.role}] - ${c.description}`,
+    value: c.name
+  }));
+
   const selected = await InteractiveMenu.select<string>(
-    'Seleziona il personaggio da attivare (usa le frecce):',
+    'Seleziona l\'agente da attivare (usa le frecce):',
     menuOptions,
     currentCharName
   );
@@ -27,145 +55,9 @@ export async function handleCharacter(ctx: CommandCtx, _arg: string): Promise<vo
   if (selected) {
     ctx.configManager.setActiveCharacter(selected);
     ctx.agent.current = ctx.recreateAgent();
-
-    if (selected === 'custom') {
-      CLITheme.success('Passato a modalità personalizzata (ruolo e attitudine slegati).');
-    } else {
-      const selectedCharObj = ctx.loadCharacter(selected);
-      if (selectedCharObj) {
-        CLITheme.success(`Personaggio attivo cambiato a: ${chalk.green(selectedCharObj.displayName)} (${chalk.yellow(selectedCharObj.aiName)})`);
-      }
+    const selectedCharObj = ctx.loadCharacter(selected);
+    if (selectedCharObj) {
+      CLITheme.success(`Agente attivo cambiato a: ${chalk.green(selectedCharObj.displayName)} (${chalk.yellow(selectedCharObj.aiName)})`);
     }
   }
 }
-
-export async function handleRenameChar(ctx: CommandCtx, arg: string): Promise<void> {
-  const charName = ctx.configManager.getActiveCharacter();
-  if (charName === 'custom') {
-    CLITheme.error('Impossibile rinominare in modalità personalizzata (seleziona prima un personaggio con /character).');
-    return;
-  }
-  if (!arg) {
-    CLITheme.error('Specificare il nuovo nome per il personaggio. Es: /rename-char Carlo');
-    return;
-  }
-
-  try {
-    const charPath = homePath('characters', `${charName}.json`);
-    if (fs.existsSync(charPath)) {
-      const raw = fs.readFileSync(charPath, 'utf-8');
-      const data = JSON.parse(raw) as any;
-      const oldName = data.aiName;
-      data.aiName = arg;
-      fs.writeFileSync(charPath, JSON.stringify(data, null, 2), 'utf-8');
-      ctx.agent.current = ctx.recreateAgent();
-      CLITheme.success(`Personaggio '${data.displayName}' rinominato da '${oldName}' a '${chalk.green(arg)}'!`);
-    }
-  } catch (err: any) {
-    CLITheme.error(`Errore nel rinominare il personaggio: ${err.message}`);
-  }
-}
-
-export async function handleRole(ctx: CommandCtx, _arg: string): Promise<void> {
-  const availableRoles = ctx.listAvailableItems<RoleConfig>('roles', ctx.loadRole);
-
-  if (availableRoles.length === 0) {
-    CLITheme.warning('Nessun ruolo configurato trovato nella cartella roles/.');
-    return;
-  }
-
-  const currentRoleName = ctx.configManager.getActiveRole();
-  console.log();
-  const selectedRoleName = await InteractiveMenu.select<string>(
-    "Seleziona il ruolo attivo dell'agente (usa le frecce):",
-    availableRoles.map((r) => ({
-      title: `${r.displayName} - ${r.description}${r.name === currentRoleName ? ' (selezionato)' : ''}`,
-      value: r.name,
-    })),
-    currentRoleName
-  );
-
-  if (selectedRoleName) {
-    ctx.configManager.setActiveCharacter('custom');
-    ctx.configManager.setActiveRole(selectedRoleName);
-    ctx.agent.current = ctx.recreateAgent();
-    const roleObj = ctx.loadRole(selectedRoleName);
-    CLITheme.success(`Ruolo dell'agente cambiato a: ${chalk.green(roleObj.displayName)} (Selezionato stile manuale)`);
-    CLITheme.info(`Tool abilitati per questo ruolo: ${chalk.cyan(roleObj.allowedTools.join(', '))}`);
-  }
-}
-
-export async function handleTrait(ctx: CommandCtx, _arg: string): Promise<void> {
-  const availableTraits = ctx.listAvailableItems<TraitConfig>('traits', ctx.loadTrait);
-
-  if (availableTraits.length === 0) {
-    CLITheme.warning('Nessun tratto caratteriale trovato nella cartella traits/.');
-    return;
-  }
-
-  const currentTraitName = ctx.configManager.getActiveTrait();
-  console.log();
-  const selectedTraitName = await InteractiveMenu.select<string>(
-    "Seleziona il tratto caratteriale / attitudine dell'agente (usa le frecce):",
-    availableTraits.map((t) => ({
-      title: `${t.displayName} - ${t.description}${t.name === currentTraitName ? ' (selezionato)' : ''}`,
-      value: t.name,
-    })),
-    currentTraitName
-  );
-
-  if (selectedTraitName) {
-    ctx.configManager.setActiveCharacter('custom');
-    ctx.configManager.setActiveTrait(selectedTraitName);
-    ctx.agent.current = ctx.recreateAgent();
-    const traitObj = ctx.loadTrait(selectedTraitName);
-    CLITheme.success(`Attitudine dell'agente cambiata a: ${chalk.green(traitObj.displayName)} (Selezionato stile manuale)`);
-  }
-}
-
-export async function handleSkill(ctx: CommandCtx, arg: string): Promise<void> {
-  const activeCharName = ctx.configManager.getActiveCharacter();
-  const charObj = activeCharName !== 'custom' ? ctx.loadCharacter(activeCharName) : null;
-  const availableRoles = (charObj?.roles && charObj.roles.length > 0)
-    ? charObj.roles
-    : (charObj?.role ? [charObj.role] : [ctx.configManager.getActiveRole()]);
-
-  if (arg) {
-    const targetSkill = arg.trim().toLowerCase();
-    if (!availableRoles.includes(targetSkill) && activeCharName !== 'custom') {
-      CLITheme.error(`Skill '${targetSkill}' non presente tra quelle sbloccate per ${charObj?.displayName || activeCharName} (Skill sbloccate: ${availableRoles.join(', ')}).`);
-      return;
-    }
-    ctx.configManager.setActiveRole(targetSkill);
-    if (charObj) {
-      charObj.activeRole = targetSkill;
-    }
-    ctx.agent.current = ctx.recreateAgent();
-    CLITheme.success(`Skill attiva per l'agente commutata su: ${chalk.green(targetSkill)}.`);
-    return;
-  }
-
-  console.log();
-  const currentSkill = charObj?.activeRole || charObj?.role || ctx.configManager.getActiveRole();
-  const selectedSkill = await InteractiveMenu.select<string>(
-    `Seleziona la skill/ruolo da attivare per ${charObj?.displayName || 'l\'agente'} (usa le frecce):`,
-    availableRoles.map((r) => {
-      const rObj = ctx.loadRole(r);
-      return {
-        title: `${rObj.displayName} - ${rObj.description}${r === currentSkill ? ' (attiva)' : ''}`,
-        value: r
-      };
-    }),
-    currentSkill
-  );
-
-  if (selectedSkill) {
-    ctx.configManager.setActiveRole(selectedSkill);
-    if (charObj) {
-      charObj.activeRole = selectedSkill;
-    }
-    ctx.agent.current = ctx.recreateAgent();
-    CLITheme.success(`Skill attiva per l'agente commutata su: ${chalk.green(selectedSkill)}.`);
-  }
-}
-

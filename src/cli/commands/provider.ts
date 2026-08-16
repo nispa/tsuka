@@ -85,7 +85,7 @@ export async function handleProvider(ctx: CommandCtx, arg: string): Promise<void
       ctx.agent.current = ctx.recreateAgent();
     }
     CLITheme.success(`Modello attivo: ${chalk.green(ctx.provider.getCurrentModel())}`);
-    notifyIfUnprofiled(ctx.provider.getCurrentModel());
+    notifyIfUnprofiled(ctx.provider.getCurrentModel(), ctx.agent.current.getReasoningEffort());
   } catch (err: any) {
     checkSpinner.fail(chalk.red(`Impossibile verificare la connessione per ${target}.`));
     CLITheme.warning('Il provider è stato aggiornato, ma il server non risponde.');
@@ -136,7 +136,7 @@ async function pickModel(ctx: CommandCtx): Promise<boolean> {
         CLITheme.info(`Finestra di contesto attiva: ${chalk.green(dynamicCtx.toLocaleString())} token (rilevata dal server)`);
       }
       await maybeWarmUp(ctx, selectedModel, loadedModel);
-      notifyIfUnprofiled(selectedModel);
+      notifyIfUnprofiled(selectedModel, ctx.agent.current.getReasoningEffort());
       return true;
     }
   } catch (err: any) {
@@ -146,13 +146,8 @@ async function pickModel(ctx: CommandCtx): Promise<boolean> {
   return false;
 }
 
-export async function handleModels(ctx: CommandCtx, _arg: string): Promise<void> {
-  await pickModel(ctx);
-}
-
-export async function handleUse(ctx: CommandCtx, arg: string): Promise<void> {
+export async function handleModels(ctx: CommandCtx, arg: string): Promise<void> {
   if (!arg) {
-    console.log(chalk.gray('Nessun modello specificato. Mostro la lista interattiva...'));
     await pickModel(ctx);
     return;
   }
@@ -178,10 +173,10 @@ export async function handleUse(ctx: CommandCtx, arg: string): Promise<void> {
         CLITheme.info(`Finestra di contesto attiva: ${chalk.green(dynamicCtx.toLocaleString())} token (rilevata dal server)`);
       }
       await maybeWarmUp(ctx, arg, scan?.loadedModel ?? null);
-      notifyIfUnprofiled(arg);
+      notifyIfUnprofiled(arg, ctx.agent.current.getReasoningEffort());
     } else {
       CLITheme.error(`Il modello '${arg}' non è presente su questo server.`);
-      console.log(chalk.gray(`Usa ${chalk.cyan('/models')} per vedere l'elenco.`));
+      console.log(chalk.gray(`Usa ${chalk.cyan('/models')} senza argomenti per vedere l'elenco interattivo.`));
     }
   } catch (err: any) {
     spinner.stop();
@@ -191,7 +186,7 @@ export async function handleUse(ctx: CommandCtx, arg: string): Promise<void> {
     ctx.agent.current = ctx.recreateAgent();
     CLITheme.printModelChanged(oldModel, arg);
     CLITheme.warning(`Modello impostato forzatamente a '${arg}' (errore di verifica server).`);
-    notifyIfUnprofiled(arg);
+    notifyIfUnprofiled(arg, ctx.agent.current.getReasoningEffort());
   }
 }
 

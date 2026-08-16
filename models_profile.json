@@ -428,6 +428,221 @@
       ],
       "reasoningEffort": "xhigh",
       "avgCompletionTokens": 211
+    },
+    "mradermacher/Qwen3.8-27B-heretic-ara-i1-GGUF@none": {
+      "model": "mradermacher/Qwen3.8-27B-heretic-ara-i1-GGUF",
+      "provider": "http://127.0.0.1:8888/v1",
+      "tier": "medium",
+      "scores": {
+        "instruction": 0.8,
+        "json": 1,
+        "toolCalling": 1
+      },
+      "tokensPerSecond": 7.1,
+      "testedAt": "2026-08-16T16:29:39.296Z",
+      "benchmarkVersion": 4,
+      "testsHash": "98ac6763",
+      "testResults": [
+        {
+          "name": "frase_8_parole",
+          "category": "instruction",
+          "score": 0.6
+        },
+        {
+          "name": "lista_vincoli_negativi",
+          "category": "instruction",
+          "score": 1
+        },
+        {
+          "name": "json_prodotti",
+          "category": "json",
+          "score": 1
+        },
+        {
+          "name": "json_annidato",
+          "category": "json",
+          "score": 1
+        },
+        {
+          "name": "catena_tool_distrattori",
+          "category": "toolCalling",
+          "score": 1
+        },
+        {
+          "name": "trappola_astensione",
+          "category": "toolCalling",
+          "score": 1
+        },
+        {
+          "name": "tool_write_append",
+          "category": "toolCalling",
+          "score": 1
+        }
+      ],
+      "reasoningEffort": "none",
+      "avgCompletionTokens": 46
+    },
+    "mradermacher/Qwen3.8-27B-heretic-ara-i1-GGUF@low": {
+      "model": "mradermacher/Qwen3.8-27B-heretic-ara-i1-GGUF",
+      "provider": "http://127.0.0.1:8888/v1",
+      "tier": "large",
+      "scores": {
+        "instruction": 1,
+        "json": 1,
+        "toolCalling": 1
+      },
+      "tokensPerSecond": 19.5,
+      "testedAt": "2026-08-16T16:31:05.749Z",
+      "benchmarkVersion": 4,
+      "testsHash": "98ac6763",
+      "testResults": [
+        {
+          "name": "frase_8_parole",
+          "category": "instruction",
+          "score": 1
+        },
+        {
+          "name": "lista_vincoli_negativi",
+          "category": "instruction",
+          "score": 1
+        },
+        {
+          "name": "json_prodotti",
+          "category": "json",
+          "score": 1
+        },
+        {
+          "name": "json_annidato",
+          "category": "json",
+          "score": 1
+        },
+        {
+          "name": "catena_tool_distrattori",
+          "category": "toolCalling",
+          "score": 1
+        },
+        {
+          "name": "trappola_astensione",
+          "category": "toolCalling",
+          "score": 1
+        },
+        {
+          "name": "tool_write_append",
+          "category": "toolCalling",
+          "score": 1
+        }
+      ],
+      "reasoningEffort": "low",
+      "avgCompletionTokens": 186
+    },
+    "mradermacher/Qwen3.8-27B-heretic-ara-i1-GGUF@medium": {
+      "model": "mradermacher/Qwen3.8-27B-heretic-ara-i1-GGUF",
+      "provider": "http://127.0.0.1:8888/v1",
+      "tier": "large",
+      "scores": {
+        "instruction": 1,
+        "json": 1,
+        "toolCalling": 1
+      },
+      "tokensPerSecond": 19,
+      "testedAt": "2026-08-16T16:32:42.460Z",
+      "benchmarkVersion": 4,
+      "testsHash": "98ac6763",
+      "testResults": [
+        {
+          "name": "frase_8_parole",
+          "category": "instruction",
+          "score": 1
+        },
+        {
+          "name": "lista_vincoli_negativi",
+          "category": "instruction",
+          "score": 1
+        },
+        {
+          "name": "json_prodotti",
+          "category": "json",
+          "score": 1
+        },
+        {
+          "name": "json_annidato",
+          "category": "json",
+          "score": 1
+        },
+        {
+          "name": "catena_tool_distrattori",
+          "category": "toolCalling",
+          "score": 1
+        },
+        {
+          "name": "trappola_astensione",
+          "category": "toolCalling",
+          "score": 1
+        },
+        {
+          "name": "tool_write_append",
+          "category": "toolCalling",
+          "score": 1
+        }
+      ],
+      "reasoningEffort": "medium",
+      "avgCompletionTokens": 208
+    },
+    "mradermacher/Qwen3.8-27B-heretic-ara-i1-GGUF@xhigh": {
+      "model": "mradermacher/Qwen3.8-27B-heretic-ara-i1-GGUF",
+      "provider": "http://127.0.0.1:8888/v1",
+      "tier": "large",
+      "scores": {
+        "instruction": 1,
+        "json": 1,
+        "toolCalling": 1
+      },
+      "tokensPerSecond": 18.7,
+      "testedAt": "2026-08-16T16:34:02.711Z",
+      "benchmarkVersion": 4,
+      "testsHash": "98ac6763",
+      "testResults": [
+        {
+          "name": "frase_8_parole",
+          "category": "instruction",
+          "score": 1
+        },
+        {
+          "name": "lista_vincoli_negativi",
+          "category": "instruction",
+          "score": 1
+        },
+        {
+          "name": "json_prodotti",
+          "category": "json",
+          "score": 1
+        },
+        {
+          "name": "json_annidato",
+          "category": "json",
+          "score": 1
+        },
+        {
+          "name": "catena_tool_distrattori",
+          "category": "toolCalling",
+          "score": 1
+        },
+        {
+          "name": "trappola_astensione",
+          "category": "toolCalling",
+          "score": 1
+        },
+        {
+          "name": "tool_write_append",
+          "category": "toolCalling",
+          "score": 1
+        }
+      ],
+      "reasoningEffort": "xhigh",
+      "avgCompletionTokens": 170
     }
+  },
+  "recommendations": {
+    "mradermacher/Qwen3.8-27B-heretic-ara-i1-GGUF": "low"
   }
 }

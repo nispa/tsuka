@@ -11,6 +11,7 @@ import { ContextTracker } from '../../../core/contextTracker';
 import { Blackboard } from '../../../core/blackboard';
 import { sanitizeToolCallArguments } from '../../../tools/jsonRepair';
 import { ChatMessage, TurnOutcome, ProtocolSource, TeamConfig } from '../../../core/types';
+import { logSink } from '../../../core/logSink';
 
 /**
  * Utility condivise dalle strategie di team (T4.2, PLANNING-QUALITA.md):
@@ -177,10 +178,15 @@ export async function runMemberTurn(
   const roleObj = ctx.loadRole(memberChar.role);
   const traitObj = ctx.loadTrait(memberChar.trait);
 
-  console.log(chalk.bold.blue(`\n[TURNO DI LAVORO: ${memberChar.displayName}]`));
-  console.log(chalk.gray(`Ruolo: ${roleObj.displayName} | Attitudine: ${traitObj.displayName}`));
+  // T8.10: cascata override chiamante (nessuno, qui) → personaggio → ruolo → default config.
+  const cascadedEffort = resolveReasoningEffort(undefined, memberChar, roleObj, ctx.configManager.getDefaultReasoningEffort());
+  // T8.14: il pin globale si applica sopra la cascata, invariata. Qui (/team e
+  // /goal, che riusa runMemberTurn) la divergenza dal riferimento è SEMPRE solo
+  // una riga di log — mai un prompt, a prescindere dalla modalità ask globale:
+  // è il vincolo esplicito del task (un flusso a più turni non deve mai bloccarsi).
+  const reasoningEffort = withEffortPin(cascadedEffort);
 
-  let sysPrompt = loadSystemPrompt(roleObj, traitObj, ctx.provider.getCurrentModel(), ctx.registry, memberChar, task);
+  let sysPrompt = loadSystemPrompt(roleObj, traitObj, ctx.provider.getCurrentModel(), ctx.registry, memberChar, task, reasoningEffort);
   sysPrompt += `\n\n[COLLABORATIVE CONTEXT]: You are working on a team task: "${task}".
     This is your active work turn (round ${round}/${maxRounds}). Analyze the task and what previous colleagues did (inspect workspace files and history if needed).
     Use your tools (read, write, edit, search, commands) to advance or complete the work YOURSELF. 'spawn_agent' is for splitting off an INDEPENDENT sub-task while you keep working on the rest — never for handing off this entire assigned task verbatim: that is not delegation, it is skipping your turn. If spawn_agent rejects your call for being too long, that is a signal to do the work directly, not to retry the same call.
@@ -200,14 +206,6 @@ SHARED BLACKBOARD (optional): this run has a shared blackboard, separate from th
   // tool "liberi" ma parte del protocollo di coordinamento (T2.1/T6.2), non sono
   // offerti nella chat normale.
   const memberAllowedTools = [...(roleObj.allowedTools || []), 'report_status', 'post_note', 'read_notes'];
-
-  // T8.10: cascata override chiamante (nessuno, qui) → personaggio → ruolo → default config.
-  const cascadedEffort = resolveReasoningEffort(undefined, memberChar, roleObj, ctx.configManager.getDefaultReasoningEffort());
-  // T8.14: il pin globale si applica sopra la cascata, invariata. Qui (/team e
-  // /goal, che riusa runMemberTurn) la divergenza dal riferimento è SEMPRE solo
-  // una riga di log — mai un prompt, a prescindere dalla modalità ask globale:
-  // è il vincolo esplicito del task (un flusso a più turni non deve mai bloccarsi).
-  const reasoningEffort = withEffortPin(cascadedEffort);
   logEffortDivergence(memberChar.aiName, reasoningEffort, ctx.configManager.getDefaultReasoningEffort());
 
   const tempAgent = new Agent(
@@ -268,7 +266,7 @@ SHARED BLACKBOARD (optional): this run has a shared blackboard, separate from th
       return 'interrupted';
     }
     renderer.finish();
-    console.log();
+    logSink.log('');
   } catch (err: any) {
     renderer.abort();
     if (interrupt.aborted) {
@@ -309,11 +307,11 @@ SHARED BLACKBOARD (optional): this run has a shared blackboard, separate from th
   }
 
   if (decision.status === 'completed') {
-    console.log(chalk.green.bold(`\n✔ ${memberChar.aiName} ha dichiarato il compito COMPLETATO.`));
+    logSink.log(chalk.green.bold(`\n✔ ${memberChar.aiName} ha dichiarato il compito COMPLETATO.`));
     return 'completed';
   }
   if (decision.status === 'failed') {
-    console.log(chalk.red.bold(`\n✘ ${memberChar.aiName} ha dichiarato il compito FALLITO.`));
+    logSink.log(chalk.red.bold(`\n✘ ${memberChar.aiName} ha dichiarato il compito FALLITO.`));
     return 'failed';
   }
 

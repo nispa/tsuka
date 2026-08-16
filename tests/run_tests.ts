@@ -73,7 +73,14 @@ const suites = [
   'test_reasoning_memory.ts',
   'test_context_detection.ts',
   'test_toolcall_sanitization.ts',
-  'test_reasoning_budget.ts'
+  'test_reasoning_budget.ts',
+  'test_safe_tools.ts',
+  'test_call.ts',
+  'test_team.ts',
+  'test_browser_evolution.ts',
+  'test_download_file.ts',
+  'test_mention_completion.ts',
+  'test_escalation_tools.ts'
 ];
 
 let passed = 0;

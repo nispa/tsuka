@@ -33,8 +33,42 @@ function showFact(fact: MemoryFact): void {
   CLITheme.box(`Ricordo ${fact.id} — ${date} (${fact.source})`, lines, chalk.magenta);
 }
 
-export async function handleMemory(ctx: CommandCtx, _arg: string): Promise<void> {
+import prompts from 'prompts';
+
+export async function handleMemory(ctx: CommandCtx, arg: string): Promise<void> {
   const store = MemoryStore.getInstance();
+  const trimmedArg = (arg || '').trim().toLowerCase();
+
+  if (trimmedArg === 'clear' || trimmedArg === 'svuota' || trimmedArg === 'all') {
+    const count = store.count();
+    if (count === 0) {
+      CLITheme.info('La memoria condivisa è già vuota.');
+      return;
+    }
+    console.log();
+    const confirm = await prompts({
+      type: 'confirm',
+      name: 'ok',
+      message: chalk.red(`Eliminare TUTTI i ${count} ricordi dalla memoria condivisa?`),
+      initial: false
+    });
+    if (confirm.ok) {
+      store.clear();
+      CLITheme.success('Memoria condivisa svuotata.');
+    } else {
+      CLITheme.info('Operazione annullata.');
+    }
+    return;
+  }
+
+  if (trimmedArg) {
+    if (store.remove(trimmedArg)) {
+      CLITheme.success(`Ricordo '${trimmedArg}' eliminato dalla memoria condivisa.`);
+    } else {
+      CLITheme.error(`Nessun ricordo trovato con id '${trimmedArg}'.`);
+    }
+    return;
+  }
 
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
     plainList(store);

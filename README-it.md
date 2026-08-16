@@ -137,8 +137,8 @@ Il profilo è salvato in `models_profile.json`. `getModelTier()` usa prima il pr
 | Tier | Tool disponibili | Esclusi |
 |------|----------------|---------|
 | **SMALL** | 20 tool (lettura, scrittura, diagnostica, web, memoria, protocollo) | `execute_command`, `create_tool`, `spawn_agent` |
-| **MEDIUM** | 23 tool | — |
-| **LARGE** | 23 tool | — |
+| **MEDIUM** | 27 tool | — |
+| **LARGE** | 27 tool | — |
 
 ### 4. Tracciamento Oggettivo delle Fonti Web
 
@@ -155,8 +155,7 @@ Prompt ← formatForPrompt()      ← memory/memory.json  (iniezione automatica)
 ```
 
 ```powershell
-/memory                      # Elenca i ricordi recenti
-/forget <id|all>             # Rimuove un ricordo specifico o svuota tutto
+/memory                      # Elenca e gestisce i ricordi (o /memory clear per svuotare)
 ```
 
 La cronologia chat è anche potata automaticamente (`maxHistoryMessages` in `tsuka.config.json`, default 40) senza rompere le coppie tool_call/tool.
@@ -258,28 +257,23 @@ Collaborazione sequenziale su uno spazio di lavoro condiviso:
 
 | Comando | Descrizione |
 |---------|-------------|
-| `/help` | Mostra la guida comandi |
-| `/models` | Elenca e seleziona modelli disponibili |
-| `/use <modello>` | Seleziona rapidamente un modello per nome |
-| `/benchmark [modello\|all]` | Misura le capacità del modello → salva profilo |
-| `/provider` | Cambia tra Ollama e OpenRouter |
-| `/character` | Carica un personaggio preset |
-| `/rename-char <nome>` | Rinomina l'`aiName` del personaggio attivo |
-| `/role` | Cambia ruolo agente (competenze/tool) |
-| `/skill [nome]` | Commuta la skill attiva per personaggi multi-skill |
-| `/trait` | Cambia tratto caratteriale agente |
+| `/goal <obiettivo>` | Orchestratore dinamico di obiettivi — seleziona agenti, assegna task ed esegue |
+| `/team [nome]` | Avvia un workflow di team o una pipeline predefinita |
+| `/call [@agenti...]` | Avvia un dibattito/conferenza multi-agente |
+| `/models [modello]` | Elenca e seleziona i modelli disponibili sul server |
+| `/provider [nome]` | Cambia tra Ollama, Unsloth e OpenRouter |
 | `/effort [livello]` | Gestisce lo sforzo di ragionamento (`none`\|`low`\|`medium`\|`xhigh`\|`auto`\|`ask`) |
-| `/goal <obiettivo>` | Orchestratore dinamico di obiettivi — seleziona agenti, assegna task ed esegue autonomamente |
-| `/team` | Avvia un workflow collaborativo di team |
-| `/call [nomi]` | Avvia un dibattito multi-agente |
-| `/search-engine` | Cambia provider di ricerca (DuckDuckGo / Google / Tavily) |
-| `/memory` | Elenca i ricordi persistenti |
-| `/forget <id\|all>` | Elimina ricordi specifici o svuota tutto |
+| `/benchmark [modello\|all]` | Misura le capacità del modello (tier e tok/s) |
+| `/agent [nome]` | Mostra o seleziona l'agente attivo |
+| `/tools` | Mostra i tool abilitati per ruolo, tier ed effort |
 | `/context` | Mostra il consumo di token della cronologia rispetto al budget |
+| `/memory [clear\|<id>]` | Gestisce, legge o svuota i ricordi persistenti |
+| `/blackboard` | Mostra note e stato dell'ultimo workflow/goal |
+| `/runs` | Mostra storico e report delle esecuzioni recenti |
+| `/info` | Mostra informazioni sessione (provider, modello, agente) |
 | `/reset` | Resetta cronologia + approvazioni sicurezza |
-| `/info` | Mostra informazioni sessione (provider, modello, ruolo, tratto) |
-| `/clear` | Pulisce il terminale |
-| `/exit` | Esci |
+| `/search-engine` | Cambia provider di ricerca (DuckDuckGo / Google / Tavily) |
+| `/clear` · `/exit` | Pulisce il terminale · Esci |
 
 ## 🚀 Guida Rapida
 

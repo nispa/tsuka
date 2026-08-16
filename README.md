@@ -139,8 +139,8 @@ The tier profile is saved to `models_profile.json`. `getModelTier()` uses the me
 | Tier | Available Tools | Excluded |
 |------|----------------|----------|
 | **SMALL** | 20 tools (read, write, diagnostics, web, memory, protocol) | `execute_command`, `create_tool`, `spawn_agent` |
-| **MEDIUM** | 23 tools | — |
-| **LARGE** | 23 tools | — |
+| **MEDIUM** | 27 tools | — |
+| **LARGE** | 27 tools | — |
 
 ### 4. Objective Web Source Tracking
 
@@ -161,8 +161,7 @@ Prompt  ← formatForPrompt()    ← memory/memory.json  (auto-injected)
 ```
 
 ```powershell
-/memory                      # List recent memories
-/forget <id|all>             # Remove specific memory or wipe all
+/memory                      # List & manage memories (or /memory clear to wipe)
 ```
 
 Chat history is also configuratively pruned (`maxHistoryMessages` in `tsuka.config.json`, default 40) without breaking tool_call/tool pairs.
@@ -292,28 +291,23 @@ Lets an organized group of agents actively collaborate on a task, executing writ
 
 | Command | Description |
 |---------|-------------|
-| `/help` | Show command guide |
-| `/models` | List & select available models |
-| `/use <model>` | Quickly select a model by name |
-| `/benchmark [model\|all]` | Measure model capabilities → save profile |
-| `/provider` | Switch between Ollama and OpenRouter |
-| `/character` | Load a character preset |
-| `/rename-char <name>` | Rename the active character's `aiName` |
-| `/role` | Change agent role (skills/tools) |
-| `/skill [name]` | Switch active skill for multi-skilled characters |
-| `/trait` | Change agent personality trait |
+| `/goal <objective>` | Dynamic goal orchestrator — selects agents, assigns tasks, coordinates execution |
+| `/team [name]` | Start a collaborative team workflow or pipeline |
+| `/call [@agents...]` | Start a multi-agent conference debate |
+| `/models [model]` | List & select available models |
+| `/provider [name]` | Switch between Ollama, Unsloth and OpenRouter |
 | `/effort [level]` | Manage reasoning effort (`none`\|`low`\|`medium`\|`xhigh`\|`auto`\|`ask`) |
-| `/goal <objective>` | Dynamic goal orchestrator — selects agents, assigns tasks, coordinates execution autonomously |
-| `/team` | Start a collaborative team workflow |
-| `/call [names]` | Start a multi-agent conference debate |
-| `/search-engine` | Change search provider (DuckDuckGo / Google / Tavily) |
-| `/memory` | List persistent memories |
-| `/forget <id\|all>` | Delete specific memories or wipe all |
+| `/benchmark [model\|all]` | Measure model capabilities (tier & tok/s) |
+| `/agent [name]` | Show or select the active agent |
+| `/tools` | List enabled tools for active role, tier, and effort |
 | `/context` | Show history token usage against the context budget |
+| `/memory [clear\|<id>]` | Inspect, manage, or wipe persistent memories |
+| `/blackboard` | Show notes and state of the latest workflow/goal |
+| `/runs` | Show history and reports of recent workflow executions |
+| `/info` | Show session info (provider, model, agent) |
 | `/reset` | Reset history + security approvals |
-| `/info` | Show session info (provider, model, role, trait) |
-| `/clear` | Clear terminal |
-| `/exit` | Quit |
+| `/search-engine` | Change search provider (DuckDuckGo / Google / Tavily) |
+| `/clear` · `/exit` | Clear terminal · Quit |
 
 ## 🚀 Getting Started
 

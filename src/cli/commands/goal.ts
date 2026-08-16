@@ -6,352 +6,28 @@ import { GenerationInterrupt } from '../interrupt';
 import { MemoryStore } from '../../core/memory';
 import { ContextTracker } from '../../core/contextTracker';
 import { runMemberTurn, TurnStats } from './team';
-import { ChatMessage, PlanStep } from '../../core/types';
-import { runLoop } from '../../core/loop';
+import { ChatMessage } from '../../core/types';
+import { estimateMessagesTokens } from '../../core/contextBudget';
 import { createParallelBranches, mergeParallelWorkspaces } from '../../core/parallelWorkspace';
 import { installLogBuffering, runWithLogBuffer, flushLogBuffer } from '../../core/logBuffer';
 import { withWorkspaceOverride } from '../../tools/impl/utils';
 import { Blackboard, BlackboardNote } from '../../core/blackboard';
+import { WorkflowScope } from '../../core/workflowScope';
 import { writeGoalLog } from './workflowLog';
 import { withEffortPin } from '../../core/effortControl';
-import { loadRole, listAvailableTeams, CharacterConfig } from '../shared';
+import { logSink } from '../../core/logSink';
+import { CharacterConfig } from '../shared';
+import { rolesOf, buildGoalOrchestratorPrompt } from './goalPrompts';
+import { parsePlan } from './goalParsing';
 
-interface PlanGroup {
-  mode: 'sequential' | 'parallel';
-  steps: PlanStep[];
-  label: string;
-}
-
-/** Mestieri (ruoli/skill) coperti da un personaggio: multi-skill se presenti, altrimenti il ruolo singolo. */
-function rolesOf(c: CharacterConfig): string[] {
-  if (c.roles && c.roles.length > 0) return c.roles;
-  return c.role ? [c.role] : [];
-}
-
-/**
- * Genera la firma sintetica compatta di un agente per il catalogo dell'orchestrator.
- * Include nome, ruolo/skills, descrizione operativa ad alto segnale e tool essenziali.
- */
-export function formatAgentSignature(c: CharacterConfig): string {
-  if (c.signature && typeof c.signature === 'string' && c.signature.trim()) {
-    return `- @${c.name} (${c.aiName || c.name}): ${c.signature.trim()}`;
-  }
-
-  const roleNames = rolesOf(c);
-
-  const allTools = new Set<string>();
-  const roleSummaries: string[] = [];
-
-  // Tool generici/omnipresenti che non differenziano la specializzazione
-  const AMBIENT_TOOLS = new Set(['save_memory', 'recall_memory', 'send_message', 'list_dir', 'read_file', 'browse_url']);
-
-  for (const rName of roleNames) {
-    const role = loadRole(rName);
-    if (role) {
-      if (role.description) roleSummaries.push(role.description);
-      (role.allowedTools || []).forEach((t) => allTools.add(t));
-    }
-  }
-
-  let desc = (c.description || roleSummaries.join('; ') || 'No description').split('\n')[0].trim();
-  if (desc.length > 85) {
-    desc = desc.slice(0, 82).trim() + '...';
-  }
-
-  const specificTools = Array.from(allTools).filter((t) => !AMBIENT_TOOLS.has(t));
-  const displayTools = specificTools.length > 0 ? specificTools : Array.from(allTools);
-  const toolsStr = displayTools.length > 0 ? ` | Tools: [${displayTools.join(', ')}]` : '';
-  const rolesLabel = roleNames.length > 0 ? `role=${roleNames.join(',')}` : 'general';
-
-  return `- @${c.name} (${c.aiName || c.name}): ${rolesLabel} — ${desc}${toolsStr}`;
-}
-
-/**
- * Blueprint dei team, letti da quelli REALMENTE installati (`teams/*.json`,
- * dipende dal preset scelto a `tsuka init`) e descritti per MESTIERE.
- *
- * Un solo concetto di squadra: il team è quello di `/team`, non un archetipo
- * separato inventato nel prompt. Due vincoli, entrambi deliberati:
- * - derivato, mai hard-coded: un elenco fisso citerebbe agenti che l'utente non ha
- *   installato, e l'orchestrator pianificherebbe con @nomi che `parsePlan` deve poi
- *   scartare (piano silenziosamente dimezzato);
- * - il team è una catena di RUOLI, non di personaggi: il modello sceglie la
- *   competenza, l'@handle designa solo CHI la esercita — e con il multi-skill
- *   (T9.1) un handle può coprire più mestieri, evitando il passaggio di consegne
- *   fatto solo per raggiungere il tool di un altro ruolo.
- * Un team è incluso solo se almeno 2 dei suoi membri esistono nel catalogo.
- */
-export function buildTeamBlueprints(allCharacters: CharacterConfig[]): string {
-  const byName = new Map(allCharacters.map((c) => [c.name, c]));
-  const lines: string[] = [];
-
-  for (const team of listAvailableTeams()) {
-    const members = (team.members || [])
-      .map((m) => byName.get(m))
-      .filter((c): c is CharacterConfig => !!c);
-    if (members.length < 2) continue;
-
-    const crew = members
-      .map((c) => `${rolesOf(c).join('+') || 'general'} (@${c.name})`)
-      .join(' → ');
-
-    let desc = (team.description || team.displayName || '').split('\n')[0].trim();
-    if (desc.length > 110) desc = desc.slice(0, 107).trim() + '...';
-
-    lines.push(`- [${team.name.toUpperCase()}] ${crew}${desc ? ` — ${desc}` : ''}`);
-  }
-
-  return lines.join('\n');
-}
-
-export function buildGoalOrchestratorPrompt(allCharacters: CharacterConfig[], goal: string): string {
-  const charList = allCharacters
-    .map(formatAgentSignature)
-    .join('\n');
-
-  const blueprints = buildTeamBlueprints(allCharacters);
-  const blueprintBlock = blueprints
-    ? `INSTALLED TEAMS (role chains — reuse one when the goal matches):\n${blueprints}\n\n`
-    : '';
-  const blueprintRule = blueprints
-    ? '1. Reason by CRAFT: list the roles the goal requires, then reuse the team whose role chain matches, or compose your own from AVAILABLE AGENTS.\n'
-    : '1. Reason by CRAFT: list the roles the goal requires, then pick the agents that cover them.\n';
-
-  // Esempio costruito sul catalogo reale: un esempio con @nomi non installati
-  // insegnerebbe al modello a pianificare con agenti inesistenti.
-  const supervisor = allCharacters.find((c) => rolesOf(c).includes('supervisor'));
-  const workers = allCharacters.filter((c) => c !== supervisor).slice(0, 3);
-  const ex = (i: number, fallback: string) => {
-    const c = workers[i];
-    return c ? `@${c.name}` : `@${fallback}`;
-  };
-  const exReviewer = supervisor ? `@${supervisor.name}` : ex(3, 'reviewer');
-
-  return `You are the TSUKA Goal Orchestrator. Plan a dynamic agent team to achieve a goal.
-
-${blueprintBlock}AVAILABLE AGENTS (for custom or fallback composition):
-${charList}
-
-GOAL: "${goal}"
-
-INSTRUCTIONS:
-${blueprintRule}2. An agent listed with several roles (role=a,b) owns the tools of ALL of them: prefer ONE such agent over two specialists when the tasks are adjacent — it avoids a handoff whose only purpose is reaching another role's tool.
-3. The @handle is just how you address the agent that holds the craft: use ONLY the @names listed above, any other name is discarded.
-4. For each selected agent, specify a concrete task.
-5. If some tasks are INDEPENDENT (can run concurrently), wrap them in a PARALLELO block.
-6. If the goal is trivial (simple question, answer, info), respond with just FINE.
-
-RESPONSE FORMAT:
-AGENTE: @name — Task
-PARALLELO:
-AGENTE: @name1 — Task1 (independent from others)
-AGENTE: @name2 — Task2 (independent from others)
-FINE PARALLELO
-AGENTE: @name3 — Task3 (after parallel tasks)
-FINE
-
-Example with parallel tasks:
-AGENTE: ${ex(0, 'agent1')} — First step of the work
-PARALLELO:
-AGENTE: ${ex(1, 'agent2')} — Independent step A
-AGENTE: ${ex(2, 'agent3')} — Independent step B
-FINE PARALLELO
-AGENTE: ${exReviewer} — Review and validate the work
-FINE
-
-If no team is needed:
-FINE`;
-}
-
-interface ParseResult {
-  groups: PlanGroup[];
-  flatSteps: number;
-}
-
-function normalizeCharName(name: string): string {
-  return (name || '').toLowerCase().replace(/[\s_\-]/g, '');
-}
-
-export function parsePlan(
-  content: string,
-  allCharacters: (CharacterConfig | string)[],
-  parallelEnabled: boolean = true
-): ParseResult {
-  const groups: PlanGroup[] = [];
-  const lines = content.split('\n');
-  const validMap = new Map<string, string>();
-  for (const item of allCharacters) {
-    if (typeof item === 'string') {
-      validMap.set(normalizeCharName(item), item);
-    } else if (item && typeof item === 'object') {
-      if (item.name) validMap.set(normalizeCharName(item.name), item.name);
-      if (item.aiName) validMap.set(normalizeCharName(item.aiName), item.name);
-    }
-  }
-
-  let flatSteps = 0;
-  let i = 0;
-
-  while (i < lines.length) {
-    const rawLine = lines[i].trim();
-    // Pulisci markdown formatting (bullet, bold, numbers)
-    const line = rawLine.replace(/^(?:\d+\.|\*|-)\s*/, '').replace(/\*\*/g, '').trim();
-
-    // Blocco parallelo
-    if (/^PARALLELO/i.test(line)) {
-      i++;
-      const parallelSteps: PlanStep[] = [];
-      while (i < lines.length) {
-        const subLine = lines[i].trim().replace(/^(?:\d+\.|\*|-)\s*/, '').replace(/\*\*/g, '').trim();
-        if (/^FINE\s*PARALLELO/i.test(subLine)) break;
-
-        const step = parseAgentLine(lines, i, validMap);
-        if (step) {
-          parallelSteps.push({ agentName: step.realName, task: step.task });
-          i += step.consumed;
-        } else {
-          i++;
-        }
-      }
-      if (parallelSteps.length > 0) {
-        if (parallelEnabled) {
-          groups.push({
-            mode: 'parallel',
-            steps: parallelSteps,
-            label: `Parallelo (${parallelSteps.map((s) => s.agentName).join(' + ')})`
-          });
-        } else {
-          // T9.10: parallelExecutionEnabled=false (default) — il blocco PARALLELO
-          // resta riconosciuto (il piano del modello non cambia), ma i suoi step
-          // vengono eseguiti in sequenza come step normali, uno per gruppo, invece
-          // che con Promise.all su workspace isolati. Su una singola GPU il
-          // parallelismo reale non c'è comunque (contesa sulla stessa scheda), quindi
-          // eseguire in sequenza evita l'overhead di branch/merge della workspace
-          // senza perdere nessuno step del piano.
-          for (const step of parallelSteps) {
-            groups.push({ mode: 'sequential', steps: [step], label: step.task });
-          }
-        }
-        flatSteps += parallelSteps.length;
-      }
-      i++; // salta FINE PARALLELO
-      continue;
-    }
-
-    // Riga agente singolo
-    const step = parseAgentLine(lines, i, validMap);
-    if (step) {
-      groups.push({
-        mode: 'sequential',
-        steps: [{ agentName: step.realName, task: step.task }],
-        label: step.realName
-      });
-      flatSteps++;
-      i += step.consumed;
-    } else {
-      i++;
-    }
-  }
-
-  return { groups, flatSteps };
-}
-
-function lookupValidName(name: string, validMap?: Map<string, string> | (CharacterConfig | string)[]): string | null {
-  if (!validMap) return name;
-  const normalized = normalizeCharName(name);
-  if (validMap instanceof Map) {
-    return validMap.get(normalized) || null;
-  }
-  if (Array.isArray(validMap)) {
-    for (const item of validMap) {
-      if (typeof item === 'string') {
-        if (normalizeCharName(item) === normalized) return item;
-      } else if (item && typeof item === 'object') {
-        if (item.name && normalizeCharName(item.name) === normalized) return item.name;
-        if (item.aiName && normalizeCharName(item.aiName) === normalized) return item.name;
-      }
-    }
-  }
-  return null;
-}
-
-/** Parsa una riga AGENTE: / AGENT: / @name tollerando markdown, numeri di lista e separatori vari. */
-export function parseAgentLine(
-  lines: string[],
-  startIdx: number,
-  validMap?: Map<string, string> | (CharacterConfig | string)[]
-): { realName: string; name: string; task: string; consumed: number } | null {
-  const rawLine = lines[startIdx].trim();
-  // Pulizia prefissi markdown (es. "1. **AGENTE:** @nome — ...", "- AGENTE: nome: ...", "@nome - ...")
-  const cleanLine = rawLine
-    .replace(/^(?:\d+\.|\*|-)\s*/, '')
-    .replace(/\*\*/g, '')
-    .trim();
-
-  // Pattern flessibile:
-  // 1) Opzionale "AGENTE:" o "AGENT:"
-  // 2) @nome (con trattini/spazi/underscore ammessi)
-  // 3) Separatore: —, –, -, :, ->, => o |
-  // 4) Task descrittivo
-  const FLEXIBLE_RE = /^(?:AGENTE|AGENT)?:\s*@?([a-zA-Z0-9_\-\s]+?)\s*(?:[—–\-:]|->|=>|\|)\s*(.*)/i;
-  const AT_DIRECT_RE = /^@([a-zA-Z0-9_\-\s]+?)\s*(?:[—–\-:]|->|=>|\|)\s*(.*)/i;
-
-  let match = cleanLine.match(FLEXIBLE_RE);
-  if (!match) {
-    match = cleanLine.match(AT_DIRECT_RE);
-  }
-
-  if (!match) return null;
-
-  const rawName = match[1].trim();
-  const realName = lookupValidName(rawName, validMap);
-  if (!realName) return null;
-
-  let task = match[2]?.trim() || '';
-  let consumed = 1;
-
-  // Se il task è vuoto o un separatore isolato, accumula le righe successive
-  if (!task || /^[—–\-:]\s*$/.test(task)) {
-    const taskLines: string[] = [];
-    for (let j = startIdx + 1; j < lines.length; j++) {
-      const nextRaw = lines[j].trim();
-      const nextClean = nextRaw.replace(/^(?:\d+\.|\*|-)\s*/, '').replace(/\*\*/g, '').trim();
-      if (/^(?:AGENTE|AGENT)?:\s*@/i.test(nextClean) || /^PARALLELO/i.test(nextClean) || /^FINE\b/i.test(nextClean)) break;
-      taskLines.push(nextClean);
-      consumed++;
-    }
-    task = taskLines.filter(Boolean).join(' ').trim();
-  }
-
-  return { realName, name: realName, task, consumed };
-}
+// Re-esportati per retrocompatibilità: buona parte dei test importa questi nomi
+// direttamente da './goal' (era tutto in un unico file prima dello split T12.3).
+export { formatAgentSignature, buildTeamBlueprints, buildGoalOrchestratorPrompt } from './goalPrompts';
+export { parsePlan, parseAgentLine } from './goalParsing';
 
 function getCharDisplayName(allCharacters: CharacterConfig[], agentName: string): string {
   const char = allCharacters.find((c) => c.name === agentName);
   return char ? char.aiName : agentName;
-}
-
-/** Stima token di un array di messaggi (stessa euristica di Agent.estimateTokens). */
-function estimateMessagesTokens(msgs: ChatMessage[]): number {
-  let chars = 0;
-  for (const m of msgs) {
-    if (typeof m.content === 'string') chars += m.content.length;
-    if (m.tool_calls) {
-      try { chars += JSON.stringify(m.tool_calls).length; } catch {}
-    }
-  }
-  return Math.ceil(chars / 3.5);
-}
-
-/** Mostra una barra di utilizzo contesto. */
-function showContextBar(used: number, total: number, label: string): void {
-  const pct = Math.min(100, Math.round((used / total) * 100));
-  const barW = 24;
-  const filled = Math.round((pct / 100) * barW);
-  const empty = barW - filled;
-  const bar = chalk.green('█'.repeat(filled)) + chalk.gray('░'.repeat(empty));
-  const color = pct > 80 ? chalk.red : pct > 50 ? chalk.yellow : chalk.green;
-  console.log(`  ${chalk.gray(label)} ${bar} ${color(`${pct}%`)} ${chalk.gray(`(~${used.toLocaleString()} / ${total.toLocaleString()} tok)`)}`);
 }
 
 /**
@@ -383,9 +59,9 @@ function condenseAgentOutput(agentName: string, teamMessages: ChatMessage[], all
   if (saved > 0) {
     const pct = maxTokens > 0 ? Math.round((after / maxTokens) * 100) : 0;
     const savedStr = saved >= 1000 ? `${(saved / 1000).toFixed(1)}k` : `${saved}`;
-    console.log(chalk.gray(`  💾 Contesto compresso: risparmiati ~${savedStr} tok (ora ~${after.toLocaleString()} tot, ${pct}% del limite)`));
+    logSink.log(chalk.gray(`  💾 Contesto compresso: risparmiati ~${savedStr} tok (ora ~${after.toLocaleString()} tot, ${pct}% del limite)`));
   }
-  showContextBar(after, maxTokens, 'Contesto history:');
+  CLITheme.contextBar(after, maxTokens, 'Contesto history:');
 }
 
 export async function handleGoal(ctx: CommandCtx, arg: string): Promise<void> {
@@ -395,17 +71,18 @@ export async function handleGoal(ctx: CommandCtx, arg: string): Promise<void> {
     return;
   }
 
-  const allCharacters = ctx.listAvailableCharacters();
-  if (allCharacters.length === 0) {
-    CLITheme.warning('Nessun personaggio disponibile. Usa /character per crearne uno.');
-    return;
-  }
+  return WorkflowScope.withScope('goal', async () => {
+    const allCharacters = ctx.listAvailableCharacters();
+    if (allCharacters.length === 0) {
+      CLITheme.warning('Nessun personaggio disponibile. Usa /character per crearne uno.');
+      return;
+    }
 
   const validNames = allCharacters.map((c) => c.name.toLowerCase());
 
-  console.log(chalk.bold('\n🎯 [GOAL ORCHESTRATOR]'));
-  console.log(`Obiettivo:  "${chalk.yellow(goal)}"`);
-  console.log(`Agenti disp: ${allCharacters.map((c) => chalk.cyan(`@${c.name}`)).join(', ')}\n`);
+  logSink.log(chalk.bold('\n🎯 [GOAL ORCHESTRATOR]'));
+  logSink.log(`Obiettivo:  "${chalk.yellow(goal)}"`);
+  logSink.log(`Agenti disp: ${allCharacters.map((c) => chalk.cyan(`@${c.name}`)).join(', ')}\n`);
 
   // Prompt per l'orchestrator
   const sysPrompt = buildGoalOrchestratorPrompt(allCharacters, goal);
@@ -417,7 +94,7 @@ export async function handleGoal(ctx: CommandCtx, arg: string): Promise<void> {
   const interrupt = new GenerationInterrupt();
   interrupt.arm();
 
-  console.log(chalk.bold.cyan('[ORCHESTRATOR] Analisi del goal e pianificazione team...\n'));
+  logSink.log(chalk.bold.cyan('[ORCHESTRATOR] Analisi del goal e pianificazione team...\n'));
 
   const planRenderer = new StreamRenderer({ headerName: 'Goal Orchestrator', headerColor: chalk.magenta });
   planRenderer.begin();
@@ -438,7 +115,7 @@ export async function handleGoal(ctx: CommandCtx, arg: string): Promise<void> {
     );
     planRenderer.finish();
     planText = response.content?.trim() || '';
-    console.log();
+    logSink.log('');
   } catch (err: any) {
     planRenderer.abort();
     if (interrupt.aborted) { CLITheme.warning('Goal interrotto (Esc).'); interrupt.disarm(); return; }
@@ -491,21 +168,21 @@ export async function handleGoal(ctx: CommandCtx, arg: string): Promise<void> {
   }
 
   // Stampa piano
-  console.log(chalk.bold('\n📋 PIANO D\'ESECUZIONE'));
+  logSink.log(chalk.bold('\n📋 PIANO D\'ESECUZIONE'));
   let stepCounter = 1;
   for (const group of groups) {
     if (group.mode === 'parallel') {
-      console.log(`  ⚡ ${chalk.yellow('PARALLELO')}:`);
+      logSink.log(`  ⚡ ${chalk.yellow('PARALLELO')}:`);
       for (const s of group.steps) {
-        console.log(`     ${stepCounter}. ${chalk.cyan(getCharDisplayName(allCharacters, s.agentName))} — ${chalk.gray(s.task)}`);
+        logSink.log(`     ${stepCounter}. ${chalk.cyan(getCharDisplayName(allCharacters, s.agentName))} — ${chalk.gray(s.task)}`);
         stepCounter++;
       }
     } else {
-      console.log(`  ${stepCounter}. ${chalk.cyan(getCharDisplayName(allCharacters, group.steps[0].agentName))} — ${chalk.gray(group.steps[0].task)}`);
+      logSink.log(`  ${stepCounter}. ${chalk.cyan(getCharDisplayName(allCharacters, group.steps[0].agentName))} — ${chalk.gray(group.steps[0].task)}`);
       stepCounter++;
     }
   }
-  console.log();
+  logSink.log('');
 
   // Esecuzione del piano
   const maxTokens = ctx.configManager.getMaxHistoryTokens();
@@ -540,10 +217,10 @@ export async function handleGoal(ctx: CommandCtx, arg: string): Promise<void> {
   const prevAllowWrite = ctx.permissionManager.isAllowAllWrite();
   if (isAuto) {
     ctx.permissionManager.setAllowAllWrite(true);
-    console.log(chalk.green('✔ Modalità autonoma attivata per questo goal (scrittura file nel workspace consentita automaticamente).'));
-    console.log(chalk.gray('  La jail del workspace resta attiva (non è possibile uscire dalla root); comandi DANGEROUS richiederanno conferma.\n'));
+    logSink.log(chalk.green('✔ Modalità autonoma attivata per questo goal (scrittura file nel workspace consentita automaticamente).'));
+    logSink.log(chalk.gray('  La jail del workspace resta attiva (non è possibile uscire dalla root); comandi DANGEROUS richiederanno conferma.\n'));
   } else {
-    console.log(chalk.yellow('✔ Modalità sorvegliata attiva: verrà richiesta autorizzazione per ogni file.\n'));
+    logSink.log(chalk.yellow('✔ Modalità sorvegliata attiva: verrà richiesta autorizzazione per ogni file.\n'));
   }
 
   // Blackboard del run (T6.2, TASKS.md — FASE 2): stato condiviso di QUESTO goal,
@@ -564,13 +241,13 @@ export async function handleGoal(ctx: CommandCtx, arg: string): Promise<void> {
 
         if (group.mode === 'parallel') {
           const ctxEstimate = estimateMessagesTokens(teamMessages) + CTX_OVERHEAD;
-          showContextBar(ctxEstimate, maxTokens, 'Contesto stimato (gruppo parallelo):');
+          CLITheme.contextBar(ctxEstimate, maxTokens, 'Contesto stimato (gruppo parallelo):');
 
-          console.log(chalk.bold.yellow(`\n═══ GRUPPO PARALLELO ${g + 1}/${groups.length} ═══`));
+          logSink.log(chalk.bold.yellow(`\n═══ GRUPPO PARALLELO ${g + 1}/${groups.length} ═══`));
           for (const s of group.steps) {
-            console.log(`  ⚡ ${chalk.cyan(getCharDisplayName(allCharacters, s.agentName))}: ${chalk.gray(s.task)}`);
+            logSink.log(`  ⚡ ${chalk.cyan(getCharDisplayName(allCharacters, s.agentName))}: ${chalk.gray(s.task)}`);
           }
-          console.log();
+          logSink.log('');
 
           // Workspace isolati per branch (T3.2): ogni agente scrive in una propria
           // cartella di staging, unita alla workspace principale solo a fine blocco
@@ -628,18 +305,18 @@ export async function handleGoal(ctx: CommandCtx, arg: string): Promise<void> {
           // branch) vengono elencati e NON copiati.
           const mergeResult = mergeParallelWorkspaces(branches, ctx.configManager.getWorkspaceRoot());
           if (mergeResult.merged.length > 0) {
-            console.log(chalk.gray(`  📁 File uniti nella workspace: ${mergeResult.merged.join(', ')}`));
+            logSink.log(chalk.gray(`  📁 File uniti nella workspace: ${mergeResult.merged.join(', ')}`));
           }
           if (mergeResult.conflicts.length > 0) {
             CLITheme.warning(`Conflitti nel blocco parallelo: ${mergeResult.conflicts.length} file scritti in modo diverso da agenti diversi — NON uniti, workspace principale intatta per questi file:`);
             for (const c of mergeResult.conflicts) {
-              console.log(chalk.yellow(`    • ${c.relativePath} — scritto diversamente da: ${c.labels.join(', ')}`));
+              logSink.log(chalk.yellow(`    • ${c.relativePath} — scritto diversamente da: ${c.labels.join(', ')}`));
             }
           }
 
           // Mostra contesto reale se disponibile
           if (lastPromptTokens > 0) {
-            showContextBar(lastPromptTokens, maxTokens, 'Contesto reale (peak LLM):');
+            CLITheme.contextBar(lastPromptTokens, maxTokens, 'Contesto reale (peak LLM):');
           }
 
           // Merge dei risultati (in ordine, non mischiati)
@@ -667,10 +344,10 @@ export async function handleGoal(ctx: CommandCtx, arg: string): Promise<void> {
           const ctxEstimate = lastPromptTokens > 0
             ? lastPromptTokens
             : estimateMessagesTokens(teamMessages) + CTX_OVERHEAD;
-          showContextBar(ctxEstimate, maxTokens, `Contesto prima di ${char.aiName}:`);
+          CLITheme.contextBar(ctxEstimate, maxTokens, `Contesto prima di ${char.aiName}:`);
 
-          console.log(chalk.bold.yellow(`\n═══ STEP ${overallStep}/${flatSteps}: ${char.aiName} ═══`));
-          console.log(chalk.gray(`Compito: ${step.task}`));
+          logSink.log(chalk.bold.yellow(`\n═══ STEP ${overallStep}/${flatSteps}: ${char.aiName} ═══`));
+          logSink.log(chalk.gray(`Compito: ${step.task}`));
 
           teamMessages.push({ role: 'user', content: `[Task for @${step.agentName}]: ${step.task}\n\nInstructions: Analyze the history for previous colleagues' work. Inspect workspace files (list_dir, read_file) to read existing work. Then execute your specific task with your tools. End with a detailed summary: what you did, files created/modified, and what the next agent needs.` });
 
@@ -691,7 +368,7 @@ export async function handleGoal(ctx: CommandCtx, arg: string): Promise<void> {
               action: step.task.length > 60 ? step.task.slice(0, 60) + '…' : step.task
             });
             // Mostra contesto reale dopo l'esecuzione
-            showContextBar(lastPromptTokens, maxTokens, `Contesto reale (peak ${char.aiName}):`);
+            CLITheme.contextBar(lastPromptTokens, maxTokens, `Contesto reale (peak ${char.aiName}):`);
           }
 
           condenseAgentOutput(step.agentName, teamMessages, allCharacters, maxTokens);
@@ -705,8 +382,8 @@ export async function handleGoal(ctx: CommandCtx, arg: string): Promise<void> {
           if (isSupervisor && (result === 'failed' || result === 'continue') && !reworkAttempted && g > 0) {
             reworkAttempted = true;
             const lastAssistantMsg = teamMessages[teamMessages.length - 1]?.content || '';
-            console.log(chalk.bold.yellow(`\n[VERDETTO DEL SUPERVISORE: RILAVORAZIONE RICHIESTA]`));
-            console.log(chalk.gray(`Il supervisore ha riscontrato problemi. Avvio ciclo di rilavorazione dello step precedente...`));
+            logSink.log(chalk.bold.yellow(`\n[VERDETTO DEL SUPERVISORE: RILAVORAZIONE RICHIESTA]`));
+            logSink.log(chalk.gray(`Il supervisore ha riscontrato problemi. Avvio ciclo di rilavorazione dello step precedente...`));
 
             const prevGroup = groups[g - 1];
             if (prevGroup && prevGroup.steps.length > 0) {
@@ -714,7 +391,7 @@ export async function handleGoal(ctx: CommandCtx, arg: string): Promise<void> {
               const targetChar = allCharacters.find((c) => c.name === targetStep.agentName);
               if (targetChar) {
                 overallStep++;
-                console.log(chalk.bold.yellow(`\n═══ STEP RILAVORAZIONE: ${targetChar.aiName} ═══`));
+                logSink.log(chalk.bold.yellow(`\n═══ STEP RILAVORAZIONE: ${targetChar.aiName} ═══`));
                 const reworkPrompt = `[RILAVORAZIONE GUIDATA DAL SUPERVISORE per @${targetStep.agentName}]:\n` +
                   `Il supervisore ha riscontrato problemi nella revisione precedente:\n${lastAssistantMsg}\n\n` +
                   `Correggi i problemi indicati dal supervisore ed esegui nuovamente il compito.`;
@@ -728,7 +405,7 @@ export async function handleGoal(ctx: CommandCtx, arg: string): Promise<void> {
 
                 // Riesegue la revisione finale del supervisore
                 overallStep++;
-                console.log(chalk.bold.yellow(`\n═══ REVISIONE DEL SUPERVISORE POST-RILAVORAZIONE ═══`));
+                logSink.log(chalk.bold.yellow(`\n═══ REVISIONE DEL SUPERVISORE POST-RILAVORAZIONE ═══`));
                 teamMessages.push({ role: 'user', content: `[Revisione finale del supervisore post-rilavorazione]: Verifica se i problemi del lavoro di @${targetStep.agentName} sono stati risolti.` });
                 const finalOverseerOutcome = await runMemberTurn(
                   ctx, step.agentName, goal,
@@ -759,15 +436,15 @@ export async function handleGoal(ctx: CommandCtx, arg: string): Promise<void> {
 
   // Riepilogo stats agenti
   if (agentStats.length > 0) {
-    console.log(chalk.bold('\n📊 RIEPILOGO STATS AGENTI'));
-    console.log(`  ${'Agente'.padEnd(16)}  ${'Out tok'.padStart(7)}  ${'Ctx tok'.padStart(8)}  ${'Tot tok'.padStart(7)}  ${'Tempo'.padStart(7)}  ${'Velocità'.padStart(10)}`);
+    logSink.log(chalk.bold('\n📊 RIEPILOGO STATS AGENTI'));
+    logSink.log(`  ${'Agente'.padEnd(16)}  ${'Out tok'.padStart(7)}  ${'Ctx tok'.padStart(8)}  ${'Tot tok'.padStart(7)}  ${'Tempo'.padStart(7)}  ${'Velocità'.padStart(10)}`);
     let totalOut = 0, totalCtx = 0, totalAll = 0, totalMs = 0;
     for (const { name, stats } of agentStats) {
       const displayName = getCharDisplayName(allCharacters, name);
       const sec = (stats.durationMs / 1000).toFixed(1);
       const ctx = stats.promptTokens || 0;
       const tot = stats.totalTokens || (ctx + stats.tokenCount);
-      console.log(`  ${chalk.cyan(displayName.padEnd(16))}  ${chalk.yellow(String(stats.tokenCount).padStart(7))}  ${chalk.gray(String(ctx).padStart(8))}  ${chalk.gray(String(tot).padStart(7))}  ${chalk.gray(`${sec}s`.padStart(7))}  ${chalk.gray(`${stats.tokensPerSecond} tok/s`.padStart(10))}`);
+      logSink.log(`  ${chalk.cyan(displayName.padEnd(16))}  ${chalk.yellow(String(stats.tokenCount).padStart(7))}  ${chalk.gray(String(ctx).padStart(8))}  ${chalk.gray(String(tot).padStart(7))}  ${chalk.gray(`${sec}s`.padStart(7))}  ${chalk.gray(`${stats.tokensPerSecond} tok/s`.padStart(10))}`);
       totalOut += stats.tokenCount;
       totalCtx = Math.max(totalCtx, ctx);
       totalAll += tot;
@@ -775,21 +452,21 @@ export async function handleGoal(ctx: CommandCtx, arg: string): Promise<void> {
     }
     if (agentStats.length > 1) {
       const totalSec = (totalMs / 1000).toFixed(1);
-      console.log(`  ${chalk.bold('TOTALE'.padEnd(16))}  ${chalk.bold.yellow(String(totalOut).padStart(7))}  ${chalk.bold.gray(String(totalCtx).padStart(8))}  ${chalk.bold.gray(String(totalAll).padStart(7))}  ${chalk.bold.gray(`${totalSec}s`.padStart(7))}`);
+      logSink.log(`  ${chalk.bold('TOTALE'.padEnd(16))}  ${chalk.bold.yellow(String(totalOut).padStart(7))}  ${chalk.bold.gray(String(totalCtx).padStart(8))}  ${chalk.bold.gray(String(totalAll).padStart(7))}  ${chalk.bold.gray(`${totalSec}s`.padStart(7))}`);
     }
-    console.log();
+    logSink.log('');
   }
 
   // Visualizzazione note Blackboard se presenti
   if (blackboardNotes.length > 0) {
-    console.log(chalk.bold('📋 NOTE CONDIVISE SULLA BLACKBOARD (RUN)'));
+    logSink.log(chalk.bold('📋 NOTE CONDIVISE SULLA BLACKBOARD (RUN)'));
     for (const note of blackboardNotes) {
-      console.log(`  • ${chalk.cyan(`[${note.key}]`)} ${chalk.gray(`(@${note.author}):`)} ${note.value}`);
+      logSink.log(`  • ${chalk.cyan(`[${note.key}]`)} ${chalk.gray(`(@${note.author}):`)} ${note.value}`);
     }
-    console.log();
+    logSink.log('');
   }
 
-  console.log(chalk.bold('\n🎯 [FINE GOAL]\n'));
+  logSink.log(chalk.bold('\n🎯 [FINE GOAL]\n'));
 
   const agentNames = groups.flatMap((g) => g.steps.map((s) => s.agentName));
   if (completed) {
@@ -807,7 +484,7 @@ export async function handleGoal(ctx: CommandCtx, arg: string): Promise<void> {
     blackboard: blackboardNotes
   });
   if (logFile) {
-    console.log(chalk.gray(`  📄 Report goal salvato in: workflow_logs/${logFile}`));
+    logSink.log(chalk.gray(`  📄 Report goal salvato in: workflow_logs/${logFile}`));
   }
 
   const summary = completed
@@ -815,4 +492,5 @@ export async function handleGoal(ctx: CommandCtx, arg: string): Promise<void> {
     : `Il Goal Orchestrator ha lavorato sul goal: "${goal}" senza completarlo. Team: ${agentNames.join(' → ')}.`;
   ctx.agent.current.getMessages().push({ role: 'user', content: `Goal: "${goal}"` });
   ctx.agent.current.getMessages().push({ role: 'assistant', content: summary });
+  });
 }

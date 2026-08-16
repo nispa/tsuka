@@ -1,0 +1,24 @@
+{
+  "name": "request_team",
+  "description": "Proponi all'utente di convocare un team collaborativo predefinito (es. 'dev_ops', 'dev_security', 'cyber_audit', 'story_comedy') per eseguire un compito specifico in gruppo. Richiede approvazione esplicita dell'utente.",
+  "requiredTier": "medium",
+  "riskLevel": "RESTRICTED",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "team_name": {
+        "type": "string",
+        "description": "Il nome del team predefinito da convocare (es. 'dev_security', 'dev_ops', 'tech_docs', 'creative_promo'). Opzionale: se omesso, viene richiesto all'utente."
+      },
+      "task": {
+        "type": "string",
+        "description": "La descrizione chiara del compito da assegnare al team."
+      },
+      "reason": {
+        "type": "string",
+        "description": "La motivazione chiara del perché è consigliabile attivare questo specifico team."
+      }
+    },
+    "required": ["task", "reason"]
+  }
+}

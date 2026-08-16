@@ -52,7 +52,7 @@ Ordine di decisione per ogni turno, identico per i tre: **tool call → regex es
 - Auto-discovery: scansiona `src/tools/impl/*.ts` all'avvio
 - Doppio filtro: **ruolo** (allowedTools) × **tier modello** (small/medium/large)
 - Tier misurato da `/benchmark` (capability fingerprinting), fallback su euristica dal nome (es. 9b → small, 70b → large)
-- 23 tool implementati (incluso `send_message`, `report_status`, `route_next`, `cast_vote`, `post_note`, `read_notes`, `audit_code`), schema JSON in `tools_schemas/`
+- 27 tool implementati (incluso `send_message`, `report_status`, `route_next`, `cast_vote`, `post_note`, `read_notes`, `audit_code`, `download_file`, `request_goal`, `request_team`, `request_call`), schema JSON in `tools_schemas/`
 
 ### Character system
 
@@ -62,9 +62,8 @@ Tripla stratificazione ortogonale:
 - **Character** (`characters/*.json`): preset nome + role + trait
 
 **Copertura dei ruoli (T7.1)**: `/goal` sceglie fra i *character*, non fra i role — un role
-senza nessun character che lo usi è un role che `/goal` non potrà mai assegnare. 28 character
-coprono tutti i 21 role (contando anche le skill secondarie del multi-skill), inclusi un
-`researcher` laconico e uno `compliant` (`neelix`) tenuto apposta come esempio didattico.
+senza nessun character che lo usi è un role che `/goal` non potrà mai assegnare. 22 character
+coprono tutti i 21 role (contando anche le skill secondarie del multi-skill).
 Verificato da `tests/test_presets.ts`: per ogni file in `roles/` deve esistere almeno un
 character che lo usa.
 
@@ -120,8 +119,10 @@ harness/
 │   │   │   │   ├── orchestrated.ts  # modalità orchestrata (routing dinamico via route_next)
 │   │   │   │   ├── pipeline.ts      # modalità pipeline (catena di montaggio)
 │   │   │   │   └── hybrid.ts        # round di discussione + voto (cast_vote), usato da round-robin/orchestrated
-│   │   │   ├── persona.ts           # /character, /role, /trait
-│   │   │   ├── provider.ts          # /provider, /models, /use, /benchmark
+│   │   │   ├── persona.ts           # /agent
+│   │   │   ├── provider.ts          # /provider, /models, /benchmark, /search-engine
+│   │   │   ├── tools.ts             # /tools
+│   │   │   ├── runs.ts              # /runs
 │   │   │   ├── memory.ts            # /memory
 │   │   │   └── session.ts           # /exit, /info, /reset, /context
 │   │   ├── shared.ts                # loadSystemPrompt, loadRole/Trait/Character/Team
@@ -152,10 +153,10 @@ harness/
 │   ├── tools/
 │   │   ├── index.ts                 # Tool auto-discoverer
 │   │   ├── registry.ts              # ToolRegistry, getModelTier
-│   │   └── impl/                    # 23 tool implementazioni
+│   │   └── impl/                    # 27 tool implementazioni
 │   └── safety/
 │       └── permissions.ts           # PermissionManager (coda prompt per esecuzione parallela)
-├── characters/                      # 28 preset JSON
+├── characters/                      # 22 preset JSON
 ├── roles/                           # 21 ruoli JSON
 ├── traits/                          # 9 tratti JSON
 ├── teams/                           # 10 team JSON
@@ -191,23 +192,23 @@ harness/
 
 | Comando | Descrizione |
 |---------|-------------|
-| `/context` | Mostra contesto usato/disponibile, messaggi per ruolo, attività recenti |
-| `/call [@nome ...]` | Conferenza multi-agente |
-| `/team [nome]` | Team collaborativo |
 | `/goal <obiettivo>` | Goal orchestrator: sceglie agenti e coordina dinamicamente |
-| `/character` | Cambia personaggio |
-| `/role` | Cambia ruolo (tool) |
-| `/trait` | Cambia tratto (stile) |
-| `/provider` | Cambia provider LLM |
-| `/models` | Lista modelli disponibili |
-| `/use <modello>` | Seleziona modello |
-| `/benchmark [modello\|all]` | Profila capacità modello |
-| `/memory` | Mostra memoria condivisa |
-| `/blackboard` | Mostra le note della blackboard degli ultimi workflow (/goal e /team) |
-| `/forget <id\|all>` | Elimina ricordi |
+| `/team [nome]` | Team collaborativo (round-robin, orchestrated, pipeline) |
+| `/call [@agenti...]` | Conferenza multi-agente |
+| `/models [modello]` | Elenca o seleziona il modello LLM |
+| `/provider [nome]` | Cambia provider LLM |
+| `/effort [livello\|auto\|ask]` | Regola il reasoning effort (none/low/med/xhigh) |
+| `/benchmark [modello\|all]` | Profila capacità modello (tier e tok/s) |
+| `/agent [nome]` | Mostra o seleziona l'agente attivo |
+| `/tools` | Mostra i tool abilitati per ruolo, tier ed effort |
+| `/context` | Mostra contesto usato/disponibile, token e attività |
+| `/memory [clear\|<id>]` | Mostra, gestisce o svuota la memoria condivisa |
+| `/blackboard` | Mostra le note della blackboard dell'ultimo workflow |
+| `/runs` | Elenca lo storico e i dettagli dei workflow recenti |
 | `/reset` | Reset history + permessi |
-| `/info` | Stato sessione |
+| `/info` | Stato sessione e configurazione attiva |
 | `/search-engine` | Cambia motore ricerca |
+| `/clear` · `/exit` | Pulisce lo schermo · Esci |
 
 ## Sviluppo
 

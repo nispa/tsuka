@@ -10,10 +10,13 @@ import { logSink } from '../core/logSink';
  * Contesto opzionale passato all'esecuzione dei tool (es. accesso al registry
  * per la registrazione a caldo di nuovi tool generati da create_tool).
  */
+import { WorkflowScope } from '../core/workflowScope';
+
 export interface ToolExecutionContext {
   registry?: ToolRegistry;
   provider?: any;
   permissionManager?: PermissionManager;
+  commandCtx?: any;
   /** Etichetta di chi ha richiesto il tool (es. aiName del personaggio), se
    * disponibile (T6.2, TASKS.md — FASE 2): stesso valore già usato per i prompt
    * di permesso RESTRICTED/DANGEROUS (T3.1). Usata da post_note per attribuire
@@ -228,6 +231,10 @@ export class ToolRegistry {
     return this.tools.get(name);
   }
 
+  getAllTools(): Tool[] {
+    return Array.from(this.tools.values());
+  }
+
   /**
    * Ritorna i soli tool adatti alla taglia dell'LLM corrente e consentiti dal ruolo attivo.
    * @param modelName Nome del modello corrente per determinarne il Tier (small, medium, large).
@@ -274,6 +281,12 @@ export class ToolRegistry {
         continue;
       }
 
+      // Freno anti-ricorsione (Depth Guard): dentro un workflow (/goal, /team, /call)
+      // i tool di escalation vengono esclusi per evitare loop ricorsivi.
+      if (WorkflowScope.isInsideWorkflow() && (tool.name === 'request_goal' || tool.name === 'request_team' || tool.name === 'request_call')) {
+        continue;
+      }
+
       result.push({
         type: 'function',
         function: {
@@ -287,7 +300,7 @@ export class ToolRegistry {
     return result;
   }
 
-  async executeTool(name: string, args: any, permissionManager: PermissionManager, provider?: any, requesterLabel?: string): Promise<ToolResult> {
+  async executeTool(name: string, args: any, permissionManager: PermissionManager, provider?: any, requesterLabel?: string, commandCtx?: any): Promise<ToolResult> {
     const tool = this.tools.get(name);
     if (!tool) {
       return {
@@ -326,6 +339,12 @@ export class ToolRegistry {
       details = `Modifica di ${effectiveArgs.path}`;
     } else if (name === 'delete_file' && effectiveArgs?.path) {
       details = `Eliminazione di ${effectiveArgs.path}`;
+    } else if (name === 'request_goal' && effectiveArgs?.goal) {
+      details = `Escalation a /goal: "${effectiveArgs.goal}" (Motivo: ${effectiveArgs.reason || 'non specificato'})`;
+    } else if (name === 'request_team' && (effectiveArgs?.team_name || effectiveArgs?.task)) {
+      details = `Convocazione team ${effectiveArgs.team_name || ''}: "${effectiveArgs.task}" (Motivo: ${effectiveArgs.reason || 'non specificato'})`;
+    } else if (name === 'request_call' && effectiveArgs?.topic) {
+      details = `Avvio conferenza su "${effectiveArgs.topic}" (Motivo: ${effectiveArgs.reason || 'non specificato'})`;
     }
 
     const isApproved = await permissionManager.checkPermission(name, details, tool.riskLevel, requesterLabel);
@@ -337,7 +356,7 @@ export class ToolRegistry {
     }
 
     try {
-      const output = await tool.execute(effectiveArgs, { registry: this, provider, permissionManager, requesterLabel });
+      const output = await tool.execute(effectiveArgs, { registry: this, provider, permissionManager, requesterLabel, commandCtx });
       return {
         success: true,
         output: output

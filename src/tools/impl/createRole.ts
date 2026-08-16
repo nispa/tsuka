@@ -39,6 +39,6 @@ export const createRoleTool: Tool = {
     // Scrive il file JSON
     fs.writeFileSync(rolePath, JSON.stringify(roleContent, null, 2), 'utf-8');
 
-    return `Ruolo '${args.displayName}' (${cleanName}) salvato con successo in 'roles/${cleanName}.json'.\nPuoi attivare questa nuova personalità digitando il comando slash '/role' nel REPL.`;
+    return `Ruolo '${args.displayName}' (${cleanName}) salvato con successo in 'roles/${cleanName}.json'.\nPuoi attivare questa nuova personalità usando il comando '/agent' nel REPL.`;
   }
 };

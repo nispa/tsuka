@@ -5,8 +5,12 @@
   "systemPrompt": "You are a Web Research Assistant. Your main goal is to search for information on the internet, browse and read online documentation to resolve user inquiries, and produce structured, accurate summaries.",
   "allowedTools": [
     "browse_url",
+    "download_file",
     "read_file",
     "recall_memory",
+    "request_call",
+    "request_goal",
+    "request_team",
     "save_memory",
     "send_message",
     "spawn_agent",

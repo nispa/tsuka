@@ -1,72 +1,48 @@
-import { createDefaultRegistry } from '../src/tools/index';
+/**
+ * Test per il caricamento e la configurazione iniziale dei Team (/team).
+ * Esecuzione: npx tsx tests/test_team.ts
+ */
+import { loadTeam, loadCharacter, loadRole, loadTrait } from '../src/cli/shared';
 import * as fs from 'fs';
 import * as path from 'path';
 
-function loadTeam(teamName: string) {
-  const teamPath = path.resolve(process.cwd(), `teams/${teamName}.json`);
-  const raw = fs.readFileSync(teamPath, 'utf-8');
-  return JSON.parse(raw);
-}
+let passed = 0;
+let failed = 0;
 
-function loadCharacter(charName: string) {
-  const charPath = path.resolve(process.cwd(), `characters/${charName}.json`);
-  const raw = fs.readFileSync(charPath, 'utf-8');
-  return JSON.parse(raw);
-}
-
-function loadRole(roleName: string) {
-  const rolePath = path.resolve(process.cwd(), `roles/${roleName}.json`);
-  const raw = fs.readFileSync(rolePath, 'utf-8');
-  return JSON.parse(raw);
-}
-
-function loadTrait(traitName: string) {
-  const traitPath = path.resolve(process.cwd(), `traits/${traitName}.json`);
-  const raw = fs.readFileSync(traitPath, 'utf-8');
-  return JSON.parse(raw);
+function check(id: string, condition: boolean, detail: string) {
+  if (condition) {
+    passed++;
+    console.log(`✔ ${id} PASS — ${detail}`);
+  } else {
+    failed++;
+    console.log(`✘ ${id} FAIL — ${detail}`);
+  }
 }
 
 async function run() {
-  console.log("=== Testing Collaborative Team Workflow ===");
-  const registry = await createDefaultRegistry();
-  
-  // Primo team installato: il file è dati dell'utente, il test non ne fissa il nome.
-  const teamName = fs.readdirSync(path.resolve(process.cwd(), 'teams'))
-    .filter((f) => f.endsWith('.json'))
-    .map((f) => path.basename(f, '.json'))[0];
-  const team = loadTeam(teamName);
-  console.log(`\nTeam caricato: ${team.displayName}`);
-  console.log(`- Descrizione: ${team.description}`);
-  console.log(`- Membri ordinati: ${team.members.join(', ')}`);
-  
-  const task = "Esegui un controllo delle porte attive ed evidenzia potenziali falle.";
-  console.log(`Compito assegnato: "${task}"`);
-  
-  // Simuliamo il passaggio di messaggi condiviso
-  const teamMessages = [
-    { role: 'system', content: '' },
-    { role: 'user', content: `COMPITO: "${task}"` }
-  ];
-  
-  for (const mName of team.members) {
-    const char = loadCharacter(mName);
-    const role = loadRole(char.role);
-    const trait = loadTrait(char.trait);
-    
-    console.log(`\n>> Turno di: ${char.displayName}`);
-    console.log(`- Tool abilitati nel registro per questo turno: ${role.allowedTools.join(', ')}`);
-    
-    // Simula l'unione dei messaggi precedenti
-    const historyLengthBefore = teamMessages.length;
-    console.log(`- Storico ereditato (numero messaggi): ${historyLengthBefore - 1}`);
-    
-    // Simula risposta finale del turno
-    const responseMock = `${char.aiName}: "Ho eseguito il mio compito ed elaborato i dettagli per il prossimo turno."`;
-    teamMessages.push({ role: 'user', content: responseMock });
+  console.log('=== Test Caricamento Team (/team) ===\n');
+
+  const teamsDir = path.resolve(process.cwd(), 'teams');
+  const teamFiles = fs.readdirSync(teamsDir).filter((f) => f.endsWith('.json'));
+
+  check('TEAM.1', teamFiles.length > 0, 'Almeno un team configurato presente nella cartella teams/');
+
+  for (const f of teamFiles) {
+    const teamName = path.basename(f, '.json');
+    const team = loadTeam(teamName);
+    check(`TEAM.2.${teamName}`, !!team.displayName && Array.isArray(team.members) && team.members.length > 0, `Team '${teamName}' valido con membri configurati`);
+
+    for (const m of team.members) {
+      const char = loadCharacter(m);
+      check(`TEAM.3.${teamName}.${m}`, !!char && !!char.role && !!char.trait, `Membro '${m}' del team '${teamName}' risolto correttamente`);
+    }
   }
-  
-  console.log(`\nTrascrizione finale nello storico condiviso:`);
-  console.log(JSON.stringify(teamMessages, null, 2));
+
+  console.log(`\n=== Risultato: ${passed} passati, ${failed} falliti ===`);
+  process.exit(failed > 0 ? 1 : 0);
 }
 
-run().catch(console.error);
+run().catch((err) => {
+  console.error('Errore fatale:', err);
+  process.exit(1);
+});
