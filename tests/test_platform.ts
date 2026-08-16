@@ -41,7 +41,7 @@ async function main() {
   // --- X1.3: get_ps_info 'processes' e 'env' funzionano e filtrano i segreti ---
   process.env.PLATFORM_PROBE_SECRET_KEY = 'valore_segreto_probe';
   const procOut = await getPsInfoTool.execute({ category: 'processes' });
-  check('X1.3a', procOut.length > 10 && !procOut.startsWith('Errore'), `processi elencati (${procOut.length} caratteri)`);
+  check('X1.3a', procOut.length > 10 && !procOut.startsWith('Errore') && !procOut.startsWith('Error') && !procOut.startsWith('Failed'), `processi elencati (${procOut.length} caratteri)`);
 
   const envOut = await getPsInfoTool.execute({ category: 'env' });
   check('X1.3b', !envOut.includes('PLATFORM_PROBE_SECRET_KEY') && !envOut.includes('valore_segreto_probe'), 'env filtrata su questa piattaforma');

@@ -23,12 +23,12 @@ function buildCommand(category: 'processes' | 'services' | 'disk' | 'env'): stri
   switch (category) {
     case 'processes':
       return isMac
-        ? 'ps aux -r | head -n 16'
-        : 'ps aux --sort=-%mem | head -n 16';
+        ? 'ps aux | head -n 16'
+        : 'ps aux --sort=-%mem 2>/dev/null || ps aux | head -n 16';
     case 'services':
       return isMac
-        ? 'launchctl list | head -n 30'
-        : 'systemctl list-units --type=service --state=running --no-pager --no-legend 2>/dev/null | head -n 30 || service --status-all 2>/dev/null | head -n 30';
+        ? 'launchctl list 2>/dev/null | head -n 30 || ps -ef | head -n 30'
+        : 'systemctl list-units --type=service --state=running --no-pager --no-legend 2>/dev/null | head -n 30 || service --status-all 2>/dev/null | head -n 30 || ps -ef | head -n 30';
     case 'disk':
       return 'df -h';
     case 'env':

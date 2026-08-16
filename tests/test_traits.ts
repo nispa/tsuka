@@ -35,4 +35,7 @@ async function run() {
   }
 }
 
-run().catch(console.error);
+run().catch((err) => {
+  console.error('Errore fatale in test_traits:', err);
+  process.exit(1);
+});

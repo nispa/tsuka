@@ -41,4 +41,7 @@ async function run() {
   }
 }
 
-run().catch(console.error);
+run().catch((err) => {
+  console.error('Errore fatale in test_characters:', err);
+  process.exit(1);
+});

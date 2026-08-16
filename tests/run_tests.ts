@@ -93,8 +93,10 @@ console.log(chalk.bold('=== Tsuka Test Suite ===\n'));
 for (const suite of suites) {
   const fullPath = path.join(testsDir, suite);
   const start = Date.now();
-  // Usa node con --import tsx invece di npx (più affidabile cross-platform)
-  const result = spawnSync('node', ['--import', 'tsx', fullPath], {
+  // Usa process.execPath con --import tsx e cwd/env espliciti (massima affidabilità cross-platform)
+  const result = spawnSync(process.execPath, ['--import', 'tsx', fullPath], {
+    cwd: path.resolve(__dirname, '..'),
+    env: process.env,
     stdio: 'pipe',
     timeout: 120_000,
     windowsHide: true,

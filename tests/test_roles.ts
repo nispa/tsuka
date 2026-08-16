@@ -32,4 +32,7 @@ async function run() {
   }
 }
 
-run().catch(console.error);
+run().catch((err) => {
+  console.error('Errore fatale in test_roles:', err);
+  process.exit(1);
+});
