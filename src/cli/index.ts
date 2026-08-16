@@ -170,9 +170,11 @@ async function main() {
       notifyIfUnprofiled(provider.getCurrentModel());
     }
   } else {
-    initSpinner.fail(chalk.red('Nessun server LLM raggiungibile.'));
-    CLITheme.warning('Avvia Ollama ("ollama serve") o il server Unsloth locale, oppure verifica le chiavi API nel file .env.');
-    CLITheme.info('Puoi comunque digitare comandi o cambiare provider con /provider.\n');
+    initSpinner.fail(chalk.red('Nessun server LLM raggiungibile (Ollama, Unsloth, OpenRouter).'));
+    CLITheme.warning('💡 Come iniziare:');
+    console.log(chalk.gray('  • Se usi Ollama: avvialo con ') + chalk.cyan('ollama serve') + chalk.gray(' e carica un modello (es. ') + chalk.cyan('ollama run qwen2.5-coder:7b') + chalk.gray(')'));
+    console.log(chalk.gray('  • Se usi OpenRouter: configura la chiave API in ') + chalk.cyan('.env') + chalk.gray(' o digita ') + chalk.cyan('/provider'));
+    console.log(chalk.gray('  • Per inizializzare un set di agenti nel workspace: ') + chalk.cyan('tsuka init --preset core\n'));
   }
 
   // Pannello di stato con i dati effettivi post-scansione
@@ -447,7 +449,16 @@ async function main() {
      } catch (error: any) {
       renderer.abort();
       console.log();
-      CLITheme.error(`Errore durante l'elaborazione: ${error.message}`);
+      const msg = error?.message || String(error);
+      if (msg.includes('ECONNREFUSED') || msg.includes('fetch failed')) {
+        CLITheme.error(`Impossibile connettersi al provider ${activeProvider.toUpperCase()} (${activeConfig.baseUrl}).`);
+        CLITheme.warning(`Assicurati che il server sia attivo o usa /provider per cambiare endpoint.`);
+      } else if (msg.includes('401') || msg.includes('Incorrect API key') || msg.includes('Unauthorized')) {
+        CLITheme.error(`Autenticazione fallita per il provider ${activeProvider.toUpperCase()}.`);
+        CLITheme.warning(`Verifica la chiave API in .env o configurala tramite /provider.`);
+      } else {
+        CLITheme.error(`Errore durante l'elaborazione: ${msg}`);
+      }
     } finally {
       interrupt.disarm();
     }

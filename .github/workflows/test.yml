@@ -1,8 +1,10 @@
-name: Test
+name: CI
 
 on:
   push:
+    branches: [main]
   pull_request:
+    branches: [main]
 
 jobs:
   test:
@@ -10,8 +12,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
-        node-version: [20]
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node-version: [20, 22]
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
@@ -31,3 +33,6 @@ jobs:
 
       - name: Test
         run: npm test
+
+      - name: Validate Package (Dry Run)
+        run: npm pack --dry-run

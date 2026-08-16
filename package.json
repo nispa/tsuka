@@ -7,13 +7,41 @@
     "tsuka": "dist/cli/index.js"
   },
   "type": "commonjs",
+  "license": "MIT",
+  "keywords": [
+    "ai",
+    "agents",
+    "multi-agent",
+    "cli",
+    "llm",
+    "ollama",
+    "openrouter",
+    "typescript",
+    "react-loop",
+    "orchestrator"
+  ],
+  "files": [
+    "dist",
+    "roles",
+    "traits",
+    "characters",
+    "teams",
+    "presets",
+    "tools_schemas",
+    "benchmarks",
+    "tsuka.config.json",
+    "README.md",
+    "README-it.md",
+    "LICENSE"
+  ],
   "scripts": {
     "dev": "tsx src/cli/index.ts",
     "build": "tsc",
     "start": "node dist/cli/index.js",
     "test": "tsx tests/run_tests.ts",
     "test:roles": "tsx tests/test_roles.ts",
-    "test:memory": "tsx tests/test_memory.ts"
+    "test:memory": "tsx tests/test_memory.ts",
+    "prepublishOnly": "npm run build && npm test"
   },
   "dependencies": {
     "chalk": "^4.1.2",

@@ -1,0 +1,21 @@
+# Development and Source
+src/
+tests/
+benchmarks/runs/
+workspace/
+runs/
+output/
+workflow_logs/
+memory/
+archive/
+scratch/
+docs/
+
+# IDE and Environment
+.git/
+.github/
+.claude/
+.env*
+*.log
+.tsuka_history
+tsconfig.json

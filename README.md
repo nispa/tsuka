@@ -33,6 +33,20 @@
 | 🤝 **Multi-agent workflows** | Conference debates (`/call`), collaborative teams (`/team`), and dynamic goal orchestrator (`/goal`) |
 | 🧠 **Context-aware execution** | Live reasoning display, per-agent token/timing stats (output/context/total), dual context bar (estimated + real peak from LLM), automatic history condensation between turns |
 
+## ⚡ Quickstart (60 seconds)
+
+```bash
+# 1. Install globally via npm (or clone the repository)
+npm install -g tsuka
+
+# 2. Initialize your workspace with the core agent preset
+tsuka init --preset core
+
+# 3. Launch the agentic CLI
+tsuka
+```
+*Make sure Ollama is running (`ollama serve`) or set your `OPENROUTER_API_KEY` in `.env`.*
+
 ## 📋 Table of Contents
 
 - [Architecture](#-architecture)

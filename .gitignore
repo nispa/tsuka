@@ -7,7 +7,5 @@ memory/
 output/*
 !output/.gitkeep
 workflow_logs/
-puzznic/
 runs/
 workspace/
-scratch/

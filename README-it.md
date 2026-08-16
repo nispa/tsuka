@@ -31,6 +31,20 @@
 | 🖥️ **Cross-platform** | Windows (PowerShell) primario; Linux/macOS (`/bin/sh`) sperimentale |
 | 🤝 **Workflow multi-agente** | Dibattiti (`/call`) e team collaborativi (`/team`) |
 
+## ⚡ Guida Rapida in 60 Secondi
+
+```bash
+# 1. Installazione globale tramite npm (o clona il repository)
+npm install -g tsuka
+
+# 2. Inizializza il workspace con il preset core degli agenti
+tsuka init --preset core
+
+# 3. Avvia la CLI
+tsuka
+```
+*Assicurati che Ollama sia avviato (`ollama serve`) oppure configura la tua `OPENROUTER_API_KEY` nel file `.env`.*
+
 ## 📋 Indice
 
 - [Architettura](#-architettura)

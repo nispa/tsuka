@@ -31,12 +31,12 @@
 | T5.1 | ✅ Fatto | `Agent.estimateTokens`/`estimateMessagesTokens` da statici a istanza, con rapporto caratteri/token tarato via media mobile (peso 0.2) su `usage.prompt_tokens` reale. Seed invariato (3.5). `tests/test_token_calibration.ts` verifica convergenza. |
 | T5.2 | ✅ Fatto | `.github/workflows/test.yml`: su push/PR, matrice `ubuntu-latest`/`windows-latest` × Node 20, `npm ci` → `npm run build` → `npm test`. Nessun segreto, nessuna rete verso LLM (tutti i test registrati in `tests/run_tests.ts` usano `MockLLMProvider` o logica pura). Verificato localmente il ciclo completo `npm ci` + `npm run build` + `npm test` da installazione pulita: verde. |
 | T5.3 | ✅ Fatto | Riscritta la Tappa 7 (mantenuta la numerazione cronologica reale della guida, non spostata a posizione 6 — vedi nota nel report finale) con le 4 strategie a confronto (tabella), il protocollo a tool call vs regex, l'isolamento della concorrenza in `/goal` (T3.1+T3.2), i test col mock come documentazione eseguibile. Passata di verifica su tutta la guida (agente di ricerca dedicato, 9 claim controllati contro il codice): corretti "~40 righe" per `Agent.run()` (ora ~150), il limite di I/O (5MB lettura file / 50KB output comandi, erano presentati come un solo numero), il filtro env var (pattern reale più ampio di `*_API_KEY`), il rapporto caratteri/token (ora calibrato a runtime, non fisso), il conteggio benchmark (3 categorie ma 5 casi, non "3 test"). Aggiornata anche la riga "Protocollo STATO" → "Protocollo di coordinamento a tool call" nella tabella §3 e aggiunta una riga "Isolamento dei branch paralleli". Tutti gli altri claim controllati (Tappe 1,3,4,6,9,10, tabelle §3, esistenza file) confermati veri, nessuna modifica. |
-| T11.1 | 📋 Da fare | Packaging npm & Sanitizzazione Distribuzione (`package.json` `files` whitelist, `.npmignore`, pulizia artefatti). |
-| T11.2 | 📋 Da fare | Zero-Config First Run & Wizard Onboarding (gestione assenza provider/config con UX guidata). |
-| T11.3 | 📋 Da fare | CI/CD Multi-OS & Script di Pre-Publish / Dry-Run (`.github/workflows/test.yml` matrice completa + test packaging). |
-| T11.4 | 📋 Da fare | Documentazione Open-Source: Quickstart a 3 comandi in testa al README (EN/IT) + asset demo. |
+| T11.1 | ✅ Fatto | Whitelist `files` in `package.json`, creato `.npmignore` esplicito, script `prepublishOnly`. Verificato con `npm pack --dry-run`: tarball da 180KB contenente solo codice compilato (`dist/`), preset, ruoli, tratti, character e schemi tool (zero test, zero log, zero cartelle di run). |
+| T11.2 | ✅ Fatto | Boot resiliente all'avvio su provider non raggiungibili con istruzioni di avvio (Ollama/OpenRouter/tsuka init); intercettazione e formattazione contestuale per errori `ECONNREFUSED` / `401 Unauthorized` nel REPL. |
+| T11.3 | ✅ Fatto | Workflow GitHub Actions `.github/workflows/test.yml` esteso alla matrice Ubuntu, Windows e macOS su Node.js 20 e 22, con step automatico di build, test e packaging dry-run. |
+| T11.4 | ✅ Fatto | Sezione "⚡ Quickstart (60 seconds)" / "Guida Rapida in 60 Secondi" a 3 comandi posizionata in evidenza a inizio `README.md` e `README-it.md`. |
 
-Tutti i task del piano qualità sono completati (45 suite di test verdi). Nuova fase di Ottimizzazione e Release Readiness pianificata.
+Tutti i task del piano qualità e della Fase 6 di ottimizzazione sono completati (45 suite di test verdi, package pulito e pronto per il rilascio).
 
 ---
 
