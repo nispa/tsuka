@@ -8,6 +8,8 @@ import { Agent, resolveReasoningEffort } from '../../../core/agent';
 import { withEffortPin, logEffortDivergence } from '../../../core/effortControl';
 import { setCurrentSenderName, dequeueMessages, formatPendingMessages } from '../../../core/messageQueue';
 import { ContextTracker } from '../../../core/contextTracker';
+import { Blackboard } from '../../../core/blackboard';
+import { sanitizeToolCallArguments } from '../../../tools/jsonRepair';
 import { ChatMessage, TurnOutcome, ProtocolSource, TeamConfig } from '../../../core/types';
 
 /**
@@ -109,7 +111,7 @@ function extractReportStatusCall(messages: ChatMessage[]): { status: string; sum
       if (tc?.function?.name !== 'report_status') continue;
       try {
         const raw = tc.function.arguments;
-        const args = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        const args = typeof raw === 'string' ? sanitizeToolCallArguments(raw).parsed : raw;
         const status = String(args?.status || '').trim().toUpperCase();
         if (status === 'COMPLETATO' || status === 'DA_CONTINUARE' || status === 'FALLITO') {
           return { status, summary: String(args?.summary || '') };

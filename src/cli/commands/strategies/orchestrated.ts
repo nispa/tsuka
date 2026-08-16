@@ -6,6 +6,7 @@ import { GenerationInterrupt } from '../../interrupt';
 import { resolveCharacter, CharacterConfig, RoleConfig, TraitConfig } from '../../shared';
 import { ChatMessage, ToolCall, ProtocolSource } from '../../../core/types';
 import { TeamRunConfig, ProtocolLogEntry, TeamResult, TeamStrategy, runMemberTurn, warnProtocolDegrade } from './common';
+import { sanitizeToolCallArguments } from '../../../tools/jsonRepair';
 import { runRoundRobin } from './roundRobin';
 import { runDiscussionRound } from './hybrid';
 
@@ -100,7 +101,7 @@ function extractRouteNextCall(toolCalls: ToolCall[] | undefined, validMembers: s
     if (tc?.function?.name !== 'route_next') continue;
     try {
       const raw = tc.function.arguments;
-      const args = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      const args = typeof raw === 'string' ? sanitizeToolCallArguments(raw).parsed : raw;
       const rawAgent = String(args?.agent || '').trim();
       if (!rawAgent) continue;
       if (/^FINE$/i.test(rawAgent)) return 'FINE';

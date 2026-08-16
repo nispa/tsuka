@@ -6,6 +6,7 @@ import { GenerationInterrupt } from '../../interrupt';
 import { loadSystemPrompt, resolveCharacter } from '../../shared';
 import { ChatMessage, ToolCall, Vote } from '../../../core/types';
 import { ProtocolLogEntry, warnProtocolDegrade } from './common';
+import { sanitizeToolCallArguments } from '../../../tools/jsonRepair';
 
 /**
  * Modalità ibrida (T4.2, PLANNING-QUALITA.md): non è un `mode` a sé — è un round di
@@ -21,7 +22,7 @@ function extractCastVoteCall(toolCalls?: ToolCall[]): Vote | null {
     if (tc?.function?.name !== 'cast_vote') continue;
     try {
       const raw = tc.function.arguments;
-      const args = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      const args = typeof raw === 'string' ? sanitizeToolCallArguments(raw).parsed : raw;
       const vote = String(args?.vote || '').trim().toUpperCase();
       if (vote === 'APPROVO' || vote === 'MODIFICARE' || vote === 'RIFIUTO') {
         return vote as Vote;

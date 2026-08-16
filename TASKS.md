@@ -39,6 +39,7 @@
 | T11.6 | ✅ Fatto | Token-Driven History & Dynamic Command Timeout: potatura cronologia guidata dai token effettivi con soffitto a 500 messaggi; timeout di `execute_command` reso dinamico via parametro `timeout_ms` e configurabile con `commandTimeoutMs` in `tsuka.config.json`. |
 | T11.7 | ✅ Fatto | Blackboard Visibility & Goal Persistence: salvataggio report `/goal` con snapshot blackboard in `workflow_logs/`; visualizzazione note a fine goal; comando `/blackboard` per consultare gli ultimi workflow. |
 | T11.8 | ✅ Fatto | Self-Healing History & Malformed Tool Call Sanitization: auto-riparazione euristica di stringhe JSON troncate e sanificazione preventiva degli argomenti salvati in `this.messages` per scongiurare crash HTTP 500 dal parser C++/Jinja di llama-server su chiamate successive; suite `tests/test_toolcall_sanitization.ts`. |
+| T11.9 | ✅ Fatto | Codebase-Wide JSON Resilience & Protocol Hardening: estensione del motore `jsonRepair.ts` alle strategie di coordinamento multi-agente (`report_status`, `cast_vote`, `route_next`), al benchmark runner DSL (`extractJson`, `parseArgs`) e all'esecuzione runtime dei tool in `ToolRegistry.executeTool`. |
 
 Tutti i task del piano qualità e della Fase 6 di ottimizzazione sono completati (47 suite di test verdi, package pulito e pronto per il rilascio).
 
@@ -1545,6 +1546,22 @@ Prevenire il crash a cascata (HTTP 500 `Failed to parse tool call arguments as J
 - Scrivere la suite di test `tests/test_toolcall_sanitization.ts`.
 
 **Accettazione:** Quando un modello produce una tool call con JSON troncato o non valido, la cronologia non viene corrotta e il server locale non va in HTTP 500 nei round successivi, consentendo all'agente di ricevere l'errore e correggersi.
+
+## T11.9 — Codebase-Wide JSON Resilience & Protocol Hardening
+
+**Dipende da:** T11.8 · **Sforzo:** basso · **Priorità:** alta
+
+Estendere il motore modulare `jsonRepair.ts` a tutti i punti di consumo di input/output generati da modelli LLM:
+
+- **Protocollo multi-agente (`strategies/common.ts`, `strategies/hybrid.ts`, `strategies/orchestrated.ts`)**:
+  - `extractReportStatusCall`, `extractCastVoteCall`, `extractRouteNextCall` ora usano `sanitizeToolCallArguments(raw).parsed` invece di `JSON.parse` rigido, prevenendo degradamenti a regex causati da trailing commas o code fences.
+- **Benchmark DSL runner (`src/core/benchmarkTests.ts`)**:
+  - `extractJson(text)` e `parseArgs(tc)` integrano `repairJsonString` e `sanitizeToolCallArguments` per una tolleranza robusta sui payload JSON di verifica.
+- **Tool Registry execution (`src/tools/registry.ts`)**:
+  - `ToolRegistry.executeTool` applica sanificazione e normalizzazione preventiva su argomenti passati come stringa prima della validazione dello schema e dell'esecuzione effettiva.
+
+**Accettazione:** Massima tolleranza a glitch sintattici minori degli LLM in tutta la piattaforma senza falsi degradamenti del protocollo né fallimenti nei benchmark.
+
 
 
 

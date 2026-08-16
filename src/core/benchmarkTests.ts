@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
 import { homePath } from './apphome';
+import { repairJsonString, sanitizeToolCallArguments } from '../tools/jsonRepair';
 import type { ILLMProvider, ChatOptions } from './provider';
 
 /**
@@ -159,11 +160,11 @@ function stripEdgePunct(w: string): string {
   return w.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '');
 }
 
-/** Estrae il primo blocco JSON {...} dal testo e lo parsa (null se invalido). */
+/** Estrae il primo blocco JSON dal testo e lo parsa applicando riparazione automatica (null se invalido). */
 export function extractJson(text: string): any | null {
   try {
-    const m = text.match(/\{[\s\S]*\}/);
-    return m ? JSON.parse(m[0]) : null;
+    const outcome = repairJsonString(text);
+    return outcome ? outcome.parsed : null;
   } catch {
     return null;
   }
@@ -181,7 +182,9 @@ export function deepGet(obj: any, pathStr: string): any {
 }
 
 function parseArgs(tc: any): any {
-  try { return JSON.parse(tc.function.arguments); } catch { return {}; }
+  if (!tc || !tc.function) return {};
+  const raw = tc.function.arguments;
+  return typeof raw === 'string' ? sanitizeToolCallArguments(raw).parsed : (raw || {});
 }
 
 /** Confronto tollerante: numeri confrontati come numeri, il resto come stringhe. */

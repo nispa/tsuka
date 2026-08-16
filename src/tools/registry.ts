@@ -3,6 +3,7 @@ import { homePath } from '../core/apphome';
 import { RiskLevel, PermissionManager } from '../safety/permissions';
 import { getModelProfile } from '../core/modelProfile';
 import type { ReasoningEffort } from '../core/provider';
+import { sanitizeToolCallArguments } from './jsonRepair';
 import { logSink } from '../core/logSink';
 
 /**
@@ -119,7 +120,7 @@ function validateToolArgs(args: any, schema: any, toolName: string): string | nu
   }
 
   if (args._error === 'invalid_json_arguments') {
-    return `Argomenti JSON non validi o malformati generati dal modello. Riprova ad eseguire '${toolName}' con sintassi JSON corretta ed escaping adeguato`;
+    return `Argomenti JSON non validi o malformati (atteso un oggetto JSON valido). Riprova ad eseguire '${toolName}' con sintassi JSON corretta ed escaping adeguato`;
   }
 
   // Validazione required
@@ -295,10 +296,13 @@ export class ToolRegistry {
       };
     }
 
+    // Se args è una stringa grezza, tenta la sanificazione e il parse prima di validare
+    const effectiveArgs = typeof args === 'string' ? sanitizeToolCallArguments(args).parsed : args;
+
     // Validazione minima degli argomenti contro lo schema JSON
     const schemaData = loadToolSchema(name);
     if (schemaData.schema?.type === 'object' && schemaData.schema?.properties) {
-      const validationError = validateToolArgs(args, schemaData.schema, name);
+      const validationError = validateToolArgs(effectiveArgs, schemaData.schema, name);
       if (validationError) {
         return {
           success: false,
@@ -309,19 +313,19 @@ export class ToolRegistry {
 
     let details = '';
     try {
-      details = JSON.stringify(args);
+      details = JSON.stringify(effectiveArgs);
     } catch {
       details = 'argomenti complessi';
     }
 
-    if (name === 'execute_command' && args.command) {
-      details = args.command;
-    } else if (name === 'write_file' && args.path) {
-      details = `Creazione/sovrascrittura di ${args.path}`;
-    } else if (name === 'edit_file' && args.path) {
-      details = `Modifica di ${args.path}`;
-    } else if (name === 'delete_file' && args.path) {
-      details = `Eliminazione di ${args.path}`;
+    if (name === 'execute_command' && effectiveArgs?.command) {
+      details = effectiveArgs.command;
+    } else if (name === 'write_file' && effectiveArgs?.path) {
+      details = `Creazione/sovrascrittura di ${effectiveArgs.path}`;
+    } else if (name === 'edit_file' && effectiveArgs?.path) {
+      details = `Modifica di ${effectiveArgs.path}`;
+    } else if (name === 'delete_file' && effectiveArgs?.path) {
+      details = `Eliminazione di ${effectiveArgs.path}`;
     }
 
     const isApproved = await permissionManager.checkPermission(name, details, tool.riskLevel, requesterLabel);
@@ -333,7 +337,7 @@ export class ToolRegistry {
     }
 
     try {
-      const output = await tool.execute(args, { registry: this, provider, permissionManager, requesterLabel });
+      const output = await tool.execute(effectiveArgs, { registry: this, provider, permissionManager, requesterLabel });
       return {
         success: true,
         output: output
