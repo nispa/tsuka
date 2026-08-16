@@ -171,9 +171,15 @@ con al centro una nota che dice **come recuperare il resto**. `read_file` ha `of
 quindi il troncamento è paginazione e non un vicolo cieco. È la difesa più importante: senza,
 un singolo `read_file` può saturare la finestra prima che qualunque altra cosa intervenga.
 
-**Durante — potatura.** `pruneHistory()` taglia i messaggi meno recenti per numero e per budget
-di token stimati (`maxHistoryTokens`), senza mai lasciare orfana una risposta `tool` rispetto al
-suo `tool_call`.
+**Durante — potatura.** `pruneHistory()` ha due limiti, non equivalenti. Il **driver primario**
+è il budget di token stimati (`maxHistoryTokens`): taglia i messaggi meno recenti finché la
+cronologia rientra nel budget, senza mai lasciare orfana una risposta `tool` rispetto al suo
+`tool_call`. Il conteggio a numero di messaggi (`maxHistoryMessages`, default 500) è solo una
+**guardia estrema** — un conteggio fisso di messaggi non ha un rapporto stabile con la finestra
+realmente occupata in un sistema agentico, dove un solo messaggio può portare l'output di un
+tool da poche righe a decine di migliaia di caratteri. Contarlo come limite primario avrebbe
+tagliato la cronologia troppo presto in un turno pieno di tool piccoli, o troppo tardi in un
+turno con pochi tool enormi: da qui l'innalzamento del default da 40 a 500.
 
 **Alla soglia — compressione.** `compressHistory()` sostituisce i messaggi vecchi con un
 riassunto generato dal modello, salvandone traccia in memoria come `kind:'run'`.
@@ -182,9 +188,14 @@ La **stima** dei token è euristica (~3,5 caratteri/token) ma **calibrata a runt
 `promptTokens` reale restituito dall'API, con media mobile. Include anche gli schemi dei tool,
 che sono contesto inviato a ogni chiamata.
 
-> Taratura pratica: `maxHistoryTokens` va impostato sulla finestra **reale** del modello, non
-> lasciato al default. Un budget più alto della finestra rende inefficaci sia la potatura sia
-> la compressione, che non scattano mai in tempo.
+**`maxHistoryTokens` non è più solo un valore statico da tarare a mano.** All'avvio,
+`discovery.ts` (`detectContextWindow`) interroga il server attivo per la finestra di contesto
+**reale** del modello caricato — `/props` o `/slots` per llama-server/llama.cpp, `/api/show` per
+Ollama, `/v1/models` (`context_length` / `max_model_len`) per OpenRouter e vLLM — e la usa al
+posto del default. Il valore in `tsuka.config.json` (30000 su questo workspace) resta come
+**fallback statico**, usato solo se il server non espone la propria finestra o non risponde entro
+il timeout di rilevamento (1,5s). La sequenza di risoluzione è: finestra rilevata a runtime →
+`maxHistoryTokens` di config → 65536 di default.
 
 ---
 
@@ -306,7 +317,7 @@ tempo, non finestra.
 | `modelProfile.ts` | profili misurati per modello e livello di effort |
 | `benchmarkTests.ts` | test dichiarativi del benchmark, da `benchmarks/*.json` |
 | `config.ts` | configurazione, migrazione legacy, workspace root |
-| `discovery.ts` | scansione dei provider e del modello caricato |
+| `discovery.ts` | scansione dei provider, del modello caricato e della finestra di contesto reale |
 | `parallelWorkspace.ts` | staging isolato e fusione con rilevamento conflitti |
 | `platform.ts` | astrazione della shell per OS |
 | `thinkParser.ts` | estrazione dei blocchi di ragionamento |

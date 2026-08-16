@@ -224,12 +224,12 @@
       "scores": {
         "instruction": 0.8,
         "json": 1,
-        "toolCalling": 1
+        "toolCalling": 0.77
       },
-      "tokensPerSecond": 8.7,
-      "testedAt": "2026-08-15T16:05:41.645Z",
+      "tokensPerSecond": 8.2,
+      "testedAt": "2026-08-16T08:39:10.190Z",
       "benchmarkVersion": 4,
-      "testsHash": "882f0262",
+      "testsHash": "b217063e",
       "testResults": [
         {
           "name": "frase_8_parole",
@@ -247,6 +247,11 @@
           "score": 1
         },
         {
+          "name": "json_annidato",
+          "category": "json",
+          "score": 1
+        },
+        {
           "name": "catena_tool_distrattori",
           "category": "toolCalling",
           "score": 1
@@ -255,24 +260,29 @@
           "name": "trappola_astensione",
           "category": "toolCalling",
           "score": 1
+        },
+        {
+          "name": "tool_write_append",
+          "category": "toolCalling",
+          "score": 0.43
         }
       ],
       "reasoningEffort": "none",
-      "avgCompletionTokens": 32
+      "avgCompletionTokens": 42
     },
     "unsloth/Qwen3.8-27B-GGUF@low": {
       "model": "unsloth/Qwen3.8-27B-GGUF",
       "provider": "http://127.0.0.1:8888/v1",
-      "tier": "large",
+      "tier": "medium",
       "scores": {
         "instruction": 1,
         "json": 1,
-        "toolCalling": 1
+        "toolCalling": 0.77
       },
-      "tokensPerSecond": 20.3,
-      "testedAt": "2026-08-15T16:06:24.867Z",
+      "tokensPerSecond": 20,
+      "testedAt": "2026-08-16T08:40:23.309Z",
       "benchmarkVersion": 4,
-      "testsHash": "882f0262",
+      "testsHash": "b217063e",
       "testResults": [
         {
           "name": "frase_8_parole",
@@ -290,6 +300,11 @@
           "score": 1
         },
         {
+          "name": "json_annidato",
+          "category": "json",
+          "score": 1
+        },
+        {
           "name": "catena_tool_distrattori",
           "category": "toolCalling",
           "score": 1
@@ -298,24 +313,29 @@
           "name": "trappola_astensione",
           "category": "toolCalling",
           "score": 1
+        },
+        {
+          "name": "tool_write_append",
+          "category": "toolCalling",
+          "score": 0.43
         }
       ],
       "reasoningEffort": "low",
-      "avgCompletionTokens": 153
+      "avgCompletionTokens": 148
     },
     "unsloth/Qwen3.8-27B-GGUF@medium": {
       "model": "unsloth/Qwen3.8-27B-GGUF",
       "provider": "http://127.0.0.1:8888/v1",
-      "tier": "large",
+      "tier": "medium",
       "scores": {
         "instruction": 1,
         "json": 1,
-        "toolCalling": 1
+        "toolCalling": 0.77
       },
-      "tokensPerSecond": 22.1,
-      "testedAt": "2026-08-15T16:07:05.908Z",
+      "tokensPerSecond": 20,
+      "testedAt": "2026-08-16T08:41:26.231Z",
       "benchmarkVersion": 4,
-      "testsHash": "882f0262",
+      "testsHash": "b217063e",
       "testResults": [
         {
           "name": "frase_8_parole",
@@ -333,6 +353,11 @@
           "score": 1
         },
         {
+          "name": "json_annidato",
+          "category": "json",
+          "score": 1
+        },
+        {
           "name": "catena_tool_distrattori",
           "category": "toolCalling",
           "score": 1
@@ -341,24 +366,29 @@
           "name": "trappola_astensione",
           "category": "toolCalling",
           "score": 1
+        },
+        {
+          "name": "tool_write_append",
+          "category": "toolCalling",
+          "score": 0.43
         }
       ],
       "reasoningEffort": "medium",
-      "avgCompletionTokens": 135
+      "avgCompletionTokens": 156
     },
     "unsloth/Qwen3.8-27B-GGUF@xhigh": {
       "model": "unsloth/Qwen3.8-27B-GGUF",
       "provider": "http://127.0.0.1:8888/v1",
-      "tier": "large",
+      "tier": "medium",
       "scores": {
         "instruction": 1,
         "json": 1,
-        "toolCalling": 1
+        "toolCalling": 0.77
       },
-      "tokensPerSecond": 19.3,
-      "testedAt": "2026-08-15T16:07:47.230Z",
+      "tokensPerSecond": 20.2,
+      "testedAt": "2026-08-16T08:42:25.818Z",
       "benchmarkVersion": 4,
-      "testsHash": "882f0262",
+      "testsHash": "b217063e",
       "testResults": [
         {
           "name": "frase_8_parole",
@@ -376,6 +406,11 @@
           "score": 1
         },
         {
+          "name": "json_annidato",
+          "category": "json",
+          "score": 1
+        },
+        {
           "name": "catena_tool_distrattori",
           "category": "toolCalling",
           "score": 1
@@ -384,10 +419,15 @@
           "name": "trappola_astensione",
           "category": "toolCalling",
           "score": 1
+        },
+        {
+          "name": "tool_write_append",
+          "category": "toolCalling",
+          "score": 0.43
         }
       ],
       "reasoningEffort": "xhigh",
-      "avgCompletionTokens": 126
+      "avgCompletionTokens": 149
     }
   }
 }

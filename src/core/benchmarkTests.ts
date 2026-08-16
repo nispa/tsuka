@@ -271,17 +271,18 @@ export async function runBenchTest(provider: ILLMProvider, test: BenchTest, chat
     total += stepWeight;
     if (chainBroken) continue; // i check del passo pesano comunque (valgono 0)
 
-    if (step.prompt) {
-      messages.push({ role: 'user', content: step.prompt });
-    } else {
+    if (step.toolResult !== undefined) {
       if (!prevToolCall) { chainBroken = true; continue; }
       messages.push({ role: 'assistant', content: null, tool_calls: [prevToolCall] });
       messages.push({
         role: 'tool',
         tool_call_id: prevToolCall.id,
         name: prevToolCall.function.name,
-        content: step.toolResult ?? ''
+        content: step.toolResult
       });
+    }
+    if (step.prompt) {
+      messages.push({ role: 'user', content: step.prompt });
     }
 
     const r = await provider.chatWithTools(messages, test.tools && test.tools.length > 0 ? test.tools : undefined, undefined, undefined, chatOptions);

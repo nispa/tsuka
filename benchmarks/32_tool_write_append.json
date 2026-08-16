@@ -46,11 +46,12 @@
     },
     {
       "toolResult": "File 'server.log' scritto con successo (24 byte).",
+      "prompt": "Ora accoda al file 'server.log' la riga '[READY] In ascolto su porta 8080' usando il parametro append: true con write_file.",
       "checks": [
         { "type": "tool_called", "value": "write_file", "weight": 2 },
         { "type": "tool_arg_equals", "arg": "path", "value": "server.log", "weight": 2 },
         { "type": "tool_arg_equals", "arg": "append", "value": true, "weight": 3 },
-        { "type": "tool_arg_regex", "arg": "content", "value": "pronto|connessioni|ok|listen", "flags": "i", "weight": 1 }
+        { "type": "tool_arg_regex", "arg": "content", "value": "ready|ascolto|porta|8080|ok", "flags": "i", "weight": 1 }
       ]
     }
   ]
