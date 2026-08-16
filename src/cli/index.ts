@@ -7,7 +7,7 @@ import * as path from 'path';
 import { LLMProvider, setLlmTimeoutMs } from '../core/provider';
 import { homePath } from '../core/apphome';
 import { ConfigManager } from '../core/config';
-import { scanProviders } from '../core/discovery';
+import { scanProviders, detectContextWindow } from '../core/discovery';
 import { MemoryStore } from '../core/memory';
 import { createDefaultRegistry } from '../tools/index';
 import { PermissionManager } from '../safety/permissions';
@@ -166,6 +166,14 @@ async function main() {
         const loadedHint = scan.loadedModel === chosen ? chalk.gray(' (già caricato in memoria)') : '';
         CLITheme.success(`Modello attivo: ${chalk.green(chosen)}${loadedHint}`);
       }
+
+      // Rilevamento dinamico della finestra di contesto (T11.5)
+      const dynamicCtx = scan.contextWindow ?? (await detectContextWindow(activeConfig.baseUrl, configManager.getApiKey(), chosen));
+      if (dynamicCtx) {
+        configManager.setRuntimeContextTokens(dynamicCtx);
+        agent = recreateAgent();
+      }
+
       // Suggerisce /benchmark se il modello attivo non è mai stato profilato
       notifyIfUnprofiled(provider.getCurrentModel());
     }
@@ -181,10 +189,16 @@ async function main() {
   const initialCharName = configManager.getActiveCharacter();
   const initialChar = loadCharacter(initialCharName);
   {
+    const runtimeCtx = configManager.getRuntimeContextTokens();
+    const ctxLabel = runtimeCtx
+      ? `${runtimeCtx.toLocaleString()} tok (live server)`
+      : `${configManager.getMaxHistoryTokens().toLocaleString()} tok (default config)`;
+
     const rows: { label: string; value: string; color?: (s: string) => string }[] = [
       { label: 'Provider', value: activeProvider.toUpperCase(), color: chalk.green },
       { label: 'Server', value: activeConfig.baseUrl, color: chalk.cyan },
       { label: 'Modello', value: scan ? provider.getCurrentModel() : 'nessuno (server offline)', color: scan ? chalk.green : chalk.red },
+      { label: 'Contesto', value: ctxLabel, color: runtimeCtx ? chalk.green : chalk.gray },
     ];
     if (initialChar) {
       rows.push({ label: 'Personaggio', value: `${initialChar.displayName} (${initialChar.aiName})`, color: chalk.green });

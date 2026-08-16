@@ -50,6 +50,7 @@ export const CONFIG_PATH = homePath('tsuka.config.json');
 
 export class ConfigManager {
   private config!: AppConfig;
+  private runtimeContextTokens: number | null = null;
 
   constructor() {
     this.load();
@@ -222,9 +223,31 @@ export class ConfigManager {
    * Budget massimo di token stimati (~3,5 caratteri/token) mantenuti in cronologia.
    * Protegge la context window quando pochi messaggi contengono output tool molto
    * grandi, caso in cui il limite a conteggio messaggi non basta.
-   * Default: 65536. Configurabile con "maxHistoryTokens" in tsuka.config.json (min 1024).
+  /**
+   * Imposta il limite di contesto rilevato dinamicamente a runtime dal server attivo.
+   */
+  setRuntimeContextTokens(tokens: number | null): void {
+    this.runtimeContextTokens = typeof tokens === 'number' && Number.isFinite(tokens) && tokens >= 1024
+      ? Math.floor(tokens)
+      : null;
+  }
+
+  /**
+   * Ritorna il limite di contesto rilevato dal server a runtime, o null se non disponibile.
+   */
+  getRuntimeContextTokens(): number | null {
+    return this.runtimeContextTokens;
+  }
+
+  /**
+   * Finestra di contesto massima totale per la sessione: se il server ha esposto
+   * dinamicamente il proprio context window reale (T11.5), usa quello; altrimenti
+   * ricade sul default configurato in "maxHistoryTokens" di tsuka.config.json (default 65536).
    */
   getMaxHistoryTokens(): number {
+    if (this.runtimeContextTokens !== null && this.runtimeContextTokens >= 1024) {
+      return this.runtimeContextTokens;
+    }
     const value = this.config.maxHistoryTokens;
     if (typeof value === 'number' && Number.isFinite(value) && value >= 1024) {
       return Math.floor(value);

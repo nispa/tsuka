@@ -35,8 +35,9 @@
 | T11.2 | ✅ Fatto | Boot resiliente all'avvio su provider non raggiungibili con istruzioni di avvio (Ollama/OpenRouter/tsuka init); intercettazione e formattazione contestuale per errori `ECONNREFUSED` / `401 Unauthorized` nel REPL. |
 | T11.3 | ✅ Fatto | Workflow GitHub Actions `.github/workflows/test.yml` esteso alla matrice Ubuntu, Windows e macOS su Node.js 20 e 22, con step automatico di build, test e packaging dry-run. |
 | T11.4 | ✅ Fatto | Sezione "⚡ Quickstart (60 seconds)" / "Guida Rapida in 60 Secondi" a 3 comandi posizionata in evidenza a inizio `README.md` e `README-it.md`. |
+| T11.5 | ✅ Fatto | Dynamic Context Window Auto-Detection: implementato `detectContextWindow` per llama-server (`/props`, `/slots`), Ollama (`/api/show` model_info e num_ctx), OpenRouter e vLLM (`/models`); `ConfigManager` applica precedenza runtime con fallback statico da config; visualizzazione sorgente limite in `/context` e pannello di avvio; 10/10 check in `tests/test_context_detection.ts`. |
 
-Tutti i task del piano qualità e della Fase 6 di ottimizzazione sono completati (45 suite di test verdi, package pulito e pronto per il rilascio).
+Tutti i task del piano qualità e della Fase 6 di ottimizzazione sono completati (46 suite di test verdi, package pulito e pronto per il rilascio).
 
 ---
 
@@ -1487,6 +1488,23 @@ Rendere il repository immediatamente fruibile e attraente per la community GitHu
 - Preparare la sezione per demo visiva / GIF terminale.
 
 **Accettazione:** README allineato, chiaro, con guida rapida al primo avvio in cima sia in inglese che in italiano.
+
+## T11.5 — Dynamic Context Window Auto-Detection (Rilevamento Live del Limite di Contesto)
+
+**Dipende da:** nessuno · **Sforzo:** medio · **Priorità:** alta
+
+Rilevare dinamicamente e in tempo reale la dimensione della finestra di contesto (`n_ctx` / `context_length`) dal backend LLM attivo (llama-server, Ollama, OpenRouter, vLLM), superando il limite statico di `tsuka.config.json` che fungerà unicamente da fallback.
+
+- Implementare `detectContextWindow(baseUrl, apiKey, model)` in `src/core/discovery.ts`:
+  - **`llama-server` (llama.cpp)**: interroga `GET /props` (`default_generation_settings.n_ctx` o `n_ctx`) con fallback su `GET /slots` (`slots[0].n_ctx`).
+  - **`Ollama`**: interroga `POST /api/show` con `{ "name": model }` e cerca `model_info["llama.context_length"]`, `model_info["qwen2.context_length"]`, `model_info["context_length"]` o `parameters` (`num_ctx`).
+  - **`OpenRouter` & `vLLM`**: interroga `GET /models` e recupera `context_length` o `max_model_len` corrispondente al modello attivo.
+- Aggiornare `ConfigManager` con `setRuntimeContextTokens` / `getRuntimeContextTokens` e fare in modo che `getMaxHistoryTokens()` dia priorità al valore live rilevato dal server se presente.
+- Visualizzare nel pannello di avvio e nei comandi `/info`, `/context` e `/use` la finestra di contesto effettiva e la sua sorgente (`server live` vs `config fallback`).
+- Scrivere la suite di test `tests/test_context_detection.ts` per validare il parsing dei vari formati di payload server.
+
+**Accettazione:** All'avvio su llama-server o Ollama, TSUKA adotta automaticamente la dimensione reale del contesto del modello/server senza richiedere modifiche manuali a `tsuka.config.json`.
+
 
 
 

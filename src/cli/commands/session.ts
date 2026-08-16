@@ -47,8 +47,11 @@ export async function handleContext(ctx: CommandCtx, _arg: string): Promise<void
   const barColor = pct > 80 ? chalk.red : pct > 50 ? chalk.yellow : chalk.green;
   const bar = barColor('█'.repeat(filled)) + chalk.gray('░'.repeat(empty));
 
+  const runtimeCtx = ctx.configManager.getRuntimeContextTokens();
+  const sourceLabel = runtimeCtx ? chalk.green('(live server)') : chalk.gray('(config default)');
+
   console.log(chalk.bold('\n📊 STATO CONTESTO'));
-  console.log(`  ${bar} ${barColor(`${pct}%`)} ${chalk.gray(`(~${total.toLocaleString()} / ${maxTokens.toLocaleString()} tok)`)}\n`);
+  console.log(`  ${bar} ${barColor(`${pct}%`)} ${chalk.gray(`(~${total.toLocaleString()} / ${maxTokens.toLocaleString()} tok)`)} ${sourceLabel}\n`);
 
   // Conteggio per ruolo
   const counts: Record<string, number> = {};

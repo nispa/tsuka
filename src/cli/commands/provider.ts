@@ -1,6 +1,6 @@
 import { CommandCtx } from './types';
 import { runBenchmark, ModelProfile } from '../../core/modelProfile';
-import { probeProvider, warmUpModel, isLocalUrl } from '../../core/discovery';
+import { probeProvider, warmUpModel, isLocalUrl, detectContextWindow } from '../../core/discovery';
 import { CLITheme, InteractiveMenu } from '../ui';
 import { notifyIfUnprofiled } from '../shared';
 import chalk from 'chalk';
@@ -130,6 +130,11 @@ async function pickModel(ctx: CommandCtx): Promise<boolean> {
       ctx.configManager.updateActiveModel(selectedModel);
       ctx.agent.current = ctx.recreateAgent();
       CLITheme.printModelChanged(oldModel, selectedModel);
+      const dynamicCtx = scan?.contextWindow ?? (await detectContextWindow(ctx.configManager.getActiveProviderConfig().baseUrl, ctx.configManager.getApiKey(), selectedModel));
+      if (dynamicCtx) {
+        ctx.configManager.setRuntimeContextTokens(dynamicCtx);
+        CLITheme.info(`Finestra di contesto attiva: ${chalk.green(dynamicCtx.toLocaleString())} token (rilevata dal server)`);
+      }
       await maybeWarmUp(ctx, selectedModel, loadedModel);
       notifyIfUnprofiled(selectedModel);
       return true;
@@ -167,6 +172,11 @@ export async function handleUse(ctx: CommandCtx, arg: string): Promise<void> {
       ctx.configManager.updateActiveModel(arg);
       ctx.agent.current = ctx.recreateAgent();
       CLITheme.printModelChanged(oldModel, arg);
+      const dynamicCtx = scan?.contextWindow ?? (await detectContextWindow(ctx.configManager.getActiveProviderConfig().baseUrl, ctx.configManager.getApiKey(), arg));
+      if (dynamicCtx) {
+        ctx.configManager.setRuntimeContextTokens(dynamicCtx);
+        CLITheme.info(`Finestra di contesto attiva: ${chalk.green(dynamicCtx.toLocaleString())} token (rilevata dal server)`);
+      }
       await maybeWarmUp(ctx, arg, scan?.loadedModel ?? null);
       notifyIfUnprofiled(arg);
     } else {

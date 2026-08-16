@@ -70,7 +70,8 @@ const suites = [
   'test_security_agent.ts',
   'test_malformed_toolcall_retry.ts',
   'test_write_file_append.ts',
-  'test_reasoning_memory.ts'
+  'test_reasoning_memory.ts',
+  'test_context_detection.ts'
 ];
 
 let passed = 0;
