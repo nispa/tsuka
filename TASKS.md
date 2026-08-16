@@ -40,8 +40,9 @@
 | T11.7 | ✅ Fatto | Blackboard Visibility & Goal Persistence: salvataggio report `/goal` con snapshot blackboard in `workflow_logs/`; visualizzazione note a fine goal; comando `/blackboard` per consultare gli ultimi workflow. |
 | T11.8 | ✅ Fatto | Self-Healing History & Malformed Tool Call Sanitization: auto-riparazione euristica di stringhe JSON troncate e sanificazione preventiva degli argomenti salvati in `this.messages` per scongiurare crash HTTP 500 dal parser C++/Jinja di llama-server su chiamate successive; suite `tests/test_toolcall_sanitization.ts`. |
 | T11.9 | ✅ Fatto | Codebase-Wide JSON Resilience & Protocol Hardening: estensione del motore `jsonRepair.ts` alle strategie di coordinamento multi-agente (`report_status`, `cast_vote`, `route_next`), al benchmark runner DSL (`extractJson`, `parseArgs`) e all'esecuzione runtime dei tool in `ToolRegistry.executeTool`. |
+| T11.10 | ✅ Fatto | Context-Aware Reasoning Budgeting, Throttling & CoT Recovery: calcolo preventivo del budget di reasoning residuo con throttling dinamico dell'effort (`calculateReasoningBudget`); recupero automatico su risposta di solo pensiero a effort `none` per forzare l'emissione immediata della tool call; suite `tests/test_reasoning_budget.ts`. |
 
-Tutti i task del piano qualità e della Fase 6 di ottimizzazione sono completati (47 suite di test verdi, package pulito e pronto per il rilascio).
+Tutti i task del piano qualità e della Fase 6 di ottimizzazione sono completati (48 suite di test verdi, package pulito e pronto per il rilascio).
 
 ---
 
@@ -1561,6 +1562,25 @@ Estendere il motore modulare `jsonRepair.ts` a tutti i punti di consumo di input
   - `ToolRegistry.executeTool` applica sanificazione e normalizzazione preventiva su argomenti passati come stringa prima della validazione dello schema e dell'esecuzione effettiva.
 
 **Accettazione:** Massima tolleranza a glitch sintattici minori degli LLM in tutta la piattaforma senza falsi degradamenti del protocollo né fallimenti nei benchmark.
+
+## T11.10 — Context-Aware Reasoning Budgeting, Throttling & CoT Recovery
+
+**Dipende da:** T11.5, T11.6 · **Sforzo:** medio · **Priorità:** alta
+
+Implementare la protezione a più livelli contro il sovraccarico di contesto causato da generazioni Chain of Thought prolungate:
+
+- **Calcolo Dinamico del Budget (`calculateReasoningBudget` in `src/core/contextBudget.ts`)**:
+  - Calcola la percentuale di contesto libero prima di ogni chiamata API in base ai token stimati di prompt e schemi dei tool.
+  - Se il contesto è abbondante (> 55%), mantiene l'effort nominale.
+  - Se il contesto è medio (30% - 55%), attiva la concisione e riduce `xhigh`/`high` a `medium`.
+  - Se il contesto è critico (< 30%), applica throttling aggressivo a `low` o `none` per evitare context overflow e crash di llama-server.
+- **CoT Recovery su Risposta di Solo Pensiero (`Agent.run` in `src/core/agent.ts`)**:
+  - Quando un modello esaurisce il turno in solo ragionamento senza chiamare tool (o viene troncato prima della chiamata), il nudge di azione forza per il retry immediato un reasoning effort pari a `'none'`. Il modello non ripete il ragionamento da zero e produce istantaneamente la tool call in frazioni di secondo.
+- **Suite di Test (`tests/test_reasoning_budget.ts`)**:
+  - 5 test dedicati che coprono throttling su contesti ampi, medi e critici, e il passaggio deterministico a effort `none` nel round di recovery di `Agent.run`.
+
+**Accettazione:** Quando un modello affronta contesti stretti o produce risposte con solo CoT, l'effort viene regolato dinamicamente per prevenire overflow e il recovery spinge all'azione immediata a costo computazionale nullo.
+
 
 
 

@@ -7,6 +7,7 @@ import chalk from 'chalk';
 import { MemoryStore } from './memory';
 import { logSink } from './logSink';
 import { ChatMessage } from './types';
+import { calculateReasoningBudget } from './contextBudget';
 import * as fs from 'fs';
 import * as path from 'path';
 import { homePath } from './apphome';
@@ -487,8 +488,7 @@ export class Agent {
   ): Promise<string> {
     const emit = onEvent ?? plainEventRenderer;
     this.messages.push({ role: 'user', content: userMessage });
-    const effectiveEffort = reasoningEffortOverride ?? this.reasoningEffort;
-    const chatOptions: ChatOptions | undefined = effectiveEffort ? { reasoningEffort: effectiveEffort } : undefined;
+    let currentRoundEffortOverride = reasoningEffortOverride;
 
     let isDone = false;
     let finalAnswer = '';
@@ -511,16 +511,19 @@ export class Agent {
       // esce subito senza aspettare che sia la prossima chiamata API a fallire
       if (signal?.aborted) break;
 
-      // T8.12: propaga l'effort già risolto (effectiveEffort, calcolato sopra) fino al
-      // tier dei tool — senza questo passaggio getModelTier ricadeva sempre sul default
-      // prudente 'xhigh' di getModelProfile, e un profilo misurato a un altro livello
-      // (es. 'medium') non veniva mai usato per decidere quali tool mostrare al modello.
+      // Calcolo dinamico del Reasoning Budget e Throttling (T11.10)
+      const promptTokensEst = Math.ceil(this.estimateMessagesTokens(this.messages) + this.toolsChars / this.charsPerToken);
+      const baseEffort = currentRoundEffortOverride ?? this.reasoningEffort;
+      const budget = calculateReasoningBudget(promptTokensEst, this.maxHistoryTokens, baseEffort);
+      const effectiveEffort = (budget.effectiveEffort as ReasoningEffort) ?? baseEffort;
+      const chatOptions: ChatOptions | undefined = effectiveEffort ? { reasoningEffort: effectiveEffort } : undefined;
+
+      // T8.12: propaga l'effort effettivo fino al tier dei tool
       const tools = this.registry.listForLLM(this.provider.getCurrentModel(), this.allowedTools, effectiveEffort);
       const toolsForRequest = tools.length > 0 ? tools : undefined;
 
       // T8.9: registra la dimensione degli schemi PRIMA di potare la history, così
-      // pruneHistory ragiona sul budget realmente occupato (messaggi + tool) invece
-      // di un punto cieco di ~2-3k token.
+      // pruneHistory ragiona sul budget realmente occupato (messaggi + tool).
       this.updateToolsSize(toolsForRequest);
 
       // Mantiene il contesto entro la finestra configurata prima di ogni chiamata API
@@ -605,6 +608,9 @@ export class Agent {
           const textIsAcceptable = everCalledTool || !this.acceptTextOnlyIf || this.acceptTextOnlyIf(content || '');
           if (!textIsAcceptable && !noToolNudgeUsed) {
             noToolNudgeUsed = true;
+            // CoT Recovery (T11.10): il modello ha già speso il pensiero, il retry di azione
+            // deve girare a reasoning effort 'none' per produrre immediatamente la tool call.
+            currentRoundEffortOverride = 'none';
             // 'report_status' non è sempre fra i tool consentiti a questo agente:
             // menzionarlo quando non c'è insegnerebbe una chiamata destinata a
             // fallire per permesso negato.

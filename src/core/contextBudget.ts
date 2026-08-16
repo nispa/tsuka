@@ -93,3 +93,75 @@ export function capForContext(text: string, maxTokens?: number, options: CapForC
 
   return head + note + tail;
 }
+
+export type ReasoningEffortLevel = 'none' | 'low' | 'medium' | 'xhigh' | 'high';
+
+export interface ReasoningBudgetResult {
+  /** Livello di reasoning effort effettivo (eventualmente ridotto per evitare overflow) */
+  effectiveEffort?: string;
+  /** Indica se iniettare la direttiva di sintesi nel prompt */
+  concisionRequired: boolean;
+  /** Tetto massimo stimato di token di reasoning consentiti per questo round */
+  maxReasoningTokens: number;
+  /** Percentuale di contesto libero residuo */
+  freeContextPercent: number;
+}
+
+/**
+ * Calcola il budget e l'effort di ragionamento consentito in base al contesto residuo (T11.10).
+ * Previene context overflow e troncamenti a metà CoT.
+ */
+export function calculateReasoningBudget(
+  promptTokens: number,
+  maxContextTokens: number,
+  requestedEffort?: string
+): ReasoningBudgetResult {
+  const safeMax = Math.max(1024, maxContextTokens);
+  const remaining = Math.max(0, safeMax - promptTokens);
+  const freePercent = Math.round((remaining / safeMax) * 100);
+
+  // Default se non specificato o se non è stringa
+  const effort = typeof requestedEffort === 'string' ? requestedEffort.toLowerCase() : undefined;
+
+  // Spazio abbondante (> 55% libero): nessun throttling
+  if (freePercent > 55) {
+    return {
+      effectiveEffort: requestedEffort,
+      concisionRequired: false,
+      maxReasoningTokens: Math.min(8192, Math.floor(remaining * 0.6)),
+      freeContextPercent: freePercent
+    };
+  }
+
+  // Spazio medio (30% - 55% libero): consiglia concisione, abbassa solo se xhigh
+  if (freePercent >= 30) {
+    let throttledEffort = requestedEffort;
+    if (effort === 'xhigh' || effort === 'high') {
+      throttledEffort = 'medium';
+    }
+    return {
+      effectiveEffort: throttledEffort,
+      concisionRequired: true,
+      maxReasoningTokens: Math.min(4096, Math.floor(remaining * 0.5)),
+      freeContextPercent: freePercent
+    };
+  }
+
+  // Spazio critico (< 30% libero): throttling aggressivo (low o none) e concisione obbligatoria
+  let throttledEffort: string | undefined = 'none';
+  if (effort === 'xhigh' || effort === 'high' || effort === 'medium') {
+    throttledEffort = freePercent >= 15 ? 'low' : 'none';
+  } else if (effort === 'low') {
+    throttledEffort = freePercent >= 15 ? 'low' : 'none';
+  } else {
+    throttledEffort = requestedEffort;
+  }
+
+  return {
+    effectiveEffort: throttledEffort,
+    concisionRequired: true,
+    maxReasoningTokens: Math.min(2048, Math.floor(remaining * 0.4)),
+    freeContextPercent: freePercent
+  };
+}
+
