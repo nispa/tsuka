@@ -1,62 +1,141 @@
-# Framework di Sicurezza e Permessi 🛡️
+# Framework di Sicurezza, Confinamento e Permessi 🛡️
 
 <div align="right">
   <p>Read in <a href="security.md">🇬🇧 English</a></p>
 </div>
 
-TSUKA è progettato per automatizzare compiti reali su sistemi operativi (Windows, Linux e macOS). Poiché l'esecuzione di script shell e la scrittura su filesystem comportano potenziali rischi per l'ambiente host, il framework implementa un modello di sicurezza multilivello rigorosamente imperniato sul principio **User-in-the-Loop**.
+**TSUKA** è progettato per automatizzare compiti operativi reali su sistemi operativi (Windows, Linux e macOS). Poiché l'esecuzione di comandi shell, la modifica di codice sorgente e la cooperazione multi-agente comportano potenziali rischi per l'ambiente host, il framework implementa un'architettura di **sicurezza a profondità multilivello (Defense-in-Depth)** rigorosamente imperniata sul principio **User-in-the-Loop**.
 
 ---
 
-## 🔒 1. Livelli di Rischio dei Tool
+## 🏛️ Architettura di Sicurezza Multilivello
 
-Ogni tool registrato dichiara un livello di rischio (`riskLevel`). Il modulo `PermissionManager` garantisce il rispetto dei confini di autorizzazione:
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                           1. USER-IN-THE-LOOP                           │
+│     PermissionManager: FIFO Prompt Queue · CLI / TUI Interactive Modals │
+└────────────────────────────────────┬────────────────────────────────────┘
+                                     │
+┌────────────────────────────────────▼────────────────────────────────────┐
+│                    2. WORKSPACE JAIL & PATH CONFINEMENT                 │
+│        resolveSafePath() · Path Traversal Blocking (CWE-22)             │
+└────────────────────────────────────┬────────────────────────────────────┘
+                                     │
+┌────────────────────────────────────▼────────────────────────────────────┐
+│                  3. CREDENTIAL & SENSITIVE DATA MASKING                 │
+│         Automatic Redaction: API Keys, Passwords, Tokens, Secrets       │
+└────────────────────────────────────┬────────────────────────────────────┘
+                                     │
+┌────────────────────────────────────▼────────────────────────────────────┐
+│                  4. ISOLATED PARALLEL WORKSPACE STAGING                 │
+│      Ephemeral Branch Sandboxes · Conflict-Aware Merge Detection        │
+└────────────────────────────────────┬────────────────────────────────────┘
+                                     │
+┌────────────────────────────────────▼────────────────────────────────────┐
+│                  5. RUNTIME VM SANDBOX & USER-SPACE TOOLS               │
+│        node:vm Isolation · Blocklist Policies · custom_tools/ User Space│
+└────────────────────────────────────┬────────────────────────────────────┘
+                                     │
+┌────────────────────────────────────▼────────────────────────────────────┐
+│                  6. DEFENSIVE SAST ENGINE (audit_code)                  │
+│       CWE-798 · CWE-78/95 · CWE-89 · CWE-79 · CWE-327/295 · CWE-532    │
+└─────────────────────────────────────────────────────────────────────────┘
+```
 
-| Livello di Rischio | Descrizione Operativa | Esempi | Comportamento Esecutivo |
+---
+
+## 🔒 1. Tre Livelli di Rischio dei Tool (`riskLevel`)
+
+Ogni tool registrato nel `ToolRegistry` dichiara esplicitamente il proprio livello di rischio. Il modulo `PermissionManager` garantisce che nessuna operazione impattante avvenga senza la necessaria autorizzazione:
+
+| Livello | Descrizione Operativa | Tool Nativi | Politica di Esecuzione |
 | :--- | :--- | :--- | :--- |
-| **`SAFE`** | Operazioni di sola lettura, analisi statica di sicurezza, query internet e diagnostica di sistema. | `read_file`, `list_dir`, `grep_search`, `audit_code`, `web_search`, `browse_url`, `get_ps_info` | Esecuzione trasparente e immediata senza interruzioni. |
-| **`RESTRICTED`** | Operazioni che modificano o cancellano file nel workspace o alterano configurazioni. | `write_file`, `edit_file`, `delete_file`, `download_file`, `create_role`, `create_tool` | Richiede conferma all'utente: `[y/N/sempre]`. L'opzione `sempre` autorizza tutte le future modifiche ai file per la sessione corrente. |
-| **`DANGEROUS`** | Esecuzione di codice arbitrario, script shell di sistema o apertura di connessioni. | `execute_command` (PowerShell / Shell executor) | **Richiede sempre** conferma esplicita `[y/N]`. Nessun bypass globale consentito. |
+| **`SAFE`** | Operazioni di sola lettura, analisi statica difensiva, query internet e diagnostica di sistema. | `read_file`, `list_dir`, `grep_search`, `audit_code`, `web_search`, `browse_url`, `get_ps_info`, `recall_memory`, `read_notes` | **Esecuzione immediata e trasparente** senza interruzioni per l'utente. |
+| **`RESTRICTED`** | Modifica o cancellazione di file nel workspace, download da rete o creazione di ruoli/tool. | `write_file`, `edit_file`, `delete_file`, `download_file`, `create_role`, `create_tool`, `save_memory`, `post_note` | **Richiede conferma interattiva**: `[y/N/sempre]`. L'opzione `sempre` attiva l'approvazione delle sole modifiche ai file per la sessione attiva. |
+| **`DANGEROUS`** | Esecuzione di codice arbitrario, script shell di sistema (PowerShell, Bash) o apertura di processi. | `execute_command` | **Richiede SEMPRE conferma esplicita** `[y/N]`. Il bypass di sessione (`always`) è **rigorosamente disabilitato** per prevenire esecuzioni incontrollate. |
 
 ---
 
-## 🛡️ 2. Auditing Statico di Sicurezza (`audit_code`)
+## 🏢 2. Confinamento Rigoroso nel Workspace (Workspace Jail)
 
-TSUKA include il ruolo specializzato `security_auditor` (impersonato nativamente da **Worf** e come skill secondaria da **Tuvok** e **Sherlock**):
+Tutte le operazioni sul filesystem (`read_file`, `write_file`, `edit_file`, `delete_file`, `list_dir`, `grep_search`, `audit_code`) sono obbligatoriamente vincolate alla directory del workspace attivo tramite la funzione protetta `resolveSafePath()`:
 
-* **Analisi Statica Difensiva (`audit_code`)**: Scansiona i file sorgente del workspace alla ricerca di segreti hardcoded (chiavi API, token JWT, chiavi private), vulnerabilità di Command Injection, Path Traversal, SQL Injection e algoritmi crittografici deboli.
-* **Remediation & Hardening**: L'agente analista formula raccomandazioni correttive e patch di sicurezza per la revisione da parte dello sviluppatore.
-* **Pack di Sicurezza**: È possibile abilitare rapidamente le capability di sicurezza in qualsiasi workspace eseguendo:
-  ```powershell
-  tsuka init --pack security
-  ```
+* **Blocco del Path Traversal (`CWE-22`)**: Tentativi di risalire la gerarchia con `..` o di accedere a percorsi assoluti al di fuori del workspace vengono intercettati e rifiutati prima di raggiungere il filesystem.
+* **Nessun accesso al sistema host**: Gli agenti non possono leggere né modificare file di sistema, chiavi SSH, profili utente o configurazioni globali dell'OS.
 
----
-
-## 👤 3. Richieste di Autorizzazione User-in-the-Loop
-
-Quando un agente richiede l'esecuzione di un tool `RESTRICTED` o `DANGEROUS`:
-
-1. Il ciclo di esecuzione ReAct si sospende.
-2. Il `PermissionManager` visualizza i dettagli puntuali dell'azione (ad esempio il comando esatto da eseguire o il percorso del file da scrivere).
-3. L'utente seleziona l'opzione desiderata:
-   * `y` (sì): autorizza la singola esecuzione.
-   * `n` (no): rifiuta l'azione, restituendo un errore controllato all'agente per consentirgli di tentare strade alternative.
-   * `sempre` (valido solo per i tool `RESTRICTED`): concede l'autorizzazione alle scritture per l'intera durata della sessione.
-4. Le autorizzazioni di sessione possono essere revocate in qualsiasi momento con il comando `/reset`.
+```typescript
+// src/tools/impl/utils.ts
+export function resolveSafePath(workspaceRoot: string, targetPath: string): string {
+  const resolved = path.resolve(workspaceRoot, targetPath);
+  if (!resolved.startsWith(workspaceRoot)) {
+    throw new Error(`Access denied: path '${targetPath}' is outside the workspace jail.`);
+  }
+  return resolved;
+}
+```
 
 ---
 
-## 🌐 4. Tracciamento Oggettivo delle Fonti Web
+## 🔑 3. Mascheramento Automatico di Credenziali e Segreti
 
-Per proteggere l'utente da allucinazioni o omissioni del modello durante l'accesso a fonti online:
+TSUKA integra una pipeline automatica di sanitizzazione dell'output (`maskEnvVars`):
+* **Filtro delle Variabili d'Ambiente**: Tutte le variabili d'ambiente caricate da `.env` o dal sistema contenenti pattern sensibili (`KEY`, `SECRET`, `TOKEN`, `PASSWORD`, `CREDENTIAL`, `AUTH`) vengono mascherate automaticamente.
+* **Sanitizzazione su Tutti i Canali**: Il mascheramento avviene prima che i dati vengano inviati ai prompt dei modelli LLM, registrati nei file di log (`workflow_logs/`), stampati a video nella CLI o visualizzati nella TUI.
 
-* **Tracciamento deterministico**: Il framework cattura direttamente gli URL restituiti dai motori di ricerca (DuckDuckGo, Google, Tavily) e dal browser web.
-* **Log a video**: Al termine dell'esecuzione del tool, la CLI stampa l'elenco esatto delle fonti interrogate:
-  ```
-  ✔ Tool 'web_search' completato.
-    └─ Fonti trovate:
-       • https://nodejs.org/en/blog/announcements/v22-release-announce
-       • ...
-  ```
-* L'utente ha sempre visibilità immediata sulle risorse esterne realmente consultate dall'agente.
+---
+
+## ⚡ 4. Coda di Permessi Serializzata (Sequential FIFO Prompt Queue)
+
+Nelle modalità multi-agente o nei workflow con esecuzione concorrente (`PARALLELO` in `/goal` o team paralleli):
+* Più rami di esecuzione indipendenti possono richiedere autorizzazioni contemporaneamente.
+* Il `PermissionManager` accoda sequenzialmente le richieste interattive tramite una promessa FIFO (`enqueuePrompt`).
+* **Nessuna collisione su terminale**: I prompt utente compaiono uno alla volta in ordine atomico, prevenendo corruzioni dello stream TTY o conflitti sui modali della TUI.
+
+---
+
+## 🧪 5. Sandbox Parallela e Rilevamento dei Conflitti (`parallelWorkspace.ts`)
+
+Quando il Goal Orchestrator esegue rami paralleli:
+1. **Staging Isolato**: Ciascun agente lavora in una directory sandbox temporanea isolata via `AsyncLocalStorage`.
+2. **Merge Deterministico**: Al termine del blocco parallelo, le modifiche vengono unite nel workspace reale verificando che non vi siano sovrascritture concorrenti sullo stesso file (*conflict-aware merge*).
+3. **Ripulitura Automatica**: Le cartelle temporanee di staging vengono rimosse al completamento.
+
+---
+
+## 🛠️ 6. Sandbox VM e Isolamento dei Tool Utente (`create_tool`)
+
+Il framework consente agli agenti di creare nuovi tool dinamicamente in modo controllato e sicuro:
+* **Esecuzione in Sandbox `node:vm`**: Il codice del tool viene validato ed eseguito in un contesto isolato senza accesso a `eval()`, `new Function()`, `process.exit`, `process.env` o moduli esterni non autorizzati.
+* **Isolamento nello User-Space (`custom_tools/`)**: I tool generati dall'agente e i relativi schemi JSON vengono salvati in `custom_tools/` e `custom_tools_schemas/` (esclusi dal controllo versione tramite `.gitignore`), proteggendo l'integrità del codice sorgente del framework.
+* **Controllo Anti-Sovrascrittura**: È impossibile sovrascrivere o manomettere i 27 tool core nativi.
+* **Versioning e Backup Automatico**: In caso di aggiornamento di un tool custom, la versione precedente viene salvata automaticamente in `tools_backup/`.
+
+---
+
+## 🔍 7. Motore SAST Difensivo Avanzato (`audit_code`)
+
+TSUKA include uno strumento nativo di analisi statica di sicurezza del codice (`audit_code`) per rilevare proattivamente vulnerabilità nel workspace:
+
+| Vulnerabilità / CWE | Descrizione e Pattern Rilevati |
+| :--- | :--- |
+| **`CWE-798` (Hardcoded Secrets)** | Rilevamento di token OpenAI (`sk-...`), chiavi AWS (`AKIA...`), token GitHub (`ghp_...`), JWT, chiavi RSA/PEM e password hardcoded. |
+| **`CWE-78 / CWE-95` (Code/Command Injection)** | Rilevamento di `child_process.exec`, `eval()`, `new Function()`, `execSync` con concatenazioni dinamiche non igienizzate. |
+| **`CWE-89` (SQL Injection)** | Rilevamento di query SQL costruite tramite concatenazione di stringhe o template literals senza prepared statements. |
+| **`CWE-22` (Path Traversal)** | Rilevamento di accessi a file con percorsi dinamici non convalidati (`path.join` con input utente). |
+| **`CWE-79` (DOM XSS)** | Rilevamento di inserimenti non sicuri nel DOM (`innerHTML`, `outerHTML`, `dangerouslySetInnerHTML`). |
+| **`CWE-327 / CWE-295` (Broken Crypto & Insecure TLS)** | Rilevamento di hashing deboli (`MD5`, `SHA1`) e configurazioni TLS con `rejectUnauthorized: false`. |
+| **`CWE-532 / CWE-732` (Log Leaks & Permissive Permissions)** | Rilevamento di credenziali stampate nei log e permessi eccessivi (`chmod 777`). |
+
+### Parametri di Audit Flessibili:
+* `path`: Directory o file specifico da analizzare.
+* `severityThreshold`: Filtro per gravità (`HIGH`, `MEDIUM`, `LOW`).
+* `fileExtensions`: Scansione mirata per estensioni (es. `['.ts', '.js', '.py', '.php', '.env']`).
+* `maxIssues`: Limite massimo di problemi riportati.
+
+---
+
+## 🤖 8. Sicurezza e Controllo nei Protocolli Multi-Agente
+
+* **Attori Tipizzati**: Tutti i passaggi di consegne e le votazioni avvengono tramite tool di protocollo strutturati (`report_status`, `route_next`, `cast_vote`).
+* **Interruzione Immediata (`Esc` / `Ctrl+X`)**: L'utente può interrompere in qualsiasi momento la catena di esecuzione; il segnale di abort (`AbortSignal`) propaga istantaneamente su tutti i subagenti e arresta i tool in corso.
+* **Controllo sui Subagenti (`spawn_agent`)**: Ogni subagente eredita i vincoli di sicurezza, i controlli sui permessi e i limiti di token del processo padre.
