@@ -6,10 +6,12 @@ import type { ReasoningEffort } from '../core/provider';
 import { sanitizeToolCallArguments } from './jsonRepair';
 import { logSink } from '../core/logSink';
 import { WorkflowScope } from '../core/workflowScope';
+import type { StreamChannel } from '../core/thinkParser';
+import type { AgentEventHandler } from '../core/agentEvents';
 
 /**
  * Optional execution context passed into tool executors (e.g. registry access
- * for hot-registering tools created by create_tool).
+ * for hot-registering tools created by create_tool, or subagent event/chunk forwarding).
  */
 export interface ToolExecutionContext {
   registry?: ToolRegistry;
@@ -18,6 +20,10 @@ export interface ToolExecutionContext {
   commandCtx?: any;
   /** Requesting agent label (e.g. character aiName) for logging and note authorship attribution. */
   requesterLabel?: string;
+  onChunk?: (chunk: string, channel?: StreamChannel, authorName?: string) => void;
+  onStats?: (stats: any) => void;
+  onEvent?: AgentEventHandler;
+  signal?: AbortSignal;
 }
 
 export interface Tool {
@@ -29,6 +35,38 @@ export interface Tool {
 export interface ToolResult {
   success: boolean;
   output: string;
+}
+
+const TIER_HIERARCHY: Record<'small' | 'medium' | 'large', number> = {
+  small: 1,
+  medium: 2,
+  large: 3,
+};
+
+const LARGE_MODEL_PATTERNS = ['gpt-', 'claude-', 'gemini-', 'meta-llama/llama-3.3-70b', 'deepseek-'];
+
+const WORKFLOW_ESCALATION_TOOLS = new Set(['request_goal', 'request_team', 'request_call']);
+
+type DetailFormatter = (args: any) => string | undefined;
+
+const TOOL_DETAIL_FORMATTERS: Record<string, DetailFormatter> = {
+  execute_command: (a) => a?.command,
+  write_file: (a) => (a?.path ? `Write/overwrite ${a.path}` : undefined),
+  edit_file: (a) => (a?.path ? `Edit ${a.path}` : undefined),
+  delete_file: (a) => (a?.path ? `Delete ${a.path}` : undefined),
+  request_goal: (a) => (a?.goal ? `Escalate to /goal: "${a.goal}" (Reason: ${a.reason || 'unspecified'})` : undefined),
+  request_team: (a) => (a?.team_name || a?.task ? `Convene team ${a.team_name || ''}: "${a.task}" (Reason: ${a.reason || 'unspecified'})` : undefined),
+  request_call: (a) => (a?.topic ? `Start call on "${a.topic}" (Reason: ${a.reason || 'unspecified'})` : undefined),
+};
+
+function formatPermissionDetails(toolName: string, args: any): string {
+  const custom = TOOL_DETAIL_FORMATTERS[toolName]?.(args);
+  if (custom) return custom;
+  try {
+    return JSON.stringify(args);
+  } catch {
+    return 'complex arguments';
+  }
 }
 
 /**
@@ -43,23 +81,14 @@ export function getModelTier(modelName: string, effort?: ReasoningEffort): 'smal
   }
 
   const lower = modelName.toLowerCase();
-  
-  if (
-    lower.includes('gpt-') || 
-    lower.includes('claude-') || 
-    lower.includes('gemini-') ||
-    lower.includes('meta-llama/llama-3.3-70b') ||
-    lower.includes('deepseek-')
-  ) {
+  if (LARGE_MODEL_PATTERNS.some((p) => lower.includes(p))) {
     return 'large';
   }
 
   const match = lower.match(/(\d+)b/);
   if (match) {
     const size = parseInt(match[1], 10);
-    if (size <= 12) return 'small';
-    if (size <= 35) return 'medium';
-    return 'large';
+    return size <= 12 ? 'small' : size <= 35 ? 'medium' : 'large';
   }
 
   return 'small';
@@ -112,13 +141,11 @@ function validateToolArgs(args: any, schema: any, toolName: string): string | nu
     if (expectedType === 'string' && actualType !== 'string') {
       return `'${field}' must be a string, received ${actualType}`;
     }
-    if (expectedType === 'integer' || expectedType === 'number') {
-      if (actualType !== 'number' && actualType !== 'string') {
-        return `'${field}' must be a number, received ${actualType}`;
-      }
-      if (actualType === 'string' && expectedType === 'integer' && !/^-?\d+$/.test(value)) {
-        return `'${field}' must be an integer, received "${value}"`;
-      }
+    if ((expectedType === 'integer' || expectedType === 'number') && actualType !== 'number' && actualType !== 'string') {
+      return `'${field}' must be a number, received ${actualType}`;
+    }
+    if (expectedType === 'integer' && typeof value === 'string' && !/^-?\d+$/.test(value)) {
+      return `'${field}' must be an integer, received "${value}"`;
     }
   }
 
@@ -207,6 +234,7 @@ export class ToolRegistry {
     };
   }> {
     const modelTier = getModelTier(modelName, effort);
+    const currentTierLevel = TIER_HIERARCHY[modelTier];
     const result: Array<{
       type: 'function';
       function: { name: string; description: string; parameters: any };
@@ -218,19 +246,12 @@ export class ToolRegistry {
       }
 
       const schemaData = loadToolSchema(tool.name);
-
-      const tierOk =
-        modelTier === 'small'
-          ? schemaData.requiredTier === 'small'
-          : modelTier === 'medium'
-            ? schemaData.requiredTier !== 'large'
-            : true;
-
-      if (!tierOk) {
+      const requiredTierLevel = TIER_HIERARCHY[schemaData.requiredTier || 'small'];
+      if (currentTierLevel < requiredTierLevel) {
         continue;
       }
 
-      if (WorkflowScope.isInsideWorkflow() && (tool.name === 'request_goal' || tool.name === 'request_team' || tool.name === 'request_call')) {
+      if (WorkflowScope.isInsideWorkflow() && WORKFLOW_ESCALATION_TOOLS.has(tool.name)) {
         continue;
       }
 
@@ -247,7 +268,18 @@ export class ToolRegistry {
     return result;
   }
 
-  async executeTool(name: string, args: any, permissionManager: PermissionManager, provider?: any, requesterLabel?: string, commandCtx?: any): Promise<ToolResult> {
+  async executeTool(
+    name: string,
+    args: any,
+    permissionManager: PermissionManager,
+    provider?: any,
+    requesterLabel?: string,
+    commandCtx?: any,
+    onChunk?: (chunk: string, channel?: StreamChannel, authorName?: string) => void,
+    onStats?: (stats: any) => void,
+    onEvent?: AgentEventHandler,
+    signal?: AbortSignal
+  ): Promise<ToolResult> {
     const tool = this.tools.get(name);
     if (!tool) {
       return {
@@ -269,28 +301,7 @@ export class ToolRegistry {
       }
     }
 
-    let details = '';
-    try {
-      details = JSON.stringify(effectiveArgs);
-    } catch {
-      details = 'complex arguments';
-    }
-
-    if (name === 'execute_command' && effectiveArgs?.command) {
-      details = effectiveArgs.command;
-    } else if (name === 'write_file' && effectiveArgs?.path) {
-      details = `Write/overwrite ${effectiveArgs.path}`;
-    } else if (name === 'edit_file' && effectiveArgs?.path) {
-      details = `Edit ${effectiveArgs.path}`;
-    } else if (name === 'delete_file' && effectiveArgs?.path) {
-      details = `Delete ${effectiveArgs.path}`;
-    } else if (name === 'request_goal' && effectiveArgs?.goal) {
-      details = `Escalate to /goal: "${effectiveArgs.goal}" (Reason: ${effectiveArgs.reason || 'unspecified'})`;
-    } else if (name === 'request_team' && (effectiveArgs?.team_name || effectiveArgs?.task)) {
-      details = `Convene team ${effectiveArgs.team_name || ''}: "${effectiveArgs.task}" (Reason: ${effectiveArgs.reason || 'unspecified'})`;
-    } else if (name === 'request_call' && effectiveArgs?.topic) {
-      details = `Start call on "${effectiveArgs.topic}" (Reason: ${effectiveArgs.reason || 'unspecified'})`;
-    }
+    const details = formatPermissionDetails(name, effectiveArgs);
 
     const isApproved = await permissionManager.checkPermission(name, details, tool.riskLevel, requesterLabel);
     if (!isApproved) {
@@ -301,10 +312,20 @@ export class ToolRegistry {
     }
 
     try {
-      const output = await tool.execute(effectiveArgs, { registry: this, provider, permissionManager, requesterLabel, commandCtx });
+      const output = await tool.execute(effectiveArgs, {
+        registry: this,
+        provider,
+        permissionManager,
+        requesterLabel,
+        commandCtx,
+        onChunk,
+        onStats,
+        onEvent,
+        signal
+      });
       return {
         success: true,
-        output: output
+        output
       };
     } catch (error: any) {
       return {

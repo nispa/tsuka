@@ -5,9 +5,9 @@
  */
 
 export type AgentEvent =
-  | { type: 'tool_start'; name: string; args: any }
-  | { type: 'tool_end'; name: string; args: any; success: boolean; output: string }
-  | { type: 'round_continue'; round: number }
-  | { type: 'max_rounds'; limit: number };
+  | { type: 'tool_start'; name: string; args: any; agentLabel?: string }
+  | { type: 'tool_end'; name: string; args: any; success: boolean; output: string; agentLabel?: string }
+  | { type: 'round_continue'; round: number; agentLabel?: string }
+  | { type: 'max_rounds'; limit: number; agentLabel?: string };
 
 export type AgentEventHandler = (ev: AgentEvent) => void;

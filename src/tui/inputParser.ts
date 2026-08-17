@@ -63,6 +63,8 @@ export class InputParser {
         return { name: 'return', sequence: '\r', ctrl: false, meta: false, shift: false };
       case 12: // Ctrl+L (Redraw)
         return { name: 'l', sequence: '\x0c', ctrl: true, meta: false, shift: false };
+      case 20: // Ctrl+T (Toggle thinking expansion)
+        return { name: 't', sequence: '\x14', ctrl: true, meta: false, shift: false };
       case 24: // Ctrl+X (Interrupt)
         return { name: 'x', sequence: '\x18', ctrl: true, meta: false, shift: false };
       case 8: // Backspace (BS)

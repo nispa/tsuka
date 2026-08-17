@@ -66,3 +66,30 @@ export function getShellConfig(): ShellConfig {
     }
   };
 }
+
+/**
+ * Copies text to the OS system clipboard cross-platform.
+ */
+export function copyToClipboard(text: string): boolean {
+  try {
+    const cp = require('child_process');
+    if (isWindows()) {
+      const proc = cp.spawn('clip.exe', [], { stdio: ['pipe', 'ignore', 'ignore'], windowsHide: true });
+      proc.stdin.write(text);
+      proc.stdin.end();
+      return true;
+    } else if (process.platform === 'darwin') {
+      const proc = cp.spawn('pbcopy', [], { stdio: ['pipe', 'ignore', 'ignore'] });
+      proc.stdin.write(text);
+      proc.stdin.end();
+      return true;
+    } else {
+      const proc = cp.spawn('xclip', ['-selection', 'clipboard'], { stdio: ['pipe', 'ignore', 'ignore'] });
+      proc.stdin.write(text);
+      proc.stdin.end();
+      return true;
+    }
+  } catch {
+    return false;
+  }
+}

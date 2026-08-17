@@ -11,25 +11,68 @@ export interface TurnRunnerContext {
   commandController: TuiCommandController;
 }
 
+interface QueuedPromptItem {
+  prompt: string;
+  msgId?: string;
+}
+
 export class TuiTurnRunner {
   private currentInterrupt?: GenerationInterrupt;
+  private promptQueue: QueuedPromptItem[] = [];
+  private isProcessing: boolean = false;
 
   constructor(private ctx: TurnRunnerContext) {}
 
   async handleUserPrompt(prompt: string): Promise<void> {
-    // 1. Slash command routing
-    if (prompt.startsWith('/')) {
-      await this.ctx.commandController.handleCommand(prompt);
+    const trimmed = prompt.trim();
+    if (!trimmed) return;
+
+    // If already processing a turn, add message with [IN CODA] badge to chat immediately and queue
+    if (this.isProcessing) {
+      const position = this.promptQueue.length + 1;
+      let msgId: string | undefined;
+      if (!trimmed.startsWith('/')) {
+        msgId = this.ctx.store.addMessage({
+          role: 'user',
+          content: trimmed,
+          isQueued: true,
+          queuePosition: position,
+        });
+      }
+      this.promptQueue.push({ prompt: trimmed, msgId });
+      this.ctx.store.notify(`⏳ Prompt #${position} accodato. Verrà eseguito al termine del turno attivo.`, 'info');
       return;
     }
 
+    this.isProcessing = true;
+    await this.executeTurn({ prompt: trimmed });
+  }
+
+  private async executeTurn(item: QueuedPromptItem): Promise<void> {
+    const { prompt, msgId } = item;
     const { store, bridge } = this.ctx;
 
-    // 2. Add user message
-    store.addMessage({
-      role: 'user',
-      content: prompt,
-    });
+    // 1. Slash command routing
+    if (prompt.startsWith('/')) {
+      try {
+        await this.ctx.commandController.handleCommand(prompt);
+      } finally {
+        this.processNextInQueue();
+      }
+      return;
+    }
+
+    bridge.resetCurrentTurn();
+
+    // 2. Transition queued message to active, or create new user message if direct
+    if (msgId) {
+      store.updateMessage(msgId, { isQueued: false });
+    } else {
+      store.addMessage({
+        role: 'user',
+        content: prompt,
+      });
+    }
 
     store.setState({
       isGenerating: true,
@@ -63,17 +106,46 @@ export class TuiTurnRunner {
       bridge.resetCurrentTurn();
       store.setState({ isGenerating: false });
       this.currentInterrupt = undefined;
+      this.processNextInQueue();
+    }
+  }
+
+  private processNextInQueue(): void {
+    if (this.promptQueue.length > 0) {
+      const next = this.promptQueue.shift()!;
+      setTimeout(() => {
+        this.executeTurn(next).catch(() => {});
+      }, 50);
+    } else {
+      this.isProcessing = false;
     }
   }
 
   interrupt(): void {
-    const { store } = this.ctx;
+    const { store, bridge } = this.ctx;
     const state = store.getState();
 
-    if (state.isGenerating && this.currentInterrupt) {
+    // Cancel queued prompts on user interrupt and update chat messages
+    if (this.promptQueue.length > 0) {
+      const count = this.promptQueue.length;
+      for (const q of this.promptQueue) {
+        if (q.msgId) {
+          store.updateMessage(q.msgId, {
+            isQueued: false,
+            content: q.prompt + '\n\n*(Annullato da stop utente)*',
+          });
+        }
+      }
+      this.promptQueue = [];
+      store.notify(`Annullati ${count} prompt in coda`, 'warn');
+    }
+
+    if (this.isProcessing && this.currentInterrupt) {
       this.currentInterrupt.abort();
       store.notify('Generation interrupted by user', 'warn');
+      bridge.resetCurrentTurn();
       store.finishStreaming(state.messages[state.messages.length - 1]?.id || '');
+      this.isProcessing = false;
     }
   }
 }

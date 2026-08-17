@@ -117,27 +117,79 @@ console.log('--- Test TuiBridge & Permission Integration ---');
   assert.strictEqual(store.getState().activeTools[0].status, 'completed');
   assert.strictEqual(store.getState().activeTools[0].output, 'match 1');
 
+  // Test round_continue creates separate message for next round reasoning
+  onEvent({ type: 'round_continue', round: 1, maxRounds: 15 });
+  onChunk('Thinking for round 2...', 'reasoning');
+  assert.strictEqual(store.getState().messages.length, 2);
+  assert.strictEqual(store.getState().messages[1].thinkingContent, 'Thinking for round 2...');
+
+  onChunk('Answer for round 2', 'content');
+  assert.strictEqual(store.getState().messages[1].content, 'Answer for round 2');
+
+  // Test multi-phase reasoning within same round splits cleanly
+  onChunk('Thinking phase 2...', 'reasoning');
+  assert.strictEqual(store.getState().messages.length, 3);
+  assert.strictEqual(store.getState().messages[2].thinkingContent, 'Thinking phase 2...');
+
+  // Test subagent reasoning with distinct authorName
+  onChunk('Subagent thinking...', 'reasoning', 'Coder');
+  assert.strictEqual(store.getState().messages.length, 4);
+  assert.strictEqual(store.getState().messages[3].authorName, 'Coder');
+  assert.strictEqual(store.getState().messages[3].thinkingContent, 'Subagent thinking...');
+
+  // Test subagent tool execution attribution
+  onEvent({ type: 'tool_start', name: 'read_file', args: { path: 'file.ts' }, agentLabel: 'Coder' });
+  assert.strictEqual(store.getState().activeTools[0].name, 'read_file (@Coder)');
+
   console.log('✔ TuiBridge & Permission integration test passed');
 })().catch((err) => {
   console.error('✘ TUI Test failed:', err);
   process.exit(1);
 });
 
-console.log('--- Test Views Rendering ---');
+console.log('--- Test Views Rendering & Thinking Toggle ---');
 {
   const store = new TuiStore();
   store.addMessage({ role: 'user', content: 'What is 2+2?' });
-  store.addMessage({ role: 'assistant', content: 'It is 4.', thinkingContent: 'Calculate 2+2' });
-  const state = store.getState();
+  store.addMessage({
+    role: 'assistant',
+    content: 'It is 4.',
+    thinkingContent: 'Calculate 2+2 in mind',
+    toolCalls: [
+      { id: '1', name: 'read_file', args: '{"path": "index.ts"}', status: 'completed', output: 'content here' }
+    ]
+  });
+  
+  // Test collapsed thinking (default)
+  let state = store.getState();
+  let chat = ChatView.render(state, 60, 20);
+  assert.strictEqual(chat.length, 20);
+  assert.ok(chat.some((line) => line.includes('Thought') && line.includes('Ctrl+T')));
+  assert.ok(chat.some((line) => line.includes('read_file') && line.includes('index.ts')));
+
+  // Test expanded thinking globally
+  const isExpanded = store.toggleThinkingExpansion();
+  assert.strictEqual(isExpanded, true);
+  state = store.getState();
+  chat = ChatView.render(state, 60, 20);
+  assert.strictEqual(chat.length, 20);
+  assert.ok(chat.some((line) => line.includes('Chain of Thought') && line.includes('Ctrl+T')));
+
+  // Test per-message thinking toggle
+  const assistantMsgId = state.messages[1].id;
+  const msgAtRow = ChatView.getMessageAtRow(state, 60, 20, 5);
+  assert.ok(msgAtRow !== undefined);
+  
+  store.toggleThinkingExpansion(); // Reset global to false
+  const perMsgExpanded = store.toggleMessageThinking(assistantMsgId);
+  assert.strictEqual(perMsgExpanded, true);
+  assert.strictEqual(store.getState().messages[1].isThinkingExpanded, true);
 
   const header = HeaderView.render(state, 80);
   assert.ok(header.length >= 3);
 
   const sidebar = SidebarView.render(state, 24, 20);
   assert.strictEqual(sidebar.length, 20);
-
-  const chat = ChatView.render(state, 56, 20);
-  assert.strictEqual(chat.length, 20);
 
   const input = InputView.render(state, 80, 3);
   assert.strictEqual(input.length, 3);
@@ -191,3 +243,63 @@ console.log('--- Test LayoutConfigManager & Widgets ---');
 
   console.log('✔ LayoutConfigManager & Widgets test passed');
 }
+
+console.log('--- Test TuiTurnRunner Sequential Prompt Queue ---');
+(async () => {
+  const { TuiTurnRunner } = require('../src/tui/controllers/turnController');
+  const store = new TuiStore();
+  const perm = new PermissionManager();
+  const bridge = new TuiBridge(store, perm);
+
+  let runCount = 0;
+  const executedPrompts: string[] = [];
+
+  const mockAgent: any = {
+    run: async (prompt: string) => {
+      runCount++;
+      executedPrompts.push(prompt);
+      await new Promise((r) => setTimeout(r, 100)); // Simulate async execution delay
+      return 'done';
+    }
+  };
+
+  const mockCommandController: any = {
+    handleCommand: async () => {}
+  };
+
+  const runner = new TuiTurnRunner({
+    store,
+    bridge,
+    getAgent: () => mockAgent,
+    commandController: mockCommandController
+  });
+
+  // Launch prompt 1 and immediately queue prompt 2 & 3
+  const p1 = runner.handleUserPrompt('First prompt');
+  const p2 = runner.handleUserPrompt('Second prompt (queued)');
+  const p3 = runner.handleUserPrompt('Third prompt (queued)');
+
+  // Verify queued messages appear immediately with [IN CODA] status in chat feed
+  const pendingState = store.getState();
+  assert.strictEqual(pendingState.messages.length, 3);
+  assert.strictEqual(pendingState.messages[1].isQueued, true);
+  assert.strictEqual(pendingState.messages[1].queuePosition, 1);
+  assert.strictEqual(pendingState.messages[2].isQueued, true);
+  assert.strictEqual(pendingState.messages[2].queuePosition, 2);
+
+  const pendingChat = ChatView.render(pendingState, 60, 20);
+  assert.ok(pendingChat.some((l) => l.includes('IN CODA')));
+
+  await p1;
+  // Wait for queue to drain
+  await new Promise((r) => setTimeout(r, 350));
+
+  assert.strictEqual(runCount, 3);
+  assert.deepStrictEqual(executedPrompts, ['First prompt', 'Second prompt (queued)', 'Third prompt (queued)']);
+  assert.strictEqual(store.getState().isGenerating, false);
+
+  console.log('✔ TuiTurnRunner prompt queue test passed');
+})().catch((err) => {
+  console.error('✘ TurnRunner test failed:', err);
+  process.exit(1);
+});

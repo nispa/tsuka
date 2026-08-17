@@ -61,7 +61,7 @@ export class ChatView {
       allLines.push('');
     } else {
       for (const msg of state.messages) {
-        allLines.push(...ChatView.renderMessage(msg, innerWidth));
+        allLines.push(...ChatView.renderMessage(msg, innerWidth, state));
         allLines.push(''); // Spacing between messages
       }
     }
@@ -87,17 +87,97 @@ export class ChatView {
     );
   }
 
-  private static renderMessage(msg: TuiChatMessage, innerWidth: number): string[] {
+  /**
+   * Identifies which chat message is at a given visual terminal line inside the chat view.
+   */
+  static getMessageAtRow(state: TuiState, width: number, height: number, clickedRow: number): TuiChatMessage | undefined {
+    if (state.messages.length === 0) return undefined;
+    const innerWidth = Math.max(10, width - 4);
+    const innerHeight = Math.max(1, height - 2);
+
+    const messageLineRanges: Array<{ msg: TuiChatMessage; start: number; end: number }> = [];
+    let lineCursor = 0;
+    for (const msg of state.messages) {
+      const msgLines = ChatView.renderMessage(msg, innerWidth, state);
+      const start = lineCursor;
+      const end = lineCursor + msgLines.length;
+      messageLineRanges.push({ msg, start, end });
+      lineCursor = end + 1; // spacing line
+    }
+
+    const totalLines = lineCursor > 0 ? lineCursor - 1 : 0;
+    let startLine = Math.max(0, totalLines - innerHeight - state.chatScrollOffset);
+    if (state.chatScrollOffset >= totalLines - innerHeight) {
+      startLine = 0;
+    }
+
+    const targetLine = startLine + clickedRow;
+    const match = messageLineRanges.find((r) => targetLine >= r.start && targetLine < r.end);
+    return match ? match.msg : undefined;
+  }
+
+  /**
+   * Determines if the clicked row lands specifically on a message's thinking header or thinking block,
+   * rather than on regular response text. This preserves standard text selection / copy-pasting.
+   */
+  static getThinkingHeaderAtRow(state: TuiState, width: number, height: number, clickedRow: number): TuiChatMessage | undefined {
+    if (state.messages.length === 0) return undefined;
+    const innerWidth = Math.max(10, width - 4);
+    const innerHeight = Math.max(1, height - 2);
+
+    const thinkingLineRanges: Array<{ msg: TuiChatMessage; start: number; end: number }> = [];
+    let lineCursor = 0;
+
+    for (const msg of state.messages) {
+      const msgLines = ChatView.renderMessage(msg, innerWidth, state);
+      const msgStart = lineCursor;
+
+      if (msg.thinkingContent && msg.thinkingContent.trim()) {
+        const isExpanded = msg.isThinkingExpanded !== undefined ? msg.isThinkingExpanded : !!state.expandAllThinking;
+        const thinkStart = msgStart + 1; // 1 line after author header
+        let thinkLen = 1;
+        if (isExpanded) {
+          const rawLines = msg.thinkingContent.trim().split(/\r?\n/);
+          thinkLen = 1 + (msg.isStreaming && !msg.content ? Math.min(10, rawLines.length) : rawLines.length) + 1;
+        }
+        thinkingLineRanges.push({ msg, start: thinkStart, end: thinkStart + thinkLen });
+      }
+
+      lineCursor += msgLines.length + 1;
+    }
+
+    const totalLines = lineCursor > 0 ? lineCursor - 1 : 0;
+    let startLine = Math.max(0, totalLines - innerHeight - state.chatScrollOffset);
+    if (state.chatScrollOffset >= totalLines - innerHeight) {
+      startLine = 0;
+    }
+
+    const targetLine = startLine + clickedRow;
+    const match = thinkingLineRanges.find((r) => targetLine >= r.start && targetLine < r.end);
+    return match ? match.msg : undefined;
+  }
+
+  private static renderMessage(msg: TuiChatMessage, innerWidth: number, state?: TuiState): string[] {
     const lines: string[] = [];
-    const timeStr = msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const dateObj = msg.timestamp instanceof Date ? msg.timestamp : new Date(msg.timestamp || Date.now());
+    const timeStr = !isNaN(dateObj.getTime())
+      ? dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+      : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     const contentWidth = Math.max(6, innerWidth - 4);
 
     if (msg.role === 'user') {
-      const header = chalk.bold.yellow(`👤 You`) + chalk.gray(` [${timeStr}]`);
+      const queueBadge = msg.isQueued
+        ? chalk.bold.bgHex('#d97706').hex('#ffffff')(` ⏳ IN CODA (#${msg.queuePosition || 1}) `) + ' '
+        : '';
+      const header = chalk.bold.yellow(`👤 You`) + ' ' + queueBadge + chalk.gray(`[${timeStr}]`);
       lines.push(header);
       const textLines = renderMarkdownToLines(msg.content, contentWidth);
       for (const l of textLines) {
-        lines.push('  ' + l);
+        if (msg.isQueued) {
+          lines.push('  ' + chalk.hex('#fef08a')(l));
+        } else {
+          lines.push('  ' + l);
+        }
       }
     } else if (msg.role === 'assistant') {
       const author = msg.authorName ? `${msg.authorName}` : 'Tsuka';
@@ -106,45 +186,119 @@ export class ChatView {
 
       // Render thinking block if present
       if (msg.thinkingContent && msg.thinkingContent.trim()) {
-        const title = msg.isStreaming ? '💭 Reasoning / Thinking Stream...' : '💭 Chain of Thought / Reasoning';
-        lines.push('  ' + chalk.bold.hex('#c084fc')(`┌─ ${title} `) + chalk.hex('#64748b')('─'.repeat(Math.max(0, contentWidth - title.length - 2))));
-        
-        const maxThinkWidth = Math.max(4, contentWidth - 4);
-        const rawLines = msg.thinkingContent.trim().split(/\r?\n/);
-        for (const r of rawLines) {
-          if (!r.trim()) {
-            lines.push('  ' + chalk.hex('#64748b')('│ '));
-            continue;
-          }
-          // Wrap words to fit inner box
-          const words = r.replace(/\t/g, '  ').split(' ');
-          let cur = '';
-          for (const w of words) {
-            if (cur.length + 1 + w.length > maxThinkWidth) {
-              lines.push('  ' + chalk.hex('#64748b')('│ ') + chalk.hex('#cbd5e1').italic(cur));
-              cur = w;
-            } else {
-              cur = cur ? cur + ' ' + w : w;
+        const tokens = msg.thinkingTokens || Math.max(1, Math.round(msg.thinkingContent.length / 3.8));
+        const isExpanded = msg.isThinkingExpanded !== undefined ? msg.isThinkingExpanded : !!state?.expandAllThinking;
+
+        if (msg.isStreaming && !msg.content) {
+          // Streaming active thought
+          if (isExpanded) {
+            const title = `💭 Thinking… (${tokens} tok) ▾`;
+            lines.push('  ' + chalk.bold.hex('#c084fc')(`┌─ ${title} `) + chalk.hex('#64748b')('─'.repeat(Math.max(0, contentWidth - title.length - 2))));
+            const maxThinkWidth = Math.max(4, contentWidth - 4);
+            const rawLines = msg.thinkingContent.trim().split(/\r?\n/);
+            for (const r of rawLines.slice(-10)) {
+              if (!r.trim()) {
+                lines.push('  ' + chalk.hex('#64748b')('│ '));
+                continue;
+              }
+              const words = r.replace(/\t/g, '  ').split(' ');
+              let cur = '';
+              for (const w of words) {
+                if (cur.length + 1 + w.length > maxThinkWidth) {
+                  lines.push('  ' + chalk.hex('#64748b')('│ ') + chalk.hex('#cbd5e1').italic(cur));
+                  cur = w;
+                } else {
+                  cur = cur ? cur + ' ' + w : w;
+                }
+              }
+              if (cur) {
+                lines.push('  ' + chalk.hex('#64748b')('│ ') + chalk.hex('#cbd5e1').italic(cur));
+              }
             }
+            lines.push('  ' + chalk.hex('#64748b')('└' + '─'.repeat(Math.max(8, contentWidth + 2))));
+          } else {
+            const cleanTail = msg.thinkingContent.replace(/\s+/g, ' ').trim().slice(-45);
+            lines.push(
+              '  ' +
+              chalk.hex('#c084fc')('💭 ') +
+              chalk.bold.hex('#e879f9')('Thinking… ') +
+              chalk.hex('#a855f7')(`(${tokens} tok) `) +
+              chalk.gray.italic(`"${cleanTail}"`)
+            );
           }
-          if (cur) {
-            lines.push('  ' + chalk.hex('#64748b')('│ ') + chalk.hex('#cbd5e1').italic(cur));
+        } else {
+          // Completed reasoning
+          if (isExpanded) {
+            const title = `💭 Chain of Thought (${tokens} tok) ▾ [Click / Ctrl+T]`;
+            lines.push('  ' + chalk.bold.hex('#c084fc')(`┌─ ${title} `) + chalk.hex('#64748b')('─'.repeat(Math.max(0, contentWidth - title.length - 2))));
+            const maxThinkWidth = Math.max(4, contentWidth - 4);
+            const rawLines = msg.thinkingContent.trim().split(/\r?\n/);
+            for (const r of rawLines) {
+              if (!r.trim()) {
+                lines.push('  ' + chalk.hex('#64748b')('│ '));
+                continue;
+              }
+              const words = r.replace(/\t/g, '  ').split(' ');
+              let cur = '';
+              for (const w of words) {
+                if (cur.length + 1 + w.length > maxThinkWidth) {
+                  lines.push('  ' + chalk.hex('#64748b')('│ ') + chalk.hex('#cbd5e1').italic(cur));
+                  cur = w;
+                } else {
+                  cur = cur ? cur + ' ' + w : w;
+                }
+              }
+              if (cur) {
+                lines.push('  ' + chalk.hex('#64748b')('│ ') + chalk.hex('#cbd5e1').italic(cur));
+              }
+            }
+            lines.push('  ' + chalk.hex('#64748b')('└' + '─'.repeat(Math.max(8, contentWidth + 2))));
+          } else {
+            lines.push(
+              '  ' +
+              chalk.hex('#c084fc')('💭 ') +
+              chalk.bold.hex('#e879f9')('Thought ') +
+              chalk.hex('#a855f7')(`(${tokens} tok) `) +
+              chalk.hex('#64748b')('▸ [Click / Ctrl+T]')
+            );
           }
         }
-        lines.push('  ' + chalk.hex('#64748b')('└' + '─'.repeat(Math.max(8, contentWidth + 2))));
       } else if (msg.isStreaming && !msg.content) {
         lines.push('  ' + chalk.bold.hex('#e879f9')('💭 Agent is thinking & planning...'));
       }
 
-      // Render tool calls attached to message
+      // Render compact single-line tool calls attached to message
       if (msg.toolCalls && msg.toolCalls.length > 0) {
         for (const tc of msg.toolCalls) {
           const statusIcon = tc.status === 'running' ? chalk.yellow('⏳') : tc.status === 'completed' ? chalk.green('✔') : chalk.red('✘');
-          lines.push(`  ${statusIcon} ${chalk.bold.magenta('[tool]')} ${chalk.white(tc.name)}`);
-          if (tc.output) {
-            const preview = tc.output.slice(0, 100).replace(/\r?\n/g, ' ');
-            lines.push(chalk.gray(`     └─ output: ${preview}${tc.output.length > 100 ? '…' : ''}`));
+          
+          let shortArgs = '';
+          if (tc.args) {
+            try {
+              const parsed = typeof tc.args === 'string' ? JSON.parse(tc.args) : tc.args;
+              const val = parsed.path || parsed.file || parsed.command || parsed.query || parsed.url || (typeof parsed === 'object' ? Object.values(parsed)[0] : parsed);
+              if (val !== undefined) {
+                const valStr = typeof val === 'string' ? val : JSON.stringify(val);
+                shortArgs = chalk.cyan(` (${valStr.length > 28 ? valStr.slice(0, 25) + '…' : valStr})`);
+              }
+            } catch {
+              const trimmed = tc.args.replace(/\s+/g, ' ').trim();
+              if (trimmed && trimmed !== '{}') {
+                shortArgs = chalk.cyan(` (${trimmed.length > 28 ? trimmed.slice(0, 25) + '…' : trimmed})`);
+              }
+            }
           }
+
+          let resultSummary = '';
+          if (tc.status === 'running') {
+            resultSummary = chalk.yellow(' running…');
+          } else if (tc.output) {
+            const outClean = tc.output.trim().replace(/\r?\n/g, ' ');
+            const preview = outClean.length > 35 ? outClean.slice(0, 32) + '…' : outClean;
+            resultSummary = chalk.gray(` → ${preview}`);
+          }
+
+          lines.push(`  ${statusIcon} ${chalk.bold.magenta(tc.name)}${shortArgs}${resultSummary}`);
         }
       }
 

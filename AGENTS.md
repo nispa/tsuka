@@ -6,18 +6,18 @@
 
 * **Runtime**: Node.js (v20+ recommended), TypeScript (strict mode, ES2022 target, CommonJS module output), `tsx` for live execution.
 * **Core Design**: Deterministic ReAct loop, hot-plug dynamic tool auto-discovery, orthogonal persona system (*Role* × *Trait* = *Character/Agent*), session-scoped run blackboard via `AsyncLocalStorage`, token-budgeted memory with semantic keyword scoring, and empirical capability fingerprinting (`/benchmark`).
-* **Metrics**: 27 native tools · 24 characters/agents · 21 roles · 9 traits · 10 preconfigured teams · 19 REPL slash commands · 58 automated test suites · Dual CLI & TUI Interactive Interfaces.
+* **Metrics**: 27 native tools · 24 characters/agents · 21 roles · 9 traits · 10 preconfigured teams · 20 REPL slash commands · 59 automated test suites · Dual CLI & TUI Interactive Interfaces.
 
 ---
 
 ## 🚨 Non-Negotiable Directives for Coding Agents
 
 1. **English Only Across Codebase**: Code, TypeScript types, interfaces, functions, variables, comments, and docstrings **must always be written in English**. User-facing CLI prompts and docs may be bilingual, but source code is strictly English.
-2. **I/O Decoupling in Core Engine**: **NEVER** use direct `console.log`, `console.error`, or raw TTY stream writes inside `src/core/`. All engine notifications must pass through the `AgentEvents` event contracts (`onChunk`, `onStats`, `onEvent`) or the injectable `logSink` (`src/core/logSink.ts`).
+2. **I/O Decoupling — Always Use `logSink`**: **NEVER** use direct `console.log`, `console.error`, `console.warn`, or raw TTY stream writes inside `src/core/`, `src/tools/`, `src/tui/`, or `src/safety/`. All logging and diagnostic output **must** go through the injectable `logSink` (`src/core/logSink.ts`) or the `AgentEvents` event contracts (`onChunk`, `onStats`, `onEvent`). The only directory permitted to use direct `console.*` is `src/cli/` (which owns the raw terminal). The TUI layer (`src/tui/app.ts`) installs a custom `setLogSink()` on startup that silences `log` and routes `warn`/`error` to `store.notify()`, so any stray `console.log` in core/tools would corrupt the double-buffered screen. When adding new code anywhere under `src/`, always `import { logSink } from '../core/logSink'` and call `logSink.log()`, `logSink.warn()`, `logSink.error()` instead of `console.*`.
 3. **Strict Workspace Jail**: All filesystem operations (`read_file`, `write_file`, `edit_file`, `delete_file`, `list_dir`, `grep_search`, `audit_code`) must be strictly confined within `workspaceRoot` via `resolveSafePath()`. Escaping via `..` is blocked.
 4. **Environment & Credential Masking**: Automatically mask sensitive environment variables (`KEY`, `SECRET`, `TOKEN`, `PASSWORD`, `CREDENTIAL`, `AUTH`) before logging or sending prompts.
 5. **Deterministic Multi-Agent Coordination**: Inter-agent communication in `/team` and `/goal` must use dedicated protocol tools (`report_status`, `route_next`, `cast_vote`) with automated fallback to text markers and visible degradation warnings.
-6. **No Test Regressions**: All 58 test suites (`npm test`) must pass cleanly before completing any task. Automated tests must use mock stores and temporary test directories—never mutate the active user's `memory.json`.
+6. **No Test Regressions**: All 59 test suites (`npm test`) must pass cleanly before completing any task. Automated tests must use mock stores and temporary test directories—never mutate the active user's `memory.json`.
 
 ---
 

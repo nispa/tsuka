@@ -72,13 +72,26 @@ export class TuiBridge {
   /**
    * Creates a live streaming chunk handler for Agent.run().
    */
-  createChunkHandler(): (chunk: string, channel?: StreamChannel) => void {
-    return (chunk: string, channel?: StreamChannel) => {
+  createChunkHandler(): (chunk: string, channel?: StreamChannel, authorName?: string) => void {
+    return (chunk: string, channel?: StreamChannel, authorName?: string) => {
       const isReasoning = channel === 'reasoning';
+      const effectiveAuthor = authorName || this.store.getState().activeAiName;
+
+      // If switching authors (e.g. subagent vs parent), or if switching from content to reasoning,
+      // finalize previous message so the new reasoning / author block starts fresh.
+      if (this.currentAssistantMsgId) {
+        const state = this.store.getState();
+        const currentMsg = state.messages.find((m) => m.id === this.currentAssistantMsgId);
+        if (currentMsg && (currentMsg.authorName !== effectiveAuthor || (isReasoning && currentMsg.content && currentMsg.content.trim()))) {
+          this.store.finishStreaming(this.currentAssistantMsgId);
+          this.currentAssistantMsgId = undefined;
+        }
+      }
+
       if (!this.currentAssistantMsgId) {
         this.currentAssistantMsgId = this.store.addMessage({
           role: 'assistant',
-          authorName: this.store.getState().activeAiName,
+          authorName: effectiveAuthor,
           content: !isReasoning ? chunk : '',
           thinkingContent: isReasoning ? chunk : '',
           isStreaming: true,
@@ -104,13 +117,14 @@ export class TuiBridge {
   }
 
   /**
-   * Creates an AgentEvent handler for lifecycle events (tool_start, tool_end, max_rounds).
+   * Creates an AgentEvent handler for lifecycle events (tool_start, tool_end, round_continue, max_rounds).
    */
   createEventHandler(): AgentEventHandler {
     return (ev: AgentEvent) => {
       switch (ev.type) {
         case 'tool_start': {
-          const toolId = this.store.startTool(ev.name, JSON.stringify(ev.args || {}));
+          const displayToolName = ev.agentLabel ? `${ev.name} (@${ev.agentLabel})` : ev.name;
+          const toolId = this.store.startTool(displayToolName, JSON.stringify(ev.args || {}));
           this.currentToolExecMap.set(ev.name, toolId);
 
           if (this.currentAssistantMsgId) {
@@ -150,6 +164,15 @@ export class TuiBridge {
               );
               this.store.updateMessage(this.currentAssistantMsgId, { toolCalls: updated });
             }
+          }
+          break;
+        }
+
+        case 'round_continue': {
+          // Finalize current message so the next ReAct round gets a fresh message & thinking block
+          if (this.currentAssistantMsgId) {
+            this.store.finishStreaming(this.currentAssistantMsgId);
+            this.currentAssistantMsgId = undefined;
           }
           break;
         }

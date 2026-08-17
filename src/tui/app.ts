@@ -25,6 +25,8 @@ import { detectContextWindow } from '../core/discovery';
 import { LayoutConfigManager, TuiLayoutConfig } from './layoutConfig';
 import { ModalKeyHandler, PersonaModals, SystemModals, LayoutModals } from './modals';
 import { TuiCommandController, TuiTurnRunner } from './controllers';
+import { setLogSink, resetLogSink } from '../core/logSink';
+import { copyToClipboard } from '../core/platform';
 
 export interface TuiAppOptions {
   configManager: ConfigManager;
@@ -197,6 +199,11 @@ export class TuiApp {
   }
 
   start(): void {
+    setLogSink({
+      log: () => {},
+      warn: (msg: string) => this.store.notify(msg, 'warn'),
+      error: (msg: string) => this.store.notify(msg, 'error'),
+    });
     this.screen.start();
     this.screen.requestRender();
     this.probeContextWindow().catch(() => {});
@@ -204,6 +211,7 @@ export class TuiApp {
 
   stop(): void {
     this.screen.stop();
+    resetLogSink();
   }
 
   async probeContextWindow(): Promise<void> {
@@ -365,7 +373,7 @@ export class TuiApp {
     }
     if (key.name === 'f12' || (key.name === 'h' && key.ctrl)) {
       if (state.activeModal) this.store.closeModal();
-      else SystemModals.openHelpModal(this.store, (cmd) => this.commandController.handleCommand(cmd));
+      else SystemModals.openHelpModal(this.store, (cmd: string) => this.commandController.handleCommand(cmd));
       return;
     }
 
@@ -376,6 +384,12 @@ export class TuiApp {
 
     if (key.name === 'escape' || (key.ctrl && key.name === 'x')) {
       this.turnRunner.interrupt();
+      return;
+    }
+
+    if (key.ctrl && key.name === 't') {
+      const isExpanded = this.store.toggleThinkingExpansion();
+      this.store.notify(`Reasoning trace: ${isExpanded ? 'Expanded' : 'Collapsed'}`, 'info');
       return;
     }
 
@@ -413,6 +427,27 @@ export class TuiApp {
     else if (key.name === 'down') this.store.scroll('chat', -2);
     else if (key.name === 'pageup') this.store.scroll('chat', 10);
     else if (key.name === 'pagedown') this.store.scroll('chat', -10);
+    else if (key.name === 'c' || key.name === 'y') {
+      const state = this.store.getState();
+      const lastAssistantMsg = [...state.messages].reverse().find((m) => m.role === 'assistant' && m.content);
+      if (lastAssistantMsg) {
+        const ok = copyToClipboard(lastAssistantMsg.content);
+        if (ok) this.store.notify('Copied last response to clipboard!', 'success');
+        else this.store.notify('Clipboard copy failed', 'error');
+      } else {
+        this.store.notify('No message content to copy', 'warn');
+      }
+    } else if (key.name === 't' || key.name === 'return' || key.name === 'space') {
+      const state = this.store.getState();
+      const lastWithThinking = [...state.messages].reverse().find((m) => m.thinkingContent);
+      if (lastWithThinking) {
+        const isExpanded = this.store.toggleMessageThinking(lastWithThinking.id);
+        this.store.notify(`Reasoning (${lastWithThinking.authorName || 'Tsuka'}): ${isExpanded ? 'Expanded' : 'Collapsed'}`, 'info');
+      } else {
+        const isExpanded = this.store.toggleThinkingExpansion();
+        this.store.notify(`Reasoning traces: ${isExpanded ? 'Expanded' : 'Collapsed'}`, 'info');
+      }
+    }
   }
 
   private handleSidebarKey(key: KeyPressEvent): void {
@@ -528,7 +563,7 @@ export class TuiApp {
         } else if (mouse.col >= 81 && mouse.col <= 94) {
           LayoutModals.openLayoutModal(this.store, this.layoutConfig);
         } else if (mouse.col >= 95 && mouse.col <= 106) {
-          SystemModals.openHelpModal(this.store, (cmd) => this.commandController.handleCommand(cmd));
+          SystemModals.openHelpModal(this.store, (cmd: string) => this.commandController.handleCommand(cmd));
         }
         return;
       }
@@ -573,6 +608,14 @@ export class TuiApp {
           const totalMsgs = state.messages.length * 4;
           const targetOffset = Math.round(scrollRatio * Math.max(0, totalMsgs));
           this.store.setState({ chatScrollOffset: Math.max(0, targetOffset) });
+        } else if (mouse.action === 'down' && this.activeTab === 'chat') {
+          const chatWidth = effectiveWidth - sidebarWidth;
+          const clickedRow = Math.max(0, mouse.row - headerHeight - 1);
+          const thinkTarget = ChatView.getThinkingHeaderAtRow(state, chatWidth, mainHeight, clickedRow);
+          if (thinkTarget) {
+            const isExpanded = this.store.toggleMessageThinking(thinkTarget.id);
+            this.store.notify(`Reasoning (${thinkTarget.authorName || 'Tsuka'}): ${isExpanded ? 'Expanded' : 'Collapsed'}`, 'info');
+          }
         }
       }
     }

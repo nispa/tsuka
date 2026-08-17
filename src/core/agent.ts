@@ -44,13 +44,13 @@ export function resolveReasoningEffort(
 function plainEventRenderer(ev: AgentEvent): void {
   switch (ev.type) {
     case 'tool_start':
-      console.log(chalk.cyan(`[tool] ${ev.name}...`));
+      logSink.log(chalk.cyan(`[tool] ${ev.name}...`));
       break;
     case 'tool_end':
-      console.log(chalk.gray(`[tool] ${ev.name} ${ev.success ? 'completed' : 'failed/rejected'}`));
+      logSink.log(chalk.gray(`[tool] ${ev.name} ${ev.success ? 'completed' : 'failed/rejected'}`));
       break;
     case 'max_rounds':
-      console.log(chalk.yellow(`[Interrupted: reached limit of ${ev.limit} tool rounds]`));
+      logSink.log(chalk.yellow(`[Interrupted: reached limit of ${ev.limit} tool rounds]`));
       break;
   }
 }
@@ -488,9 +488,20 @@ export class Agent {
             continue;
           }
 
-          emit({ type: 'tool_start', name: toolName, args: toolArgs });
+          emit({ type: 'tool_start', name: toolName, args: toolArgs, agentLabel: this.agentLabel });
 
-          const result = await this.registry.executeTool(toolName, toolArgs, this.permissionManager, this.provider, this.agentLabel, this.commandCtx);
+          const result = await this.registry.executeTool(
+            toolName,
+            toolArgs,
+            this.permissionManager,
+            this.provider,
+            this.agentLabel,
+            this.commandCtx,
+            onChunk,
+            onStats,
+            emit,
+            signal
+          );
 
           this.messages.push({
             role: 'tool',
@@ -499,7 +510,7 @@ export class Agent {
             content: result.output
           });
 
-          emit({ type: 'tool_end', name: toolName, args: toolArgs, success: result.success, output: result.output });
+          emit({ type: 'tool_end', name: toolName, args: toolArgs, success: result.success, output: result.output, agentLabel: this.agentLabel });
         }
 
         if (signal?.aborted) break;

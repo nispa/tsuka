@@ -36,6 +36,20 @@ export class TuiCommandController {
       return;
     }
 
+    if (cmd === '/copy') {
+      const state = store.getState();
+      const lastMsg = [...state.messages].reverse().find((m) => m.role === 'assistant' && m.content);
+      if (!lastMsg) {
+        store.notify('No assistant response found to copy', 'warn');
+        return;
+      }
+      const { copyToClipboard } = require('../../core/platform');
+      const ok = copyToClipboard(lastMsg.content);
+      if (ok) store.notify('Copied last assistant response to clipboard!', 'success');
+      else store.notify('Clipboard copy failed', 'error');
+      return;
+    }
+
     if (cmd === '/exit') {
       this.ctx.stopApp();
       process.exit(0);
@@ -180,6 +194,12 @@ export class TuiCommandController {
         role: 'system',
         content: `📊 **Context Breakdown:**\n• Used: ${state.stats.usedTokens} tokens (${state.stats.percentage}%)\n• Max Budget: ${state.stats.maxTokens} tokens\n• Messages: ${state.messages.length} retained in session`,
       });
+      return;
+    }
+
+    if (cmd === '/thinking' || cmd === '/thought') {
+      const isExpanded = store.toggleThinkingExpansion();
+      store.notify(`Reasoning traces: ${isExpanded ? 'Expanded' : 'Collapsed'}`, 'info');
       return;
     }
 

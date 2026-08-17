@@ -108,9 +108,34 @@ export const spawnAgentTool: Tool = {
       configManager.getMaxToolRounds()
     );
 
+    const onChunk = context?.onChunk;
+    const onStats = context?.onStats;
+    const onEvent = context?.onEvent;
+    const signal = context?.signal;
+
+    // Forward subagent chunks attributed to subagent label
+    const subChunkHandler = onChunk
+      ? (chunk: string, channel?: any) => {
+          onChunk(chunk, channel, label);
+        }
+      : undefined;
+
+    // Forward subagent tool events tagged with subagent label
+    const subEventHandler = onEvent
+      ? (ev: any) => {
+          onEvent({
+            ...ev,
+            agentLabel: label,
+          });
+        }
+      : undefined;
+
     const result = await subAgent.run(
       `Execute this task: ${task}`,
-      undefined, undefined, undefined, undefined,
+      subChunkHandler,
+      onStats,
+      subEventHandler,
+      signal,
       effectiveOverride
     );
 

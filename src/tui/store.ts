@@ -39,6 +39,7 @@ export class TuiStore {
       selectedFileIndex: 0,
       toolsScrollOffset: 0,
       isGenerating: false,
+      expandAllThinking: false,
       isRawModeLocked: false,
       workspaceFiles: [],
       notifications: [],
@@ -48,6 +49,12 @@ export class TuiStore {
 
   getState(): TuiState {
     return this.state;
+  }
+
+  toggleThinkingExpansion(): boolean {
+    const next = !this.state.expandAllThinking;
+    this.setState({ expandAllThinking: next });
+    return next;
   }
 
   subscribe(listener: StoreListener): () => void {
@@ -174,6 +181,10 @@ export class TuiStore {
       content: msg.content,
       isStreaming: msg.isStreaming,
       thinkingContent: msg.thinkingContent,
+      thinkingTokens: msg.thinkingTokens || (msg.thinkingContent ? Math.max(1, Math.round(msg.thinkingContent.length / 3.8)) : 0),
+      isThinkingExpanded: msg.isThinkingExpanded,
+      isQueued: msg.isQueued,
+      queuePosition: msg.queuePosition,
       toolCalls: msg.toolCalls || [],
     };
     this.setState({
@@ -188,13 +199,23 @@ export class TuiStore {
     this.setState({ messages });
   }
 
+  toggleMessageThinking(id: string): boolean {
+    const msg = this.state.messages.find((m) => m.id === id);
+    if (!msg) return false;
+    const current = msg.isThinkingExpanded !== undefined ? msg.isThinkingExpanded : !!this.state.expandAllThinking;
+    const next = !current;
+    this.updateMessage(id, { isThinkingExpanded: next });
+    return next;
+  }
+
   appendStreamingChunk(id: string, chunk: string, isThinking: boolean = false): void {
     const msg = this.state.messages.find((m) => m.id === id);
     if (!msg) return;
 
     if (isThinking) {
       const thinking = (msg.thinkingContent || '') + chunk;
-      this.updateMessage(id, { thinkingContent: thinking, isStreaming: true });
+      const tokens = (msg.thinkingTokens || 0) + Math.max(1, Math.round(chunk.length / 3.8));
+      this.updateMessage(id, { thinkingContent: thinking, thinkingTokens: tokens, isStreaming: true });
     } else {
       const content = (msg.content || '') + chunk;
       this.updateMessage(id, { content, isStreaming: true });

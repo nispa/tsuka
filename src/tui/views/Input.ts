@@ -54,7 +54,7 @@ export class InputView {
     const isSlash = inputText.startsWith('/') && state.focus === 'input';
     let title = 'Prompt Input';
     if (state.isGenerating) {
-      title = 'Prompt Input (⏳ Working... Press Esc or Ctrl+X to Stop)';
+      title = 'Prompt Input (⏳ Agent working... Type & Enter to queue | Esc to stop)';
     } else if (isSlash) {
       title = 'Slash Commands';
     }

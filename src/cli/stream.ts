@@ -144,15 +144,17 @@ export class StreamRenderer {
     switch (ev.type) {
       case 'tool_start': {
         const args = summarizeToolArgs(ev.args);
-        console.log(chalk.cyan('●') + ' ' + chalk.bold(ev.name) + chalk.gray(`(${args})`));
+        const prefix = ev.agentLabel ? chalk.magenta(`[@${ev.agentLabel}] `) : '';
+        console.log(prefix + chalk.cyan('●') + ' ' + chalk.bold(ev.name) + chalk.gray(`(${args})`));
         break;
       }
       case 'tool_end': {
         const [head, ...extra] = summarizeToolResult(ev.name, ev.args, ev.output, ev.success);
+        const prefix = ev.agentLabel ? chalk.magenta(`[@${ev.agentLabel}] `) : '';
         const mark = ev.success ? chalk.gray('└ ') + chalk.gray(head) : chalk.gray('└ ') + chalk.red(head);
-        console.log('  ' + mark);
+        console.log('  ' + prefix + mark);
         for (const line of extra) {
-          console.log('  ' + chalk.gray(line));
+          console.log('  ' + prefix + chalk.gray(line));
         }
         break;
       }
@@ -261,15 +263,16 @@ export class StreamRenderer {
 
 /** Default minimal agent event renderer. */
 export function defaultAgentEventRenderer(ev: AgentEvent): void {
+  const prefix = ev.agentLabel ? `[@${ev.agentLabel}] ` : '';
   switch (ev.type) {
     case 'tool_start':
-      console.log(`● ${ev.name}(${summarizeToolArgs(ev.args)})`);
+      console.log(`${prefix}● ${ev.name}(${summarizeToolArgs(ev.args)})`);
       break;
     case 'tool_end':
-      console.log(`  └ ${ev.success ? 'ok' : 'failed'}`);
+      console.log(`  └ ${prefix}${ev.success ? 'ok' : 'failed'}`);
       break;
     case 'max_rounds':
-      console.log(`[Interrupted: reached limit of ${ev.limit} tool rounds]`);
+      console.log(`${prefix}[Interrupted: reached limit of ${ev.limit} tool rounds]`);
       break;
   }
 }

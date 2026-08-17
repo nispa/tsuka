@@ -15,6 +15,10 @@ export interface TuiChatMessage {
   timestamp: Date;
   isStreaming?: boolean;
   thinkingContent?: string;
+  thinkingTokens?: number;
+  isThinkingExpanded?: boolean;
+  isQueued?: boolean;
+  queuePosition?: number;
   toolCalls?: Array<{
     id: string;
     name: string;
@@ -96,6 +100,7 @@ export interface TuiState {
   selectedFileIndex: number;
   toolsScrollOffset: number;
   isGenerating: boolean;
+  expandAllThinking?: boolean;
   activeTeam?: string;
   isRawModeLocked: boolean;
   workspaceFiles: TuiFileItem[];
