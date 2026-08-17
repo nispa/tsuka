@@ -167,7 +167,10 @@ const schemaCache = new Map<string, { mtimeMs: number; data: ToolSchemaData }>()
  */
 export function loadToolSchema(name: string): ToolSchemaData {
   try {
-    const schemaPath = homePath('tools_schemas', `${name}.json`);
+    const customSchemaPath = homePath('custom_tools_schemas', `${name}.json`);
+    const coreSchemaPath = homePath('tools_schemas', `${name}.json`);
+    const schemaPath = fs.existsSync(customSchemaPath) ? customSchemaPath : coreSchemaPath;
+
     if (!fs.existsSync(schemaPath)) {
       return fallbackSchema(name);
     }

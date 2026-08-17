@@ -19,6 +19,8 @@ runs/
 workspace/
 downloads/
 tools_backup/
+custom_tools/
+custom_tools_schemas/
 .tsuka/
 archive/
 

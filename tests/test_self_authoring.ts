@@ -6,6 +6,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { createDefaultRegistry } from '../src/tools/index';
 
+import { homePath } from '../src/core/apphome';
+
 let passed = 0;
 let failed = 0;
 
@@ -24,10 +26,10 @@ async function main() {
 
   const registry = await createDefaultRegistry();
   const perm: any = { checkPermission: async () => true };
-  const implDir = path.resolve(process.cwd(), 'src', 'tools', 'impl');
-  const generatedPath = path.join(implDir, '__probe_tool.js');
-  const schemaPath = path.resolve(process.cwd(), 'tools_schemas', '__probe_tool.json');
-  const backupDir = path.resolve(process.cwd(), 'tools_backup');
+  const customToolsDir = homePath('custom_tools');
+  const generatedPath = path.join(customToolsDir, '__probe_tool.js');
+  const schemaPath = homePath('custom_tools_schemas', '__probe_tool.json');
+  const backupDir = homePath('tools_backup');
 
   // Pulizia pre-test
   for (const p of [generatedPath, schemaPath]) {

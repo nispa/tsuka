@@ -4,24 +4,19 @@ import { pathToFileURL } from 'url';
 import { ToolRegistry, Tool } from './registry';
 import { logSink } from '../core/logSink';
 
+import { homePath } from '../core/apphome';
+
 /**
- * Creates and returns a ToolRegistry by dynamically loading all tools
- * residing in the 'impl/' directory.
+ * Loads tools from a directory into the given ToolRegistry.
  */
-export async function createDefaultRegistry(): Promise<ToolRegistry> {
-  const registry = new ToolRegistry();
-  const implDir = path.join(__dirname, 'impl');
+async function loadToolsFromDir(dirPath: string, registry: ToolRegistry): Promise<void> {
+  if (!fs.existsSync(dirPath)) return;
 
-  if (!fs.existsSync(implDir)) {
-    throw new Error(`Tool implementation directory '${implDir}' does not exist.`);
-  }
-
-  const files = fs.readdirSync(implDir);
-  
+  const files = fs.readdirSync(dirPath);
   for (const file of files) {
     const ext = path.extname(file);
     if ((ext === '.ts' || ext === '.js') && !file.endsWith('.d.ts') && !file.endsWith('.test.ts')) {
-      const filePath = path.join(implDir, file);
+      const filePath = path.join(dirPath, file);
       try {
         let module: any;
         try {
@@ -29,10 +24,10 @@ export async function createDefaultRegistry(): Promise<ToolRegistry> {
         } catch {
           module = require(filePath);
         }
-        
+
         for (const key of Object.keys(module)) {
           const exportItem = module[key];
-          
+
           if (
             exportItem &&
             typeof exportItem === 'object' &&
@@ -48,6 +43,26 @@ export async function createDefaultRegistry(): Promise<ToolRegistry> {
       }
     }
   }
+}
+
+/**
+ * Creates and returns a ToolRegistry by dynamically loading all tools
+ * residing in the 'impl/' directory as well as user-created 'custom_tools/'.
+ */
+export async function createDefaultRegistry(): Promise<ToolRegistry> {
+  const registry = new ToolRegistry();
+  const implDir = path.join(__dirname, 'impl');
+
+  if (!fs.existsSync(implDir)) {
+    throw new Error(`Tool implementation directory '${implDir}' does not exist.`);
+  }
+
+  // 1. Load native core tools
+  await loadToolsFromDir(implDir, registry);
+
+  // 2. Load custom user tools from app home / local .tsuka
+  const customDir = homePath('custom_tools');
+  await loadToolsFromDir(customDir, registry);
 
   return registry;
 }

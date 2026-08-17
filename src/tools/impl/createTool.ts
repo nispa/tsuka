@@ -57,13 +57,17 @@ export const createToolTool: Tool = {
       throw new Error("Invalid tool name (use lowercase letters, numbers, and underscores only).");
     }
 
-    const implDir = __dirname;
-    const targetPath = path.join(implDir, `${cleanName}.js`);
+    const customToolsDir = homePath('custom_tools');
+    if (!fs.existsSync(customToolsDir)) {
+      fs.mkdirSync(customToolsDir, { recursive: true });
+    }
+    const targetPath = path.join(customToolsDir, `${cleanName}.js`);
+    const coreImplDir = __dirname;
 
     const generatedExists = fs.existsSync(targetPath);
     if (!generatedExists) {
       const registeredCore = context?.registry?.getTool(cleanName) !== undefined;
-      if (registeredCore || hasCoreFileConflict(implDir, cleanName)) {
+      if (registeredCore || hasCoreFileConflict(coreImplDir, cleanName)) {
         throw new Error(`A core tool named '${cleanName}' already exists. Please choose a different name.`);
       }
     }
@@ -143,7 +147,7 @@ export const createToolTool: Tool = {
     // 7. Write tool file and schema
     fs.writeFileSync(targetPath, moduleCode, 'utf-8');
 
-    const schemaDir = homePath('tools_schemas');
+    const schemaDir = homePath('custom_tools_schemas');
     if (!fs.existsSync(schemaDir)) {
       fs.mkdirSync(schemaDir, { recursive: true });
     }
@@ -178,8 +182,8 @@ export const createToolTool: Tool = {
 
     return (
       `Tool '${cleanName}' created and validated successfully.\n` +
-      `- Module: src/tools/impl/${cleanName}.js\n` +
-      `- Schema: tools_schemas/${cleanName}.json (tier: small, risk: ${riskLevel})` +
+      `- Module: custom_tools/${cleanName}.js\n` +
+      `- Schema: custom_tools_schemas/${cleanName}.json (tier: small, risk: ${riskLevel})` +
       hotNote + backupNote +
       `\nAdd '${cleanName}' to roles/*.json allowedTools to make it permanently accessible.`
     );
