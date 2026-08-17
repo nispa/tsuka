@@ -30,6 +30,7 @@
 
 | Caratteristica | Descrizione |
 |---------------|-------------|
+| 🖥️ **TUI Interattiva** | Dashboard a schermo intero (`tsuka --tui`), double-buffering zero-flicker, supporto mouse SGR 1006, file explorer, scrollbar |
 | 🧩 **Tool a caldo** | Aggiungi un file `.ts` in `src/tools/impl/` — scoperto automaticamente all'avvio |
 | 📡 **Auto-discovery dei server** | All'avvio scansiona i server LLM locali (Ollama, Unsloth, …) e si aggancia a quello vivo — preferendo il modello già caricato in RAM |
 | 🎭 **Sistema personaggi** | Ruoli (competenze) × Tratti (personalità) × Personaggi (agenti nominati) in JSON |
@@ -56,13 +57,18 @@ npm link        # crea il comando globale `tsuka`
 # 2. Inizializza il workspace con il preset core degli agenti
 tsuka init --preset core
 
-# 3. Avvia la CLI
+# 3. Avvia in modalità CLI REPL
 tsuka
+
+# 4. Oppure avvia la Dashboard Interattiva a Schermo Intero (TUI)
+npm run tui
+# oppure: tsuka --tui
 ```
 *Assicurati che sia avviato Unsloth Studio, llama-server o Ollama, oppure configura la tua `OPENROUTER_API_KEY` nel file `.env`.*
 
 ## 📋 Indice
 
+- [TUI Interattiva a Schermo Intero](#-tui-interattiva-a-schermo-intero-dashboard)
 - [Architettura](#-architettura)
 - [Funzionalità chiave](#-funzionalità-chiave)
 - [Catalogo dei tool](#-catalogo-dei-tool-27-tool)
@@ -73,6 +79,34 @@ tsuka
 - [Test](#-validazione-autonoma)
 - [Documentazione](#-documentazione)
 - [Licenza](#licenza)
+
+## 🖥️ TUI Interattiva a Schermo Intero (Dashboard)
+
+Oltre alla modalità classica a riga di comando REPL, TSUKA include un'interfaccia terminale grafica completa (TUI):
+
+```bash
+npm run tui
+# oppure con il binario globale:
+tsuka --tui
+```
+
+### ✨ Funzionalità della Dashboard TUI:
+* **Double-Buffering Differenziale a Zero-Sfarfallio**: Aggiornamenti a 0ms di latenza visiva, box drawing ANSI sicuro e protezione contro l'auto-wrapping del terminale.
+* **Layout a 4 Quadranti**:
+  * **Header in Alto**: Schede di navigazione (`F1 Chat`, `F2 Tools`), barra del budget di contesto (`[████░░░░] %`), Provider e Modello attivi.
+  * **Agent Profile (In Alto a Sinistra)**: Personaggio, Ruolo, Tratto, metriche token di sessione e tag dei tool autorizzati.
+  * **File Explorer del Workspace (In Basso a Sinistra)**: Albero dei file in tempo reale con icone per estensione (`📁`, `🟦 TS`, `🟨 JS`, `⚙️ JSON`, `📝 MD`, `🧪 Test`, `🔒 Secrets`), barra di scorrimento verticale e click per inserire il path nel prompt.
+  * **Feed di Conversazione & Tools (Area Principale)**: Parsing Markdown formattato, blocchi di codice con sintassi evidenziata, contenitori stilizzati per il reasoning `<think>` e card di esecuzione dei tool.
+  * **Prompt di Input (In Basso)**: Buffer multi-riga, cronologia dei comandi (`↑`/`↓`), cursore ANSI e spinner di stato `(⏳ Working...)`.
+* **Supporto Completo del Mouse (SGR 1006)**:
+  * Scorrimento con rotellina del mouse su Chat, File Explorer e Tools.
+  * Click sulle tab (`Chat` / `Tools`), click sui file per incollare il nome nel prompt, click sul box di input per mettere a fuoco.
+* **Dialoghi Modali per il Ciclo di Vita**:
+  * **Rinnovo Timeout**: Quando il modello riflette a lungo (es. 2 min), un modale ti chiede se concedere altro tempo (+2m, illimitato, interrompi).
+  * **Estensione Round Tool**: Quando si raggiunge il limite di esecuzioni consecutive dei tool, un modale ti permette di aggiungere altri cicli (+15 round, concludi, ferma).
+* **Auto-Calibrazione del Contesto del Modello**: Rileva automaticamente i limiti del context window via `detectContextWindow` all'avvio e ad ogni cambio modello (`F6` / `/models`).
+* **Tasti Funzione & Guida Rapida**:
+  * `F1`: Vista Chat · `F2`: Vista Tools · `F3`: Selettore Agenti · `F4`: Selettore Team · `F5`: Ispettore Memoria · `F6`: Cambio Modello · `F12`: Elenco Comandi REPL.
 
 ## 🏗 Architettura
 

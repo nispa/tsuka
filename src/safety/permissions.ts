@@ -4,13 +4,28 @@ import { InteractiveMenu } from '../cli/ui';
 
 export type RiskLevel = 'SAFE' | 'RESTRICTED' | 'DANGEROUS';
 
+export interface PermissionPromptRequest {
+  toolName: string;
+  details: string;
+  riskLevel: RiskLevel;
+  requesterLabel?: string;
+}
+
+export type PermissionPromptHandler = (req: PermissionPromptRequest) => Promise<'yes' | 'no' | 'always'>;
+
 export class PermissionManager {
   private allowAllWrite: boolean = false;
   // Internal promise chain (T3.1): requests triggering interactive prompts
   // (RESTRICTED/DANGEROUS) are queued sequentially rather than colliding on stdin.
   private promptQueue: Promise<void> = Promise.resolve();
+  private customPromptHandler?: PermissionPromptHandler;
 
   constructor() {}
+
+  /** Sets a custom async UI handler for permission requests (e.g. for TUI/WebUI). */
+  setPromptHandler(handler?: PermissionPromptHandler): void {
+    this.customPromptHandler = handler;
+  }
 
   /** Resets permission state for a new session. */
   resetSession(): void {
@@ -62,6 +77,16 @@ export class PermissionManager {
         return true;
       }
 
+      if (this.customPromptHandler) {
+        const decision = await this.customPromptHandler({ toolName, details, riskLevel, requesterLabel });
+        if (decision === 'yes') return true;
+        if (decision === 'always') {
+          this.allowAllWrite = true;
+          return true;
+        }
+        return false;
+      }
+
       console.log(chalk.yellow(`\n🛡️  [Authorization Request]${who} The agent requests modification tool:`));
       console.log(`   Tool: ${chalk.cyan(toolName)}`);
       console.log(`   Action: ${chalk.white(details)}`);
@@ -89,6 +114,11 @@ export class PermissionManager {
     }
 
     if (riskLevel === 'DANGEROUS') {
+      if (this.customPromptHandler) {
+        const decision = await this.customPromptHandler({ toolName, details, riskLevel, requesterLabel });
+        return decision === 'yes' || decision === 'always';
+      }
+
       console.log(chalk.red.bold(`\n⚠️  [CRITICAL AUTHORIZATION REQUIRED]${who} The agent requests system command execution:`));
       console.log(`   Command: ${chalk.yellow(details)}`);
 

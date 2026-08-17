@@ -1,6 +1,7 @@
 import chalk from 'chalk';
 import { marked } from 'marked';
 import hljs from 'highlight.js';
+import wrapAnsi from 'wrap-ansi';
 
 interface RenderLine { text: string; }
 
@@ -108,18 +109,11 @@ export function renderMarkdownToLines(md: string, innerWidth: number): string[] 
   const lines: string[] = [];
 
   const pushWrapped = (text: string, style: (s: string) => string, indent = 0) => {
-    const clean = text.replace(/\x1b\[[0-9;]*m/g, '');
-    const words = clean.split(' ');
-    let cur = '';
-    for (const w of words) {
-      if (cur.length + 1 + w.length > innerWidth - indent) {
-        lines.push(' '.repeat(indent) + style(cur));
-        cur = w;
-      } else {
-        cur = cur ? cur + ' ' + w : w;
-      }
+    const targetWidth = Math.max(4, innerWidth - indent);
+    const wrapped = wrapAnsi(text, targetWidth, { hard: true, trim: false, wordWrap: true });
+    for (const line of wrapped.split(/\r?\n/)) {
+      lines.push(' '.repeat(indent) + style(line));
     }
-    if (cur) lines.push(' '.repeat(indent) + style(cur));
   };
 
   for (const t of tokens) {
@@ -151,14 +145,18 @@ export function renderMarkdownToLines(md: string, innerWidth: number): string[] 
       }
       case 'code': {
         const lang = (t as any).lang;
-        const code = (t as any).text;
+        const code = ((t as any).text || '').replace(/\r/g, '').replace(/\t/g, '  ');
         const highlighted = hljsHtmlToAnsi(hl(code, lang));
+        const maxCodeWidth = Math.max(4, innerWidth - 4);
         const header = chalk.gray(`── ${lang || 'code'} ${'─'.repeat(Math.max(0, innerWidth - (lang || 'code').length - 5))}`);
         lines.push(chalk.gray(header));
-        for (const cl of highlighted.split('\n')) {
-          lines.push(chalk.gray('│ ') + cl);
+        for (const cl of highlighted.split(/\r?\n/)) {
+          const wrapped = wrapAnsi(cl, maxCodeWidth, { hard: true, trim: false });
+          for (const wl of wrapped.split(/\r?\n/)) {
+            lines.push(chalk.gray('│ ') + wl);
+          }
         }
-        lines.push(chalk.gray('└' + '─'.repeat(innerWidth - 1)));
+        lines.push(chalk.gray('└' + '─'.repeat(Math.max(0, innerWidth - 1))));
         lines.push('');
         break;
       }

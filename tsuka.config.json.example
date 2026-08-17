@@ -37,5 +37,6 @@
   "llmMaxRetries": 3,
   "llmMaxTokensCeiling": 8192,
   "browseFetchTimeoutMs": 30000,
-  "downloadFetchTimeoutMs": 60000
+  "downloadFetchTimeoutMs": 60000,
+  "defaultUi": "tui"
 }

@@ -30,6 +30,7 @@
 
 | Feature | Description |
 |---------|-------------|
+| 🖥️ **Interactive TUI** | Full-screen dashboard (`tsuka --tui`), double-buffering zero-flicker, SGR 1006 mouse tracking, file explorer, scrollbars |
 | 🧩 **Hot-plug tools** | Drop a `.ts` file into `src/tools/impl/` — auto-discovered at startup |
 | 📡 **Server auto-discovery** | Startup scans local LLM servers (Ollama, Unsloth, …) and hooks onto the live one — preferring the model already loaded in RAM |
 | 🎭 **Character system** | Roles (skills) × Traits (personality) × Presets (named agents) in JSON |
@@ -56,13 +57,18 @@ npm link        # creates the global `tsuka` command
 # 2. Initialize your workspace with the core agent preset
 tsuka init --preset core
 
-# 3. Launch the agentic CLI
+# 3. Launch in CLI REPL mode
 tsuka
+
+# 4. Or launch in Interactive Full-Screen Dashboard (TUI) mode
+npm run tui
+# or: tsuka --tui
 ```
 *Make sure Unsloth Studio, llama-server or Ollama is running, or set your `OPENROUTER_API_KEY` in `.env`.*
 
 ## 📋 Table of Contents
 
+- [Interactive Terminal UI (TUI)](#-interactive-terminal-ui-tui-dashboard)
 - [Architecture](#-architecture)
 - [Key Features](#-key-features)
 - [Tool Catalog](#-tool-catalog-27-tools)
@@ -73,6 +79,34 @@ tsuka
 - [Tests](#-autonomous-validation--tests)
 - [Documentation](#-documentation)
 - [License](#license)
+
+## 🖥️ Interactive Terminal UI (TUI Dashboard)
+
+In addition to standard CLI REPL mode, TSUKA provides a rich, full-screen interactive terminal dashboard:
+
+```bash
+npm run tui
+# or with global binary:
+tsuka --tui
+```
+
+### ✨ Key Dashboard Capabilities:
+* **Zero-Flicker Double-Buffering**: Differential line rendering with 0ms visual latency, ANSI-safe box drawing, and terminal boundary wrapping protection.
+* **4-Quadrant Layout**:
+  * **Header**: Live Tabs (`F1 Chat`, `F2 Tools`), Token Budget Bar (`[████░░░░] %`), Active Provider & Model.
+  * **Agent Profile (Top Left)**: Active Character, Role, Trait, token usage metrics, and authorized tool tags.
+  * **Workspace File Explorer (Bottom Left)**: Real-time file tree with file-type icons (`📁`, `🟦 TS`, `🟨 JS`, `⚙️ JSON`, `📝 MD`, `🧪 Test`, `🔒 Secrets`), vertical scrollbar, and click-to-insert into prompt.
+  * **Conversation & Tools Feed (Main Area)**: Markdown parsing, syntax-highlighted code blocks, formatted `<think>` reasoning containers, and live tool execution cards.
+  * **Interactive Prompt (Bottom)**: Multi-line prompt buffer, command history (`↑`/`↓`), ANSI cursor, and working status spinner.
+* **SGR 1006 Mouse Tracking**:
+  * Scroll with mouse wheel across Chat, Files Explorer, and Tools.
+  * Click on tabs (`Chat` / `Tools`), click on files to insert file names, click inside the prompt to focus.
+* **Interactive Lifecycle Dialogue Modals**:
+  * **Timeout Renewal**: When reasoning takes long (e.g. 2 min), prompts to extend (+2m, unlimited, abort).
+  * **Tool Round Extension**: When maximum consecutive tool executions are reached, prompts to extend (+15 rounds, conclude, abort).
+* **Dynamic Context Window Calibration**: Automatically detects backend context limits via `detectContextWindow` on startup and on model change (`F6` / `/models`).
+* **Function Keys & Help Cheatsheet**:
+  * `F1`: Chat View · `F2`: Tools View · `F3`: Agent Picker · `F4`: Team Picker · `F5`: Memory Inspector · `F6`: Model Switcher · `F12`: REPL Help Cheatsheet.
 
 ## 🏗 Architecture
 

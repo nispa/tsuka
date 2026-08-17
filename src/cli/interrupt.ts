@@ -18,6 +18,10 @@ export class GenerationInterrupt {
     return this.controller.signal.aborted;
   }
 
+  abort(): void {
+    this.controller.abort();
+  }
+
   arm(): void {
     if (!process.stdin.isTTY) return;
     readline.emitKeypressEvents(process.stdin);

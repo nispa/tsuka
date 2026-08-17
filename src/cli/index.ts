@@ -43,6 +43,7 @@ import { handleBlackboard } from './commands/blackboard';
 import { listThinkingTraces, resolveThinkingTrace, buildResumeDirective } from './commands/continueSession';
 
 import { handleInitCmd } from './initCmd';
+import { launchTui } from '../tui/index';
 
 export { RoleConfig, TraitConfig, CharacterConfig, TeamConfig };
 export { loadRole, loadTrait, loadCharacter, loadTeam, loadSystemPrompt, listAvailableItems };
@@ -64,14 +65,21 @@ async function main() {
     process.exit(success ? 0 : 1);
   }
 
+  const configManager = new ConfigManager();
+  setLlmTimeoutMs(configManager.getLlmTimeoutMs());
+
+  const isCliForced = cliArgs.includes('--cli') || cliArgs.includes('--repl');
+  const isTuiForced = cliArgs.includes('--tui') || cliArgs.includes('tui');
+
+  if (isTuiForced || (!isCliForced && configManager.getDefaultUi() === 'tui')) {
+    await launchTui();
+    return;
+  }
+
   // Lock raw mode across whole session to prevent Windows readline input wedge
   lockRawMode();
 
   CLITheme.banner();
-
-  // Initialize managers and registries
-  const configManager = new ConfigManager();
-  setLlmTimeoutMs(configManager.getLlmTimeoutMs());
 
   const permissionManager = new PermissionManager();
   const registry = await createDefaultRegistry();

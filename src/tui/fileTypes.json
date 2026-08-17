@@ -1,0 +1,27 @@
+{
+  "ignoredDirs": [
+    ".git",
+    "node_modules",
+    ".gemini",
+    ".system_generated",
+    "dist",
+    "build",
+    ".tsuka"
+  ],
+  "rules": [
+    { "type": "dir", "icon": "▸ ", "iconColor": "#38bdf8", "nameColor": "#38bdf8" },
+    { "match": "test", "extensions": [".test.ts", ".spec.ts", ".test.js"], "icon": "🧪 ", "iconColor": "#34d399", "nameColor": "#6ee7b7" },
+    { "match": "extension", "extensions": [".ts", ".tsx"], "icon": "◆ ", "iconColor": "#60a5fa", "nameColor": "#93c5fd" },
+    { "match": "extension", "extensions": [".js", ".mjs", ".cjs"], "icon": "◆ ", "iconColor": "#fbbf24", "nameColor": "#fde047" },
+    { "match": "extension", "extensions": [".json"], "icon": "⚙ ", "iconColor": "#fcd34d", "nameColor": "#fef08a" },
+    { "match": "extension", "extensions": [".md", ".txt"], "icon": "≡ ", "iconColor": "#c084fc", "nameColor": "#d8b4fe" },
+    { "match": "extension", "extensions": [".css", ".scss", ".html"], "icon": "🎨 ", "iconColor": "#ec4899", "nameColor": "#f472b6" },
+    { "match": "extension", "extensions": [".sh", ".ps1", ".bat", ".cmd"], "icon": "⚡ ", "iconColor": "#f59e0b", "nameColor": "#fbbf24" },
+    { "match": "prefix_or_contains", "patterns": [".env", "config", "secret", "key"], "icon": "🔒 ", "iconColor": "#f43f5e", "nameColor": "#fda4af" }
+  ],
+  "defaultFile": {
+    "icon": "• ",
+    "iconColor": "#64748b",
+    "nameColor": "#94a3b8"
+  }
+}

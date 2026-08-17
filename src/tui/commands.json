@@ -1,0 +1,22 @@
+[
+  { "command": "/models", "label": "⚡ /models [name]", "hint": "Select or switch backend LLM model (F6)" },
+  { "command": "/agent", "label": "🎭 /agent [name]", "hint": "Choose or switch Agent Persona (24 available) (F3)" },
+  { "command": "/team", "label": "👥 /team [name]", "hint": "Launch autonomous multi-agent team (10 teams) (F4)" },
+  { "command": "/goal ", "label": "🎯 /goal <objective>", "hint": "Goal orchestrator with parallel branches" },
+  { "command": "/memory", "label": "🧠 /memory [clear|query]", "hint": "Manage & search shared persistent memory (F5)" },
+  { "command": "/effort", "label": "🔥 /effort [level]", "hint": "Reasoning effort: none, low, medium, xhigh, auto" },
+  { "command": "/layout", "label": "📐 /layout", "hint": "TUI layout editor, themes, widths & files explorer (F7)" },
+  { "command": "/role", "label": "👔 /role [name]", "hint": "Set operational role (21 available roles)" },
+  { "command": "/trait", "label": "🎨 /trait [name]", "hint": "Set communication style and trait (9 traits)" },
+  { "command": "/provider", "label": "🌐 /provider [name]", "hint": "Switch LLM provider (Ollama, OpenRouter, Unsloth)" },
+  { "command": "/call ", "label": "📞 /call <topic>", "hint": "Turn-based multi-agent round-table conference" },
+  { "command": "/context", "label": "📊 /context", "hint": "Detailed context window & token budget breakdown" },
+  { "command": "/info", "label": "ℹ️ /info", "hint": "Full session status, model, roles & workspace jail" },
+  { "command": "/tools", "label": "🛠️ /tools", "hint": "Inspect all 27 available native tools (F2)" },
+  { "command": "/benchmark", "label": "📈 /benchmark", "hint": "Empirical capability test for active model" },
+  { "command": "/search-engine", "label": "🔍 /search-engine", "hint": "Configure web search provider (Brave, DuckDuckGo...)" },
+  { "command": "/runs", "label": "📜 /runs", "hint": "Execution history & workflow log reports" },
+  { "command": "/clear", "label": "🧹 /clear", "hint": "Clear conversation screen feed" },
+  { "command": "/reset", "label": "🔄 /reset", "hint": "Reset history & restart session" },
+  { "command": "/exit", "label": "🚪 /exit", "hint": "Exit TSUKA CLI / TUI" }
+]

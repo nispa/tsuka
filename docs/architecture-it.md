@@ -4,9 +4,9 @@
   <p>Read in <a href="architecture.md">🇬🇧 English</a></p>
 </div>
 
-> Questo documento descrive l'architettura tecnica, i principi di progettazione e l'organizzazione modulare del framework **TSUKA** (v0.3.0). Per le linee guida operative di contribuzione al codice si rimanda ad [`AGENTS.md`](../AGENTS.md); per l'elenco dei task completati e pianificati, consultare [`TASKS.md`](../TASKS.md).
+> Questo documento descrive l'architettura tecnica, i principi di progettazione e l'organizzazione modulare del framework **TSUKA** (v0.4.0). Per le linee guida operative di contribuzione al codice si rimanda ad [`AGENTS.md`](../AGENTS.md); per l'elenco dei task completati e pianificati, consultare [`TASKS.md`](../TASKS.md).
 >
-> 📊 **Metriche di sistema**: 27 tool · 19 comandi REPL · 23 moduli core · 21 ruoli · 9 tratti · 24 personaggi (agenti) · 10 team configurati · 57 suite di test automatici.
+> 📊 **Metriche di sistema**: 27 tool · 19 comandi REPL · 24 moduli core · 21 ruoli · 9 tratti · 24 personaggi (agenti) · 10 team configurati · 58 suite di test automatici · Doppia interfaccia CLI & TUI.
 
 ---
 
@@ -326,7 +326,41 @@ TSUKA adotta un client unificato basato sull'SDK ufficiale **OpenAI**, interfacc
 
 ---
 
-## 12. Sicurezza e Modello dei Permessi
+## 12. Architettura della Dashboard Terminale (TUI) (`src/tui/`)
+
+TSUKA include una dashboard terminale grafica interattiva a componenti puri:
+
+```
+                  ┌──────────────────────────────┐
+                  │    TuiScreen (Double-Buffer) │
+                  └──────────────┬───────────────┘
+                                 │
+                 ┌───────────────▼───────────────┐
+                 │       TuiStore (Flux/Stato)   │
+                 └───────┬───────────────▲───────┘
+                         │               │
+      ┌──────────────────┴──┐         ┌──┴──────────────────┐
+      │  Viste Pure (Views) │         │  Adapter TuiBridge  │
+      │  (Header, Sidebar,  │         │  (Si aggancia agli  │
+      │   Files, Chat, etc.)│         │   eventi del Core)  │
+      └─────────────────────┘         └─────────────────────┘
+```
+
+* **`TuiScreen` (`screen.ts`)**: Motore a basso livello con rendering differenziale a riga singola (0ms di latenza visiva, zero flickering) e slicing ANSI sicuro con `slice-ansi` e `string-width`.
+* **`TuiStore` (`store.ts`)**: Gestione reattiva dello stato unificato (messaggi, token, file explorer, reasoning streaming, modali).
+* **`TuiBridge` (`bridge.ts`)**: Adapter che converte gli eventi del core (`AgentEvents`, `PermissionManager`) in mutazioni dello stato TUI.
+* **Componenti Grafici Puri (`src/tui/views/`)**:
+  * `HeaderView`: Schede di navigazione e barra grafica di consumo del context window.
+  * `SidebarView`: Profilo agente attivo, ruolo, tratto e statistiche token.
+  * `FilesView`: File explorer del workspace con icone per estensione, scrollbar e click per incollare il file nel prompt.
+  * `ChatView`: Rendering Markdown formattato, blocchi di codice evidenziati e box di reasoning `<think>`.
+  * `ToolsView`: Catalogo e cronologia dei 27 tool nativi.
+  * `InputView`: Buffer di input multi-riga con cursore e spinner di caricamento.
+  * `ModalView`: Finestre modali di conferma sicurezza, selezione modelli, estensione timeout e cheatsheet comandi (`F12`).
+
+---
+
+## 13. Sicurezza e Modello dei Permessi
 
 * **Tre livelli di rischio**: `SAFE` (esecuzione immediata), `RESTRICTED` (richiede conferma con facoltà di autorizzazione per l'intera sessione), `DANGEROUS` (richiede sempre autorizzazione puntuale esplicita).
 * **Workspace Jail**: tutte le operazioni su filesystem sono confinate all'interno del percorso `workspaceRoot`.
@@ -335,12 +369,11 @@ TSUKA adotta un client unificato basato sull'SDK ufficiale **OpenAI**, interfacc
 
 ---
 
-## 13. Roadmap Architetturale e Visione Futura
+## 14. Roadmap Architetturale e Visione Futura
 
-L'architettura attuale è stata intenzionalmente progettata per abilitare l'evoluzione verso interfacce utente avanzate (TUI a pannelli o web dashboard locale):
 1. **Disaccoppiamento completato**: il motore agentico comunica esclusivamente tramite stream di eventi (`AgentEvents`) e sink sostituibili (`logSink`).
-2. **Verifica asincrona dei permessi**: il metodo `checkPermission` asincrono consente di sostituire i prompt a riga di comando con modali interattive o canali WebSocket senza alterare la logica interna.
-3. **Isolamento delle sessioni**: il passaggio dallo stato globale a contesti di sessione indipendenti costituirà il presupposto per il supporto multi-client concorrente.
+2. **Doppia Interfaccia Operativa**: supporto trasparente sia per CLI REPL tradizionale che per la Dashboard TUI a schermo intero.
+3. **WebUI / Dashboard Locale**: l'architettura a componenti e lo stato reattivo consentono l'estensione verso una web interface locale basata su WebSocket.
 
 ---
 

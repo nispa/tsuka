@@ -4,9 +4,9 @@
   <p>Leggi in <a href="architecture-it.md">🇮🇹 Italiano</a></p>
 </div>
 
-> This document describes the technical architecture, design principles, and modular structure of the **TSUKA** framework (v0.3.0). For codebase contribution guidelines, see [`AGENTS.md`](../AGENTS.md); for completed and upcoming task backlogs, see [`TASKS.md`](../TASKS.md).
+> This document describes the technical architecture, design principles, and modular structure of the **TSUKA** framework (v0.4.0). For codebase contribution guidelines, see [`AGENTS.md`](../AGENTS.md); for completed and upcoming task backlogs, see [`TASKS.md`](../TASKS.md).
 >
-> 📊 **System Metrics**: 27 tools · 19 REPL commands · 23 core modules · 21 roles · 9 traits · 24 characters (agents) · 10 preconfigured teams · 57 automated test suites.
+> 📊 **System Metrics**: 27 tools · 19 REPL commands · 24 core modules · 21 roles · 9 traits · 24 characters (agents) · 10 preconfigured teams · 58 automated test suites · Dual CLI & TUI interfaces.
 
 ---
 
@@ -282,7 +282,41 @@ A unified client using the **OpenAI SDK** interfaces with local and remote endpo
 
 ---
 
-## 12. Security & Permission Framework
+## 12. Interactive Terminal UI Architecture (`src/tui/`)
+
+TSUKA features a zero-flicker, Component-Driven terminal user interface:
+
+```
+                  ┌──────────────────────────────┐
+                  │    TuiScreen (Double-Buffer) │
+                  └──────────────┬───────────────┘
+                                 │
+                 ┌───────────────▼───────────────┐
+                 │       TuiStore (Flux/State)   │
+                 └───────┬───────────────▲───────┘
+                         │               │
+      ┌──────────────────┴──┐         ┌──┴──────────────────┐
+      │  Pure View Layer    │         │  TuiBridge Adapter   │
+      │  (Header, Sidebar,  │         │  (Subscribes to Core │
+      │   Files, Chat, etc.)│         │   AgentEvents)       │
+      └─────────────────────┘         └─────────────────────┘
+```
+
+* **`TuiScreen` (`screen.ts`)**: Low-level ANSI double-buffering line renderer with differential updates (0ms latency, zero flicker) and robust ANSI slicing via `slice-ansi` and `string-width`.
+* **`TuiStore` (`store.ts`)**: Reactive state container managing active tabs, conversation feed, reasoning streaming chunks, files tree, token meters, and modal queues.
+* **`TuiBridge` (`bridge.ts`)**: Decouples the Core Engine (`AgentEvents`, `PermissionManager`) from the UI.
+* **View Hierarchy (`src/tui/views/`)**: Pure functional renderers receiving `(state, width, height) => string[]`:
+  * `HeaderView`: Top navigation tabs & token budget progress meter.
+  * `SidebarView`: Active persona, role, trait, and token analytics.
+  * `FilesView`: Workspace directory scanner with file-type icons, scrollbar, and click-to-insert.
+  * `ChatView`: Formatted markdown, syntax highlighting, and `<think>` reasoning containers.
+  * `ToolsView`: Dynamic tool catalog & execution history.
+  * `InputView`: Text buffer, multi-line cursor, and working status spinner.
+  * `ModalView`: Universal overlay for safety permissions, model picker, and REPL cheatsheets.
+
+---
+
+## 13. Security & Permission Framework
 
 * **3-tier risk system**: `SAFE` (instant), `RESTRICTED` (prompt with session bypass option), `DANGEROUS` (always interactive manual confirmation).
 * **Workspace Jail**: file operations are restricted to `workspaceRoot`.

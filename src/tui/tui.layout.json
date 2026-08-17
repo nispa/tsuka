@@ -1,0 +1,13 @@
+{
+  "sidebarPosition": "left",
+  "sidebarWidthPercent": 26,
+  "showFilesExplorer": true,
+  "filesHeightPercent": 55,
+  "visibleWidgets": [
+    "persona",
+    "metrics",
+    "tool_activity",
+    "quick_keys"
+  ],
+  "theme": "cyan"
+}

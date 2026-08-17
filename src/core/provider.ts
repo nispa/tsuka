@@ -52,6 +52,22 @@ export function __setMaxGenerationMsForTest(ms: number): void {
   MAX_GENERATION_MS = ms;
 }
 
+export type TimeoutAction = 'extend' | 'unlimited' | 'abort';
+
+export interface TimeoutPromptInfo {
+  type: 'first_token' | 'generation_duration';
+  elapsedMs: number;
+  model: string;
+}
+
+export type TimeoutPromptHandler = (info: TimeoutPromptInfo) => Promise<TimeoutAction>;
+
+let globalTimeoutPromptHandler: TimeoutPromptHandler | undefined;
+
+export function setTimeoutPromptHandler(handler: TimeoutPromptHandler | undefined): void {
+  globalTimeoutPromptHandler = handler;
+}
+
 /**
  * Identifies malformed tool call JSON syntax errors from model output (T9.8).
  */
@@ -261,15 +277,60 @@ export class LLMProvider implements ILLMProvider {
         signal.addEventListener('abort', onUserAbort, { once: true });
       }
 
-      const firstTokenTimer = setTimeout(() => {
-        timedOut = true;
-        attemptAbort.abort();
-      }, firstTokenTimeout);
+      let firstTokenTimer: NodeJS.Timeout | undefined;
+      let generationTimer: NodeJS.Timeout | undefined;
+      let receivedFirstToken = false;
 
-      const generationTimer = setTimeout(() => {
-        generationTimedOut = true;
-        attemptAbort.abort();
-      }, MAX_GENERATION_MS);
+      const scheduleFirstTokenTimer = () => {
+        if (firstTokenTimer) clearTimeout(firstTokenTimer);
+        firstTokenTimer = setTimeout(async () => {
+          if (receivedFirstToken || signal?.aborted) return;
+          if (globalTimeoutPromptHandler) {
+            try {
+              const action = await globalTimeoutPromptHandler({
+                type: 'first_token',
+                elapsedMs: firstTokenTimeout,
+                model: this.currentModel,
+              });
+              if (action === 'extend') {
+                scheduleFirstTokenTimer();
+                return;
+              } else if (action === 'unlimited') {
+                return;
+              }
+            } catch {}
+          }
+          timedOut = true;
+          attemptAbort.abort();
+        }, firstTokenTimeout);
+      };
+
+      const scheduleGenerationTimer = () => {
+        if (generationTimer) clearTimeout(generationTimer);
+        generationTimer = setTimeout(async () => {
+          if (signal?.aborted) return;
+          if (globalTimeoutPromptHandler) {
+            try {
+              const action = await globalTimeoutPromptHandler({
+                type: 'generation_duration',
+                elapsedMs: MAX_GENERATION_MS,
+                model: this.currentModel,
+              });
+              if (action === 'extend') {
+                scheduleGenerationTimer();
+                return;
+              } else if (action === 'unlimited') {
+                return;
+              }
+            } catch {}
+          }
+          generationTimedOut = true;
+          attemptAbort.abort();
+        }, MAX_GENERATION_MS);
+      };
+
+      scheduleFirstTokenTimer();
+      scheduleGenerationTimer();
 
       try {
         const response = await this.client.chat.completions.create({
@@ -292,7 +353,6 @@ export class LLMProvider implements ILLMProvider {
           const toolCallsAccumulator: ToolCall[] = [];
           let chunkCount = 0;
           let usage: any = null;
-          let receivedFirstToken = false;
 
           const thinkParser = new ThinkTagParser((text, channel) => {
             if (channel === 'content') {
@@ -454,8 +514,8 @@ export class LLMProvider implements ILLMProvider {
           { partialReasoning: allReasoningText || undefined }
         );
       } finally {
-        clearTimeout(firstTokenTimer);
-        clearTimeout(generationTimer);
+        if (firstTokenTimer) clearTimeout(firstTokenTimer);
+        if (generationTimer) clearTimeout(generationTimer);
         if (signal) signal.removeEventListener('abort', onUserAbort);
       }
     }

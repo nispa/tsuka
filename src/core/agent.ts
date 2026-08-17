@@ -73,6 +73,16 @@ export function sanitizeAndParseToolArgs(rawArguments: string | undefined): {
   };
 }
 
+export type ToolRoundsAction = 'extend' | 'conclude' | 'abort';
+
+export interface ToolRoundsPromptInfo {
+  currentRounds: number;
+  maxRounds: number;
+  agentLabel?: string;
+}
+
+export type ToolRoundsPromptHandler = (info: ToolRoundsPromptInfo) => Promise<ToolRoundsAction>;
+
 export class Agent {
   private static readonly DEFAULT_MAX_TOOL_ROUNDS = 15;
 
@@ -90,6 +100,7 @@ export class Agent {
   private reasoningEffort?: ReasoningEffort;
   private acceptTextOnlyIf?: (content: string) => boolean;
   private toolsChars = 0;
+  private toolRoundsPromptHandler?: ToolRoundsPromptHandler;
 
   constructor(
     provider: ILLMProvider,
@@ -122,6 +133,10 @@ export class Agent {
   /** Sets CLI command context (used by escalation tools like request_goal/team/call). */
   setCommandCtx(ctx: any): void {
     this.commandCtx = ctx;
+  }
+
+  setToolRoundsPromptHandler(handler: ToolRoundsPromptHandler | undefined): void {
+    this.toolRoundsPromptHandler = handler;
   }
 
   getReasoningEffort(): ReasoningEffort | undefined {
@@ -491,6 +506,28 @@ export class Agent {
 
         toolRounds++;
         if (toolRounds >= this.maxToolRounds) {
+          if (this.toolRoundsPromptHandler && !signal?.aborted) {
+            try {
+              const decision = await this.toolRoundsPromptHandler({
+                currentRounds: toolRounds,
+                maxRounds: this.maxToolRounds,
+                agentLabel: this.agentLabel,
+              });
+              if (decision === 'extend') {
+                this.maxToolRounds += 10;
+                emit({ type: 'round_continue', round: toolRounds });
+                continue;
+              } else if (decision === 'conclude') {
+                this.messages.push({
+                  role: 'user',
+                  content: 'You have reached the requested tool rounds limit. Please synthesize and output your final response now without calling additional tools.'
+                });
+                noToolNudgeUsed = true;
+                continue;
+              }
+            } catch {}
+          }
+
           const stopMessage =
             `[Safety limit reached] Reached maximum of ${this.maxToolRounds} ` +
             `consecutive tool execution rounds for this request. Process stopped to avoid infinite loops.`;

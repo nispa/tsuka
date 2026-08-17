@@ -58,6 +58,8 @@ export interface AppConfig {
   browseFetchTimeoutMs?: number;
   /** HTTP request timeout in ms for download_file tool. Default: 60000. */
   downloadFetchTimeoutMs?: number;
+  /** Default UI mode when launching tsuka without flags ('tui' or 'cli'). Default: 'tui'. */
+  defaultUi?: 'tui' | 'cli';
 }
 
 export const CONFIG_PATH = homePath('tsuka.config.json');
@@ -216,6 +218,18 @@ export class ConfigManager {
 
   setActiveCharacter(char: string): void {
     this.config.activeCharacter = char;
+    this.save();
+  }
+
+  /**
+   * Returns default UI mode ('tui' by default, or 'cli').
+   */
+  getDefaultUi(): 'tui' | 'cli' {
+    return this.config.defaultUi === 'cli' ? 'cli' : 'tui';
+  }
+
+  setDefaultUi(ui: 'tui' | 'cli'): void {
+    this.config.defaultUi = ui;
     this.save();
   }
 

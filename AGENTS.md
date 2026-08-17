@@ -6,7 +6,7 @@
 
 * **Runtime**: Node.js (v20+ recommended), TypeScript (strict mode, ES2022 target, CommonJS module output), `tsx` for live execution.
 * **Core Design**: Deterministic ReAct loop, hot-plug dynamic tool auto-discovery, orthogonal persona system (*Role* × *Trait* = *Character/Agent*), session-scoped run blackboard via `AsyncLocalStorage`, token-budgeted memory with semantic keyword scoring, and empirical capability fingerprinting (`/benchmark`).
-* **Metrics**: 27 native tools · 24 characters/agents · 21 roles · 9 traits · 10 preconfigured teams · 19 REPL slash commands · 57 automated test suites.
+* **Metrics**: 27 native tools · 24 characters/agents · 21 roles · 9 traits · 10 preconfigured teams · 19 REPL slash commands · 58 automated test suites · Dual CLI & TUI Interactive Interfaces.
 
 ---
 
@@ -17,7 +17,7 @@
 3. **Strict Workspace Jail**: All filesystem operations (`read_file`, `write_file`, `edit_file`, `delete_file`, `list_dir`, `grep_search`, `audit_code`) must be strictly confined within `workspaceRoot` via `resolveSafePath()`. Escaping via `..` is blocked.
 4. **Environment & Credential Masking**: Automatically mask sensitive environment variables (`KEY`, `SECRET`, `TOKEN`, `PASSWORD`, `CREDENTIAL`, `AUTH`) before logging or sending prompts.
 5. **Deterministic Multi-Agent Coordination**: Inter-agent communication in `/team` and `/goal` must use dedicated protocol tools (`report_status`, `route_next`, `cast_vote`) with automated fallback to text markers and visible degradation warnings.
-6. **No Test Regressions**: All 57 test suites (`npm test`) must pass cleanly before completing any task. Automated tests must use mock stores and temporary test directories—never mutate the active user's `memory.json`.
+6. **No Test Regressions**: All 58 test suites (`npm test`) must pass cleanly before completing any task. Automated tests must use mock stores and temporary test directories—never mutate the active user's `memory.json`.
 
 ---
 
@@ -25,17 +25,20 @@
 
 ```
 CLI REPL (src/cli/) ──► Agent.run() ──► LLMProvider.chatWithTools() (OpenAI API)
-                            ↓
-                     ToolRegistry.executeTool() ◄── Auto-Discovery (src/tools/impl/)
-                            ↓
+         ▲                  │
+         │                  ▼
+TUI App (src/tui/)   ToolRegistry.executeTool() ◄── Auto-Discovery (src/tools/impl/)
+                            │
+                            ▼
                      PermissionManager (SAFE / RESTRICTED / DANGEROUS)
 ```
 
-### Four Decoupled Layers
+### Five Decoupled Layers
 
 | Layer | Directory | Responsibility |
 |---|---|---|
-| **CLI & UI** | `src/cli/` | REPL loop, slash command router, interactive menus (`prompts`), animated statusline, live ANSI streaming, and Markdown repainting. |
+| **CLI & REPL** | `src/cli/` | REPL loop, slash command router, interactive menus (`prompts`), animated statusline, live ANSI streaming, and Markdown repainting. |
+| **Interactive TUI** | `src/tui/` | Zero-flicker full-screen terminal dashboard: double-buffered differential rendering, SGR 1006 mouse tracking, scrollbars, workspace file explorer, modal dialogues, and tabbed view routing. |
 | **Core Engine** | `src/core/` | Deterministic ReAct loop (`Agent`), HTTP LLM provider (`LLMProvider`), token context budgeter, blackboard (`AsyncLocalStorage`), persistent memory (`MemoryStore`), server discovery, and loop controller. |
 | **Tools** | `src/tools/` | Auto-discovery dynamic registry (`ToolRegistry`), tier gating, JSON Schema definitions (`tools_schemas/`), and 27 native TypeScript tool implementations (`src/tools/impl/`). |
 | **Safety** | `src/safety/` | 3-tier risk system (`SAFE`, `RESTRICTED`, `DANGEROUS`), serialized interactive permission queue (`enqueuePrompt`), workspace jail, and `node:vm` sandbox for runtime tools (`create_tool`). |
@@ -56,23 +59,22 @@ harness/
 │   │   ├── statusline.ts            # Animated spinner & status updates
 │   │   ├── ui.ts                    # Theme definitions, chalk helpers, and InteractiveMenu
 │   │   └── commands/                # 19 Slash commands
-│   │       ├── call.ts              # /call — turn-based multi-agent conference debate
-│   │       ├── goal.ts              # /goal — dynamic goal orchestrator with PARALLEL blocks
-│   │       ├── team.ts              # /team — team dispatcher (orchestrated, round-robin, pipeline, hybrid)
-│   │       ├── workflowLog.ts       # Structured JSON report exporter (workflow_logs/)
-│   │       ├── strategies/          # Team coordination strategies & common runner
-│   │       │   ├── common.ts        # runMemberTurn, protocol validation, degradation warnings
-│   │       │   ├── orchestrated.ts  # Supervisor-directed routing via route_next
-│   │       │   ├── roundRobin.ts    # Cyclical rotation across team members
-│   │       │   ├── pipeline.ts      # Assembly-line workflow with loop.ts acceptance checks
-│   │       │   └── hybrid.ts        # Intermittent discussion rounds & cast_vote formal polling
-│   │       ├── provider.ts          # /provider, /models, /benchmark, /search-engine
-│   │       ├── effort.ts            # /effort (none, low, medium, xhigh, auto, ask)
-│   │       ├── persona.ts           # /agent
-│   │       ├── tools.ts             # /tools diagnostic inspector
-│   │       ├── runs.ts              # /runs history viewer
-│   │       ├── memory.ts            # /memory inspector and query tool
-│   │       └── session.ts           # /exit, /info, /reset, /context, /clear
+│   ├── tui/
+│   │   ├── index.ts                 # TUI entry point (npm run tui / tsuka --tui)
+│   │   ├── app.ts                   # TuiApp main orchestrator, layout composer, key/mouse router
+│   │   ├── screen.ts                # TuiScreen: differential buffer renderer, ANSI-safe box drawing
+│   │   ├── store.ts                 # TuiStore: reactive state management (Flux/Observable pattern)
+│   │   ├── bridge.ts                # TuiBridge: decouples Core AgentEvents into TUI actions
+│   │   ├── types.ts                 # TUI state interfaces, modals, keypress & mouse events
+│   │   ├── ansi.d.ts                # TypeScript type declarations for slice-ansi & wrap-ansi
+│   │   └── views/                   # Reusable pure UI view components:
+│   │       ├── Header.ts            # Top tabs (F1 Chat, F2 Tools) & context window meter
+│   │       ├── Sidebar.ts           # Agent Profile, role instructions, active tool tags
+│   │       ├── Files.ts             # Workspace files explorer with file-type icons & scrollbar
+│   │       ├── Chat.ts              # Markdown chat feed, <think> reasoning styling, tool output
+│   │       ├── Tools.ts             # Native tool inspection & execution history
+│   │       ├── Input.ts             # Bottom prompt buffer with cursor & working spinner
+│   │       └── Modal.ts             # Universal modal overlay (permission prompt, menus, help)
 │   ├── core/
 │   │   ├── agent.ts                 # Agent class: ReAct cycle, token pruning, smart compression
 │   │   ├── provider.ts              # LLMProvider: OpenAI SDK client, SSE parser, timeouts
