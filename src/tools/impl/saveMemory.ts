@@ -4,7 +4,7 @@ import { MemoryStore } from '../../core/memory';
 export const saveMemoryTool: Tool = {
   name: 'save_memory',
   riskLevel: 'SAFE',
-  execute: async (args: { content: string }) => {
+  execute: async (args: { content: string; global?: boolean }) => {
     const content = (args.content || '').trim();
     if (!content) {
       throw new Error("Memory content cannot be empty.");
@@ -14,7 +14,9 @@ export const saveMemoryTool: Tool = {
     }
 
     const store = MemoryStore.getInstance();
-    const fact = store.addFact(content, 'agent');
-    return `Fact saved to shared persistent memory (id: ${fact.id}). It will be accessible across sessions.`;
+    const opts = args.global === true ? { scope: 'global' } : undefined;
+    const fact = store.addFact(content, 'agent', opts);
+    const scopeLabel = args.global === true ? 'global' : 'workspace';
+    return `Fact saved to shared persistent memory (id: ${fact.id}, scope: ${scopeLabel}). It will be accessible across sessions.`;
   }
 };

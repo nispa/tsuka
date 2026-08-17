@@ -61,6 +61,7 @@ export interface TuiModalState {
 
 export interface TuiStats {
   usedTokens: number;
+  subagentUsedTokens?: number;
   maxTokens: number;
   percentage: number;
   turnCount: number;
@@ -75,6 +76,24 @@ export interface TuiFileItem {
   ext?: string;
 }
 
+export interface TuiSpawnedAgent {
+  id: string;
+  name: string;
+  role: string;
+  task: string;
+  status: 'running' | 'completed' | 'failed';
+  currentTool?: string;
+  usedTokens: number;
+  startedAt: number;
+  completedAt?: number;
+}
+
+export interface TuiGenerationStatus {
+  phase: 'idle' | 'reasoning' | 'streaming' | 'tool';
+  agentName?: string;
+  toolName?: string;
+}
+
 export interface TuiState {
   activeCharacterName: string;
   activeCharacterRole: string;
@@ -85,6 +104,8 @@ export interface TuiState {
   activeReasoningEffort?: string;
   activeEffortSource?: string;
   characterRecommendedEffort?: string;
+  activeSpawnedAgent: TuiSpawnedAgent | null;
+  generationStatus?: TuiGenerationStatus;
   stats: TuiStats;
   messages: TuiChatMessage[];
   activeTools: TuiToolExecution[];

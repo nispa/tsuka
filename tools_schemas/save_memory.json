@@ -8,6 +8,10 @@
       "content": {
         "type": "string",
         "description": "Il fatto o l'informazione da ricordare, in forma sintetica (max 500 caratteri)."
+      },
+      "global": {
+        "type": "boolean",
+        "description": "Se true, memorizza l'informazione a livello globale (visibile in tutti i progetti). Se false o omesso, la memorizza nello scope del progetto corrente."
       }
     },
     "required": ["content"]

@@ -186,7 +186,7 @@ export async function handleGoal(ctx: CommandCtx, arg: string): Promise<void> {
     const agentStats: { name: string; stats: TurnStats }[] = [];
 
     let isAuto = true;
-    if (process.stdin.isTTY) {
+    if (process.stdin.isTTY && !process.env.TSUKA_TUI && !(ctx as any).isTui) {
       const autoModeChoice = await InteractiveMenu.select<string>(
         'Execution mode for this goal:',
         [

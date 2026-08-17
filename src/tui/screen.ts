@@ -142,7 +142,7 @@ export class TuiScreen {
     let out = '';
 
     for (let r = 0; r < this.height; r++) {
-      const newLine = newLines[r] || '';
+      const newLine = TuiScreen.truncateOrPad(newLines[r] || '', this.width);
       const oldLine = this.currentBuffer[r];
 
       // Double-buffering: write only dirty lines that changed

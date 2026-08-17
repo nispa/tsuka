@@ -14,7 +14,7 @@ export async function handleRuns(_ctx: CommandCtx, _arg: string): Promise<void> 
     return;
   }
 
-  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+  if (!process.stdin.isTTY || !process.stdout.isTTY || process.env.TSUKA_TUI || (_ctx as any)?.isTui) {
     logSink.log(chalk.bold(`\n📜 Workflow History (${logs.length} most recent):\n`));
     for (const log of logs) {
       const data = log.data;

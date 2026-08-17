@@ -22,6 +22,7 @@ const SLASH_COMMANDS = [
   { cmd: '/blackboard', desc: 'Inspect current session run notes' },
   { cmd: '/context', desc: 'Show context token breakdown & limits' },
   { cmd: '/benchmark', desc: 'Run capability benchmark fingerprinting' },
+  { cmd: '/stop', desc: 'Stop running agent activity / reasoning / tools' },
   { cmd: '/reset', desc: 'Reset conversation session context' },
   { cmd: '/clear', desc: 'Clear screen messages' },
   { cmd: '/info', desc: 'Show system configuration summary' },
@@ -50,11 +51,22 @@ export class InputView {
     const contentLine = prefix + renderedInput;
     lines.push(TuiScreen.truncateOrPad(contentLine, innerWidth));
 
-    // Optional slash command suggestion popover right above or inside
+    // Slash command suggestion or active generation title
     const isSlash = inputText.startsWith('/') && state.focus === 'input';
     let title = 'Prompt Input';
     if (state.isGenerating) {
-      title = 'Prompt Input (⏳ Agent working... Type & Enter to queue | Esc to stop)';
+      const gen = state.generationStatus;
+      const phase = gen?.phase || 'reasoning';
+      const agent = gen?.agentName ? `@${gen.agentName}` : `@${state.activeAiName}`;
+      if (phase === 'reasoning') {
+        title = `Prompt Input (⚡ THINKING... ${agent} | Esc or /stop to halt)`;
+      } else if (phase === 'tool') {
+        title = `Prompt Input (🔧 TOOL EXECUTION: ${gen?.toolName || 'tool'} ${agent} | Esc or /stop to halt)`;
+      } else if (phase === 'streaming') {
+        title = `Prompt Input (💬 GENERATING RESPONSE... ${agent} | Esc or /stop to halt)`;
+      } else {
+        title = `Prompt Input (⏳ PROCESSING... ${agent} | Esc or /stop to halt)`;
+      }
     } else if (isSlash) {
       title = 'Slash Commands';
     }

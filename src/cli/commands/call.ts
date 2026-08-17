@@ -19,8 +19,40 @@ export async function handleCall(ctx: CommandCtx, arg: string, directTopic?: str
   }
 
   let selectedNames: string[] = [];
+  let topic = (directTopic || '').trim();
+
+  if (arg) {
+    const quotedMatch = arg.match(/["'](.*?)["']/);
+    if (quotedMatch) {
+      topic = quotedMatch[1].trim();
+      const agentsPart = arg.replace(quotedMatch[0], '').trim();
+      selectedNames = agentsPart
+        .split(/[\s,e\+]+/i)
+        .map((n: string) => n.trim().replace(/^@/, '').toLowerCase())
+        .filter((n: string) => n.length > 0);
+    } else {
+      const parts = arg.split(/\s+/);
+      const agentParts = parts.filter(p => p.startsWith('@'));
+      const textParts = parts.filter(p => !p.startsWith('@'));
+      if (agentParts.length >= 2) {
+        selectedNames = agentParts.map(a => a.replace(/^@/, '').toLowerCase());
+        if (textParts.length > 0) {
+          topic = textParts.join(' ');
+        }
+      } else {
+        selectedNames = arg
+          .split(/[\s,e\+]+/i)
+          .map((n: string) => n.trim().replace(/^@/, '').toLowerCase())
+          .filter((n: string) => n.length > 0);
+      }
+    }
+  }
 
   if (!arg) {
+    if (process.env.TSUKA_TUI || (ctx as any).isTui) {
+      CLITheme.warning('Usage: /call @agent1 @agent2 "Topic to discuss"');
+      return;
+    }
     logSink.log('');
     const response = await prompts({
       type: 'multiselect',
@@ -34,11 +66,6 @@ export async function handleCall(ctx: CommandCtx, arg: string, directTopic?: str
       hint: '- arrow keys to move, space to select, enter to confirm'
     });
     selectedNames = response.chars || [];
-  } else {
-    selectedNames = arg
-      .split(/[\s,e\+]+/i)
-      .map((n: string) => n.trim().replace(/^@/, '').toLowerCase())
-      .filter((n: string) => n.length > 0);
   }
 
   if (selectedNames.length < 2) {
@@ -64,8 +91,11 @@ export async function handleCall(ctx: CommandCtx, arg: string, directTopic?: str
     return;
   }
 
-  let topic = (directTopic || '').trim();
   if (!topic) {
+    if (process.env.TSUKA_TUI || (ctx as any).isTui) {
+      CLITheme.warning('Please specify a topic in quotes. Example: /call @spock @bones "Debate warp drive"');
+      return;
+    }
     logSink.log('');
     const topicResp = await prompts({
       type: 'text',

@@ -9,6 +9,7 @@ import prompts from 'prompts';
 async function maybeWarmUp(ctx: CommandCtx, selectedModel: string, loadedModel: string | null): Promise<void> {
   const baseUrl = ctx.provider.getBaseUrl();
   if (!isLocalUrl(baseUrl) || !loadedModel || loadedModel === selectedModel) return;
+  if (process.env.TSUKA_TUI || (ctx as any).isTui || !process.stdin.isTTY) return;
 
   console.log();
   const confirm = await prompts({

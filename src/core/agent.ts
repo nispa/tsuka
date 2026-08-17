@@ -368,7 +368,7 @@ export class Agent {
   async run(
     userMessage: string,
     onChunk?: (chunk: string, channel?: StreamChannel) => void,
-    onStats?: (stats: { durationMs: number; tokenCount: number; tokensPerSecond: number; promptTokens: number; totalTokens: number }) => void,
+    onStats?: (stats: { durationMs: number; tokenCount: number; tokensPerSecond: number; promptTokens: number; totalTokens: number }, agentLabel?: string) => void,
     onEvent?: AgentEventHandler,
     signal?: AbortSignal,
     reasoningEffortOverride?: ReasoningEffort

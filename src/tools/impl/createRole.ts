@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { homePath } from '../../core/apphome';
+import { homePath, localWorkspacePath } from '../../core/apphome';
 import { Tool } from '../registry';
 
 export const createRoleTool: Tool = {
@@ -12,8 +12,11 @@ export const createRoleTool: Tool = {
     description: string;
     systemPrompt: string;
     allowedTools: string[];
+    global?: boolean;
   }) => {
-    const rolesDir = homePath('roles');
+    const isGlobal = args.global === true;
+    const localDir = !isGlobal ? localWorkspacePath('roles') : null;
+    const rolesDir = localDir ?? homePath('roles');
     
     if (!fs.existsSync(rolesDir)) {
       fs.mkdirSync(rolesDir, { recursive: true });

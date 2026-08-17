@@ -254,6 +254,10 @@ export class InteractiveMenu {
     items: Array<{ title: string; value: T; description?: string }>,
     initialValue?: T
   ): Promise<T | null> {
+    if (!process.stdin.isTTY || process.env.TSUKA_TUI) {
+      return initialValue !== undefined ? initialValue : (items[0]?.value ?? null);
+    }
+
     let initialIndex = 0;
     if (initialValue !== undefined) {
       const idx = items.findIndex((item) => item.value === initialValue);

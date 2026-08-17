@@ -1,5 +1,5 @@
 import * as fs from 'fs';
-import { homePath } from '../core/apphome';
+import { homePath, localWorkspacePath } from '../core/apphome';
 import { RiskLevel, PermissionManager } from '../safety/permissions';
 import { getModelProfile } from '../core/modelProfile';
 import type { ReasoningEffort } from '../core/provider';
@@ -21,7 +21,7 @@ export interface ToolExecutionContext {
   /** Requesting agent label (e.g. character aiName) for logging and note authorship attribution. */
   requesterLabel?: string;
   onChunk?: (chunk: string, channel?: StreamChannel, authorName?: string) => void;
-  onStats?: (stats: any) => void;
+  onStats?: (stats: any, agentLabel?: string) => void;
   onEvent?: AgentEventHandler;
   signal?: AbortSignal;
 }
@@ -167,9 +167,16 @@ const schemaCache = new Map<string, { mtimeMs: number; data: ToolSchemaData }>()
  */
 export function loadToolSchema(name: string): ToolSchemaData {
   try {
-    const customSchemaPath = homePath('custom_tools_schemas', `${name}.json`);
+    const localCustomSchemaPath = localWorkspacePath('custom_tools_schemas', `${name}.json`);
+    const globalCustomSchemaPath = homePath('custom_tools_schemas', `${name}.json`);
     const coreSchemaPath = homePath('tools_schemas', `${name}.json`);
-    const schemaPath = fs.existsSync(customSchemaPath) ? customSchemaPath : coreSchemaPath;
+
+    let schemaPath = coreSchemaPath;
+    if (localCustomSchemaPath && fs.existsSync(localCustomSchemaPath)) {
+      schemaPath = localCustomSchemaPath;
+    } else if (fs.existsSync(globalCustomSchemaPath)) {
+      schemaPath = globalCustomSchemaPath;
+    }
 
     if (!fs.existsSync(schemaPath)) {
       return fallbackSchema(name);
@@ -279,7 +286,7 @@ export class ToolRegistry {
     requesterLabel?: string,
     commandCtx?: any,
     onChunk?: (chunk: string, channel?: StreamChannel, authorName?: string) => void,
-    onStats?: (stats: any) => void,
+    onStats?: (stats: any, agentLabel?: string) => void,
     onEvent?: AgentEventHandler,
     signal?: AbortSignal
   ): Promise<ToolResult> {

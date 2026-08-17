@@ -67,6 +67,8 @@ export class TuiApp {
       store: this.store,
       configManager: this.configManager,
       provider: this.provider,
+      registry: this.registry,
+      permissionManager: this.permissionManager,
       layoutConfig: this.layoutConfig,
       getAgent: () => this.agent,
       setAgent: (a) => { this.agent = a; },
@@ -74,6 +76,7 @@ export class TuiApp {
       syncState: () => this.syncInitialState(),
       probeContextWindow: () => this.probeContextWindow(),
       setActiveTab: (t) => { this.activeTab = t; },
+      getTurnRunner: () => this.turnRunner,
       stopApp: () => this.stop(),
     });
 
@@ -199,8 +202,16 @@ export class TuiApp {
   }
 
   start(): void {
+    process.env.TSUKA_TUI = '1';
     setLogSink({
-      log: () => {},
+      log: (msg: string) => {
+        if (msg && msg.trim()) {
+          const stripped = msg.replace(/\x1b\[[0-9;]*m/g, '').trim();
+          if (stripped.length > 0 && !stripped.startsWith('[Out:')) {
+            this.store.addMessage({ role: 'system', content: stripped });
+          }
+        }
+      },
       warn: (msg: string) => this.store.notify(msg, 'warn'),
       error: (msg: string) => this.store.notify(msg, 'error'),
     });
@@ -210,6 +221,7 @@ export class TuiApp {
   }
 
   stop(): void {
+    delete process.env.TSUKA_TUI;
     this.screen.stop();
     resetLogSink();
   }

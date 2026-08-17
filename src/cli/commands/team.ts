@@ -52,6 +52,10 @@ export async function handleTeam(ctx: CommandCtx, arg: string, directTask?: stri
 
   let task = (directTask || '').trim();
   if (!task) {
+    if (process.env.TSUKA_TUI || (ctx as any).isTui) {
+      CLITheme.warning('Usage: /team <team_name> "<task description>"');
+      return;
+    }
     logSink.log('');
     const taskResp = await prompts({
       type: 'text',

@@ -11,10 +11,11 @@ import { Blackboard } from '../../core/blackboard';
 import { homePath } from '../../core/apphome';
 import { withEffortPin, logEffortDivergence } from '../../core/effortControl';
 import { resolveSafePath } from './utils';
+import { MemoryStore } from '../../core/memory';
+import { capForContext } from '../../core/contextBudget';
 
 const MAX_TASK_LENGTH = 2000;
 const MAX_BRIEFING_FILE_LENGTH = 12000;
-const MAX_RETURN_LENGTH = 3000;
 
 const VALID_REASONING_EFFORTS: ReasoningEffort[] = ['none', 'low', 'medium', 'xhigh'];
 
@@ -87,9 +88,10 @@ export const spawnAgentTool: Tool = {
     const label = char?.aiName || roleName;
 
     const blackboard = Blackboard.current();
-    const subAllowedTools = blackboard
-      ? [...(roleObj.allowedTools || []), 'post_note', 'read_notes']
-      : roleObj.allowedTools;
+    const baseTools = roleObj.allowedTools || [];
+    const memoryTools = ['save_memory', 'recall_memory'];
+    const blackboardTools = blackboard ? ['post_note', 'read_notes'] : [];
+    const subAllowedTools = Array.from(new Set([...baseTools, ...memoryTools, ...blackboardTools]));
 
     const effectiveOverride = withEffortPin(reasoningEffortOverride);
     logEffortDivergence(label, effectiveOverride, configManager.getDefaultReasoningEffort());
@@ -120,6 +122,13 @@ export const spawnAgentTool: Tool = {
         }
       : undefined;
 
+    // Forward subagent token stats attributed to subagent label
+    const subStatsHandler = onStats
+      ? (stats: any) => {
+          onStats(stats, label);
+        }
+      : undefined;
+
     // Forward subagent tool events tagged with subagent label
     const subEventHandler = onEvent
       ? (ev: any) => {
@@ -130,14 +139,48 @@ export const spawnAgentTool: Tool = {
         }
       : undefined;
 
-    const result = await subAgent.run(
-      `Execute this task: ${task}`,
-      subChunkHandler,
-      onStats,
-      subEventHandler,
-      signal,
-      effectiveOverride
-    );
+    if (onEvent) {
+      onEvent({
+        type: 'subagent_start',
+        name: label,
+        role: roleName,
+        task: task,
+        agentLabel: label,
+      });
+    }
+
+    let result: string;
+    try {
+      result = await subAgent.run(
+        `Execute this task: ${task}`,
+        subChunkHandler,
+        subStatsHandler,
+        subEventHandler,
+        signal,
+        effectiveOverride
+      );
+
+      if (onEvent) {
+        onEvent({
+          type: 'subagent_end',
+          name: label,
+          success: true,
+          output: result,
+          agentLabel: label,
+        });
+      }
+    } catch (err: any) {
+      if (onEvent) {
+        onEvent({
+          type: 'subagent_end',
+          name: label,
+          success: false,
+          output: err.message,
+          agentLabel: label,
+        });
+      }
+      throw err;
+    }
 
     const fullReport = result || '[no response]';
 
@@ -152,10 +195,18 @@ export const spawnAgentTool: Tool = {
 
     if (blackboard) {
       blackboard.post('artefatto-sub-agente', relPath, label);
+    } else {
+      try {
+        const memStore = MemoryStore.getInstance();
+        const summarySnippet = fullReport.length > 250 ? fullReport.slice(0, 245) + '…' : fullReport;
+        memStore.addFact(`[Subagent @${label}] Task: "${task.slice(0, 120)}" -> Report: ${relPath}. Summary: ${summarySnippet}`, 'agent');
+      } catch {}
     }
 
-    const shortSummary = fullReport.length > 400 ? fullReport.slice(0, 400) + '…' : fullReport;
-    const output = `[SUB-AGENT: ${label}] Full report saved in '${relPath}' (${fullReport.length} chars, readable via read_file). Summary:\n${shortSummary}`;
-    return output.length > MAX_RETURN_LENGTH ? output.slice(0, MAX_RETURN_LENGTH) : output;
+    const output = `[SUB-AGENT: ${label}] Execution completed (full report saved in '${relPath}'):\n\n${fullReport}`;
+    return capForContext(output, undefined, {
+      label: `Subagent @${label} report`,
+      recoveryHint: `Full output saved in '${relPath}', readable via read_file.`
+    });
   }
 };

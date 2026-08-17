@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { homePath } from '../core/apphome';
+import { homePath, globalHomePath, resolveAssetPath, localWorkspacePath } from '../core/apphome';
 import { TeamConfig } from '../core/types';
 
 export type { TeamConfig };
@@ -54,28 +54,34 @@ export function loadJsonFile<T>(filePath: string): T | null {
     const value = JSON.parse(raw) as T;
     jsonFileCache.set(filePath, { mtimeMs, value });
     return value;
-  } catch (err: any) {
-    console.error(`Error loading '${path.basename(filePath)}': ${err.message}`);
+  } catch {
     return null;
   }
 }
 
 export function listAvailableItems<T>(dirName: string, loadFn: (name: string) => T | null): T[] {
-  const items: T[] = [];
-  try {
-    const dir = homePath(dirName);
-    if (fs.existsSync(dir)) {
-      for (const file of fs.readdirSync(dir)) {
-        if (file.endsWith('.json')) {
-          const item = loadFn(path.basename(file, '.json'));
-          if (item) items.push(item);
+  const itemMap = new Map<string, T>();
+  const dirs: string[] = [homePath(dirName)];
+  const localDir = localWorkspacePath(dirName);
+  if (localDir) dirs.push(localDir);
+  for (const dir of dirs) {
+    try {
+      if (fs.existsSync(dir)) {
+        for (const file of fs.readdirSync(dir)) {
+          if (file.endsWith('.json')) {
+            const baseName = path.basename(file, '.json');
+            const item = loadFn(baseName);
+            if (item) {
+              itemMap.set(baseName, item);
+            }
+          }
         }
       }
+    } catch (err: any) {
+      console.error(`Error scanning '${dirName}': ${err.message}`);
     }
-  } catch (err: any) {
-    console.error(`Error scanning '${dirName}': ${err.message}`);
   }
-  return items;
+  return Array.from(itemMap.values());
 }
 
 // ── Roles, traits, characters, teams loaders ──
@@ -90,7 +96,7 @@ export function loadRole(roleName?: string): RoleConfig {
       allowedTools: ['read_file', 'write_file', 'edit_file', 'list_dir']
     };
   }
-  const role = loadJsonFile<RoleConfig>(homePath('roles', `${roleName}.json`));
+  const role = loadJsonFile<RoleConfig>(resolveAssetPath('roles', `${roleName}.json`));
   if (role) return role;
   return {
     name: 'developer',
@@ -110,7 +116,7 @@ export function loadTrait(traitName?: string): TraitConfig {
       prompt: 'Professional, balanced, sober tone. Technical details and precise data only. No personal comments or emotional digressions.'
     };
   }
-  const trait = loadJsonFile<TraitConfig>(homePath('traits', `${traitName}.json`));
+  const trait = loadJsonFile<TraitConfig>(resolveAssetPath('traits', `${traitName}.json`));
   if (trait) return trait;
   return {
     name: 'professional',
@@ -126,7 +132,7 @@ function normalizeName(name: string): string {
 
 export function loadCharacter(charName: string): CharacterConfig | null {
   if (charName === 'custom') return null;
-  const charData = loadJsonFile<CharacterConfig>(homePath('characters', `${charName}.json`));
+  const charData = loadJsonFile<CharacterConfig>(resolveAssetPath('characters', `${charName}.json`));
   if (!charData) return null;
 
   // Multi-skill backward compatibility initialization
@@ -143,7 +149,7 @@ export function loadCharacter(charName: string): CharacterConfig | null {
 }
 
 export function loadTeam(teamName: string): TeamConfig | null {
-  return loadJsonFile<TeamConfig>(homePath('teams', `${teamName}.json`));
+  return loadJsonFile<TeamConfig>(resolveAssetPath('teams', `${teamName}.json`));
 }
 
 export function listAvailableCharacters(): CharacterConfig[] {

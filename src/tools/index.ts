@@ -4,7 +4,7 @@ import { pathToFileURL } from 'url';
 import { ToolRegistry, Tool } from './registry';
 import { logSink } from '../core/logSink';
 
-import { homePath } from '../core/apphome';
+import { homePath, localWorkspacePath } from '../core/apphome';
 
 /**
  * Loads tools from a directory into the given ToolRegistry.
@@ -60,9 +60,15 @@ export async function createDefaultRegistry(): Promise<ToolRegistry> {
   // 1. Load native core tools
   await loadToolsFromDir(implDir, registry);
 
-  // 2. Load custom user tools from app home / local .tsuka
-  const customDir = homePath('custom_tools');
-  await loadToolsFromDir(customDir, registry);
+  // 2. Load global custom tools (TSUKA_HOME)
+  const globalCustomDir = homePath('custom_tools');
+  await loadToolsFromDir(globalCustomDir, registry);
+
+  // 3. Load local custom tools (.tsuka/ in project workspace)
+  const localCustomDir = localWorkspacePath('custom_tools');
+  if (localCustomDir) {
+    await loadToolsFromDir(localCustomDir, registry);
+  }
 
   return registry;
 }

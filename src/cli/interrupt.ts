@@ -23,7 +23,7 @@ export class GenerationInterrupt {
   }
 
   arm(): void {
-    if (!process.stdin.isTTY) return;
+    if (!process.stdin.isTTY || process.env.TSUKA_TUI) return;
     readline.emitKeypressEvents(process.stdin);
     process.stdin.setRawMode(true);
     process.stdin.resume();
@@ -45,7 +45,7 @@ export class GenerationInterrupt {
    * Rearms raw mode if another stdin consumer (e.g. prompts) closed or paused it.
    */
   rearm(): void {
-    if (!this.keyHandler || !process.stdin.isTTY) return;
+    if (!this.keyHandler || !process.stdin.isTTY || process.env.TSUKA_TUI) return;
     if (!process.stdin.isRaw) {
       process.stdin.setRawMode(true);
     }
@@ -57,7 +57,7 @@ export class GenerationInterrupt {
       process.stdin.off('keypress', this.keyHandler);
       this.keyHandler = null;
     }
-    if (process.stdin.isTTY) {
+    if (process.stdin.isTTY && !process.env.TSUKA_TUI) {
       process.stdin.setRawMode(false);
       process.stdin.pause();
     }

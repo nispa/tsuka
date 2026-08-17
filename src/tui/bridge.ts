@@ -99,30 +99,110 @@ export class TuiBridge {
       } else {
         this.store.appendStreamingChunk(this.currentAssistantMsgId, chunk, isReasoning);
       }
+
+      const currentGen = this.store.getState().generationStatus;
+      const nextPhase = isReasoning ? 'reasoning' : 'streaming';
+      if (!currentGen || currentGen.phase !== nextPhase || currentGen.agentName !== effectiveAuthor) {
+        this.store.setState({
+          generationStatus: {
+            phase: nextPhase,
+            agentName: effectiveAuthor,
+          },
+        });
+      }
     };
   }
 
   /**
    * Creates a live stats update handler for Agent.run().
    */
-  createStatsHandler(): (stats: { durationMs: number; tokenCount: number; tokensPerSecond: number; promptTokens: number; totalTokens: number }) => void {
-    return (stats) => {
-      const maxTokens = this.store.getState().stats.maxTokens || 8192;
-      const percentage = Math.min(100, Math.round((stats.totalTokens / maxTokens) * 100));
-      this.store.updateStats({
-        usedTokens: stats.totalTokens,
-        percentage,
-      });
+  createStatsHandler(): (stats: { durationMs: number; tokenCount: number; tokensPerSecond: number; promptTokens: number; totalTokens: number }, agentLabel?: string) => void {
+    return (stats, agentLabel) => {
+      const currentState = this.store.getState();
+      const maxTokens = currentState.stats.maxTokens || 8192;
+
+      if (agentLabel) {
+        // Subagent tokens
+        const prevSubTokens = currentState.stats.subagentUsedTokens || 0;
+        const addedTokens = stats.tokenCount || stats.totalTokens || 0;
+        const currentSubTokens = prevSubTokens + addedTokens;
+        const mainUsedTokens = currentState.stats.usedTokens || 0;
+        const combined = mainUsedTokens + currentSubTokens;
+        const percentage = Math.min(100, Math.round((combined / maxTokens) * 100));
+
+        this.store.updateStats({
+          subagentUsedTokens: currentSubTokens,
+          percentage,
+        });
+        this.store.updateSpawnedAgent({
+          usedTokens: currentSubTokens,
+        });
+      } else {
+        // Main agent tokens
+        const subTokens = currentState.stats.subagentUsedTokens || 0;
+        const combined = stats.totalTokens + subTokens;
+        const percentage = Math.min(100, Math.round((combined / maxTokens) * 100));
+
+        this.store.updateStats({
+          usedTokens: stats.totalTokens,
+          percentage,
+        });
+      }
     };
   }
 
   /**
-   * Creates an AgentEvent handler for lifecycle events (tool_start, tool_end, round_continue, max_rounds).
+   * Creates an AgentEvent handler for lifecycle events (tool_start, tool_end, subagent_start, subagent_end, round_continue, max_rounds).
    */
   createEventHandler(): AgentEventHandler {
     return (ev: AgentEvent) => {
       switch (ev.type) {
+        case 'subagent_start': {
+          this.store.setSpawnedAgent({
+            id: `sub_${Date.now()}`,
+            name: ev.name,
+            role: ev.role,
+            task: ev.task,
+            status: 'running',
+            usedTokens: 0,
+            startedAt: Date.now(),
+          });
+          this.store.setState({
+            generationStatus: {
+              phase: 'reasoning',
+              agentName: ev.name,
+            },
+          });
+          break;
+        }
+
+        case 'subagent_end': {
+          this.store.updateSpawnedAgent({
+            status: ev.success ? 'completed' : 'failed',
+            currentTool: undefined,
+            completedAt: Date.now(),
+          });
+          const isNoEffortEnd = this.store.getState().activeReasoningEffort === 'none';
+          this.store.setState({
+            generationStatus: {
+              phase: isNoEffortEnd ? 'streaming' : 'reasoning',
+              agentName: this.store.getState().activeAiName,
+            },
+          });
+          break;
+        }
+
         case 'tool_start': {
+          if (ev.agentLabel) {
+            this.store.updateSpawnedAgent({ currentTool: ev.name });
+          }
+          this.store.setState({
+            generationStatus: {
+              phase: 'tool',
+              agentName: ev.agentLabel,
+              toolName: ev.name,
+            },
+          });
           const displayToolName = ev.agentLabel ? `${ev.name} (@${ev.agentLabel})` : ev.name;
           const toolId = this.store.startTool(displayToolName, JSON.stringify(ev.args || {}));
           this.currentToolExecMap.set(ev.name, toolId);
@@ -147,6 +227,16 @@ export class TuiBridge {
         }
 
         case 'tool_end': {
+          if (ev.agentLabel) {
+            this.store.updateSpawnedAgent({ currentTool: undefined });
+          }
+          const isNoEffortTool = this.store.getState().activeReasoningEffort === 'none';
+          this.store.setState({
+            generationStatus: {
+              phase: isNoEffortTool ? 'streaming' : 'reasoning',
+              agentName: ev.agentLabel || this.store.getState().activeAiName,
+            },
+          });
           const toolId = this.currentToolExecMap.get(ev.name);
           if (toolId) {
             this.store.finishTool(toolId, ev.output || '', ev.success);

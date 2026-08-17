@@ -12,16 +12,38 @@ export class HeaderView {
     const lines: string[] = [];
 
     // Line 1: Top Navigation Menu Tabs
-    const tabs = [
-      { id: 'chat', label: 'F1 💬 Chat' },
-      { id: 'tools', label: 'F2 ⚡ Tools' },
-      { id: 'personas', label: 'F3 👥 Personas' },
-      { id: 'teams', label: 'F4 🤝 Teams' },
-      { id: 'memory', label: 'F5 🧠 Memory' },
-      { id: 'models', label: 'F6 ⚡ Models' },
-      { id: 'layout', label: 'F7 📐 Layout' },
-      { id: 'help', label: '? Help' },
-    ];
+    const tabs = width < 80
+      ? [
+          { id: 'chat', label: 'F1 Chat' },
+          { id: 'tools', label: 'F2 Tools' },
+          { id: 'personas', label: 'F3' },
+          { id: 'teams', label: 'F4' },
+          { id: 'memory', label: 'F5' },
+          { id: 'models', label: 'F6' },
+          { id: 'layout', label: 'F7' },
+          { id: 'help', label: '?' },
+        ]
+      : width < 110
+      ? [
+          { id: 'chat', label: 'F1 Chat' },
+          { id: 'tools', label: 'F2 Tools' },
+          { id: 'personas', label: 'F3 Personas' },
+          { id: 'teams', label: 'F4 Teams' },
+          { id: 'memory', label: 'F5 Mem' },
+          { id: 'models', label: 'F6 Models' },
+          { id: 'layout', label: 'F7 Layout' },
+          { id: 'help', label: '?' },
+        ]
+      : [
+          { id: 'chat', label: 'F1 💬 Chat' },
+          { id: 'tools', label: 'F2 ⚡ Tools' },
+          { id: 'personas', label: 'F3 👥 Personas' },
+          { id: 'teams', label: 'F4 🤝 Teams' },
+          { id: 'memory', label: 'F5 🧠 Memory' },
+          { id: 'models', label: 'F6 ⚡ Models' },
+          { id: 'layout', label: 'F7 📐 Layout' },
+          { id: 'help', label: '? Help' },
+        ];
 
     let tabsRow = ' ';
     for (const t of tabs) {
@@ -33,41 +55,111 @@ export class HeaderView {
       }
     }
 
-    const brand = chalk.bold.hex('#e879f9')('TSUKA') + chalk.gray(' v0.4.0');
+    const brand = chalk.bold.hex('#e879f9')('TSUKA') + (width > 95 ? chalk.gray(' v0.4.0') : '');
     const tabsRowWidth = TuiScreen.stringWidth(tabsRow);
     const brandWidth = TuiScreen.stringWidth(brand);
     const spacing0 = Math.max(1, width - tabsRowWidth - brandWidth - 2);
-    lines.push(tabsRow + ' '.repeat(spacing0) + brand + ' ');
+    lines.push(TuiScreen.truncateOrPad(tabsRow + ' '.repeat(spacing0) + brand + ' ', width));
 
     // Line 2: Active Persona, Model & Token Gauge
-    const agentBadge = chalk.bold.hex('#38bdf8')(`👤 ${state.activeAiName}`) +
-      chalk.gray(` (${state.activeCharacterRole} • ${state.activeCharacterTrait})`);
-    const modelBadge = chalk.hex('#fbbf24')(`⚡ ${state.activeModel}`) + chalk.gray(` @ ${state.activeProvider}`);
+    const modelName = state.activeModel || 'default';
+    const providerName = state.activeProvider || 'ollama';
 
-    const { usedTokens, maxTokens, percentage, reasoningEffort } = state.stats;
-    const barWidth = Math.min(18, Math.max(8, Math.floor(width / 7)));
-    const filled = Math.min(barWidth, Math.max(0, Math.round((percentage / 100) * barWidth)));
-    const empty = Math.max(0, barWidth - filled);
+    const { usedTokens, subagentUsedTokens = 0, maxTokens, percentage, reasoningEffort } = state.stats;
+    const barWidth = Math.min(18, Math.max(6, Math.floor(width / 8)));
+
+    // Multi-color token stacking (Parent Agent + Subagent)
+    const agentRatio = Math.min(1, usedTokens / maxTokens);
+    const subRatio = Math.min(1, subagentUsedTokens / maxTokens);
+
+    const agentBlocks = Math.min(barWidth, Math.max(0, Math.round(agentRatio * barWidth)));
+    let subBlocks = Math.min(barWidth - agentBlocks, Math.max(0, Math.round(subRatio * barWidth)));
+
+    if (subagentUsedTokens > 0 && subBlocks === 0 && (agentBlocks + subBlocks) < barWidth) {
+      subBlocks = 1;
+    }
+
+    const emptyBlocks = Math.max(0, barWidth - agentBlocks - subBlocks);
 
     let barColor = chalk.hex('#2dd4bf');
     if (percentage > 80) barColor = chalk.red;
     else if (percentage > 60) barColor = chalk.yellow;
 
-    const progressBar = chalk.gray('[') + barColor('█'.repeat(filled)) + chalk.gray('░'.repeat(empty)) + chalk.gray(']');
-    const tokenInfo = `${progressBar} ${barColor(`${percentage}%`)} ${chalk.gray(`(${usedTokens.toLocaleString()}/${maxTokens.toLocaleString()})`)}`;
-    const effortInfo = reasoningEffort ? chalk.hex('#e879f9')(` [${reasoningEffort}]`) : '';
+    const subColor = chalk.hex('#c084fc');
 
-    const statusBadge = state.isGenerating
-      ? chalk.bold.bgHex('#ea580c').white(' ⚡ THINKING ')
-      : chalk.hex('#2dd4bf')('● Ready');
+    const progressBar = chalk.gray('[') +
+      barColor('█'.repeat(agentBlocks)) +
+      subColor('█'.repeat(subBlocks)) +
+      chalk.gray('░'.repeat(emptyBlocks)) +
+      chalk.gray(']');
 
-    const leftLine2 = `  ${statusBadge}  ${agentBadge}  ${modelBadge}${effortInfo}`;
-    const rightLine2 = `${tokenInfo} `;
+    const subText = subagentUsedTokens > 0
+      ? chalk.gray(` (${usedTokens.toLocaleString()} + `) + subColor(`${subagentUsedTokens.toLocaleString()} sub`) + chalk.gray(` / ${maxTokens.toLocaleString()})`)
+      : chalk.gray(` (${usedTokens.toLocaleString()}/${maxTokens.toLocaleString()})`);
+
+    const compactSubText = chalk.gray(` (${usedTokens.toLocaleString()}/${maxTokens.toLocaleString()})`);
+
+    let statusBadge: string;
+    if (!state.isGenerating) {
+      statusBadge = chalk.hex('#2dd4bf')('● Ready');
+    } else {
+      const gen = state.generationStatus;
+      const sub = state.activeSpawnedAgent;
+      const isSubRunning = sub && sub.status === 'running';
+
+      if (gen?.phase === 'tool' && gen.toolName) {
+        const who = gen.agentName ? `@${gen.agentName}: ` : '';
+        statusBadge = chalk.bold.bgHex('#d97706').white(` 🔧 ${who}${gen.toolName} `);
+      } else if (gen?.phase === 'streaming') {
+        const who = gen.agentName && gen.agentName !== state.activeAiName ? ` @${gen.agentName}` : '';
+        const isNoEffort = state.activeReasoningEffort === 'none';
+        const label = isNoEffort ? 'WORKING' : 'TYPING';
+        statusBadge = chalk.bold.bgHex('#0284c7').white(` 💬 ${label}${who} `);
+      } else {
+        const agentName = gen?.agentName || (isSubRunning ? sub.name : state.activeAiName);
+        const who = agentName && agentName !== state.activeAiName ? ` @${agentName}` : '';
+        statusBadge = chalk.bold.bgHex('#ea580c').white(` ⚡ THINKING${who} `);
+      }
+    }
+
+    // Adaptively format line 2 elements to fit exact width without wrapping
+    const modelBadge = chalk.hex('#fbbf24')(`⚡ ${modelName}`) + (width > 85 ? chalk.gray(` @ ${providerName}`) : '');
+    const effortInfo = reasoningEffort && width > 90 ? chalk.hex('#e879f9')(` [${reasoningEffort}]`) : '';
+
+    let agentBadge = chalk.bold.hex('#38bdf8')(`👤 ${state.activeAiName}`) +
+      chalk.gray(` (${state.activeCharacterRole} • ${state.activeCharacterTrait})`);
+
+    let tokenInfo = `${progressBar} ${barColor(`${percentage}%`)}${subText}`;
+
+    let leftLine2 = `  ${statusBadge}  ${agentBadge}  ${modelBadge}${effortInfo}`;
+    let rightLine2 = `${tokenInfo} `;
+
+    // If total width exceeds screen width, iteratively compact
+    if (TuiScreen.stringWidth(leftLine2) + TuiScreen.stringWidth(rightLine2) + 2 > width) {
+      agentBadge = chalk.bold.hex('#38bdf8')(`👤 ${state.activeAiName}`) + chalk.gray(` (${state.activeCharacterRole})`);
+      leftLine2 = `  ${statusBadge}  ${agentBadge}  ${modelBadge}${effortInfo}`;
+    }
+
+    if (TuiScreen.stringWidth(leftLine2) + TuiScreen.stringWidth(rightLine2) + 2 > width) {
+      tokenInfo = `${progressBar} ${barColor(`${percentage}%`)}${compactSubText}`;
+      rightLine2 = `${tokenInfo} `;
+    }
+
+    if (TuiScreen.stringWidth(leftLine2) + TuiScreen.stringWidth(rightLine2) + 2 > width) {
+      agentBadge = chalk.bold.hex('#38bdf8')(`👤 ${state.activeAiName}`);
+      leftLine2 = `  ${statusBadge}  ${agentBadge}  ${modelBadge}`;
+    }
+
+    if (TuiScreen.stringWidth(leftLine2) + TuiScreen.stringWidth(rightLine2) + 2 > width) {
+      tokenInfo = `${progressBar} ${barColor(`${percentage}%`)}`;
+      rightLine2 = `${tokenInfo} `;
+    }
+
     const l2w = TuiScreen.stringWidth(leftLine2);
     const r2w = TuiScreen.stringWidth(rightLine2);
     const spacing1 = Math.max(1, width - l2w - r2w);
 
-    lines.push(leftLine2 + ' '.repeat(spacing1) + rightLine2);
+    lines.push(TuiScreen.truncateOrPad(leftLine2 + ' '.repeat(spacing1) + rightLine2, width));
 
     // Line 3: Separator bar
     lines.push(chalk.hex('#475569')('━'.repeat(width)));

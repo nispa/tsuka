@@ -27,7 +27,7 @@ export class TuiTurnRunner {
     const trimmed = prompt.trim();
     if (!trimmed) return;
 
-    // If already processing a turn, add message with [IN CODA] badge to chat immediately and queue
+    // If already processing a turn, add message with [IN QUEUE] badge to chat immediately and queue
     if (this.isProcessing) {
       const position = this.promptQueue.length + 1;
       let msgId: string | undefined;
@@ -40,7 +40,7 @@ export class TuiTurnRunner {
         });
       }
       this.promptQueue.push({ prompt: trimmed, msgId });
-      this.ctx.store.notify(`⏳ Prompt #${position} accodato. Verrà eseguito al termine del turno attivo.`, 'info');
+      this.ctx.store.notify(`⏳ Prompt #${position} queued. Will execute when active turn finishes.`, 'info');
       return;
     }
 
@@ -74,11 +74,19 @@ export class TuiTurnRunner {
       });
     }
 
+    const state = store.getState();
+    const isNoEffort = state.activeReasoningEffort === 'none';
+
     store.setState({
       isGenerating: true,
+      generationStatus: {
+        phase: isNoEffort ? 'streaming' : 'reasoning',
+        agentName: state.activeAiName,
+      },
       stats: {
-        ...store.getState().stats,
-        turnCount: store.getState().stats.turnCount + 1,
+        ...state.stats,
+        subagentUsedTokens: 0,
+        turnCount: state.stats.turnCount + 1,
       },
     });
 
@@ -104,7 +112,10 @@ export class TuiTurnRunner {
       });
     } finally {
       bridge.resetCurrentTurn();
-      store.setState({ isGenerating: false });
+      store.setState({
+        isGenerating: false,
+        generationStatus: { phase: 'idle' },
+      });
       this.currentInterrupt = undefined;
       this.processNextInQueue();
     }
@@ -132,12 +143,12 @@ export class TuiTurnRunner {
         if (q.msgId) {
           store.updateMessage(q.msgId, {
             isQueued: false,
-            content: q.prompt + '\n\n*(Annullato da stop utente)*',
+            content: q.prompt + '\n\n*(Canceled by user stop)*',
           });
         }
       }
       this.promptQueue = [];
-      store.notify(`Annullati ${count} prompt in coda`, 'warn');
+      store.notify(`Canceled ${count} queued prompt(s)`, 'warn');
     }
 
     if (this.isProcessing && this.currentInterrupt) {

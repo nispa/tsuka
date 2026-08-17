@@ -50,7 +50,7 @@ export async function resolveThinkingTrace(
     return traces.find((t) => t.filename.toLowerCase().includes(trimmedArg)) || null;
   }
 
-  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+  if (!process.stdin.isTTY || !process.stdout.isTTY || process.env.TSUKA_TUI) {
     return traces[0];
   }
 

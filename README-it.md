@@ -93,11 +93,18 @@ tsuka --tui
 ### ✨ Funzionalità della Dashboard TUI:
 * **Double-Buffering Differenziale a Zero-Sfarfallio**: Aggiornamenti a 0ms di latenza visiva, box drawing ANSI sicuro e protezione contro l'auto-wrapping del terminale.
 * **Layout a 4 Quadranti**:
-  * **Header in Alto**: Schede di navigazione (`F1 Chat`, `F2 Tools`), barra del budget di contesto (`[████░░░░] %`), Provider e Modello attivi.
-  * **Agent Profile (In Alto a Sinistra)**: Personaggio, Ruolo, Tratto, metriche token di sessione e tag dei tool autorizzati.
+  * **Header in Alto**: Schede di navigazione (`F1 Chat`, `F2 Tools`), barra del budget bicolore stacked (Teal per l'agente principale + Viola per i subagenti `[██████░░░░] %`), badge di stato dinamico (`⚡ THINKING @Agent`, `🔧 Tool`, `💬 TYPING`), Provider e Modello attivi.
+  * **Agent Profile & Subagent Inspector (In Alto a Sinistra)**: Personaggio, Ruolo, Tratto, metriche token di sessione, tag dei tool autorizzati e **box dedicato per i Subagenti Spawnati** che traccia stato in tempo reale, tool in esecuzione, task assegnato e token consumati.
   * **File Explorer del Workspace (In Basso a Sinistra)**: Albero dei file in tempo reale con icone per estensione (`📁`, `🟦 TS`, `🟨 JS`, `⚙️ JSON`, `📝 MD`, `🧪 Test`, `🔒 Secrets`), barra di scorrimento verticale e click per inserire il path nel prompt.
   * **Feed di Conversazione & Tools (Area Principale)**: Parsing Markdown formattato, blocchi di codice con sintassi evidenziata, contenitori stilizzati per il reasoning `<think>` e card di esecuzione dei tool.
-  * **Prompt di Input (In Basso)**: Buffer multi-riga, cronologia dei comandi (`↑`/`↓`), cursore ANSI e spinner di stato `(⏳ Working...)`.
+  * **Prompt di Input (In Basso)**: Buffer multi-riga, cronologia dei comandi (`↑`/`↓`), cursore ANSI, badge per i messaggi in coda (`[IN CODA #1]`) e spinner di stato `(⏳ Working...)`.
+* **Parità Completa dei Comandi Slash nella TUI**:
+  * `/goal <obiettivo>`: Esegue workflow dell'orchestratore multi-agente autonomo direttamente in chat.
+  * `/team <team> "<task>"`: Esegue pipeline di team collaborativi multi-agente.
+  * `/call @agente1 @agente2 "<argomento>"`: Tavola rotonda e dibattito multi-agente in conferenza.
+  * `/runs` e `/blackboard`: Ispezione dei log dei workflow recenti e delle note condivise sulla lavagna di sessione.
+  * `/provider`, `/models`, `/benchmark`: Cambio rapido del server LLM, selettore modelli e suite di capability fingerprinting.
+  * `/copy`: Copia l'ultima risposta dell'assistente direttamente negli appunti di sistema.
 * **Supporto Completo del Mouse (SGR 1006)**:
   * Scorrimento con rotellina del mouse su Chat, File Explorer e Tools.
   * Click sulle tab (`Chat` / `Tools`), click sui file per incollare il nome nel prompt, click sul box di input per mettere a fuoco.

@@ -64,6 +64,25 @@ export class ChatView {
         allLines.push(...ChatView.renderMessage(msg, innerWidth, state));
         allLines.push(''); // Spacing between messages
       }
+
+      // If generating, render live in-progress activity card with explicit stop instructions
+      if (state.isGenerating) {
+        const gen = state.generationStatus;
+        const phase = gen?.phase || 'reasoning';
+        const agent = gen?.agentName ? `@${gen.agentName}` : `@${state.activeAiName}`;
+        let statusCard = '';
+        if (phase === 'reasoning') {
+          statusCard = chalk.bgHex('#ea580c').white.bold(` ⚡ THINKING... `) + ' ' + chalk.hex('#fdba74')(`${agent} is analyzing and reasoning...`) + ' ' + chalk.gray('(Press Esc or /stop to halt)');
+        } else if (phase === 'tool') {
+          statusCard = chalk.bgHex('#d97706').white.bold(` 🔧 TOOL EXECUTION `) + ' ' + chalk.hex('#fde047')(`${agent} is executing: ${chalk.bold(gen?.toolName || 'tool')}...`) + ' ' + chalk.gray('(Press Esc or /stop to halt)');
+        } else if (phase === 'streaming') {
+          statusCard = chalk.bgHex('#0284c7').white.bold(` 💬 WRITING RESPONSE `) + ' ' + chalk.hex('#7dd3fc')(`${agent} is generating response...`) + ' ' + chalk.gray('(Press Esc or /stop to halt)');
+        } else {
+          statusCard = chalk.bgHex('#7c3aed').white.bold(` ⏳ PROCESSING `) + ' ' + chalk.hex('#c4b5fd')(`${agent} is working...`) + ' ' + chalk.gray('(Press Esc or /stop to halt)');
+        }
+        allLines.push('  ' + statusCard);
+        allLines.push('');
+      }
     }
 
     // Handle scroll offset: by default (offset 0), view is pinned to bottom (newest messages)
@@ -75,7 +94,16 @@ export class ChatView {
     const endLine = Math.min(totalLines, startLine + innerHeight);
     const visibleLines = allLines.slice(startLine, endLine);
 
-    const title = state.isGenerating ? 'Conversation (Streaming...)' : 'Conversation';
+    let title = 'Conversation';
+    if (state.isGenerating) {
+      const gen = state.generationStatus;
+      const phase = gen?.phase || 'reasoning';
+      const agent = gen?.agentName ? `@${gen.agentName}` : `@${state.activeAiName}`;
+      if (phase === 'reasoning') title = `Conversation (⚡ THINKING... ${agent})`;
+      else if (phase === 'tool') title = `Conversation (🔧 TOOL: ${gen?.toolName || 'tool'} ${agent})`;
+      else title = `Conversation (💬 GENERATING... ${agent})`;
+    }
+
     return TuiScreen.drawBox(
       title,
       visibleLines,
@@ -167,7 +195,7 @@ export class ChatView {
 
     if (msg.role === 'user') {
       const queueBadge = msg.isQueued
-        ? chalk.bold.bgHex('#d97706').hex('#ffffff')(` ⏳ IN CODA (#${msg.queuePosition || 1}) `) + ' '
+        ? chalk.bold.bgHex('#d97706').hex('#ffffff')(` ⏳ IN QUEUE (#${msg.queuePosition || 1}) `) + ' '
         : '';
       const header = chalk.bold.yellow(`👤 You`) + ' ' + queueBadge + chalk.gray(`[${timeStr}]`);
       lines.push(header);
@@ -264,7 +292,12 @@ export class ChatView {
           }
         }
       } else if (msg.isStreaming && !msg.content) {
-        lines.push('  ' + chalk.bold.hex('#e879f9')('💭 Agent is thinking & planning...'));
+        const effort = state?.activeReasoningEffort;
+        if (effort === 'none') {
+          lines.push('  ' + chalk.bold.hex('#38bdf8')('⏳ Processing (LLM query / tool execution)...'));
+        } else {
+          lines.push('  ' + chalk.bold.hex('#e879f9')('💭 Thinking & planning response...'));
+        }
       }
 
       // Render compact single-line tool calls attached to message

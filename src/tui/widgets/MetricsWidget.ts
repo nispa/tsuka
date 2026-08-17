@@ -7,7 +7,12 @@ export class MetricsWidget {
     lines.push(chalk.bold.hex('#818cf8')('◆ SESSION METRICS'));
     lines.push(chalk.white(`  Turns : ${chalk.bold.yellow(state.stats.turnCount)}`));
     lines.push(chalk.white(`  Tools : ${chalk.bold.yellow(state.stats.toolCallsCount)}`));
-    lines.push(chalk.white(`  Tokens: ${chalk.bold.yellow(state.stats.usedTokens.toLocaleString())}`));
+    const subTokens = state.stats.subagentUsedTokens || 0;
+    const tokensLabel = subTokens > 0
+      ? `${chalk.bold.yellow(state.stats.usedTokens.toLocaleString())} ${chalk.gray(`(+ ${chalk.hex('#c084fc')(subTokens.toLocaleString() + ' sub')})`)}`
+      : chalk.bold.yellow(state.stats.usedTokens.toLocaleString());
+
+    lines.push(chalk.white(`  Tokens: ${tokensLabel}`));
     return lines;
   }
 }

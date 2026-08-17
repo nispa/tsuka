@@ -12,7 +12,7 @@ import { CLITheme } from './ui';
 const FRAMES = ['◐', '◓', '◑', '◒'];
 const FRAME_INTERVAL_MS = 100;
 
-const isTTY = () => !!process.stdout.isTTY && process.env.TERM !== 'dumb';
+const isTTY = () => !!process.stdout.isTTY && process.env.TERM !== 'dumb' && !process.env.TSUKA_TUI;
 
 /** Returns visual tail of a string taking at most maxCols terminal columns. */
 function visualTail(s: string, maxCols: number): string {

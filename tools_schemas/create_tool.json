@@ -24,6 +24,10 @@
       "executeBody": {
         "type": "string",
         "description": "Il corpo JavaScript della funzione execute(args). Deve fare return di una stringa. fs e path sono già importati come const."
+      },
+      "global": {
+        "type": "boolean",
+        "description": "Se true, salva il tool nella cartella globale TSUKA_HOME (accessibile ovunque). Se false o omesso, salva nel progetto locale (.tsuka/custom_tools/)."
       }
     },
     "required": ["name", "description", "executeBody"]

@@ -12,10 +12,15 @@ import { TuiStore } from '../src/tui/store';
 import { TuiBridge } from '../src/tui/bridge';
 import { PermissionManager } from '../src/safety/permissions';
 import { ChatView } from '../src/tui/views/Chat';
+import { HeaderView } from '../src/tui/views/Header';
+import { PersonaWidget, MetricsWidget } from '../src/tui/widgets';
 import { TuiTurnRunner } from '../src/tui/controllers/turnController';
 import { TuiCommandController } from '../src/tui/controllers/commandController';
 import { ToolRegistry } from '../src/tools/registry';
 import { copyToClipboard } from '../src/core/platform';
+import { MemoryStore } from '../src/core/memory';
+import { saveMemoryTool } from '../src/tools/impl/saveMemory';
+import { listAvailableRoles, listAvailableCharacters } from '../src/cli/shared';
 
 let testCount = 0;
 function test(name: string, fn: () => void | Promise<void>) {
@@ -109,10 +114,10 @@ function test(name: string, fn: () => void | Promise<void>) {
     assert.strictEqual(stateWhileBusy.messages[2].isQueued, true);
     assert.strictEqual(stateWhileBusy.messages[2].queuePosition, 2);
 
-    // Verify ChatView renders the IN CODA badge
+    // Verify ChatView renders the IN QUEUE badge
     const chatLines = ChatView.render(stateWhileBusy, 80, 20);
-    assert.ok(chatLines.some((l) => l.includes('IN CODA (#1)')), 'Chat view must render IN CODA (#1) badge');
-    assert.ok(chatLines.some((l) => l.includes('IN CODA (#2)')), 'Chat view must render IN CODA (#2) badge');
+    assert.ok(chatLines.some((l) => l.includes('IN QUEUE (#1)')), 'Chat view must render IN QUEUE (#1) badge');
+    assert.ok(chatLines.some((l) => l.includes('IN QUEUE (#2)')), 'Chat view must render IN QUEUE (#2) badge');
 
     // Wait for all queued turns to process sequentially
     await p1;
@@ -160,7 +165,7 @@ function test(name: string, fn: () => void | Promise<void>) {
 
     const stateAfterInterrupt = store.getState();
     assert.strictEqual(stateAfterInterrupt.messages[1].isQueued, false);
-    assert.ok(stateAfterInterrupt.messages[1].content.includes('Annullato da stop utente'));
+    assert.ok(stateAfterInterrupt.messages[1].content.includes('Canceled by user stop'));
   });
 
   // ── 4. Subagent Event Forwarding & Attribution ──
@@ -190,7 +195,84 @@ function test(name: string, fn: () => void | Promise<void>) {
     assert.strictEqual(store.getState().activeTools[0].status, 'completed');
   });
 
-  // ── 5. System Clipboard Copying ──
+  // ── 5. Subagent Token Aggregation & Multi-Color Stacked Gauge ──
+  await test('TuiBridge & HeaderView: subagent tokens aggregate and render stacked dual-color progress bar', () => {
+    const store = new TuiStore();
+    const perm = new PermissionManager();
+    const bridge = new TuiBridge(store, perm);
+
+    store.updateStats({ maxTokens: 8192, usedTokens: 0, subagentUsedTokens: 0 });
+
+    const onStats = bridge.createStatsHandler();
+
+    // 1. Parent agent uses 2000 tokens
+    onStats({ durationMs: 500, tokenCount: 2000, tokensPerSecond: 25, promptTokens: 1500, totalTokens: 2000 });
+    assert.strictEqual(store.getState().stats.usedTokens, 2000);
+    assert.strictEqual(store.getState().stats.subagentUsedTokens, 0);
+    assert.strictEqual(store.getState().stats.percentage, 24);
+
+    // 2. Subagent uses 1200 tokens
+    onStats({ durationMs: 300, tokenCount: 1200, tokensPerSecond: 30, promptTokens: 800, totalTokens: 1200 }, 'Geordi');
+    assert.strictEqual(store.getState().stats.usedTokens, 2000);
+    assert.strictEqual(store.getState().stats.subagentUsedTokens, 1200);
+    assert.strictEqual(store.getState().stats.percentage, 39); // (3200 / 8192) * 100
+
+    // 3. Render HeaderView and verify stacked gauge and label
+    const headerLines = HeaderView.render(store.getState(), 100);
+    const statsLine = headerLines[1];
+    assert.ok(
+      statsLine.includes('39%') &&
+      statsLine.includes((2000).toLocaleString()) &&
+      statsLine.includes((1200).toLocaleString()) &&
+      statsLine.includes('sub') &&
+      statsLine.includes((8192).toLocaleString()),
+      'Header stats line should display formula components'
+    );
+
+    // 4. Verify dynamic status badge for tool and subagent execution
+    store.setState({
+      isGenerating: true,
+      generationStatus: { phase: 'tool', agentName: 'Geordi', toolName: 'read_file' },
+    });
+    const toolHeader = HeaderView.render(store.getState(), 100);
+    assert.ok(toolHeader[1].includes('read_file'), 'Header should display active tool name in status badge');
+    assert.ok(toolHeader[1].includes('@Geordi'), 'Header should display subagent author in tool status badge');
+
+    store.setState({
+      isGenerating: true,
+      generationStatus: { phase: 'reasoning', agentName: 'Geordi' },
+    });
+    const thinkHeader = HeaderView.render(store.getState(), 100);
+    assert.ok(thinkHeader[1].includes('THINKING') && thinkHeader[1].includes('@Geordi'), 'Header should display thinking subagent in status badge');
+  });
+
+  // ── 6. PersonaWidget & MetricsWidget Spawned Subagent Block ──
+  await test('PersonaWidget & MetricsWidget: render spawned subagent box and token details', () => {
+    const store = new TuiStore();
+    store.updateStats({ usedTokens: 2500, subagentUsedTokens: 1100, turnCount: 2, toolCallsCount: 4 });
+    store.setSpawnedAgent({
+      id: 'sub_123',
+      name: 'Geordi',
+      role: 'developer',
+      task: 'Analyze code and fix bugs',
+      status: 'running',
+      currentTool: 'read_file',
+      usedTokens: 1100,
+      startedAt: Date.now(),
+    });
+
+    const personaLines = PersonaWidget.render(store.getState(), 40);
+    assert.ok(personaLines.some((l) => l.includes('SPAWNED SUBAGENT')), 'PersonaWidget should render SPAWNED SUBAGENT header');
+    assert.ok(personaLines.some((l) => l.includes('Geordi')), 'PersonaWidget should render subagent name');
+    assert.ok(personaLines.some((l) => l.includes('developer')), 'PersonaWidget should render subagent role');
+    assert.ok(personaLines.some((l) => l.includes('read_file')), 'PersonaWidget should render active tool');
+    assert.ok(personaLines.some((l) => l.includes((1100).toLocaleString())), 'PersonaWidget should render subagent token count');
+
+    const metricsLines = MetricsWidget.render(store.getState(), 40);
+    assert.ok(metricsLines.some((l) => l.includes('sub')), 'MetricsWidget should show subagent tokens breakdown');
+  });
+
+  // ── 7. System Clipboard Copying ──
   await test('platform: copyToClipboard function safely handles clipboard copying', () => {
     const result = copyToClipboard('TSUKA Clipboard Test Content');
     // On systems with clip.exe / pbcopy / xclip available it returns true, otherwise false without throwing
@@ -246,6 +328,168 @@ function test(name: string, fn: () => void | Promise<void>) {
     const result = await registry.executeTool('execute_command', { command: 'echo hello' }, perm);
     assert.strictEqual(result.success, true);
     assert.strictEqual(executedWithDetails.command, 'echo hello');
+  });
+
+  // ── 9. Global vs Workspace Scoped Memory ──
+  await test('save_memory: supports global vs workspace scoping', async () => {
+    const memStore = MemoryStore.getInstance();
+    const globalRes = await saveMemoryTool.execute({ content: 'Global rule: use TypeScript strict mode.', global: true });
+    assert.ok(globalRes.includes('scope: global'), 'Global memory save should report global scope');
+
+    const wsRes = await saveMemoryTool.execute({ content: 'Project fact: port is 8080.', global: false });
+    assert.ok(wsRes.includes('scope: workspace'), 'Local memory save should report workspace scope');
+  });
+
+  // ── 10. Layered Role & Character Loaders ──
+  await test('shared: listAvailableRoles & listAvailableCharacters load seamlessly across layers', () => {
+    const roles = listAvailableRoles();
+    assert.ok(roles.length >= 20, `Should load all roles (found ${roles.length})`);
+    assert.ok(roles.some((r) => r.name === 'developer'), 'Developer role should be loaded');
+
+    const characters = listAvailableCharacters();
+    assert.ok(characters.length >= 20, `Should load all characters (found ${characters.length})`);
+    assert.ok(characters.some((c) => c.name === 'spock' || c.aiName === 'Spock'), 'Spock character should be loaded');
+  });
+
+  // ── 11. TuiCommandController: /goal command routing ──
+  await test('TuiCommandController: /goal command routes properly without falling back', async () => {
+    const store = new TuiStore();
+    const cmdController = new TuiCommandController({
+      store,
+      configManager: {
+        isParallelExecutionEnabled: () => false,
+        getMaxHistoryTokens: () => 8192,
+        getMaxHistoryMessages: () => 20,
+        getDefaultReasoningEffort: () => 'low',
+        getMaxToolRounds: () => 10,
+        getGoalCondensedHistoryCharLimit: () => 1500,
+        getWorkspaceRoot: () => process.cwd(),
+      } as any,
+      provider: {
+        getCurrentModel: () => 'test-model',
+        chatWithTools: async () => ({ content: 'AGENTE: @developer — do work\nFINE' }),
+      } as any,
+      registry: new ToolRegistry(),
+      permissionManager: new PermissionManager(),
+      layoutConfig: {} as any,
+      getAgent: () => ({} as any),
+      setAgent: () => {},
+      recreateAgent: () => ({} as any),
+      syncState: () => {},
+      probeContextWindow: async () => {},
+      setActiveTab: () => {},
+      stopApp: () => {},
+    });
+
+    // When called without arg, shows usage
+    await cmdController.handleCommand('/goal');
+    const msg1 = store.getState().messages[0];
+    assert.ok(msg1 && msg1.content.includes('/goal <objective>'), 'Should display usage when /goal has no args');
+
+    // When called with arg, sets isGenerating and adds user message
+    await cmdController.handleCommand('/goal build api');
+    const userMsg = store.getState().messages.find((m) => m.content.includes('/goal build api'));
+    assert.ok(userMsg, 'Should add /goal user message to chat feed');
+  });
+
+  // ── 12. TuiCommandController: Parity Slash Commands (/call, /team, /runs, /blackboard) ──
+  await test('TuiCommandController: /call, /runs, /blackboard, /provider route seamlessly in TUI', async () => {
+    const store = new TuiStore();
+    let currentProvider = 'ollama';
+    let currentSearch = 'duckduckgo';
+
+    const cmdController = new TuiCommandController({
+      store,
+      configManager: {
+        isParallelExecutionEnabled: () => false,
+        getMaxHistoryTokens: () => 8192,
+        getMaxHistoryMessages: () => 20,
+        getDefaultReasoningEffort: () => 'low',
+        getMaxToolRounds: () => 10,
+        getGoalCondensedHistoryCharLimit: () => 1500,
+        getWorkspaceRoot: () => process.cwd(),
+        getActiveProviderName: () => currentProvider,
+        setActiveProvider: (p: string) => { currentProvider = p; },
+        getActiveProviderConfig: () => ({ baseUrl: 'http://localhost:11434', model: 'llama3' }),
+        getApiKey: () => '',
+        getWebSearchProvider: () => currentSearch,
+        setWebSearchProvider: (s: string) => { currentSearch = s; },
+      } as any,
+      provider: {
+        getCurrentModel: () => 'test-model',
+        reconfigure: () => {},
+        chatWithTools: async () => ({ content: 'STATO: COMPLETATO' }),
+      } as any,
+      registry: new ToolRegistry(),
+      permissionManager: new PermissionManager(),
+      layoutConfig: {} as any,
+      getAgent: () => ({} as any),
+      setAgent: () => {},
+      recreateAgent: () => ({} as any),
+      syncState: () => {},
+      probeContextWindow: async () => {},
+      setActiveTab: () => {},
+      stopApp: () => {},
+    });
+
+    // /call usage check
+    await cmdController.handleCommand('/call');
+    assert.ok(store.getState().messages.some((m) => m.content.includes('/call @agent1 @agent2')), '/call should display usage when called empty');
+
+    // /provider switch check
+    await cmdController.handleCommand('/provider openrouter');
+    assert.strictEqual(currentProvider, 'openrouter', '/provider openrouter should update active provider');
+
+    // /search-engine check
+    await cmdController.handleCommand('/search-engine google');
+    assert.strictEqual(currentSearch, 'google', '/search-engine google should update web search engine');
+
+    // /runs check
+    await cmdController.handleCommand('/runs');
+    assert.ok(store.getState().messages.some((m) => m.content.includes('Workflow') || m.content.includes('workflow_logs')), '/runs should output run history or empty notice');
+
+    // /blackboard check
+    await cmdController.handleCommand('/blackboard');
+    assert.ok(store.getState().messages.some((m) => m.content.includes('Blackboard') || m.content.includes('workflow_logs')), '/blackboard should output notes or notice');
+  });
+
+  // ── 13. Stop / Abort Activity & Clear Visual Thinking vs Tool State ──
+  await test('TuiCommandController & Views: /stop command and live thinking vs tool cards', async () => {
+    const store = new TuiStore();
+    let interruptedCalled = false;
+    const fakeRunner = {
+      interrupt: () => { interruptedCalled = true; }
+    };
+
+    const cmdController = new TuiCommandController({
+      store,
+      configManager: {} as any,
+      provider: {} as any,
+      layoutConfig: {} as any,
+      getAgent: () => ({} as any),
+      setAgent: () => {},
+      recreateAgent: () => ({} as any),
+      syncState: () => {},
+      probeContextWindow: async () => {},
+      setActiveTab: () => {},
+      getTurnRunner: () => fakeRunner,
+      stopApp: () => {},
+    });
+
+    store.setState({
+      isGenerating: true,
+      generationStatus: { phase: 'tool', agentName: 'Geordi', toolName: 'read_file' },
+    });
+
+    // Verify ChatView renders live tool card
+    const lines = ChatView.render(store.getState(), 80, 20);
+    assert.ok(lines.some((l) => l.includes('TOOL EXECUTION') || l.includes('read_file')), 'ChatView should display live tool execution status card');
+
+    // Execute /stop command
+    await cmdController.handleCommand('/stop');
+    assert.strictEqual(interruptedCalled, true, '/stop should invoke turnRunner.interrupt()');
+    assert.strictEqual(store.getState().isGenerating, false, 'isGenerating should be reset to false');
+    assert.ok(store.getState().messages.some((m) => m.content.includes('stopped')), '/stop should log cancellation to chat');
   });
 
   console.log(`\n=== All ${testCount} tests in test_tui_subagent_queue_copy.ts passed cleanly! ===`);

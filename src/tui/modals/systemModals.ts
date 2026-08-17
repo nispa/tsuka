@@ -188,4 +188,37 @@ export class SystemModals {
       },
     });
   }
+
+  static openProviderModal(
+    store: TuiStore,
+    configManager: ConfigManager,
+    provider: ILLMProvider,
+    onAgentRecreate: () => void,
+    onSyncState: () => void,
+    onProbeCtx: () => Promise<void>
+  ): void {
+    const current = configManager.getActiveProviderName();
+    const options = [
+      { label: `${current === 'ollama' ? '● ' : '  '}Ollama`, value: 'ollama', hint: 'Local inference on http://localhost:11434' },
+      { label: `${current === 'openrouter' ? '● ' : '  '}OpenRouter`, value: 'openrouter', hint: 'Cloud gateway on https://openrouter.ai/api' },
+      { label: `${current === 'unsloth' ? '● ' : '  '}Unsloth Studio`, value: 'unsloth', hint: 'Local unsloth server' },
+    ];
+
+    store.showModal({
+      type: 'slash_menu',
+      title: 'Select LLM Provider Gateway',
+      selectedIndex: options.findIndex((o) => o.value === current) >= 0 ? options.findIndex((o) => o.value === current) : 0,
+      options,
+      onSelect: async (chosen) => {
+        configManager.setActiveProvider(chosen as any);
+        const newCfg = configManager.getActiveProviderConfig();
+        provider.reconfigure(newCfg.baseUrl, configManager.getApiKey(), newCfg.model);
+        onAgentRecreate();
+        onSyncState();
+        store.closeModal();
+        store.notify(`Provider switched to: ${chosen.toUpperCase()}`, 'success');
+        onProbeCtx().catch(() => {});
+      },
+    });
+  }
 }

@@ -27,6 +27,10 @@
           "type": "string"
         },
         "description": "I tool che questo ruolo è autorizzato ad usare (es. ['read_file', 'web_search'])."
+      },
+      "global": {
+        "type": "boolean",
+        "description": "Se true, salva il ruolo nella cartella globale TSUKA_HOME (accessibile in tutti i progetti). Se false o omesso, salva nel progetto locale (.tsuka/roles/)."
       }
     },
     "required": ["name", "displayName", "description", "systemPrompt", "allowedTools"]

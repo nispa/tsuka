@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vm from 'vm';
-import { homePath } from '../../core/apphome';
+import { homePath, localWorkspacePath } from '../../core/apphome';
 import { Tool, ToolExecutionContext } from '../registry';
 
 /**
@@ -25,14 +25,12 @@ function toCamelCase(snake: string): string {
   return snake.replace(/_([a-z0-9])/g, (_, c) => c.toUpperCase());
 }
 
-function hasCoreFileConflict(implDir: string, cleanName: string): boolean {
-  const normalizedTarget = cleanName.replace(/_/g, '');
+function hasCoreFileConflict(coreImplDir: string, name: string): boolean {
   try {
-    return fs.readdirSync(implDir).some((f) => {
-      if (!f.endsWith('.ts')) return false;
-      const base = f.slice(0, -3).toLowerCase().replace(/[^a-z0-9]/g, '');
-      return base === normalizedTarget;
-    });
+    const files = fs.readdirSync(coreImplDir);
+    const targetFile = `${name.toLowerCase()}.ts`;
+    const targetJs = `${name.toLowerCase()}.js`;
+    return files.some((f) => f.toLowerCase() === targetFile || f.toLowerCase() === targetJs);
   } catch {
     return false;
   }
@@ -48,6 +46,7 @@ export const createToolTool: Tool = {
       riskLevel?: string;
       parameters?: any;
       executeBody: string;
+      global?: boolean;
     },
     context?: ToolExecutionContext
   ) => {
@@ -57,7 +56,9 @@ export const createToolTool: Tool = {
       throw new Error("Invalid tool name (use lowercase letters, numbers, and underscores only).");
     }
 
-    const customToolsDir = homePath('custom_tools');
+    const isGlobal = args.global === true;
+    const localDir = !isGlobal ? localWorkspacePath('custom_tools') : null;
+    const customToolsDir = localDir ?? homePath('custom_tools');
     if (!fs.existsSync(customToolsDir)) {
       fs.mkdirSync(customToolsDir, { recursive: true });
     }
@@ -147,7 +148,8 @@ export const createToolTool: Tool = {
     // 7. Write tool file and schema
     fs.writeFileSync(targetPath, moduleCode, 'utf-8');
 
-    const schemaDir = homePath('custom_tools_schemas');
+    const localSchemaDir = !isGlobal ? localWorkspacePath('custom_tools_schemas') : null;
+    const schemaDir = localSchemaDir ?? homePath('custom_tools_schemas');
     if (!fs.existsSync(schemaDir)) {
       fs.mkdirSync(schemaDir, { recursive: true });
     }

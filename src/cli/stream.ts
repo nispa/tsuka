@@ -9,7 +9,7 @@ import { StreamChannel } from '../core/thinkParser';
  * shared across chat, /call, and /team workflows.
  */
 
-const isTTY = () => !!process.stdout.isTTY && process.env.TERM !== 'dumb';
+const isTTY = () => !!process.stdout.isTTY && process.env.TERM !== 'dumb' && !process.env.TSUKA_TUI;
 
 export interface StreamRenderOptions {
   headerName: string;
@@ -106,19 +106,21 @@ export class StreamRenderer {
       }
       this.status.update({ tokens: this.tokens, hint: this.reasoningTail });
       this.reasoningMode = true;
-      if (!this.streaming) {
-        this.status.stop();
-        this.streaming = true;
-        this.printHeader();
+      if (isTTY()) {
+        if (!this.streaming) {
+          this.status.stop();
+          this.streaming = true;
+          this.printHeader();
+        }
+        process.stdout.write(chalk.dim(chalk.gray(text)));
       }
-      process.stdout.write(chalk.dim(chalk.gray(text)));
       this.trackText(text);
       return;
     }
 
     if (this.reasoningMode) {
       this.reasoningMode = false;
-      process.stdout.write('\n');
+      if (isTTY()) process.stdout.write('\n');
       this.trackText('\n');
     }
 
@@ -140,6 +142,8 @@ export class StreamRenderer {
   onAgentEvent(ev: AgentEvent): void {
     this.status.stop();
     this.endStreamSegment(true);
+
+    if (!isTTY()) return;
 
     switch (ev.type) {
       case 'tool_start': {
@@ -181,13 +185,15 @@ export class StreamRenderer {
     const body = (this.segmentText || this.fullText).trim();
 
     if (this.opts.finalPanel !== false && body) {
-      this.eraseSegment();
-      CLITheme.agentPanel(this.opts.headerName, body);
+      if (isTTY()) {
+        this.eraseSegment();
+        CLITheme.agentPanel(this.opts.headerName, body);
+      }
     } else {
       this.endStreamSegment(true);
     }
 
-    if (this.stats) {
+    if (isTTY() && this.stats) {
       const durationSec = (this.stats.durationMs / 1000).toFixed(2);
       const ctx = this.stats.promptTokens ?? 0;
       const total = this.stats.totalTokens ?? (ctx + this.stats.tokenCount);
@@ -207,6 +213,7 @@ export class StreamRenderer {
   }
 
   private printHeader(): void {
+    if (!isTTY()) return;
     const color = this.opts.headerColor || chalk.magenta;
     const header = `${this.opts.headerName} ❯ `;
     process.stdout.write(chalk.bold(color(header)));
@@ -221,9 +228,9 @@ export class StreamRenderer {
 
   private endStreamSegment(printPending: boolean): void {
     if (this.streaming) {
-      if (this.col > 0) process.stdout.write('\n');
+      if (isTTY() && this.col > 0) process.stdout.write('\n');
       this.streaming = false;
-    } else if (printPending && !isTTY() && this.segmentText.trim()) {
+    } else if (printPending && !process.env.TSUKA_TUI && !isTTY() && this.segmentText.trim()) {
       console.log(`${this.opts.headerName} ❯ ${this.segmentText.trim()}`);
     }
     this.resetSegment();

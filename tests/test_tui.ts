@@ -288,7 +288,7 @@ console.log('--- Test TuiTurnRunner Sequential Prompt Queue ---');
   assert.strictEqual(pendingState.messages[2].queuePosition, 2);
 
   const pendingChat = ChatView.render(pendingState, 60, 20);
-  assert.ok(pendingChat.some((l) => l.includes('IN CODA')));
+  assert.ok(pendingChat.some((l) => l.includes('IN QUEUE')));
 
   await p1;
   // Wait for queue to drain

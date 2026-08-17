@@ -2,7 +2,7 @@
  * Reactive State Store for TSUKA TUI.
  */
 
-import { TuiState, TuiChatMessage, TuiToolExecution, TuiPermissionRequest, TuiModalState, TuiFocus } from './types';
+import { TuiState, TuiChatMessage, TuiToolExecution, TuiPermissionRequest, TuiModalState, TuiFocus, TuiSpawnedAgent } from './types';
 
 export type StoreListener = (state: TuiState) => void;
 
@@ -18,6 +18,7 @@ export class TuiStore {
       activeAiName: 'Tsuka',
       activeProvider: 'ollama',
       activeModel: 'llama3',
+      activeSpawnedAgent: null,
       stats: {
         usedTokens: 0,
         maxTokens: 8192,
@@ -268,6 +269,19 @@ export class TuiStore {
   updateStats(stats: Partial<TuiState['stats']>): void {
     this.setState({
       stats: { ...this.state.stats, ...stats },
+    });
+  }
+
+  // ── Spawned Subagents ──
+
+  setSpawnedAgent(agent: TuiSpawnedAgent | null): void {
+    this.setState({ activeSpawnedAgent: agent });
+  }
+
+  updateSpawnedAgent(partial: Partial<TuiSpawnedAgent>): void {
+    if (!this.state.activeSpawnedAgent) return;
+    this.setState({
+      activeSpawnedAgent: { ...this.state.activeSpawnedAgent, ...partial },
     });
   }
 

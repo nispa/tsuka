@@ -42,6 +42,11 @@ export async function handleMemory(ctx: CommandCtx, arg: string): Promise<void> 
       CLITheme.info('Shared memory is already empty.');
       return;
     }
+    if (process.env.TSUKA_TUI || (ctx as any).isTui) {
+      store.clear();
+      CLITheme.success('Shared memory cleared.');
+      return;
+    }
     console.log();
     const confirm = await prompts({
       type: 'confirm',
@@ -67,7 +72,7 @@ export async function handleMemory(ctx: CommandCtx, arg: string): Promise<void> 
     return;
   }
 
-  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+  if (!process.stdin.isTTY || !process.stdout.isTTY || process.env.TSUKA_TUI || (ctx as any).isTui) {
     plainList(store);
     return;
   }

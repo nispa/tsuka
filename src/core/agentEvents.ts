@@ -7,6 +7,8 @@
 export type AgentEvent =
   | { type: 'tool_start'; name: string; args: any; agentLabel?: string }
   | { type: 'tool_end'; name: string; args: any; success: boolean; output: string; agentLabel?: string }
+  | { type: 'subagent_start'; name: string; role: string; task: string; agentLabel?: string }
+  | { type: 'subagent_end'; name: string; success: boolean; output?: string; agentLabel?: string }
   | { type: 'round_continue'; round: number; agentLabel?: string }
   | { type: 'max_rounds'; limit: number; agentLabel?: string };
 

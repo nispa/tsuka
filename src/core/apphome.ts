@@ -23,16 +23,38 @@ export function getAppHome(): string {
   return path.resolve(__dirname, '..', '..');
 }
 
-/** Resolves a path inside the app home or local .tsuka/ directory. */
+/** Resolves a path strictly inside the global App Home installation (tsuka.config.json, .env, models_profile.json, built-in assets). */
 export function homePath(...segments: string[]): string {
+  return path.join(getAppHome(), ...segments);
+}
+
+/** Resolves a path strictly inside the global App Home installation (alias of homePath). */
+export function globalHomePath(...segments: string[]): string {
+  return path.join(getAppHome(), ...segments);
+}
+
+/** Resolves a path inside the local .tsuka/ directory if present in current workspace. */
+export function localWorkspacePath(...segments: string[]): string | null {
   try {
     const wsRoot = process.cwd();
     if (wsRoot) {
-      const localTsukaPath = path.join(wsRoot, '.tsuka', ...segments);
-      if (fs.existsSync(localTsukaPath)) {
-        return localTsukaPath;
+      const localTsukaDir = path.join(wsRoot, '.tsuka');
+      if (fs.existsSync(localTsukaDir)) {
+        return path.join(localTsukaDir, ...segments);
       }
     }
   } catch {}
-  return path.join(getAppHome(), ...segments);
+  return null;
+}
+
+/**
+ * Resolves an asset path: checks project-local .tsuka/ first (if file/folder exists),
+ * otherwise falls back to global App Home.
+ */
+export function resolveAssetPath(...segments: string[]): string {
+  const local = localWorkspacePath(...segments);
+  if (local && fs.existsSync(local)) {
+    return local;
+  }
+  return homePath(...segments);
 }
