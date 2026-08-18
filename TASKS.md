@@ -53,6 +53,8 @@
 | T14.2 | ✅ Fatto | **Data-Driven Layout Engine, Modular Widgets & v0.4.0 Release**: Estrazione dei blocchi sidebar in micro-widget autonomi e riutilizzabili (`src/tui/widgets/{PersonaWidget,MetricsWidget,ToolActivityWidget,QuickKeysWidget}.ts`); disaccoppiamento del driver di schermo in `inputParser.ts` (decodifica eventi tasti e mouse SGR), `boxDrawing.ts` (primitive grafiche e scrollbar) e `screen.ts` (~150 righe); motore di layout configurabile via JSON (`tui.layout.json`, `layoutConfig.ts`) con preset dinamici (Default, Wide Chat, Sidebar a Destra, Zen Focus), 5 temi colore e editor visivo interattivo nella TUI (`F7` / `/layout`); indicatore dinamico reasoning effort (livello effettivo + sorgente persona/ruolo/pin); rilascio ufficiale **v0.4.0**; 58/58 suite di test verdi. |
 | T14.3 | ✅ Fatto | **Workspace File Viewer Modal**: Modale di anteprima e ispezione rapida dei file dal Files Explorer (`src/tui/views/Files.ts`, `src/tui/modals/fileViewerModal.ts`) con numerazione righe, scroll fluido (frecce/mouse/paginazione) e jail di sicurezza `resolveSafePath`; suite `tests/test_tui_fileviewer_export.ts`. |
 | T14.4 | ✅ Fatto | **Session Export to Markdown (`/export` Command)**: Esportazione completa e strutturata della cronologia di chat attiva, blocchi Chain of Thought e chiamate tool in un documento Markdown pulito (`exports/session-<timestamp>.md`) tramite comando slash `/export` e `/save`; suite `tests/test_tui_fileviewer_export.ts`. |
+| T14.5 | ⏳ In corso | **Multi-line Input Prompt & Paste Preservation**: Supporto per input su più righe nel prompt buffer (`Shift+Enter`, `Ctrl+J`, paste multi-linea) con rendering dinamico multilinea e navigazione cursore 2D senza invio prematuro. |
+| T14.6 | ⏳ In corso | **Interactive Tools Search & History Filter**: Filtro di ricerca testuale dinamico in tempo reale per la vista Tool Inspector (`F2` / `/tools`) su nome tool, tier di sicurezza (`SAFE`/`RESTRICTED`/`DANGEROUS`) e stato esecuzioni (`running`/`completed`/`failed`). |
 
 Tutti i task pianificati e di backlog sono completati con 60 suite di test verdi.
 
@@ -1648,6 +1650,45 @@ Aggiungere il comando `/export [filename]` (e alias `/save`) nella TUI per espor
   - Emette una notifica toast nella TUI con il percorso del file salvato.
 
 **Accettazione:** Digitando `/export` viene creato un file `.md` valido e leggibile contenente tutti i messaggi della sessione, con notifica visiva nella TUI. Suite di test aggiornata.
+
+---
+
+## T14.5 — Multi-line Input Prompt & Paste Preservation
+
+**Dipende da:** T14.1 · **Sforzo:** basso · **Priorità:** media
+
+Supportare la composizione di prompt complessi e blocchi di codice su più righe all'interno del box di input della TUI, senza invii prematuri del messaggio durante l'incollamento o la formattazione:
+
+- **Inserimento Nuova Riga**:
+  - `Shift+Enter` o `Ctrl+J` / `Alt+Enter`: inserisce un carattere `\n` nella posizione corrente del cursore nel buffer di input (`inputText`), senza committare il turno.
+  - `Enter` standard: committa il prompt multiline per l'esecuzione da parte dell'agente.
+- **Preservazione del Paste Multi-linea**:
+  - Quando l'utente incolla testo contenente interruzioni di riga (`\r\n` o `\n`), il parser di input aggrega i frammenti preservando la formattazione senza scatenare invii a raffica.
+- **Rendering & Navigazione Cursore 2D**:
+  - Aggiornare `InputView.render` per visualizzare le righe multiple con scroll verticale interno quando il testo supera l'altezza disponibile del box.
+  - Navigazione con frecce `▲`/`▼` su righe diverse quando l'input è multilinea, riservando la cronologia ai limiti superiore/inferiore del buffer.
+
+**Accettazione:** Incollando o digitando con `Shift+Enter`/`Ctrl+J` più righe di testo nel box di input, il prompt rimane intero su più righe e viene inviato solo alla pressione di `Enter`; suite di test automatizzata.
+
+---
+
+## T14.6 — Interactive Tools Search & History Filter
+
+**Dipende da:** T14.1 · **Sforzo:** basso · **Priorità:** media
+
+Introdurre una barra di ricerca e filtraggio in tempo reale nella vista `Tools Inspector` (`F2` / `/tools`) per individuare all'istante tool specifici tra i 27 nativi e tracciare esecuzioni passate:
+
+- **Filtro Dinamico Live**:
+  - Possibilità di digitare una query di ricerca (es. premendo `/` o digitando nel campo filtro della vista `ToolsView`).
+  - Filtraggio in tempo reale per:
+    - **Nome Tool**: es. `grep`, `file`, `browse`, `command`.
+    - **Tier di Rischio**: `SAFE`, `RESTRICTED`, `DANGEROUS`.
+    - **Stato Esecuzione**: `running`, `completed`, `failed`.
+- **Navigazione & Reset**:
+  - `Esc`: cancella il filtro attivo o chiude la ricerca.
+  - Scorciatoie e badge visivi dei risultati trovati (`Trovati: N/27 tool`).
+
+**Accettazione:** Nella vista F2, impostando una query di ricerca, l'elenco dei tool e lo storico delle esecuzioni si restringono istantaneamente alle sole voci corrispondenti; suite di test aggiornata.
 
 
 
