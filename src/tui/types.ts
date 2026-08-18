@@ -62,6 +62,7 @@ export interface TuiModalState {
 export interface TuiStats {
   usedTokens: number;
   subagentUsedTokens?: number;
+  totalSessionTokens?: number;
   maxTokens: number;
   percentage: number;
   turnCount: number;
@@ -105,6 +106,7 @@ export interface TuiState {
   activeEffortSource?: string;
   characterRecommendedEffort?: string;
   activeSpawnedAgent: TuiSpawnedAgent | null;
+  spawnedAgentsHistory: TuiSpawnedAgent[];
   generationStatus?: TuiGenerationStatus;
   stats: TuiStats;
   messages: TuiChatMessage[];

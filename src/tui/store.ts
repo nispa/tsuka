@@ -19,8 +19,11 @@ export class TuiStore {
       activeProvider: 'ollama',
       activeModel: 'llama3',
       activeSpawnedAgent: null,
+      spawnedAgentsHistory: [],
       stats: {
         usedTokens: 0,
+        subagentUsedTokens: 0,
+        totalSessionTokens: 0,
         maxTokens: 8192,
         percentage: 0,
         turnCount: 0,
@@ -274,13 +277,24 @@ export class TuiStore {
   // ── Spawned Subagents ──
 
   setSpawnedAgent(agent: TuiSpawnedAgent | null): void {
-    this.setState({ activeSpawnedAgent: agent });
+    if (agent) {
+      const history = this.state.spawnedAgentsHistory.filter((a) => a.id !== agent.id);
+      this.setState({
+        activeSpawnedAgent: agent,
+        spawnedAgentsHistory: [agent, ...history].slice(0, 50),
+      });
+    } else {
+      this.setState({ activeSpawnedAgent: null });
+    }
   }
 
   updateSpawnedAgent(partial: Partial<TuiSpawnedAgent>): void {
     if (!this.state.activeSpawnedAgent) return;
+    const updated = { ...this.state.activeSpawnedAgent, ...partial };
+    const history = this.state.spawnedAgentsHistory.map((a) => (a.id === updated.id ? updated : a));
     this.setState({
-      activeSpawnedAgent: { ...this.state.activeSpawnedAgent, ...partial },
+      activeSpawnedAgent: updated,
+      spawnedAgentsHistory: history,
     });
   }
 

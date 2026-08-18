@@ -12,7 +12,12 @@ export class MetricsWidget {
       ? `${chalk.bold.yellow(state.stats.usedTokens.toLocaleString())} ${chalk.gray(`(+ ${chalk.hex('#c084fc')(subTokens.toLocaleString() + ' sub')})`)}`
       : chalk.bold.yellow(state.stats.usedTokens.toLocaleString());
 
-    lines.push(chalk.white(`  Tokens: ${tokensLabel}`));
+    lines.push(chalk.white(`  Active: ${tokensLabel} tok`));
+
+    const totalBurned = state.stats.totalSessionTokens || state.stats.usedTokens;
+    if (totalBurned > state.stats.usedTokens) {
+      lines.push(chalk.white(`  Burned: ${chalk.hex('#c084fc')(`${totalBurned.toLocaleString()} tok`)}`));
+    }
     return lines;
   }
 }

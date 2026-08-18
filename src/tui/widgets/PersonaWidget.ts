@@ -50,6 +50,15 @@ export class PersonaWidget {
 
       const bottomBorder = chalk.hex('#818cf8')('  └') + chalk.hex('#475569')('─'.repeat(boxW));
       lines.push(bottomBorder);
+    } else if (state.spawnedAgentsHistory && state.spawnedAgentsHistory.length > 0) {
+      lines.push('');
+      lines.push(chalk.bold.hex('#c084fc')(`◆ SUBAGENTS (${state.spawnedAgentsHistory.length} spawned)`));
+      for (const sub of state.spawnedAgentsHistory.slice(0, 3)) {
+        const icon = sub.status === 'completed' ? chalk.green('✔') : chalk.red('✘');
+        const tok = sub.usedTokens > 0 ? chalk.gray(` (${sub.usedTokens.toLocaleString()} tok)`) : '';
+        const name = chalk.hex('#38bdf8')(`@${sub.name}`);
+        lines.push(`  ${icon} ${name}${tok}`);
+      }
     }
 
     return lines;

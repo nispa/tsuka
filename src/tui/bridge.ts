@@ -120,11 +120,13 @@ export class TuiBridge {
     return (stats, agentLabel) => {
       const currentState = this.store.getState();
       const maxTokens = currentState.stats.maxTokens || 8192;
+      const addedTokens = stats.tokenCount || stats.totalTokens || 0;
+      const prevTotalSession = currentState.stats.totalSessionTokens || 0;
+      const newTotalSession = prevTotalSession + addedTokens;
 
       if (agentLabel) {
-        // Subagent tokens
+        // Subagent tokens (active in-flight ephemeral context)
         const prevSubTokens = currentState.stats.subagentUsedTokens || 0;
-        const addedTokens = stats.tokenCount || stats.totalTokens || 0;
         const currentSubTokens = prevSubTokens + addedTokens;
         const mainUsedTokens = currentState.stats.usedTokens || 0;
         const combined = mainUsedTokens + currentSubTokens;
@@ -132,6 +134,7 @@ export class TuiBridge {
 
         this.store.updateStats({
           subagentUsedTokens: currentSubTokens,
+          totalSessionTokens: newTotalSession,
           percentage,
         });
         this.store.updateSpawnedAgent({
@@ -145,6 +148,7 @@ export class TuiBridge {
 
         this.store.updateStats({
           usedTokens: stats.totalTokens,
+          totalSessionTokens: newTotalSession,
           percentage,
         });
       }
@@ -182,11 +186,23 @@ export class TuiBridge {
             currentTool: undefined,
             completedAt: Date.now(),
           });
-          const isNoEffortEnd = this.store.getState().activeReasoningEffort === 'none';
+          // Ephemeral subagent context is completed — release temporary subagent tokens from active gauge
+          const currentState = this.store.getState();
+          const maxTokens = currentState.stats.maxTokens || 8192;
+          const mainUsedTokens = currentState.stats.usedTokens || 0;
+          const percentage = Math.min(100, Math.round((mainUsedTokens / maxTokens) * 100));
+
+          this.store.updateStats({
+            subagentUsedTokens: 0,
+            percentage,
+          });
+          this.store.setSpawnedAgent(null);
+
+          const isNoEffortEnd = currentState.activeReasoningEffort === 'none';
           this.store.setState({
             generationStatus: {
               phase: isNoEffortEnd ? 'streaming' : 'reasoning',
-              agentName: this.store.getState().activeAiName,
+              agentName: currentState.activeAiName,
             },
           });
           break;
