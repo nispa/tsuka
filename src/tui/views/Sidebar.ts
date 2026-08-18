@@ -1,17 +1,18 @@
 import chalk from 'chalk';
 import { TuiState } from '../types';
 import { TuiScreen } from '../screen';
-import { PersonaWidget, MetricsWidget, ToolActivityWidget, QuickKeysWidget } from '../widgets';
+import { PersonaWidget, MetricsWidget, InferenceTelemetryWidget, ToolActivityWidget, QuickKeysWidget } from '../widgets';
 import { TuiWidgetId } from '../layoutConfig';
 
 export class SidebarView {
-  static render(state: TuiState, width: number, height: number, visibleWidgets: TuiWidgetId[] = ['persona', 'metrics', 'tool_activity', 'quick_keys']): string[] {
+  static render(state: TuiState, width: number, height: number, visibleWidgets: TuiWidgetId[] = ['persona', 'metrics', 'telemetry', 'tool_activity', 'quick_keys']): string[] {
     const divider = chalk.hex('#334155')('  ' + '─'.repeat(Math.max(10, width - 6)));
     const rawLines: string[] = [];
 
     const widgetMap: Record<TuiWidgetId, () => string[]> = {
       persona: () => PersonaWidget.render(state, width),
       metrics: () => MetricsWidget.render(state, width),
+      telemetry: () => InferenceTelemetryWidget.render(state, width),
       tool_activity: () => ToolActivityWidget.render(state, width),
       quick_keys: () => QuickKeysWidget.render(state, width),
     };

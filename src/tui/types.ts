@@ -105,6 +105,22 @@ export interface TuiGenerationStatus {
   toolName?: string;
 }
 
+export interface TuiInferenceCandidate {
+  token: string;
+  prob: number;
+}
+
+export interface TuiInferenceTelemetry {
+  phase: 'idle' | 'prefill' | 'decoding' | 'tool';
+  prefillTokens?: number;
+  prefillTokensPerSec?: number;
+  ttftMs?: number;
+  tokensPerSec?: number;
+  confidence?: number;
+  topCandidates?: TuiInferenceCandidate[];
+  lastUpdated?: number;
+}
+
 export interface TuiState {
   activeCharacterName: string;
   activeCharacterRole: string;
@@ -118,6 +134,7 @@ export interface TuiState {
   activeSpawnedAgent: TuiSpawnedAgent | null;
   spawnedAgentsHistory: TuiSpawnedAgent[];
   generationStatus?: TuiGenerationStatus;
+  telemetry?: TuiInferenceTelemetry;
   stats: TuiStats;
   messages: TuiChatMessage[];
   activeTools: TuiToolExecution[];

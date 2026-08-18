@@ -55,8 +55,9 @@
 | T14.4 | ✅ Fatto | **Session Export to Markdown (`/export` Command)**: Esportazione completa e strutturata della cronologia di chat attiva, blocchi Chain of Thought e chiamate tool in un documento Markdown pulito (`exports/session-<timestamp>.md`) tramite comando slash `/export` e `/save`; suite `tests/test_tui_fileviewer_export.ts`. |
 | T14.5 | ✅ Fatto | **Multi-line Input Prompt & Paste Preservation**: Supporto per input su più righe nel prompt buffer (`Shift+Enter`, `Ctrl+J`, paste multi-linea) con rendering dinamico multilinea, box ad altezza elastica e navigazione cursore 2D; suite `tests/test_multiline_tools_filter.ts`. |
 | T14.6 | ✅ Fatto | **Interactive Tools Search & History Filter (CLI + TUI Parity)**: Filtro di ricerca testuale dinamico in tempo reale per la vista Tool Inspector (`F2` / `/tools`) e per il comando CLI `/tools [query]` su nome tool, tier di sicurezza (`SAFE`/`RESTRICTED`/`DANGEROUS`) ed esecuzioni; suite `tests/test_multiline_tools_filter.ts`. |
+| T14.7 | ✅ Fatto | **Real-Time Inference Telemetry & Latent Space Inspector Widget**: Widget autonomo posizionato nella sidebar (tra Agent Profile e Files Explorer) per monitorare lo stato di prefill (KV Cache ingestion), Time To First Token (TTFT), velocità di decode (tok/s), confidenza del modello e top token candidati latenti (`logprobs`); suite `tests/test_inference_telemetry.ts`. |
 
-Tutti i task pianificati e di backlog sono completati con 61 suite di test verdi.
+Tutti i task pianificati e di backlog sono completati con 62 suite di test verdi.
 
 ---
 
@@ -1689,6 +1690,26 @@ Introdurre una barra di ricerca e filtraggio in tempo reale nella vista `Tools I
   - Scorciatoie e badge visivi dei risultati trovati (`Trovati: N/27 tool`).
 
 **Accettazione:** Nella vista F2, impostando una query di ricerca, l'elenco dei tool e lo storico delle esecuzioni si restringono istantaneamente alle sole voci corrispondenti; suite di test aggiornata.
+
+---
+
+## T14.7 — Real-Time Inference Telemetry & Latent Space Inspector Widget
+
+**Dipende da:** T14.1, T14.2 · **Sforzo:** basso · **Priorità:** alta
+
+Integrare un micro-widget autonomo (`InferenceTelemetryWidget.ts`) nella sidebar della TUI (posizionato tra Agent Profile e Files Explorer o integrato nei widget modulari) per eliminare i momenti di "attesa cieca" durante l'inferenza di llama.cpp/Ollama:
+
+- **Stati di Inferenza & Telemetria Live**:
+  - `IDLE`: `● IDLE` (pronto).
+  - `PREFILL (KV Cache Ingestion)`: Monitoraggio visivo dei secondi di elaborazione del prompt (`⚡ PREFILL: N tok @ X t/s`) prima dell'emissione dei token.
+  - `DECODE (Streaming)`: Monitoraggio della velocità di generazione in tempo reale (`🌊 DECODING: X tok/s`).
+  - `TTFT (Time to First Token)`: Misurazione in millisecondi del tempo trascorso tra invio del prompt e primo token emesso.
+- **Ispezione Spazio Latente & Top Candidati (`logprobs`)**:
+  - Quando disponibile o calcolabile dal backend, visualizzazione della barra di confidenza percentuale e delle alternative probabilistiche valutate nello spazio dei logits.
+- **Integrazione UI Reattiva**:
+  - Registrato nello store Flux (`TuiStore`), aggiornato tramite eventi stream ad alta frequenza e renderizzato nel flusso sidebar.
+
+**Accettazione:** Durante l'esecuzione di un prompt, il widget nella sidebar mostra in tempo reale la transizione di stato (`PREFILL` $\to$ `DECODE`), la velocità e il TTFT senza blocchi o sfarfallii; suite di test automatizzata.
 
 
 

@@ -9,7 +9,7 @@ import chalk from 'chalk';
 
 export type SidebarPosition = 'left' | 'right' | 'hidden';
 export type TuiThemeName = 'cyan' | 'neon' | 'amber' | 'matrix' | 'minimal';
-export type TuiWidgetId = 'persona' | 'metrics' | 'tool_activity' | 'quick_keys';
+export type TuiWidgetId = 'persona' | 'metrics' | 'telemetry' | 'tool_activity' | 'quick_keys';
 
 export interface TuiLayoutConfig {
   sidebarPosition: SidebarPosition;
@@ -83,7 +83,7 @@ export const DEFAULT_LAYOUT_CONFIG: TuiLayoutConfig = {
   sidebarWidthPercent: 26,
   showFilesExplorer: true,
   filesHeightPercent: 55,
-  visibleWidgets: ['persona', 'metrics', 'tool_activity', 'quick_keys'],
+  visibleWidgets: ['persona', 'metrics', 'telemetry', 'tool_activity', 'quick_keys'],
   theme: 'cyan',
 };
 
@@ -96,7 +96,7 @@ export const LAYOUT_PRESETS: Record<string, { label: string; description: string
       sidebarWidthPercent: 26,
       showFilesExplorer: true,
       filesHeightPercent: 55,
-      visibleWidgets: ['persona', 'metrics', 'tool_activity', 'quick_keys'],
+      visibleWidgets: ['persona', 'metrics', 'telemetry', 'tool_activity', 'quick_keys'],
     },
   },
   wide: {
@@ -107,7 +107,7 @@ export const LAYOUT_PRESETS: Record<string, { label: string; description: string
       sidebarWidthPercent: 20,
       showFilesExplorer: false,
       filesHeightPercent: 0,
-      visibleWidgets: ['persona', 'metrics'],
+      visibleWidgets: ['persona', 'metrics', 'telemetry'],
     },
   },
   right: {
@@ -118,7 +118,7 @@ export const LAYOUT_PRESETS: Record<string, { label: string; description: string
       sidebarWidthPercent: 28,
       showFilesExplorer: true,
       filesHeightPercent: 55,
-      visibleWidgets: ['persona', 'metrics', 'tool_activity', 'quick_keys'],
+      visibleWidgets: ['persona', 'metrics', 'telemetry', 'tool_activity', 'quick_keys'],
     },
   },
   zen: {

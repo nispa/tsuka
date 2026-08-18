@@ -92,6 +92,7 @@ export class TuiTurnRunner {
     });
 
     this.currentInterrupt = new GenerationInterrupt();
+    bridge.notifyTurnStart(state.stats.usedTokens);
 
     try {
       const onChunk = bridge.createChunkHandler();
