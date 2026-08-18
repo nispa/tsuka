@@ -41,7 +41,7 @@ export async function detectContextWindow(
 ): Promise<number | null> {
   const base = baseUrl.replace(/\/+$/, '');
   const baseRoot = base.replace(/\/v1\/?$/, '');
-  const auth = apiKey && apiKey !== 'local' ? { Authorization: `Bearer ${apiKey}` } : undefined;
+  const auth = { Authorization: `Bearer ${apiKey || 'local'}` };
 
   // 1. llama-server / llama.cpp (/props)
   if (isLocalUrl(base)) {
@@ -134,7 +134,7 @@ export async function probeProvider(
 
   try {
     // Standard OpenAI-compatible endpoint (Ollama, llama.cpp/Unsloth, OpenRouter)
-    const auth = apiKey && apiKey !== 'local' ? { Authorization: `Bearer ${apiKey}` } : undefined;
+    const auth = { Authorization: `Bearer ${apiKey || 'local'}` };
     const data = await fetchJson(`${base}/models`, timeoutMs, auth);
     const entries = Array.isArray(data?.data) ? data.data : [];
     models = entries.map((m: any) => m.id).sort();

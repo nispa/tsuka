@@ -492,6 +492,11 @@ export class LLMProvider implements ILLMProvider {
           );
         }
 
+        if (error.message?.includes('reasoning_effort') && options?.reasoningEffort) {
+          options = { ...options, reasoningEffort: undefined };
+          continue;
+        }
+
         if (isMalformedToolCallJsonError(error.message)) {
           if (attempt < maxRetries) {
             process.stdout.write('\n');

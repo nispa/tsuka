@@ -2,6 +2,7 @@ import { TuiStore } from '../store';
 import { TuiBridge } from '../bridge';
 import { Agent } from '../../core/agent';
 import { GenerationInterrupt } from '../../cli/interrupt';
+import { logSink } from '../../core/logSink';
 import { TuiCommandController } from './commandController';
 
 export interface TurnRunnerContext {
@@ -106,6 +107,7 @@ export class TuiTurnRunner {
         this.currentInterrupt.signal
       );
     } catch (err: any) {
+      logSink.error(`[TurnRunner] Error during execution: ${err.message}${err.stack ? '\n' + err.stack : ''}`);
       store.addMessage({
         role: 'system',
         content: `Error during execution: ${err.message}`,

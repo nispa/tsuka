@@ -12,6 +12,7 @@ import { PermissionManager } from '../safety/permissions';
 import { TuiApp } from './app';
 
 dotenv.config({ path: homePath('.env') });
+dotenv.config();
 
 export async function launchTui(): Promise<void> {
   const configManager = new ConfigManager();

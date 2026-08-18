@@ -345,7 +345,10 @@ export class ChatView {
     } else if (msg.role === 'system') {
       const header = chalk.bold.hex('#FF9F43')(`⚙️ System Notification`) + chalk.gray(` [${timeStr}]`);
       lines.push(header);
-      lines.push('  ' + chalk.hex('#FFA500')(msg.content));
+      const textLines = renderMarkdownToLines(msg.content || '', contentWidth);
+      for (const l of textLines) {
+        lines.push('  ' + chalk.hex('#FFA500')(l));
+      }
     } else if (msg.role === 'tool') {
       lines.push(chalk.gray(`  🔧 [tool result] ${msg.content.slice(0, innerWidth)}`));
     }
