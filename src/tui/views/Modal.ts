@@ -99,6 +99,8 @@ function buildPermissionBox(modal: TuiModalState, screen: ScreenSize): ModalBox 
 const GENERAL_SHORTCUTS: Array<[string, string]> = [
   ['Tab', 'Cycle focus between panes'],
   ['↑ / ↓', 'Scroll / History / Select'],
+  ['→ / ←', 'Files: enter folder / go back up'],
+  ['Enter', 'Files: open folder or preview file'],
   ['Esc', 'Dismiss popup / Interrupt generation'],
   ['Ctrl+C', 'Exit TSUKA'],
 ];

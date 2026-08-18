@@ -3,11 +3,10 @@
  * Displays interactive list of files/directories with data-driven icons, scrolling, and path insertion.
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
 import chalk from 'chalk';
 import { TuiState, TuiFileItem } from '../types';
 import { TuiScreen } from '../screen';
+import { listDirectory, PARENT_ENTRY } from '../fileExplorer';
 import fileTypesConfig from '../fileTypes.json';
 
 interface FileStyleRule {
@@ -65,53 +64,15 @@ export class FilesView {
   }
 
   /**
-   * Scans the current working directory for workspace files and subdirectories.
+   * Lists the directory currently browsed in the panel (T14.12).
+   * Kept as a thin wrapper so views and controllers share one entry point.
    */
-  static scanDirectory(cwd: string = process.cwd()): TuiFileItem[] {
-    try {
-      const entries = fs.readdirSync(cwd, { withFileTypes: true });
-      const items: TuiFileItem[] = [];
-      const ignored = new Set(fileTypesConfig.ignoredDirs);
-
-      for (const entry of entries) {
-        if (ignored.has(entry.name)) {
-          continue;
-        }
-
-        const isDir = entry.isDirectory();
-        const ext = isDir ? '' : path.extname(entry.name).toLowerCase();
-        let size: number | undefined;
-
-        try {
-          if (!isDir) {
-            const stat = fs.statSync(path.join(cwd, entry.name));
-            size = stat.size;
-          }
-        } catch {}
-
-        items.push({
-          name: entry.name,
-          isDir,
-          size,
-          ext,
-        });
-      }
-
-      // Sort: Directories first, then files alphabetically
-      items.sort((a, b) => {
-        if (a.isDir && !b.isDir) return -1;
-        if (!a.isDir && b.isDir) return 1;
-        return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
-      });
-
-      return items;
-    } catch {
-      return [];
-    }
+  static scanDirectory(relCwd: string = ''): TuiFileItem[] {
+    return listDirectory(relCwd);
   }
 
   static render(state: TuiState, width: number, height: number): string[] {
-    const files = state.workspaceFiles.length > 0 ? state.workspaceFiles : FilesView.scanDirectory();
+    const files = state.workspaceFiles.length > 0 ? state.workspaceFiles : listDirectory(state.filesCwd || '');
     const rawLines: string[] = [];
 
     const innerWidth = Math.max(10, width - 2);
@@ -123,10 +84,13 @@ export class FilesView {
       for (let i = 0; i < files.length; i++) {
         const item = files[i];
         const isSelected = i === state.selectedFileIndex && state.focus === 'files';
-        const style = FilesView.getFileStyle(item);
+        const isParent = item.name === PARENT_ENTRY;
+        const style = isParent
+          ? { icon: chalk.hex('#94a3b8')('⬆ '), nameColor: chalk.hex('#94a3b8') }
+          : FilesView.getFileStyle(item);
 
         const prefix = isSelected ? chalk.bold.hex('#38bdf8')('❯ ') : '  ';
-        const rawName = item.isDir ? `${item.name}/` : item.name;
+        const rawName = isParent ? '.. (up)' : item.isDir ? `${item.name}/` : item.name;
 
         // Calculate available space for the name
         const iconWidth = TuiScreen.stringWidth(style.icon);
@@ -150,7 +114,10 @@ export class FilesView {
     const scrollOffset = Math.min(state.filesScrollOffset, Math.max(0, totalLines - innerHeight));
     const visibleLines = rawLines.slice(scrollOffset, scrollOffset + innerHeight);
 
-    const title = `📁 Files (${files.length})`;
+    // The title doubles as a breadcrumb: at the root it names the panel, deeper
+    // it shows where you are (→ enters a folder, ← goes back up).
+    const cwd = state.filesCwd || '';
+    const title = cwd ? `📁 ${cwd} (${files.length})` : `📁 Files (${files.length})`;
     return TuiScreen.drawBox(
       title,
       visibleLines,

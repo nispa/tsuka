@@ -6,6 +6,8 @@
 import { TuiScreen, KeyPressEvent, TuiMouseEvent } from './screen';
 import { isHelpShortcut } from './inputParser';
 import { TuiTabSpec, tabByKey, tabAtColumn } from './navigation';
+import { listDirectory, enterDirectory, parentDirectory, entryPath, PARENT_ENTRY } from './fileExplorer';
+import { TuiFileItem } from './types';
 import { TuiStore } from './store';
 import { TuiBridge } from './bridge';
 import { HeaderView } from './views/Header';
@@ -476,10 +478,56 @@ export class TuiApp {
     }
   }
 
+  /** Files currently listed in the explorer panel. */
+  private currentFiles(): TuiFileItem[] {
+    const state = this.store.getState();
+    return state.workspaceFiles.length > 0 ? state.workspaceFiles : listDirectory(state.filesCwd || '');
+  }
+
+  /**
+   * Moves the explorer into another directory of the workspace (T14.12),
+   * reloading the listing and putting the selection back at the top.
+   */
+  private browseDirectory(targetCwd: string): boolean {
+    const current = this.store.getState().filesCwd || '';
+    if (targetCwd === current) return false;
+
+    // Only the path is stored: the listing is read at render time, so files
+    // created or deleted while browsing show up without an explicit refresh.
+    this.store.setState({
+      filesCwd: targetCwd,
+      workspaceFiles: [],
+      selectedFileIndex: 0,
+      filesScrollOffset: 0,
+    });
+    this.store.notify(`📁 ${targetCwd || 'workspace root'}`, 'info');
+    return true;
+  }
+
+  /** Enter on a directory browses it; on a file it opens the preview. */
+  private openFileEntry(item: TuiFileItem): void {
+    const state = this.store.getState();
+    if (item.isDir) {
+      this.browseDirectory(enterDirectory(state.filesCwd || '', item.name));
+      return;
+    }
+    FileViewerModal.openFileModal(this.store, entryPath(state.filesCwd || '', item.name));
+  }
+
   private handleFilesKey(key: KeyPressEvent): void {
     const state = this.store.getState();
-    const files = state.workspaceFiles.length > 0 ? state.workspaceFiles : FilesView.scanDirectory();
+    const files = this.currentFiles();
+
+    // Left works even on an empty folder: it is the way back out of it.
+    if (key.name === 'left') {
+      if (!this.browseDirectory(parentDirectory(state.filesCwd || ''))) {
+        this.store.notify('Already at the workspace root', 'info');
+      }
+      return;
+    }
     if (files.length === 0) return;
+
+    const selected = files[state.selectedFileIndex];
 
     if (key.name === 'up') {
       const next = Math.max(0, state.selectedFileIndex - 1);
@@ -490,23 +538,18 @@ export class TuiApp {
       const innerHeight = 6;
       const scroll = next >= state.filesScrollOffset + innerHeight ? next - innerHeight + 1 : state.filesScrollOffset;
       this.store.setState({ selectedFileIndex: next, filesScrollOffset: scroll });
+    } else if (key.name === 'right') {
+      // Right only descends: on a file there is nothing to enter.
+      if (selected?.isDir) this.browseDirectory(enterDirectory(state.filesCwd || '', selected.name));
     } else if (key.name === 'return') {
-      const file = files[state.selectedFileIndex];
-      if (file) {
-        if (file.isDir) {
-          this.store.notify(`'${file.name}' is a directory`, 'info');
-        } else {
-          FileViewerModal.openFileModal(this.store, file.name);
-        }
-      }
+      if (selected) this.openFileEntry(selected);
     } else if (key.name === 'i' || key.name === 'space') {
-      const file = files[state.selectedFileIndex];
-      if (file) {
+      if (selected && selected.name !== PARENT_ENTRY) {
+        const insertPath = entryPath(state.filesCwd || '', selected.name);
         const currentInput = this.store.getState().inputText;
-        const insertText = (currentInput ? currentInput + ' ' : '') + file.name;
-        this.store.setInputText(insertText);
+        this.store.setInputText((currentInput ? currentInput + ' ' : '') + insertPath);
         this.store.setFocus('input');
-        this.store.notify(`Inserted '${file.name}' into input prompt`, 'info');
+        this.store.notify(`Inserted '${insertPath}' into input prompt`, 'info');
       }
     } else if (key.name === 'escape') {
       this.store.setFocus('input');
@@ -594,7 +637,7 @@ export class TuiApp {
           this.store.setFocus('sidebar');
         } else {
           this.store.setFocus('files');
-          const files = state.workspaceFiles.length > 0 ? state.workspaceFiles : FilesView.scanDirectory();
+          const files = this.currentFiles();
           const clickedRow = mouse.row - headerHeight - profileHeight - 1;
           const targetIndex = state.filesScrollOffset + clickedRow;
           if (targetIndex >= 0 && targetIndex < files.length) {
@@ -602,13 +645,16 @@ export class TuiApp {
             this.store.setState({ selectedFileIndex: targetIndex });
             const file = files[targetIndex];
             if (file) {
-              if (isAlreadySelected && !file.isDir) {
-                FileViewerModal.openFileModal(this.store, file.name);
+              // First click selects, second click acts: enter the directory or preview the file.
+              if (isAlreadySelected) {
+                this.openFileEntry(file);
+              } else if (file.isDir) {
+                this.store.notify(`Click again to open '${file.name}'`, 'info');
               } else {
+                const insertPath = entryPath(state.filesCwd || '', file.name);
                 const currentInput = this.store.getState().inputText;
-                const insertText = (currentInput ? currentInput + ' ' : '') + file.name;
-                this.store.setInputText(insertText);
-                this.store.notify(`Selected '${file.name}' (Click again to preview)`, 'info');
+                this.store.setInputText((currentInput ? currentInput + ' ' : '') + insertPath);
+                this.store.notify(`Selected '${insertPath}' (Click again to preview)`, 'info');
               }
             }
           }

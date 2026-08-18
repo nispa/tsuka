@@ -175,8 +175,9 @@ tsuka --tui
   * `📊 Stato Latente & Logits`: Barra di confidenza `[████████░░] 94%` e top candidati — mostrati **solo** se il backend restituisce davvero i logprobs.
 * **Workspace File Explorer & Modale di Anteprima Codice**:
   * Albero dei file in tempo reale con icone per estensione (`📁`, `🟦 TS`, `🟨 JS`, `⚙️ JSON`, `📝 MD`, `🧪 Test`, `🔒 Secrets`).
-  * Premendo **`Enter`** (o doppio clic) si apre il **Workspace File Viewer Modal** con numeri di riga formattati, scroll fluido e scorciatoia per copiare/incollare.
-  * Premendo **`i`** o **`Space`** si incolla il nome del file selezionato direttamente nel prompt di input.
+  * Esplorazione dell'albero con **`→`** per entrare in una cartella e **`←`** (o la riga `.. (up)`) per tornare indietro; il titolo del pannello mostra il percorso corrente e la navigazione non può uscire dalla workspace jail.
+  * Premendo **`Enter`** (o doppio clic) si apre la cartella selezionata, oppure — su un file — il **Workspace File Viewer Modal** con numeri di riga formattati, scroll fluido e scorciatoia per copiare/incollare.
+  * Premendo **`i`** o **`Space`** si incolla nel prompt il percorso selezionato completo di cartelle (es. `src/tui/app.ts`).
 * **Input Multi-linea & Preservazione Incollamento**:
   * **`Shift+Enter`** / **`Ctrl+J`** / **`Alt+Enter`** inserisce una nuova riga senza inviare prematuramente.
   * Box di input ad altezza elastica dinamica che si espande da 3 a 6 righe in base al contenuto.
@@ -594,7 +595,7 @@ npx tsx tests/test_self_authoring.ts
 npx tsx tests/test_platform.ts
 ```
 
-Stato attuale: **63 suite di test, 1200+ assertion — tutte verdi**. Ogni suite gira senza rete e senza un LLM vivo (`MockLLMProvider`) e su un file di memoria temporaneo, così `npm test` non tocca mai i ricordi reali.
+Stato attuale: **64 suite di test, 1200+ assertion — tutte verdi**. Ogni suite gira senza rete e senza un LLM vivo (`MockLLMProvider`) e su un file di memoria temporaneo, così `npm test` non tocca mai i ricordi reali.
 
 ## 📚 Documentazione
 

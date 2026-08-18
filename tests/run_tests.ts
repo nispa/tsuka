@@ -88,7 +88,8 @@ const suites = [
   'test_tui_fileviewer_export.ts',
   'test_multiline_tools_filter.ts',
   'test_inference_telemetry.ts',
-  'test_tui_data_driven.ts'
+  'test_tui_data_driven.ts',
+  'test_files_explorer.ts'
 ];
 
 let passed = 0;

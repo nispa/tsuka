@@ -162,5 +162,7 @@ export interface TuiState {
   activeTeam?: string;
   isRawModeLocked: boolean;
   workspaceFiles: TuiFileItem[];
+  /** Directory currently browsed in the Files Explorer, relative to the workspace root ('' = root). */
+  filesCwd: string;
   notifications: Array<{ id: string; text: string; type: 'info' | 'warn' | 'error' | 'success'; timestamp: number }>;
 }

@@ -62,7 +62,9 @@
 
 | T14.11 | ✅ Fatto | **Dispatch Data-Driven della TUI (Leggibilità)**: Sostituite le catene di condizioni con tabelle di dati. `handleCommand` (569 righe, 26 rami `if`) diventa il registry `src/tui/commands/` (`name`/`aliases`/`description`/`hidden`/handler, raggruppati per dominio) più un dispatcher di 20 righe, con `assertMenuCoverage()` a impedire divergenze tra menu e handler e `runCliWorkflow` al posto del blocco try/catch/finally copiato per `/goal`, `/team`, `/call`, `/benchmark`. `src/tui/navigation.ts` (`TUI_TABS`) diventa l'unica fonte di tasti funzione, etichette per larghezza, zone di click del mouse (prima colonne hardcoded 95-106) e voci della cheatsheet (prima incompleta: mancavano F7 e F12). `ModalView.renderOverlay` passa a `BOX_BUILDERS` per tipo con composizione condivisa; lo `switch` su `AgentEvent` nel bridge diventa una tabella tipizzata sull'unione con `backToThinking()`/`patchCurrentToolCalls()` estratti. Suite `tests/test_tui_data_driven.ts`. |
 
-Tutti i task pianificati e di backlog sono completati con 63 suite di test verdi.
+| T14.12 | ✅ Fatto | **Navigazione Directory nel Files Explorer**: Esplorazione iterativa dell'albero del workspace (`src/tui/fileExplorer.ts`): `→` entra nella cartella selezionata, `←` risale, `Enter` è contestuale (cartella → entra, file → anteprima), voce `.. (up)` come prima riga fuori dalla root e titolo del pannello come breadcrumb. Ogni risoluzione passa da `resolveSafePath`, quindi nessuna sequenza di tasti esce dalla workspace jail; `i`/`Space` e il click inseriscono ora il percorso completo relativo alla root invece del solo nome file. Suite `tests/test_files_explorer.ts`. |
+
+Tutti i task pianificati e di backlog sono completati con 64 suite di test verdi.
 
 ---
 
@@ -1835,3 +1837,37 @@ che la percorre**.
 scheda richiede una riga in una tabella e nessun tocco al dispatcher. Suite
 `tests/test_tui_data_driven.ts` (10 test: alias, parsing, coerenza menu/handler, zone di click
 allineate a ciò che l'header disegna, export Markdown). 63/63 suite verdi.
+
+---
+
+## T14.12 — Navigazione delle Directory nel Files Explorer
+
+**Dipende da:** T14.1, T14.3 · **Sforzo:** basso · **Priorità:** alta
+
+Il pannello `Files Explorer` mostrava solo il livello corrente: `Enter` su una cartella si
+limitava a notificare "'nome' is a directory" e non esisteva alcun modo di entrarci o di
+risalire. L'esplorazione diventa iterativa, con la jail del workspace come unico confine.
+
+- **Navigazione** (`src/tui/fileExplorer.ts`, funzioni pure su un percorso relativo alla root):
+  - `→` entra nella cartella selezionata, `←` risale di un livello (all'arrivo alla root la
+    pressione successiva è un no-op notificato, non un'uscita dal workspace).
+  - `Enter` è contestuale: su una cartella entra, su un file apre il File Viewer (T14.3).
+  - Voce `.. (up)` come prima riga quando non si è alla root, così l'azione è raggiungibile
+    anche con il mouse.
+  - Ogni risoluzione passa da `resolveSafePath`: un percorso che uscirebbe dalla workspace
+    lascia la posizione invariata invece di seguire il link (`..`, `../../..`, path assoluti).
+  - Entrare in un file o in una cartella inesistente non cambia la posizione.
+- **Stato e vista**: nuovo campo `filesCwd` in `TuiState` (`''` = root). Il titolo del pannello
+  fa da breadcrumb (`📁 src/tui (12)`); l'elenco viene letto al render, quindi i file creati o
+  cancellati durante la navigazione compaiono senza refresh esplicito.
+- **Percorsi coerenti**: `i` / `Space` e il click inseriscono nel prompt il percorso completo
+  relativo alla root (`src/tui/app.ts`), non più il solo nome del file, che dentro una
+  sottocartella era inutilizzabile dagli agenti.
+- **Mouse**: primo clic seleziona, secondo clic agisce (entra nella cartella o apre l'anteprima),
+  coerentemente con il comportamento già esistente sui file.
+- **Cheatsheet** (`F12`): aggiunte le righe `→ / ←` e `Enter` per il pannello file.
+
+**Accettazione:** con il focus sul Files Explorer, `→` (o `Enter`) su una cartella ne mostra il
+contenuto, `←` torna al livello superiore, `Enter` su un file apre l'anteprima; nessuna sequenza
+di tasti permette di uscire dalla workspace. Suite `tests/test_files_explorer.ts` (8 test su
+albero temporaneo isolato con `withWorkspaceOverride`).

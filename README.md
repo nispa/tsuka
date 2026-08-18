@@ -175,8 +175,9 @@ tsuka --tui
   * `📊 Latent State & Logits`: confidence meter `[████████░░] 94%` and top candidates — shown **only** when the backend actually returns logprobs.
 * **Workspace File Explorer & Code Preview Modal**:
   * Real-time file tree with file-type icons (`📁`, `🟦 TS`, `🟨 JS`, `⚙️ JSON`, `📝 MD`, `🧪 Test`, `🔒 Secrets`).
-  * Press **`Enter`** (or double-click) to open the **Workspace File Viewer Modal** with line numbers, smooth scrolling, and clipboard copy.
-  * Press **`i`** or **`Space`** to insert the selected file name directly into the prompt buffer.
+  * Browse the tree with **`→`** to enter a folder and **`←`** (or the `.. (up)` row) to come back out; the panel title shows the current path and the walk can never leave the workspace jail.
+  * Press **`Enter`** (or double-click) to open a folder, or to open the **Workspace File Viewer Modal** on a file, with line numbers, smooth scrolling, and clipboard copy.
+  * Press **`i`** or **`Space`** to insert the selected path (folder-aware, e.g. `src/tui/app.ts`) directly into the prompt buffer.
 * **Multi-line Input Prompt & Paste Preservation**:
   * **`Shift+Enter`** / **`Ctrl+J`** / **`Alt+Enter`** inserts a newline without prematurely sending.
   * Dynamic elastic input box expanding smoothly from 3 to 6 rows.
@@ -594,7 +595,7 @@ npx tsx tests/test_self_authoring.ts
 npx tsx tests/test_platform.ts
 ```
 
-Current status: **63 test suites, 1200+ assertions — all green**. Every suite runs without network access or a live LLM (`MockLLMProvider`) and against a temporary memory file, so `npm test` never touches your real memories.
+Current status: **64 test suites, 1200+ assertions — all green**. Every suite runs without network access or a live LLM (`MockLLMProvider`) and against a temporary memory file, so `npm test` never touches your real memories.
 
 ## 📚 Documentation
 

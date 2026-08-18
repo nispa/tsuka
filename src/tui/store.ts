@@ -46,6 +46,7 @@ export class TuiStore {
       expandAllThinking: false,
       isRawModeLocked: false,
       workspaceFiles: [],
+      filesCwd: '',
       notifications: [],
       ...initialState,
     };
