@@ -6,53 +6,18 @@
 import chalk from 'chalk';
 import { TuiState } from '../types';
 import { TuiScreen } from '../screen';
+import { layoutTabs } from '../navigation';
 
 export class HeaderView {
   static render(state: TuiState, width: number, activeTab: string = 'chat'): string[] {
     const lines: string[] = [];
 
-    // Line 1: Top Navigation Menu Tabs
-    const tabs = width < 80
-      ? [
-          { id: 'chat', label: 'F1 Chat' },
-          { id: 'tools', label: 'F2 Tools' },
-          { id: 'personas', label: 'F3' },
-          { id: 'teams', label: 'F4' },
-          { id: 'memory', label: 'F5' },
-          { id: 'models', label: 'F6' },
-          { id: 'layout', label: 'F7' },
-          { id: 'help', label: 'F12' },
-        ]
-      : width < 110
-      ? [
-          { id: 'chat', label: 'F1 Chat' },
-          { id: 'tools', label: 'F2 Tools' },
-          { id: 'personas', label: 'F3 Personas' },
-          { id: 'teams', label: 'F4 Teams' },
-          { id: 'memory', label: 'F5 Mem' },
-          { id: 'models', label: 'F6 Models' },
-          { id: 'layout', label: 'F7 Layout' },
-          { id: 'help', label: 'F12' },
-        ]
-      : [
-          { id: 'chat', label: 'F1 💬 Chat' },
-          { id: 'tools', label: 'F2 ⚡ Tools' },
-          { id: 'personas', label: 'F3 👥 Personas' },
-          { id: 'teams', label: 'F4 🤝 Teams' },
-          { id: 'memory', label: 'F5 🧠 Memory' },
-          { id: 'models', label: 'F6 ⚡ Models' },
-          { id: 'layout', label: 'F7 📐 Layout' },
-          { id: 'help', label: 'F12 Help' },
-        ];
-
+    // Line 1: Top Navigation Menu Tabs (labels and click zones come from `navigation.ts`)
     let tabsRow = ' ';
-    for (const t of tabs) {
-      const isActive = activeTab === t.id;
-      if (isActive) {
-        tabsRow += chalk.bgHex('#3178c6').white.bold(` ${t.label} `) + ' ';
-      } else {
-        tabsRow += chalk.hex('#818cf8')(`[${t.label}]`) + ' ';
-      }
+    for (const zone of layoutTabs(width, activeTab)) {
+      tabsRow += zone.isActive
+        ? chalk.bgHex('#3178c6').white.bold(` ${zone.label} `) + ' '
+        : chalk.hex('#818cf8')(`[${zone.label}]`) + ' ';
     }
 
     const brand = chalk.bold.hex('#e879f9')('TSUKA') + (width > 95 ? chalk.gray(' v0.5.1') : '');

@@ -4,6 +4,7 @@
  */
 
 import { TuiStore } from './store';
+import { TuiChatMessage } from './types';
 import { AgentEvent, AgentEventHandler } from '../core/agentEvents';
 import { StreamChannel } from '../core/thinkParser';
 import { PermissionManager, PermissionPromptRequest } from '../safety/permissions';
@@ -252,144 +253,118 @@ export class TuiBridge {
    * Creates an AgentEvent handler for lifecycle events (tool_start, tool_end, subagent_start, subagent_end, round_continue, max_rounds).
    */
   createEventHandler(): AgentEventHandler {
-    return (ev: AgentEvent) => {
-      switch (ev.type) {
-        case 'subagent_start': {
-          this.store.setSpawnedAgent({
-            id: `sub_${Date.now()}`,
-            name: ev.name,
-            role: ev.role,
-            task: ev.task,
-            status: 'running',
-            usedTokens: 0,
-            startedAt: Date.now(),
-          });
-          this.store.setState({
-            generationStatus: {
-              phase: 'reasoning',
-              agentName: ev.name,
-            },
-          });
-          break;
+    // One handler per event type: the union of AgentEvent drives the table, so a
+    // new event cannot be forgotten here — the compiler asks for its entry.
+    const handlers: { [K in AgentEvent['type']]: (ev: Extract<AgentEvent, { type: K }>) => void } = {
+      subagent_start: (ev) => {
+        this.store.setSpawnedAgent({
+          id: `sub_${Date.now()}`,
+          name: ev.name,
+          role: ev.role,
+          task: ev.task,
+          status: 'running',
+          usedTokens: 0,
+          startedAt: Date.now(),
+        });
+        this.store.setState({ generationStatus: { phase: 'reasoning', agentName: ev.name } });
+      },
+
+      subagent_end: (ev) => {
+        this.store.updateSpawnedAgent({
+          status: ev.success ? 'completed' : 'failed',
+          currentTool: undefined,
+          completedAt: Date.now(),
+        });
+
+        // The ephemeral subagent context is gone: its tokens leave the active gauge.
+        const state = this.store.getState();
+        const maxTokens = state.stats.maxTokens || 8192;
+        const mainUsedTokens = state.stats.usedTokens || 0;
+        this.store.updateStats({
+          subagentUsedTokens: 0,
+          percentage: Math.min(100, Math.round((mainUsedTokens / maxTokens) * 100)),
+        });
+        this.store.setSpawnedAgent(null);
+        this.backToThinking();
+      },
+
+      tool_start: (ev) => {
+        if (ev.agentLabel) this.store.updateSpawnedAgent({ currentTool: ev.name });
+        this.store.setState({
+          generationStatus: { phase: 'tool', agentName: ev.agentLabel, toolName: ev.name },
+        });
+
+        const displayToolName = ev.agentLabel ? `${ev.name} (@${ev.agentLabel})` : ev.name;
+        const args = JSON.stringify(ev.args || {});
+        const toolId = this.store.startTool(displayToolName, args);
+        this.currentToolExecMap.set(ev.name, toolId);
+
+        this.patchCurrentToolCalls((toolCalls) => [
+          ...toolCalls,
+          { id: toolId, name: ev.name, args, status: 'running' as const },
+        ]);
+      },
+
+      tool_end: (ev) => {
+        if (ev.agentLabel) this.store.updateSpawnedAgent({ currentTool: undefined });
+        this.backToThinking(ev.agentLabel);
+
+        const toolId = this.currentToolExecMap.get(ev.name);
+        if (toolId) {
+          this.store.finishTool(toolId, ev.output || '', ev.success);
+          this.currentToolExecMap.delete(ev.name);
         }
 
-        case 'subagent_end': {
-          this.store.updateSpawnedAgent({
-            status: ev.success ? 'completed' : 'failed',
-            currentTool: undefined,
-            completedAt: Date.now(),
-          });
-          // Ephemeral subagent context is completed — release temporary subagent tokens from active gauge
-          const currentState = this.store.getState();
-          const maxTokens = currentState.stats.maxTokens || 8192;
-          const mainUsedTokens = currentState.stats.usedTokens || 0;
-          const percentage = Math.min(100, Math.round((mainUsedTokens / maxTokens) * 100));
+        this.patchCurrentToolCalls((toolCalls) =>
+          toolCalls.map((tc) =>
+            tc.name === ev.name && tc.status === 'running'
+              ? { ...tc, status: ev.success ? ('completed' as const) : ('failed' as const), output: ev.output }
+              : tc
+          )
+        );
+      },
 
-          this.store.updateStats({
-            subagentUsedTokens: 0,
-            percentage,
-          });
-          this.store.setSpawnedAgent(null);
-
-          const isNoEffortEnd = currentState.activeReasoningEffort === 'none';
-          this.store.setState({
-            generationStatus: {
-              phase: isNoEffortEnd ? 'streaming' : 'reasoning',
-              agentName: currentState.activeAiName,
-            },
-          });
-          break;
+      round_continue: () => {
+        // Close the current message so the next ReAct round starts a fresh one.
+        if (this.currentAssistantMsgId) {
+          this.store.finishStreaming(this.currentAssistantMsgId);
+          this.currentAssistantMsgId = undefined;
         }
+        this.store.setState({ isGenerating: true });
+        this.backToThinking();
+      },
 
-        case 'tool_start': {
-          if (ev.agentLabel) {
-            this.store.updateSpawnedAgent({ currentTool: ev.name });
-          }
-          this.store.setState({
-            generationStatus: {
-              phase: 'tool',
-              agentName: ev.agentLabel,
-              toolName: ev.name,
-            },
-          });
-          const displayToolName = ev.agentLabel ? `${ev.name} (@${ev.agentLabel})` : ev.name;
-          const toolId = this.store.startTool(displayToolName, JSON.stringify(ev.args || {}));
-          this.currentToolExecMap.set(ev.name, toolId);
-
-          if (this.currentAssistantMsgId) {
-            const state = this.store.getState();
-            const msg = state.messages.find((m) => m.id === this.currentAssistantMsgId);
-            if (msg) {
-              const toolCalls = [
-                ...(msg.toolCalls || []),
-                {
-                  id: toolId,
-                  name: ev.name,
-                  args: JSON.stringify(ev.args || {}),
-                  status: 'running' as const,
-                },
-              ];
-              this.store.updateMessage(this.currentAssistantMsgId, { toolCalls });
-            }
-          }
-          break;
-        }
-
-        case 'tool_end': {
-          if (ev.agentLabel) {
-            this.store.updateSpawnedAgent({ currentTool: undefined });
-          }
-          const isNoEffortTool = this.store.getState().activeReasoningEffort === 'none';
-          this.store.setState({
-            generationStatus: {
-              phase: isNoEffortTool ? 'streaming' : 'reasoning',
-              agentName: ev.agentLabel || this.store.getState().activeAiName,
-            },
-          });
-          const toolId = this.currentToolExecMap.get(ev.name);
-          if (toolId) {
-            this.store.finishTool(toolId, ev.output || '', ev.success);
-            this.currentToolExecMap.delete(ev.name);
-          }
-
-          if (this.currentAssistantMsgId) {
-            const state = this.store.getState();
-            const msg = state.messages.find((m) => m.id === this.currentAssistantMsgId);
-            if (msg && msg.toolCalls) {
-              const updated = msg.toolCalls.map((tc) =>
-                tc.name === ev.name && tc.status === 'running'
-                  ? { ...tc, status: ev.success ? ('completed' as const) : ('failed' as const), output: ev.output }
-                  : tc
-              );
-              this.store.updateMessage(this.currentAssistantMsgId, { toolCalls: updated });
-            }
-          }
-          break;
-        }
-
-        case 'round_continue': {
-          // Finalize current message so the next ReAct round gets a fresh message & thinking block
-          if (this.currentAssistantMsgId) {
-            this.store.finishStreaming(this.currentAssistantMsgId);
-            this.currentAssistantMsgId = undefined;
-          }
-          const isNoEffortContinue = this.store.getState().activeReasoningEffort === 'none';
-          this.store.setState({
-            isGenerating: true,
-            generationStatus: {
-              phase: isNoEffortContinue ? 'streaming' : 'reasoning',
-              agentName: this.store.getState().activeAiName,
-            },
-          });
-          break;
-        }
-
-        case 'max_rounds': {
-          this.store.notify(`Execution interrupted: reached limit of ${ev.limit} tool rounds`, 'warn');
-          break;
-        }
-      }
+      max_rounds: (ev) => {
+        this.store.notify(`Execution interrupted: reached limit of ${ev.limit} tool rounds`, 'warn');
+      },
     };
+
+    return (ev: AgentEvent) => (handlers[ev.type] as (e: AgentEvent) => void)(ev);
+  }
+
+  /**
+   * Returns the header to the "model is working" state after a tool or a
+   * subagent. With reasoning disabled there is no thinking phase to go back to,
+   * so the turn resumes as plain streaming.
+   */
+  private backToThinking(agentName?: string): void {
+    const state = this.store.getState();
+    this.store.setState({
+      generationStatus: {
+        phase: state.activeReasoningEffort === 'none' ? 'streaming' : 'reasoning',
+        agentName: agentName || state.activeAiName,
+      },
+    });
+  }
+
+  /** Rewrites the tool calls attached to the message being streamed, if any. */
+  private patchCurrentToolCalls(
+    update: (toolCalls: NonNullable<TuiChatMessage['toolCalls']>) => NonNullable<TuiChatMessage['toolCalls']>
+  ): void {
+    if (!this.currentAssistantMsgId) return;
+    const msg = this.store.getState().messages.find((m) => m.id === this.currentAssistantMsgId);
+    if (!msg) return;
+    this.store.updateMessage(this.currentAssistantMsgId, { toolCalls: update(msg.toolCalls || []) });
   }
 
   resetCurrentTurn(): void {

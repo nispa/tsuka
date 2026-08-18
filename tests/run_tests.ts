@@ -87,7 +87,8 @@ const suites = [
   'test_tui_subagent_queue_copy.ts',
   'test_tui_fileviewer_export.ts',
   'test_multiline_tools_filter.ts',
-  'test_inference_telemetry.ts'
+  'test_inference_telemetry.ts',
+  'test_tui_data_driven.ts'
 ];
 
 let passed = 0;

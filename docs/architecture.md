@@ -6,7 +6,7 @@
 
 > This document describes the technical architecture, design principles, and modular structure of the **TSUKA** framework (v0.5.1). For codebase contribution guidelines, see [`AGENTS.md`](../AGENTS.md); for completed and upcoming task backlogs, see [`TASKS.md`](../TASKS.md).
 >
-> 📊 **System Metrics**: 27 tools · 20 REPL commands · 24 core modules · 21 roles · 9 traits · 24 characters (agents) · 10 preconfigured teams · 62 automated test suites · Dual CLI & TUI interfaces.
+> 📊 **System Metrics**: 27 tools · 20 REPL commands · 24 core modules · 21 roles · 9 traits · 24 characters (agents) · 10 preconfigured teams · 63 automated test suites · Dual CLI & TUI interfaces.
 
 ---
 
@@ -312,7 +312,12 @@ TSUKA features a zero-flicker, Component-Driven terminal user interface:
   * `ChatView`: Formatted markdown, syntax highlighting, and `<think>` reasoning containers.
   * `ToolsView`: Dynamic tool catalog & execution history.
   * `InputView`: Text buffer, multi-line cursor, and working status spinner.
-  * `ModalView`: Universal overlay for safety permissions, model picker, and REPL cheatsheets.
+  * `ModalView`: Universal overlay for safety permissions, model picker, and REPL cheatsheets. Each modal type contributes only its own box (`BOX_BUILDERS`); centering and compositing are shared.
+* **Data-Driven Dispatch Tables**: behaviour lives in lists, not in conditional chains, so extending the TUI means adding a row.
+  * `src/tui/commands/`: the slash command table (`registry.ts`) — name, aliases, description and handler per command, grouped in `sessionCommands` / `workflowCommands` / `configCommands`. `TuiCommandController` only parses the line and looks it up; `assertMenuCoverage()` keeps the table and the slash menu (`commands/menu.json`) from drifting apart.
+  * `src/tui/navigation.ts`: the tab table — function key, per-width labels, and the modal each tab toggles. The header row, the mouse click zones and the help cheatsheet all derive from it, so a relabelled tab cannot lose its click target.
+  * `src/tui/layoutConfig.ts`: layout presets, themes and widget order (`tui.layout.json`).
+  * `src/tui/keybindings.json`: raw escape sequences mapped to key names.
 
 ---
 

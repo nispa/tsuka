@@ -3,7 +3,7 @@ import { ConfigManager } from '../../core/config';
 import { ILLMProvider } from '../../core/provider';
 import { MemoryStore, MemoryFact } from '../../core/memory';
 import { getEffortPin, setEffortPin } from '../../core/effortControl';
-import commandsData from '../commands.json';
+import commandsData from '../commands/menu.json';
 
 export class SystemModals {
   static openMemoryModal(store: TuiStore): void {

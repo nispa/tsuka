@@ -6,7 +6,7 @@
 
 > Questo documento descrive l'architettura tecnica, i principi di progettazione e l'organizzazione modulare del framework **TSUKA** (v0.5.1). Per le linee guida operative di contribuzione al codice si rimanda ad [`AGENTS.md`](../AGENTS.md); per l'elenco dei task completati e pianificati, consultare [`TASKS.md`](../TASKS.md).
 >
-> 📊 **Metriche di sistema**: 27 tool · 20 comandi REPL · 24 moduli core · 21 ruoli · 9 tratti · 24 personaggi (agenti) · 10 team configurati · 62 suite di test automatici · Doppia interfaccia CLI & TUI.
+> 📊 **Metriche di sistema**: 27 tool · 20 comandi REPL · 24 moduli core · 21 ruoli · 9 tratti · 24 personaggi (agenti) · 10 team configurati · 63 suite di test automatici · Doppia interfaccia CLI & TUI.
 
 ---
 
@@ -356,7 +356,12 @@ TSUKA include una dashboard terminale grafica interattiva a componenti puri:
   * `ChatView`: Rendering Markdown formattato, blocchi di codice evidenziati e box di reasoning `<think>`.
   * `ToolsView`: Catalogo e cronologia dei 27 tool nativi.
   * `InputView`: Buffer di input multi-riga con cursore e spinner di caricamento.
-  * `ModalView`: Finestre modali di conferma sicurezza, selezione modelli, estensione timeout e cheatsheet comandi (`F12`).
+  * `ModalView`: Finestre modali di conferma sicurezza, selezione modelli, estensione timeout e cheatsheet comandi (`F12`). Ogni tipo di modale fornisce solo il proprio box (`BOX_BUILDERS`); centratura e composizione sullo schermo sono condivise.
+* **Tabelle di Dispatch Data-Driven**: il comportamento sta in liste, non in catene di condizioni; estendere la TUI significa aggiungere una riga.
+  * `src/tui/commands/`: tabella dei comandi slash (`registry.ts`) — nome, alias, descrizione e handler per ciascun comando, raggruppati in `sessionCommands` / `workflowCommands` / `configCommands`. `TuiCommandController` si limita a fare il parsing della riga e la lookup; `assertMenuCoverage()` impedisce che tabella e menu slash (`commands/menu.json`) divergano.
+  * `src/tui/navigation.ts`: tabella delle schede — tasto funzione, etichette per larghezza e modale associata. Riga dell'header, zone di click del mouse e cheatsheet dell'help derivano tutte da qui: una scheda rinominata non può perdere la propria area cliccabile.
+  * `src/tui/layoutConfig.ts`: preset di layout, temi e ordine dei widget (`tui.layout.json`).
+  * `src/tui/keybindings.json`: sequenze di escape grezze mappate sui nomi dei tasti.
 
 ---
 

@@ -46,6 +46,24 @@
 | ⏸️ **Interruptible generation** | `Esc` (or `Ctrl+X`) aborts a running generation; the partial reasoning is persisted, not lost |
 | 🧠 **Context-aware execution** | Live reasoning display, per-agent token/timing stats (output/context/total), dual context bar (estimated + real peak from LLM), automatic history condensation between turns |
 
+## 📋 Table of Contents
+
+- [Highlights](#-highlights)
+- [Quickstart (60 seconds)](#-quickstart-60-seconds)
+- [Installation & Setup](#-installation--setup)
+- [Interactive Terminal UI (TUI)](#-interactive-terminal-ui-tui-dashboard)
+- [Slash Commands](#-repl-slash-commands)
+- [Multi-Agent Workflows](#-multi-agent-workflows)
+- [Tool Catalog (27 tools)](#-tool-catalog-27-tools)
+- [Security](#-security)
+- [Key Features](#-key-features)
+- [Architecture](#-architecture)
+- [Tests](#-autonomous-validation--tests)
+- [Documentation](#-documentation)
+- [Roadmap](#-roadmap)
+- [Contributing](#-contributing)
+- [License](#-license)
+
 ## ⚡ Quickstart (60 seconds)
 
 ```bash
@@ -68,19 +86,76 @@ npm run tui
 ```
 *Make sure Unsloth Studio, llama-server or Ollama is running, or set your `OPENROUTER_API_KEY` in `.env`.*
 
-## 📋 Table of Contents
+## 🚀 Installation & Setup
 
-- [Interactive Terminal UI (TUI)](#-interactive-terminal-ui-tui-dashboard)
-- [Architecture](#-architecture)
-- [Key Features](#-key-features)
-- [Tool Catalog](#-tool-catalog-27-tools)
-- [Multi-Agent Workflows](#-multi-agent-workflows)
-- [Security](#-security)
-- [Commands](#-repl-slash-commands)
-- [Getting Started](#-getting-started)
-- [Tests](#-autonomous-validation--tests)
-- [Documentation](#-documentation)
-- [License](#license)
+### Prerequisites
+
+```powershell
+# 1. Install Ollama
+#    https://ollama.com/
+ollama serve
+
+# 2. Pull a model
+ollama pull qwen2.5-coder:7b
+```
+
+### Development Mode
+
+```powershell
+# 1. Clone & install
+git clone https://github.com/your-username/tsuka.git
+cd tsuka
+npm install
+
+# 2. Run development mode
+npm run dev
+
+# 3. (Optional) Benchmark your model for the best tool selection
+/benchmark
+
+# 4. Start chatting or:
+/call @tuvok, @deanna_troi
+```
+
+### Production Build
+
+```powershell
+npm run build
+npm start
+```
+
+### Install as a Global Command (`tsuka`)
+
+Run TSUKA from any PowerShell window without `npm run dev`:
+
+```powershell
+npm run build
+npm link        # creates the global `tsuka` command (shim on your PATH)
+tsuka           # launch from anywhere
+```
+
+After changing the source, refresh the global command with `npm run build`. To uninstall: `npm unlink -g tsuka`.
+
+### Initializing a Workspace (`tsuka init`)
+
+```powershell
+tsuka init                          # interactive: asks which preset
+tsuka init --preset core            # essential roster (14 characters, 4 teams)
+tsuka init --preset full            # every role, trait, character and team
+tsuka init --pack osint,devops      # extra packs on top of the preset
+tsuka init --force                  # overwrite an existing .tsuka/
+```
+
+Packs available in [`presets/packs/`](presets/packs/): `osint`, `content`, `devops`, `security`, `demo` — the last one collects deliberately extreme communication styles as a teaching example (a compliant voter makes a unanimity vote meaningless).
+
+`tsuka init` creates a `.tsuka/` folder in the current directory with `memory/`, `workflow_logs/`, `output/` and copies of the chosen `roles/`, `traits/`, `characters/` and `teams/`, then probes the local LLM servers to write a starting configuration.
+
+**App home vs workspace** ([`src/core/apphome.ts`](src/core/apphome.ts)): resources are resolved hierarchically.
+
+1. If `.tsuka/<resource>` exists in the folder you launched `tsuka` from, that one wins — so a project initialized with `tsuka init` gets its own roster and its own memory.
+2. Otherwise it falls back to the **app home**: the installation folder, or `TSUKA_HOME` when that environment variable is set.
+
+The *workspace* is always the folder you launch `tsuka` from: it's where the agents' file tools (read/write/edit/grep) operate with relative paths. So you can `cd` into any project and let the agents work on it — with a shared roster and memory by default, or a project-local one after `tsuka init`.
 
 ## 🖥️ Interactive Terminal UI (TUI Dashboard)
 
@@ -131,46 +206,200 @@ tsuka --tui
   * `F1`: Chat View · `F2`: Tools View · `F3`: Agent Picker · `F4`: Team Picker · `F5`: Memory Inspector · `F6`: Model Switcher · `F12`: REPL Help Cheatsheet.
   * `?` opens the cheatsheet only when the prompt is not focused, so a question mark stays typable in your message.
 
-## 🏗 Architecture
+## 🛠 REPL Slash Commands
+
+| Command | Description |
+|---------|-------------|
+| `/goal <objective>` | Dynamic goal orchestrator — selects agents, assigns tasks, coordinates execution |
+| `/team [name]` | Start a collaborative team workflow or pipeline |
+| `/call [@agents...]` | Start a multi-agent conference debate |
+| `/models [model]` | List & select available models |
+| `/provider [name]` | Switch between Ollama, Unsloth and OpenRouter |
+| `/effort [level]` | Manage reasoning effort (`none`\|`low`\|`medium`\|`xhigh`\|`auto`\|`ask`) |
+| `/benchmark [model\|all]` | Measure model capabilities (tier & tok/s) |
+| `/agent [name]` | Show or select the active agent |
+| `/tools [query]` | List & filter enabled tools for active role, tier, and effort |
+| `/export [file]` | Export complete conversation session, reasoning & tool logs to Markdown (alias: `/save`) |
+| `/stop` | Abort currently running generation, reasoning, or tool execution (alias: `Esc` / `Ctrl+X`) |
+| `/context` | Show history token usage against the context budget (and where the limit came from) |
+| `/memory [clear\|<id>]` | Inspect, manage, or wipe persistent memories |
+| `/blackboard` | Show notes and state of the latest workflow/goal |
+| `/runs` | Show history and reports of recent workflow executions |
+| `/continue [trace]` | Force-resume an interrupted reasoning trace instead of starting over |
+| `/info` | Show session info (provider, model, agent) |
+| `/reset` | Reset history + security approvals |
+| `/search-engine` | Change search provider (DuckDuckGo / Google / Tavily) |
+| `/help` | Show the list of available commands |
+| `/clear` · `/exit` | Clear terminal · Quit |
+
+**Keys during generation**: `Esc` (or `Ctrl+X`) aborts the current turn; `Ctrl+C` quits.
+
+## 👥 Multi-Agent Workflows
+
+### Dynamic Goal Orchestrator (`/goal`)
+
+The `/goal` command dynamically assembles a team from **all available characters** to accomplish an objective:
+
+```powershell
+/goal Write a screenplay and generate the Krea2 prompt for every scene. Save it to cr.txt
+```
+
+1. **Planning phase**: the orchestrator LLM analyses the goal, selects the best-suited agents and assigns tasks — optionally with `PARALLELO` blocks for independent subtasks. Agents are presented through compact auto-generated signatures, and can be picked by *craft* rather than by name, keeping the planning prompt small.
+2. **Execution phase**: all planned steps execute in order — including the supervisor. Each agent's task instructions explicitly tell them to **inspect workspace files** created by previous agents. A negative verdict from the final overseer sends the failed step back for one rework cycle instead of just closing the run.
+3. **Context management**: after each agent turn, long assistant messages are condensed (keeping a 1500-char meaningful summary, not a one-liner) and a fact is saved to persistent memory. A **dual context bar** shows estimated context before the agent runs and the **real peak prompt tokens** measured from the LLM response after it completes.
+4. **Stats summary**: at the end, a per-agent breakdown with output tokens, context tokens, total tokens, time and speed:
 
 ```
-                     ┌──────────────────────┐
-                     │   characters/*.json  │
-                     └──────┬───────┬───────┘
-                            │       │
-                     ┌──────▼──┐ ┌──▼────────┐
-                     │ roles/* │ │ traits/*  │
-                     │ (tools) │ │ (style)   │
-                     └──────┬──┘ └────┬──────┘
-                            └────┬────┘
-                                 ▼
-                     ┌──────────────────────┐
-                     │  Dynamic System      │
-                     │  Prompt Assembly     │
-                     └──────────┬───────────┘
-                                ▼
-                     ┌───────────────────────────────┐
-                     │  Ollama / llama.cpp /         │
-                     │  Unsloth Studio / OpenRouter  │
-                     └──────────────┬────────────────┘
-                                    ▼
-                     ┌──────────────────────┐
-                     │  src/tools/impl/*.ts │
-                     └──────────────────────┘
+📊 RIEPILOGO STATS AGENTI
+  Agente             Out tok    Ctx tok   Tot tok    Tempo    Velocità
+  Doctor             1234      15032     16266     12.3s   100.3 tok/s
+  Krea Master            892      16780     17672      8.1s   110.1 tok/s
+  Pike                   456      17500     17956      4.2s   108.6 tok/s
+  TOTALE                2582      17500     51894     24.6s
 ```
 
-### Component Breakdown
+- **Out tok**: cumulative output (completion) tokens across all LLM rounds in that agent's turn
+- **Ctx tok**: peak prompt tokens (context window size) measured from the last LLM round
+- **Tot tok**: estimated total (ctx + out) for that agent
 
-| Folder | Purpose |
-|--------|---------|
-| [`roles/`](roles/) | Skill definitions + allowed tool lists |
-| [`traits/`](traits/) | Communication style & personality prompts |
-| [`characters/`](characters/) | Named Character Presets / Agents (linking one or more roles + a trait) |
-| [`teams/`](teams/) | Multi-agent team configs (mode, members, orchestrator, acceptance) |
-| [`presets/`](presets/) | Install manifests used by `tsuka init` (`core.json` + `packs/`) |
-| [`benchmarks/`](benchmarks/) | Declarative test set used by `/benchmark` |
-| [`tools_schemas/`](tools_schemas/) | JSON Schema for every tool (Function Calling) |
-| [`src/tools/impl/`](src/tools/impl/) | Pure TypeScript tool execution logic |
+The planner can also emit `PARALLELO` blocks for independent subtasks. They run concurrently via `Promise.all` only if `parallelExecutionEnabled` is turned on in `tsuka.config.json` — **default is `false`**, so on a single GPU everything executes sequentially even inside a `PARALLELO` block, avoiding VRAM contention between agents sharing the same local model. When parallelism *is* enabled, each branch works in an isolated staging workspace (`workspace/parallel-<n>/`) merged at the end of the block: two branches writing the same path with different content produce a reported conflict, never a silent overwrite.
+
+### Collaborative Teams (`/team`)
+
+Lets an organized group of agents actively collaborate on a task, executing write and run tools:
+
+```powershell
+/team cyber_audit                        # Select a team
+# Then: "Harden port 22 on this server"
+```
+
+The `mode` field of the team JSON selects the strategy ([`src/cli/commands/strategies/`](src/cli/commands/strategies/)):
+
+| Mode | Behavior |
+|------|----------|
+| `round-robin` | Every member works in turn, round after round, until the task is declared solved |
+| `pipeline` | Single pass over the members as an assembly line: station 1 gets the task, each following one refines what it receives (see below) |
+| `orchestrated` | A designated `orchestrator` decides who works next after each turn (falls back to round-robin if its answer can't be parsed) |
+| *hybrid* | Not a mode of its own: setting `discussionRounds > 0` inserts a discussion + voting round after each round of the strategy above |
+
+- **Iterative rounds**: in `round-robin` and `orchestrated` the team works in rounds (default max 3, configurable via `teamMaxRounds` in `tsuka.config.json`) until the task is actually solved — not just one turn per member. `pipeline` is the exception: one pass, one turn per station.
+- **Turn-based shifts**: each member takes their work turn, inheriting the full history of messages and tools executed by colleagues.
+- **Shared physical workspace**: members operate on the same physical folder, letting the programmer write source code and the security expert inspect and modify it on the next turn.
+
+#### How `pipeline` actually behaves
+
+Stations are the `members` array, in order. The first is told *"you are first in the pipeline, work on the initial task"*; every following one is told *"you receive work from the previous station: analyse it, refine it, pass it on"*. There is no second lap — when the last station is done, the run is over.
+
+What ends the chain early, for a station with no `acceptance` (the default):
+
+| Event at a station | Result |
+|---|---|
+| Declares `COMPLETATO` (`report_status` or `STATO:` marker) | The **whole pipeline** stops and is reported as completed — even at station 2 of 5 |
+| Declares `FALLITO` | The pipeline stops, reported as failed |
+| Declares `DA_CONTINUARE` | Hand off to the next station |
+| Member name not found in `characters/` | Warning, station skipped, the chain carries on |
+| Last station finishes without `COMPLETATO` | Run ends as *not completed* — the work is still on disk |
+
+So `COMPLETATO` here means "the group task is solved", not "my part is done" — a station that misreads it cuts the remaining stations out. If you want every station to run, tell them in the team description to close with `DA_CONTINUARE` unless the whole objective is met.
+
+Optionally a station can be given an objective check, and only then does it get retries:
+
+```jsonc
+{
+  "name": "dev_security",
+  "members": ["geordi", "worf", "pike"],
+  "mode": "pipeline",
+  "maxAttempts": 3,                                  // default budget for the retries
+  "acceptance": { "command": "npm test" },           // applied to the LAST station only
+  "stations": {                                      // or per station, which wins
+    "geordi": { "acceptance": { "fileExists": "src/server.js" }, "maxAttempts": 2 }
+  }
+}
+```
+
+With `acceptance` the station goes through the [verify → correct loop](#verify--correct-loop): failing the check re-runs *that station* with the concrete issues injected, up to `maxAttempts`; exhausting the budget (or stalling on an identical attempt) fails the whole pipeline instead of quietly moving on. Note that the outcome is then decided by the check, not by the marker: a station under `acceptance` that declares `COMPLETATO` no longer cuts the chain short.
+
+Without `acceptance` — the case for every team shipped in [`teams/`](teams/) today — a station gets exactly one turn and is believed on its word.
+
+### Conference Debate (`/call`)
+
+Start a multi-voice discussion on any topic:
+
+```powershell
+/call @tuvok, @deanna_troi and @geordi   # Mention participants directly
+/call                                    # Interactive multiselect checklist
+```
+
+Participants take turns reading previous responses. The full transcript is injected into the main chat history.
+
+### Coordination Protocol (tool call → regex → default)
+
+Small models are unreliable at emitting exact marker strings, so coordination is structured as **tool calls** first: `report_status` (`COMPLETATO` / `DA_CONTINUARE` / `FALLITO`), `route_next` (who works next, or `FINE`), `cast_vote` (`APPROVO` / `MODIFICARE` / `RIFIUTO`).
+
+The decision order is **tool call → legacy text marker (`STATO: COMPLETATO`) → default**. Every fall to a lower level is *visible*: a yellow line in the UI plus a `protocol` entry (`tool_call` | `regex` | `fallback`) recorded per turn in the JSON report under `workflow_logs/` — no silent degradation.
+
+### Run Blackboard
+
+History is what was *said*, memory is what survives *between sessions*, and the blackboard is the state of *this run*: decisions taken, artifacts produced, open questions.
+
+- `post_note(key, value)` / `read_notes(prefix?)` are SAFE tools available only inside a `/team` or `/goal` run.
+- Isolation is per-run (`AsyncLocalStorage`): concurrent runs never see each other's notes, while the branches of a single `PARALLELO` block share one board.
+- The board dies with the run, but a `snapshot()` is embedded in the run report; `/blackboard` shows the notes of the latest workflows.
+
+### Verify → Correct Loop
+
+Without an objective exit criterion, a small model happily declares any output finished — the executor would be its own judge. [`src/core/loop.ts`](src/core/loop.ts) adds one, in order of reliability:
+
+1. **Objective acceptance** — `acceptance.command` (shell exit code 0, run through the workspace jail *and* the permission manager), `acceptance.fileExists`, `acceptance.jsonValid`
+2. **Verdict from a verifier other than the executor** (`cast_vote` / `report_status`)
+3. **Self-declaration by the executor**
+4. **Budget exhausted** — `maxAttempts` (default 3)
+
+The verifier's `issues` become the prompt of the next attempt (concrete corrections, never a generic "try again"). An **anti-stall signature** (normalized answer + set of modified files) detects two identical attempts and ends with `no_progress` before burning the whole budget.
+
+`acceptance` and `maxAttempts` are optional per member/station in the team JSON: **absent = exactly the previous behavior**.
+
+### Agent-Initiated Escalation
+
+A single agent that finds a task too big can propose to scale it up: `request_goal`, `request_team` and `request_call` are RESTRICTED tools, so the user authorizes the escalation before anything starts. A depth guard (`WorkflowScope`) withdraws these tools whenever a parent workflow is already running, so a `/goal` cannot recursively spawn other `/goal`s.
+
+## 🧰 Tool Catalog (27 tools)
+
+Every tool is one `src/tools/impl/*.ts` file plus one `tools_schemas/*.json` schema. A role only sees what its `allowedTools` list grants, further pruned by model tier.
+
+| Group | Tools |
+|-------|-------|
+| **Files** | `list_dir`, `read_file`, `write_file` (supports chunked `append`), `edit_file`, `delete_file`, `grep_search` |
+| **System** | `execute_command` (per-call `timeout_ms`), `get_ps_info` |
+| **Web** | `web_search`, `browse_url`, `download_file` |
+| **Memory** | `save_memory`, `recall_memory` |
+| **Team coordination** | `report_status`, `route_next`, `cast_vote`, `post_note`, `read_notes`, `send_message` |
+| **Agent extension** | `spawn_agent`, `switch_skill`, `create_role`, `create_tool` |
+| **Escalation** | `request_goal`, `request_team`, `request_call` |
+| **Security** | `audit_code` (static scan for hardcoded secrets and dangerous constructs) |
+
+Coordination tools are offered **only** inside a `/team` or `/goal` turn — never in plain chat. `spawn_agent` writes the sub-agent's full report to `runs/<runId>/` and returns just a short summary plus the path, so a subordinate task can't flood the parent's context.
+
+## 🛡 Security
+
+### Permission Tiers
+
+| Level | Tools | Behavior |
+|-------|-------|----------|
+| **SAFE** | `list_dir`, `read_file`, `grep_search`, `get_ps_info`, `web_search`, `browse_url`, `save_memory`, `recall_memory`, `audit_code`, `spawn_agent`, `switch_skill`, coordination tools | Executed instantly |
+| **RESTRICTED** | `write_file`, `edit_file`, `delete_file`, `download_file`, `create_role`, `create_tool`, `request_goal`, `request_team`, `request_call` | `[y/N/always]` prompt per action |
+| **DANGEROUS** | `execute_command` | **Always** requires manual `[y/N]` — never bypassable |
+
+Prompts are **serialized through an internal queue**: two agents running in parallel can never overlap their requests on stdin, and each prompt names the agent that is asking.
+
+### Additional Safety Measures
+
+- **Workspace jail**: `workspaceRoot` in `tsuka.config.json` restricts all file operations to a specific directory (defaults to the process working directory)
+- **I/O limits**: `read_file` refuses files >5MB; `grep_search` skips files >5MB; `execute_command` output truncated to 50KB
+- **Argument validation**: every tool call is validated against its JSON Schema before execution, with automatic repair of the truncated JSON small models tend to emit
+- **Create_tool sandbox**: generated JavaScript runs through `vm` sandbox + pattern blocklist
+- **Loop guard**: maximum consecutive tool call rounds per request — `maxToolRounds` in `tsuka.config.json` (default 15)
+- **Recursion guard**: escalation tools are blocked inside an already-running workflow (`WorkflowScope` depth)
 
 ## 🔌 Key Features
 
@@ -310,271 +539,46 @@ Abstracted by [`src/core/platform.ts`](src/core/platform.ts):
 
 Sensitive env vars (`KEY`, `SECRET`, `TOKEN`, `PASSWORD`...) are filtered on all platforms.
 
-## 🧰 Tool Catalog (27 tools)
-
-Every tool is one `src/tools/impl/*.ts` file plus one `tools_schemas/*.json` schema. A role only sees what its `allowedTools` list grants, further pruned by model tier.
-
-| Group | Tools |
-|-------|-------|
-| **Files** | `list_dir`, `read_file`, `write_file` (supports chunked `append`), `edit_file`, `delete_file`, `grep_search` |
-| **System** | `execute_command` (per-call `timeout_ms`), `get_ps_info` |
-| **Web** | `web_search`, `browse_url`, `download_file` |
-| **Memory** | `save_memory`, `recall_memory` |
-| **Team coordination** | `report_status`, `route_next`, `cast_vote`, `post_note`, `read_notes`, `send_message` |
-| **Agent extension** | `spawn_agent`, `switch_skill`, `create_role`, `create_tool` |
-| **Escalation** | `request_goal`, `request_team`, `request_call` |
-| **Security** | `audit_code` (static scan for hardcoded secrets and dangerous constructs) |
-
-Coordination tools are offered **only** inside a `/team` or `/goal` turn — never in plain chat. `spawn_agent` writes the sub-agent's full report to `runs/<runId>/` and returns just a short summary plus the path, so a subordinate task can't flood the parent's context.
-
-## 👥 Multi-Agent Workflows
-
-### Dynamic Goal Orchestrator (`/goal`)
-
-The `/goal` command dynamically assembles a team from **all available characters** to accomplish an objective:
-
-```powershell
-/goal Write a screenplay and generate the Krea2 prompt for every scene. Save it to cr.txt
-```
-
-1. **Planning phase**: the orchestrator LLM analyses the goal, selects the best-suited agents and assigns tasks — optionally with `PARALLELO` blocks for independent subtasks. Agents are presented through compact auto-generated signatures, and can be picked by *craft* rather than by name, keeping the planning prompt small.
-2. **Execution phase**: all planned steps execute in order — including the supervisor. Each agent's task instructions explicitly tell them to **inspect workspace files** created by previous agents. A negative verdict from the final overseer sends the failed step back for one rework cycle instead of just closing the run.
-3. **Context management**: after each agent turn, long assistant messages are condensed (keeping a 1500-char meaningful summary, not a one-liner) and a fact is saved to persistent memory. A **dual context bar** shows estimated context before the agent runs and the **real peak prompt tokens** measured from the LLM response after it completes.
-4. **Stats summary**: at the end, a per-agent breakdown with output tokens, context tokens, total tokens, time and speed:
+## 🏗 Architecture
 
 ```
-📊 RIEPILOGO STATS AGENTI
-  Agente             Out tok    Ctx tok   Tot tok    Tempo    Velocità
-  Doctor             1234      15032     16266     12.3s   100.3 tok/s
-  Krea Master            892      16780     17672      8.1s   110.1 tok/s
-  Pike                   456      17500     17956      4.2s   108.6 tok/s
-  TOTALE                2582      17500     51894     24.6s
+                     ┌──────────────────────┐
+                     │   characters/*.json  │
+                     └──────┬───────┬───────┘
+                            │       │
+                     ┌──────▼──┐ ┌──▼────────┐
+                     │ roles/* │ │ traits/*  │
+                     │ (tools) │ │ (style)   │
+                     └──────┬──┘ └────┬──────┘
+                            └────┬────┘
+                                 ▼
+                     ┌──────────────────────┐
+                     │  Dynamic System      │
+                     │  Prompt Assembly     │
+                     └──────────┬───────────┘
+                                ▼
+                     ┌───────────────────────────────┐
+                     │  Ollama / llama.cpp /         │
+                     │  Unsloth Studio / OpenRouter  │
+                     └──────────────┬────────────────┘
+                                    ▼
+                     ┌──────────────────────┐
+                     │  src/tools/impl/*.ts │
+                     └──────────────────────┘
 ```
 
-- **Out tok**: cumulative output (completion) tokens across all LLM rounds in that agent's turn
-- **Ctx tok**: peak prompt tokens (context window size) measured from the last LLM round
-- **Tot tok**: estimated total (ctx + out) for that agent
-
-The planner can also emit `PARALLELO` blocks for independent subtasks. They run concurrently via `Promise.all` only if `parallelExecutionEnabled` is turned on in `tsuka.config.json` — **default is `false`**, so on a single GPU everything executes sequentially even inside a `PARALLELO` block, avoiding VRAM contention between agents sharing the same local model. When parallelism *is* enabled, each branch works in an isolated staging workspace (`workspace/parallel-<n>/`) merged at the end of the block: two branches writing the same path with different content produce a reported conflict, never a silent overwrite.
-
-### Collaborative Teams (`/team`)
-
-Lets an organized group of agents actively collaborate on a task, executing write and run tools:
-
-```powershell
-/team cyber_audit                        # Select a team
-# Then: "Harden port 22 on this server"
-```
-
-The `mode` field of the team JSON selects the strategy ([`src/cli/commands/strategies/`](src/cli/commands/strategies/)):
-
-| Mode | Behavior |
-|------|----------|
-| `round-robin` | Every member works in turn, round after round, until the task is declared solved |
-| `pipeline` | Single pass over the members as an assembly line: station 1 gets the task, each following one refines what it receives (see below) |
-| `orchestrated` | A designated `orchestrator` decides who works next after each turn (falls back to round-robin if its answer can't be parsed) |
-| *hybrid* | Not a mode of its own: setting `discussionRounds > 0` inserts a discussion + voting round after each round of the strategy above |
-
-- **Iterative rounds**: in `round-robin` and `orchestrated` the team works in rounds (default max 3, configurable via `teamMaxRounds` in `tsuka.config.json`) until the task is actually solved — not just one turn per member. `pipeline` is the exception: one pass, one turn per station.
-- **Turn-based shifts**: each member takes their work turn, inheriting the full history of messages and tools executed by colleagues.
-- **Shared physical workspace**: members operate on the same physical folder, letting the programmer write source code and the security expert inspect and modify it on the next turn.
-
-#### How `pipeline` actually behaves
-
-Stations are the `members` array, in order. The first is told *"you are first in the pipeline, work on the initial task"*; every following one is told *"you receive work from the previous station: analyse it, refine it, pass it on"*. There is no second lap — when the last station is done, the run is over.
-
-What ends the chain early, for a station with no `acceptance` (the default):
-
-| Event at a station | Result |
-|---|---|
-| Declares `COMPLETATO` (`report_status` or `STATO:` marker) | The **whole pipeline** stops and is reported as completed — even at station 2 of 5 |
-| Declares `FALLITO` | The pipeline stops, reported as failed |
-| Declares `DA_CONTINUARE` | Hand off to the next station |
-| Member name not found in `characters/` | Warning, station skipped, the chain carries on |
-| Last station finishes without `COMPLETATO` | Run ends as *not completed* — the work is still on disk |
-
-So `COMPLETATO` here means "the group task is solved", not "my part is done" — a station that misreads it cuts the remaining stations out. If you want every station to run, tell them in the team description to close with `DA_CONTINUARE` unless the whole objective is met.
-
-Optionally a station can be given an objective check, and only then does it get retries:
-
-```jsonc
-{
-  "name": "dev_security",
-  "members": ["geordi", "worf", "pike"],
-  "mode": "pipeline",
-  "maxAttempts": 3,                                  // default budget for the retries
-  "acceptance": { "command": "npm test" },           // applied to the LAST station only
-  "stations": {                                      // or per station, which wins
-    "geordi": { "acceptance": { "fileExists": "src/server.js" }, "maxAttempts": 2 }
-  }
-}
-```
-
-With `acceptance` the station goes through the [verify → correct loop](#verify--correct-loop): failing the check re-runs *that station* with the concrete issues injected, up to `maxAttempts`; exhausting the budget (or stalling on an identical attempt) fails the whole pipeline instead of quietly moving on. Note that the outcome is then decided by the check, not by the marker: a station under `acceptance` that declares `COMPLETATO` no longer cuts the chain short.
-
-Without `acceptance` — the case for every team shipped in [`teams/`](teams/) today — a station gets exactly one turn and is believed on its word.
-
-### Conference Debate (`/call`)
-
-Start a multi-voice discussion on any topic:
-
-```powershell
-/call @tuvok, @deanna_troi and @geordi   # Mention participants directly
-/call                                    # Interactive multiselect checklist
-```
-
-Participants take turns reading previous responses. The full transcript is injected into the main chat history.
-
-### Coordination Protocol (tool call → regex → default)
-
-Small models are unreliable at emitting exact marker strings, so coordination is structured as **tool calls** first: `report_status` (`COMPLETATO` / `DA_CONTINUARE` / `FALLITO`), `route_next` (who works next, or `FINE`), `cast_vote` (`APPROVO` / `MODIFICARE` / `RIFIUTO`).
-
-The decision order is **tool call → legacy text marker (`STATO: COMPLETATO`) → default**. Every fall to a lower level is *visible*: a yellow line in the UI plus a `protocol` entry (`tool_call` | `regex` | `fallback`) recorded per turn in the JSON report under `workflow_logs/` — no silent degradation.
-
-### Run Blackboard
-
-History is what was *said*, memory is what survives *between sessions*, and the blackboard is the state of *this run*: decisions taken, artifacts produced, open questions.
-
-- `post_note(key, value)` / `read_notes(prefix?)` are SAFE tools available only inside a `/team` or `/goal` run.
-- Isolation is per-run (`AsyncLocalStorage`): concurrent runs never see each other's notes, while the branches of a single `PARALLELO` block share one board.
-- The board dies with the run, but a `snapshot()` is embedded in the run report; `/blackboard` shows the notes of the latest workflows.
-
-### Verify → Correct Loop
-
-Without an objective exit criterion, a small model happily declares any output finished — the executor would be its own judge. [`src/core/loop.ts`](src/core/loop.ts) adds one, in order of reliability:
-
-1. **Objective acceptance** — `acceptance.command` (shell exit code 0, run through the workspace jail *and* the permission manager), `acceptance.fileExists`, `acceptance.jsonValid`
-2. **Verdict from a verifier other than the executor** (`cast_vote` / `report_status`)
-3. **Self-declaration by the executor**
-4. **Budget exhausted** — `maxAttempts` (default 3)
-
-The verifier's `issues` become the prompt of the next attempt (concrete corrections, never a generic "try again"). An **anti-stall signature** (normalized answer + set of modified files) detects two identical attempts and ends with `no_progress` before burning the whole budget.
-
-`acceptance` and `maxAttempts` are optional per member/station in the team JSON: **absent = exactly the previous behavior**.
-
-### Agent-Initiated Escalation
-
-A single agent that finds a task too big can propose to scale it up: `request_goal`, `request_team` and `request_call` are RESTRICTED tools, so the user authorizes the escalation before anything starts. A depth guard (`WorkflowScope`) withdraws these tools whenever a parent workflow is already running, so a `/goal` cannot recursively spawn other `/goal`s.
-
-## 🛡 Security
-
-### Permission Tiers
-
-| Level | Tools | Behavior |
-|-------|-------|----------|
-| **SAFE** | `list_dir`, `read_file`, `grep_search`, `get_ps_info`, `web_search`, `browse_url`, `save_memory`, `recall_memory`, `audit_code`, `spawn_agent`, `switch_skill`, coordination tools | Executed instantly |
-| **RESTRICTED** | `write_file`, `edit_file`, `delete_file`, `download_file`, `create_role`, `create_tool`, `request_goal`, `request_team`, `request_call` | `[y/N/always]` prompt per action |
-| **DANGEROUS** | `execute_command` | **Always** requires manual `[y/N]` — never bypassable |
-
-Prompts are **serialized through an internal queue**: two agents running in parallel can never overlap their requests on stdin, and each prompt names the agent that is asking.
-
-### Additional Safety Measures
-
-- **Workspace jail**: `workspaceRoot` in `tsuka.config.json` restricts all file operations to a specific directory (defaults to the process working directory)
-- **I/O limits**: `read_file` refuses files >5MB; `grep_search` skips files >5MB; `execute_command` output truncated to 50KB
-- **Argument validation**: every tool call is validated against its JSON Schema before execution, with automatic repair of the truncated JSON small models tend to emit
-- **Create_tool sandbox**: generated JavaScript runs through `vm` sandbox + pattern blocklist
-- **Loop guard**: maximum consecutive tool call rounds per request — `maxToolRounds` in `tsuka.config.json` (default 15)
-- **Recursion guard**: escalation tools are blocked inside an already-running workflow (`WorkflowScope` depth)
-
-## 🛠 REPL Slash Commands
-
-| Command | Description |
-|---------|-------------|
-| `/goal <objective>` | Dynamic goal orchestrator — selects agents, assigns tasks, coordinates execution |
-| `/team [name]` | Start a collaborative team workflow or pipeline |
-| `/call [@agents...]` | Start a multi-agent conference debate |
-| `/models [model]` | List & select available models |
-| `/provider [name]` | Switch between Ollama, Unsloth and OpenRouter |
-| `/effort [level]` | Manage reasoning effort (`none`\|`low`\|`medium`\|`xhigh`\|`auto`\|`ask`) |
-| `/benchmark [model\|all]` | Measure model capabilities (tier & tok/s) |
-| `/agent [name]` | Show or select the active agent |
-| `/tools [query]` | List & filter enabled tools for active role, tier, and effort |
-| `/export [file]` | Export complete conversation session, reasoning & tool logs to Markdown (alias: `/save`) |
-| `/stop` | Abort currently running generation, reasoning, or tool execution (alias: `Esc` / `Ctrl+X`) |
-| `/context` | Show history token usage against the context budget (and where the limit came from) |
-| `/memory [clear\|<id>]` | Inspect, manage, or wipe persistent memories |
-| `/blackboard` | Show notes and state of the latest workflow/goal |
-| `/runs` | Show history and reports of recent workflow executions |
-| `/continue [trace]` | Force-resume an interrupted reasoning trace instead of starting over |
-| `/info` | Show session info (provider, model, agent) |
-| `/reset` | Reset history + security approvals |
-| `/search-engine` | Change search provider (DuckDuckGo / Google / Tavily) |
-| `/help` | Show the list of available commands |
-| `/clear` · `/exit` | Clear terminal · Quit |
-
-**Keys during generation**: `Esc` (or `Ctrl+X`) aborts the current turn; `Ctrl+C` quits.
-
-## 🚀 Getting Started
-
-### Prerequisites
-
-```powershell
-# 1. Install Ollama
-#    https://ollama.com/
-ollama serve
-
-# 2. Pull a model
-ollama pull qwen2.5-coder:7b
-```
-
-### Quick Start
-
-```powershell
-# 1. Clone & install
-git clone https://github.com/your-username/tsuka.git
-cd tsuka
-npm install
-
-# 2. Run development mode
-npm run dev
-
-# 3. (Optional) Benchmark your model for the best tool selection
-/benchmark
-
-# 4. Start chatting or:
-/call @tuvok, @deanna_troi
-```
-
-### Production Build
-
-```powershell
-npm run build
-npm start
-```
-
-### Install as a Global Command (`tsuka`)
-
-Run TSUKA from any PowerShell window without `npm run dev`:
-
-```powershell
-npm run build
-npm link        # creates the global `tsuka` command (shim on your PATH)
-tsuka           # launch from anywhere
-```
-
-After changing the source, refresh the global command with `npm run build`. To uninstall: `npm unlink -g tsuka`.
-
-### Initializing a Workspace (`tsuka init`)
-
-```powershell
-tsuka init                          # interactive: asks which preset
-tsuka init --preset core            # essential roster (14 characters, 4 teams)
-tsuka init --preset full            # every role, trait, character and team
-tsuka init --pack osint,devops      # extra packs on top of the preset
-tsuka init --force                  # overwrite an existing .tsuka/
-```
-
-Packs available in [`presets/packs/`](presets/packs/): `osint`, `content`, `devops`, `security`, `demo` — the last one collects deliberately extreme communication styles as a teaching example (a compliant voter makes a unanimity vote meaningless).
-
-`tsuka init` creates a `.tsuka/` folder in the current directory with `memory/`, `workflow_logs/`, `output/` and copies of the chosen `roles/`, `traits/`, `characters/` and `teams/`, then probes the local LLM servers to write a starting configuration.
-
-**App home vs workspace** ([`src/core/apphome.ts`](src/core/apphome.ts)): resources are resolved hierarchically.
-
-1. If `.tsuka/<resource>` exists in the folder you launched `tsuka` from, that one wins — so a project initialized with `tsuka init` gets its own roster and its own memory.
-2. Otherwise it falls back to the **app home**: the installation folder, or `TSUKA_HOME` when that environment variable is set.
-
-The *workspace* is always the folder you launch `tsuka` from: it's where the agents' file tools (read/write/edit/grep) operate with relative paths. So you can `cd` into any project and let the agents work on it — with a shared roster and memory by default, or a project-local one after `tsuka init`.
+### Component Breakdown
+
+| Folder | Purpose |
+|--------|---------|
+| [`roles/`](roles/) | Skill definitions + allowed tool lists |
+| [`traits/`](traits/) | Communication style & personality prompts |
+| [`characters/`](characters/) | Named Character Presets / Agents (linking one or more roles + a trait) |
+| [`teams/`](teams/) | Multi-agent team configs (mode, members, orchestrator, acceptance) |
+| [`presets/`](presets/) | Install manifests used by `tsuka init` (`core.json` + `packs/`) |
+| [`benchmarks/`](benchmarks/) | Declarative test set used by `/benchmark` |
+| [`tools_schemas/`](tools_schemas/) | JSON Schema for every tool (Function Calling) |
+| [`src/tools/impl/`](src/tools/impl/) | Pure TypeScript tool execution logic |
 
 ## 🧪 Autonomous Validation & Tests
 
@@ -590,7 +594,7 @@ npx tsx tests/test_self_authoring.ts
 npx tsx tests/test_platform.ts
 ```
 
-Current status: **62 test suites, 1200+ assertions — all green**. Every suite runs without network access or a live LLM (`MockLLMProvider`) and against a temporary memory file, so `npm test` never touches your real memories.
+Current status: **63 test suites, 1200+ assertions — all green**. Every suite runs without network access or a live LLM (`MockLLMProvider`) and against a temporary memory file, so `npm test` never touches your real memories.
 
 ## 📚 Documentation
 

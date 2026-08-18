@@ -60,7 +60,9 @@
 | T14.9 | ✅ Fatto | **Telemetria di Inferenza Reale**: Rimossi i valori sintetici del widget T14.7 (confidenza calcolata da `chunkCount`, riga logits mai popolata, tok/s che includeva il prefill). Nuovo canale `setInferenceTelemetrySink` in `provider.ts` (stesso pattern di `setLogSink`/`setTimeoutPromptHandler`): TTFT misurato dall'inizio del tentativo corrente, finestra di decode separata dal prefill, conteggio token da `logprobs.content` con fallback per-delta. `ChatStats` estesa con `ttftMs`/`decodeMs`/`prefillTokensPerSecond` e `tokensPerSecond` ridefinita sulla sola finestra di decode (aggregazione multi-round coerente in `Agent`). Logprobs reali opt-in (`inferenceLogprobs`, default `false`) con disattivazione automatica **loggata** e ritentativo se il backend rifiuta il parametro; senza logprobs il widget non mostra né barra di confidenza né riga logits. Suite `tests/test_inference_telemetry.ts` (13 test, inclusi 3 sul provider reale con stream simulato). |
 | T14.10 | ✅ Fatto | **Il Tasto `?` Digitabile nel Prompt**: `?` non è più una scorciatoia globale che intercetta la digitazione (`isHelpShortcut` in `inputParser.ts`): l'help resta su `F12` (sempre attivo) e `?` apre la cheatsheet solo con il focus fuori dall'input e nessuna modale aperta. Etichette dell'header allineate (`F12 Help`). |
 
-Tutti i task pianificati e di backlog sono completati con 62 suite di test verdi.
+| T14.11 | ✅ Fatto | **Dispatch Data-Driven della TUI (Leggibilità)**: Sostituite le catene di condizioni con tabelle di dati. `handleCommand` (569 righe, 26 rami `if`) diventa il registry `src/tui/commands/` (`name`/`aliases`/`description`/`hidden`/handler, raggruppati per dominio) più un dispatcher di 20 righe, con `assertMenuCoverage()` a impedire divergenze tra menu e handler e `runCliWorkflow` al posto del blocco try/catch/finally copiato per `/goal`, `/team`, `/call`, `/benchmark`. `src/tui/navigation.ts` (`TUI_TABS`) diventa l'unica fonte di tasti funzione, etichette per larghezza, zone di click del mouse (prima colonne hardcoded 95-106) e voci della cheatsheet (prima incompleta: mancavano F7 e F12). `ModalView.renderOverlay` passa a `BOX_BUILDERS` per tipo con composizione condivisa; lo `switch` su `AgentEvent` nel bridge diventa una tabella tipizzata sull'unione con `backToThinking()`/`patchCurrentToolCalls()` estratti. Suite `tests/test_tui_data_driven.ts`. |
+
+Tutti i task pianificati e di backlog sono completati con 63 suite di test verdi.
 
 ---
 
@@ -1787,3 +1789,49 @@ interrogativo.
 **Accettazione:** con il focus sull'input, digitando `Come faccio X?` il carattere `?` finisce nel
 buffer e nessuna modale si apre; premendo `F12` (da qualsiasi focus) o `?` con focus su chat/tool
 la cheatsheet si apre come prima. Suite di test aggiornata.
+
+---
+
+## T14.11 — Dispatch Data-Driven della TUI (Leggibilità)
+
+**Dipende da:** T14.1, T14.2 · **Sforzo:** medio · **Priorità:** alta
+
+Tre punti della TUI erano cresciuti come catene di condizioni, cioè come comportamento
+travestito da controllo di flusso. Il rimedio è lo stesso già adottato per il layout engine
+(`tui.layout.json`) e per i tasti (`keybindings.json`): **una tabella di dati e una funzione
+che la percorre**.
+
+- **Comandi slash** (`src/tui/commands/`):
+  - `TuiCommandController.handleCommand` era un metodo unico da 569 righe con 26 rami `if`, con
+    gli alias (`/save`, `/kill`, `/model`, `/h`, `/?`) nascosti dentro le condizioni.
+  - Nuova tabella `TUI_COMMANDS`: ogni voce dichiara `name`, `aliases`, `description`, `hidden`
+    e il proprio handler; i comandi sono raggruppati per dominio in `sessionCommands.ts`,
+    `workflowCommands.ts`, `configCommands.ts`.
+  - Il controller resta un dispatcher: `parseCommandLine` → `findCommand` → `run`.
+  - I quattro workflow CLI (`/goal`, `/team`, `/call`, `/benchmark`) condividevano lo stesso
+    blocco copiato quattro volte (echo del prompt, stato generating, try/catch/finally): ora è
+    `runCliWorkflow` e ogni comando fornisce solo i propri dati.
+  - `assertMenuCoverage()` verifica che menu slash (`commands/menu.json`) e handler coincidano:
+    nessuna voce di menu senza comando, nessun comando visibile fuori dal menu.
+  - Rinominato `src/tui/commands.json` in `src/tui/commands/menu.json`: con la cartella
+    `commands/` accanto, Node risolveva `./commands` sul JSON invece che sull'indice.
+- **Navigazione** (`src/tui/navigation.ts`):
+  - `TUI_TABS` descrive ogni scheda una volta sola: tasto funzione, etichette per le tre fasce di
+    larghezza, descrizione per la cheatsheet, modale associata.
+  - Da lì derivano: la riga di tab dell'header (prima tre array duplicati in `Header.ts`), le zone
+    di click del mouse (prima intervalli di colonne scritti a mano, `mouse.col >= 95 && <= 106`,
+    che si disallineavano ad ogni rinomina di etichetta) e l'elenco tasti della cheatsheet (prima
+    scritto a mano e già incompleto: mancavano `F7` e `F12`).
+  - `activateTab` è l'unico punto che apre schede e modali, condiviso tra tastiera e mouse.
+- **Modali** (`src/tui/views/Modal.ts`): `renderOverlay` (162 righe) diventa una mappa
+  `BOX_BUILDERS` per tipo di modale più una funzione di composizione condivisa; la duplicazione
+  della centratura sullo schermo (presente due volte) sparisce.
+- **Bridge** (`src/tui/bridge.ts`): lo `switch` da 140 righe su `AgentEvent` diventa una tabella
+  di handler tipizzata sull'unione (`{ [K in AgentEvent['type']]: … }`, quindi un evento nuovo
+  non può essere dimenticato); estratti `backToThinking()` e `patchCurrentToolCalls()`, che erano
+  ripetuti rispettivamente quattro e due volte.
+
+**Accettazione:** nessuna modifica di comportamento osservabile; aggiungere un comando o una
+scheda richiede una riga in una tabella e nessun tocco al dispatcher. Suite
+`tests/test_tui_data_driven.ts` (10 test: alias, parsing, coerenza menu/handler, zone di click
+allineate a ciò che l'header disegna, export Markdown). 63/63 suite verdi.

@@ -5,6 +5,7 @@
 
 import { TuiScreen, KeyPressEvent, TuiMouseEvent } from './screen';
 import { isHelpShortcut } from './inputParser';
+import { TuiTabSpec, tabByKey, tabAtColumn } from './navigation';
 import { TuiStore } from './store';
 import { TuiBridge } from './bridge';
 import { HeaderView } from './views/Header';
@@ -317,6 +318,42 @@ export class TuiApp {
 
   // ── Keyboard & Mouse Event Dispatchers ──
 
+  /**
+   * Modal opener of each tab that owns one. Tabs that merely switch the main
+   * view are absent here: `activateTab` handles them without a lookup.
+   */
+  private tabOpeners(): Record<string, () => void> {
+    return {
+      personas: () => PersonaModals.openPersonaModal(this.store, this.configManager, () => { this.agent = this.recreateAgent(); }, () => this.syncInitialState()),
+      teams: () => PersonaModals.openTeamModal(this.store),
+      memory: () => SystemModals.openMemoryModal(this.store),
+      models: () => { SystemModals.openModelModal(this.store, this.provider, this.configManager, () => { this.agent = this.recreateAgent(); }, () => this.syncInitialState(), () => this.probeContextWindow()); },
+      layout: () => LayoutModals.openLayoutModal(this.store, this.layoutConfig),
+      help: () => SystemModals.openHelpModal(this.store, (cmd: string) => this.commandController.handleCommand(cmd)),
+    };
+  }
+
+  /**
+   * Single entry point for the navigation, shared by function keys and by
+   * clicks on the header tabs.
+   */
+  private activateTab(spec: TuiTabSpec, fromKeyboard: boolean = false): void {
+    const state = this.store.getState();
+
+    if (spec.modalTitle) {
+      // A tab owning a modal toggles it: its key closes what it opened.
+      if (state.activeModal?.title?.includes(spec.modalTitle)) this.store.closeModal();
+      else this.tabOpeners()[spec.id]?.();
+      return;
+    }
+
+    if (state.activeModal) this.store.closeModal();
+    // F2 toggles back to the chat, while clicking a tab always selects it.
+    const showTools = spec.id === 'tools' && !(fromKeyboard && this.activeTab === 'tools');
+    this.activeTab = showTools ? 'tools' : 'chat';
+    this.store.notify(`Active tab: ${showTools ? 'Tools Inspector' : 'Chat Feed'}`, 'info');
+  }
+
   private handleKeyPress(key: KeyPressEvent): void {
     const state = this.store.getState();
 
@@ -325,49 +362,14 @@ export class TuiApp {
       process.exit(0);
     }
 
-    // Function Key Navigation (F1..F7, F12)
-    if (key.name === 'f1') {
-      if (state.activeModal) this.store.closeModal();
-      this.activeTab = 'chat';
-      this.store.notify('Active tab: Chat Feed', 'info');
-      return;
-    }
-    if (key.name === 'f2' || (key.ctrl && key.name === 't')) {
-      if (state.activeModal) this.store.closeModal();
-      this.activeTab = this.activeTab === 'chat' ? 'tools' : 'chat';
-      this.store.notify(`Active tab: ${this.activeTab}`, 'info');
-      return;
-    }
-    if (key.name === 'f3') {
-      if (state.activeModal?.title === 'Select Active Persona') this.store.closeModal();
-      else PersonaModals.openPersonaModal(this.store, this.configManager, () => { this.agent = this.recreateAgent(); }, () => this.syncInitialState());
-      return;
-    }
-    if (key.name === 'f4') {
-      if (state.activeModal?.title === 'Select Active Team') this.store.closeModal();
-      else PersonaModals.openTeamModal(this.store);
-      return;
-    }
-    if (key.name === 'f5') {
-      if (state.activeModal?.title?.includes('Persistent Memories')) this.store.closeModal();
-      else SystemModals.openMemoryModal(this.store);
-      return;
-    }
-    if (key.name === 'f6') {
-      if (state.activeModal?.title?.includes('Select Active Model')) this.store.closeModal();
-      else SystemModals.openModelModal(this.store, this.provider, this.configManager, () => { this.agent = this.recreateAgent(); }, () => this.syncInitialState(), () => this.probeContextWindow());
-      return;
-    }
-    if (key.name === 'f7') {
-      if (state.activeModal?.title === 'TUI Layout & Workspace Configuration') this.store.closeModal();
-      else LayoutModals.openLayoutModal(this.store, this.layoutConfig);
-      return;
-    }
-    // Help lives on F12. '?' is only a shortcut where it cannot be a typed character:
-    // with the focus on the input it must reach the prompt buffer (T14.10).
-    if (isHelpShortcut(key, state.focus, !!state.activeModal)) {
-      if (state.activeModal?.title?.includes('Cheatsheet')) this.store.closeModal();
-      else SystemModals.openHelpModal(this.store, (cmd: string) => this.commandController.handleCommand(cmd));
+    // Navigation: F1..F7 and F12 come from the tab table, Ctrl+T is the legacy
+    // shortcut for the Tools tab. Help lives on F12; '?' is a shortcut only where
+    // it cannot be a typed character (T14.10).
+    const tab = tabByKey(key.name)
+      || (key.ctrl && key.name === 't' ? tabByKey('f2') : undefined)
+      || (isHelpShortcut(key, state.focus, !!state.activeModal) ? tabByKey('f12') : undefined);
+    if (tab) {
+      this.activateTab(tab, true);
       return;
     }
 
@@ -566,28 +568,12 @@ export class TuiApp {
         return;
       }
 
-      // Top Header Click Tabs
+      // Top Header Click Tabs: zones are computed from the same table the header
+      // draws, so a relabelled tab keeps a click zone that matches what is shown.
       if (mouse.row <= headerHeight) {
         if (mouse.action !== 'down') return;
-        if (mouse.col >= 1 && mouse.col <= 12) {
-          this.activeTab = 'chat';
-          this.store.notify('Active tab: Chat Feed', 'info');
-        } else if (mouse.col >= 13 && mouse.col <= 24) {
-          this.activeTab = 'tools';
-          this.store.notify('Active tab: Tools Inspector', 'info');
-        } else if (mouse.col >= 25 && mouse.col <= 39) {
-          PersonaModals.openPersonaModal(this.store, this.configManager, () => { this.agent = this.recreateAgent(); }, () => this.syncInitialState());
-        } else if (mouse.col >= 40 && mouse.col <= 52) {
-          PersonaModals.openTeamModal(this.store);
-        } else if (mouse.col >= 53 && mouse.col <= 66) {
-          SystemModals.openMemoryModal(this.store);
-        } else if (mouse.col >= 67 && mouse.col <= 80) {
-          SystemModals.openModelModal(this.store, this.provider, this.configManager, () => { this.agent = this.recreateAgent(); }, () => this.syncInitialState(), () => this.probeContextWindow());
-        } else if (mouse.col >= 81 && mouse.col <= 94) {
-          LayoutModals.openLayoutModal(this.store, this.layoutConfig);
-        } else if (mouse.col >= 95 && mouse.col <= 106) {
-          SystemModals.openHelpModal(this.store, (cmd: string) => this.commandController.handleCommand(cmd));
-        }
+        const clicked = tabAtColumn(effectiveWidth, this.activeTab, mouse.col);
+        if (clicked) this.activateTab(clicked);
         return;
       }
 
