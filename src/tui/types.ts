@@ -49,10 +49,20 @@ export interface TuiPermissionRequest {
   resolve: (decision: 'yes' | 'no' | 'always') => void;
 }
 
+export interface TuiFileViewerState {
+  filename: string;
+  filePath: string;
+  lines: string[];
+  scrollOffset: number;
+  totalLines: number;
+  fileSize: number;
+}
+
 export interface TuiModalState {
-  type: 'permission' | 'help' | 'slash_menu' | 'confirm';
+  type: 'permission' | 'help' | 'slash_menu' | 'confirm' | 'file_viewer';
   title: string;
   permissionReq?: TuiPermissionRequest;
+  fileViewer?: TuiFileViewerState;
   selectedIndex: number;
   options?: Array<{ label: string; value: string; hint?: string }>;
   onSelect?: (value: string) => void;

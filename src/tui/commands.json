@@ -17,6 +17,8 @@
   { "command": "/search-engine", "label": "🔍 /search-engine", "hint": "Configure web search provider (Brave, DuckDuckGo...)" },
   { "command": "/runs", "label": "📜 /runs", "hint": "Execution history & workflow log reports" },
   { "command": "/copy", "label": "📋 /copy", "hint": "Copy last response to OS clipboard (or press 'c' in chat)" },
+  { "command": "/export ", "label": "💾 /export [file.md]", "hint": "Export complete chat session & tool trace to Markdown" },
+  { "command": "/stop", "label": "🛑 /stop", "hint": "Stop/interrupt current agent activity or workflow (Esc)" },
   { "command": "/thinking", "label": "💭 /thinking", "hint": "Toggle expansion of reasoning / thinking traces (Ctrl+T)" },
   { "command": "/clear", "label": "🧹 /clear", "hint": "Clear conversation screen feed" },
   { "command": "/reset", "label": "🔄 /reset", "hint": "Reset history & restart session" },

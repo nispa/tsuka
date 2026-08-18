@@ -51,8 +51,10 @@
 | T13.5 | ✅ Fatto | Costanti di Configurazione, Template di Esempio & Igiene del Repository: `maxToolRounds` (default 15) e `memoryMaxFacts` (default 200) spostati da costanti statiche hardcodate a parametri configurabili in `tsuka.config.json` e `ConfigManager`, propagati ad `Agent` (in `index.ts`, `strategies/common.ts`, `spawnAgent.ts`) e a `MemoryStore`; creato `tsuka.config.json.example` come template di riferimento pulito per GitHub; ripulito `tsuka.config.json` e i fallback da modelli/porte locali personali; suite `tests/test_config_limits.ts` (13 check OK). 57/57 suite verdi, `tsc --noEmit` pulito. |
 | T14.1 | ✅ Fatto | **Interactive Terminal UI (TUI Dashboard)**: Dashboard terminale interattiva a schermo intero (`src/tui/`) con architettura Component-Driven (`src/tui/views/`), store reattivo Flux (`TuiStore`), double-buffering differenziale a zero-sfarfallio (`TuiScreen`), mouse tracking esteso SGR 1006 (scorrimento con rotellina e click-to-focus/insert), scrollbar grafica (`░`/`█`), file explorer del workspace in tempo reale con icone di estensione, gestione interattiva del ciclo di vita con modali di rinnovo timeout e concessione round tool (`provider.ts`/`agent.ts`), auto-rilevamento contesto modello (`detectContextWindow`), cheatsheet comandi REPL (`F12`), pacchetti ANSI standard (`string-width`, `strip-ansi`, `slice-ansi`, `wrap-ansi`); suite `tests/test_tui.ts`. |
 | T14.2 | ✅ Fatto | **Data-Driven Layout Engine, Modular Widgets & v0.4.0 Release**: Estrazione dei blocchi sidebar in micro-widget autonomi e riutilizzabili (`src/tui/widgets/{PersonaWidget,MetricsWidget,ToolActivityWidget,QuickKeysWidget}.ts`); disaccoppiamento del driver di schermo in `inputParser.ts` (decodifica eventi tasti e mouse SGR), `boxDrawing.ts` (primitive grafiche e scrollbar) e `screen.ts` (~150 righe); motore di layout configurabile via JSON (`tui.layout.json`, `layoutConfig.ts`) con preset dinamici (Default, Wide Chat, Sidebar a Destra, Zen Focus), 5 temi colore e editor visivo interattivo nella TUI (`F7` / `/layout`); indicatore dinamico reasoning effort (livello effettivo + sorgente persona/ruolo/pin); rilascio ufficiale **v0.4.0**; 58/58 suite di test verdi. |
+| T14.3 | ✅ Fatto | **Workspace File Viewer Modal**: Modale di anteprima e ispezione rapida dei file dal Files Explorer (`src/tui/views/Files.ts`, `src/tui/modals/fileViewerModal.ts`) con numerazione righe, scroll fluido (frecce/mouse/paginazione) e jail di sicurezza `resolveSafePath`; suite `tests/test_tui_fileviewer_export.ts`. |
+| T14.4 | ✅ Fatto | **Session Export to Markdown (`/export` Command)**: Esportazione completa e strutturata della cronologia di chat attiva, blocchi Chain of Thought e chiamate tool in un documento Markdown pulito (`exports/session-<timestamp>.md`) tramite comando slash `/export` e `/save`; suite `tests/test_tui_fileviewer_export.ts`. |
 
-Tutti i task pianificati e di backlog sono completati con 58 suite di test verdi.
+Tutti i task pianificati e di backlog sono completati con 60 suite di test verdi.
 
 ---
 
@@ -1610,6 +1612,42 @@ Sostituire l'attuale funzione Regex in [`src/tools/impl/browseUrl.ts`](file:///f
 - `tests/test_browser_evolution.ts`: 9 check deterministici a copertura completa.
 
 **Accettazione:** `browse_url` converte pagine HTML complesse senza fragilità da Regex, mantenendo pulizia di contesto ed estraendo immagini/video leggibili dagli agenti. Suite di test con 52/52 suite verdi.
+
+---
+
+## T14.3 — Workspace File Viewer Modal (Anteprima Rapida File)
+
+**Dipende da:** T14.1, T14.2 · **Sforzo:** basso · **Priorità:** media
+
+Permettere l'anteprima e l'ispezione immediata del contenuto di qualsiasi file all'interno del workspace selezionandolo nel pannello `Files Explorer` e premendo `Enter` (o doppio clic mouse):
+
+- Implementare `FileViewerModal` (`src/tui/modals/fileViewerModal.ts`):
+  - Lettura sicura del file confinata nel workspace tramite `resolveSafePath`.
+  - Visualizzazione con numeri di riga formattati, box ANSI pulito, indicatore di dimensione e totale righe.
+  - Supporto navigazione e scrolling: `▲`/`▼`, `PageUp`/`PageDown`, `Home`/`End`, rotellina del mouse e tasto `Esc` / `Enter` per chiusura rapida.
+- Integrare l'attivazione in `src/tui/views/Files.ts` e `src/tui/app.ts` / `src/tui/modals/keyHandler.ts`.
+
+**Accettazione:** Premendo `Enter` su un file selezionato nel Files Explorer si apre la modale di visualizzazione con contenuto e numeri di riga corretti; premendo `Esc` si chiude all'istante tornando alla vista precedente.
+
+---
+
+## T14.4 — Session Export to Markdown (`/export` Command)
+
+**Dipende da:** T14.1 · **Sforzo:** basso · **Priorità:** media
+
+Aggiungere il comando `/export [filename]` (e alias `/save`) nella TUI per esportare l'intera cronologia di chat attiva, i blocchi di reasoning/CoT e le chiamate tool in un file Markdown pulito:
+
+- Implementare il comando `/export` in `src/tui/controllers/commandController.ts`:
+  - Se non viene fornito un argomento, genera un nome file con timestamp in `exports/session-YYYY-MM-DD-HHmmss.md`.
+  - Genera un documento Markdown completo con:
+    - Header e metadati (Agente, Modello, Timestamp, Token totali, Turni).
+    - Messaggi utente e risposte dell'assistente formattati.
+    - Blocchi di pensiero racchiusi in tag collassabili `<details><summary>💭 Chain of Thought (N tokens)</summary>...</details>`.
+    - Dettagli delle chiamate ai tool con argomenti ed output formattati in blocchi di codice.
+  - Salva il file su disco assicurandosi che la cartella `exports/` esista.
+  - Emette una notifica toast nella TUI con il percorso del file salvato.
+
+**Accettazione:** Digitando `/export` viene creato un file `.md` valido e leggibile contenente tutti i messaggi della sessione, con notifica visiva nella TUI. Suite di test aggiornata.
 
 
 

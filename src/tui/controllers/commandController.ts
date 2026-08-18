@@ -94,6 +94,113 @@ export class TuiCommandController {
       return;
     }
 
+    if (cmd === '/export' || cmd === '/save') {
+      const state = store.getState();
+      if (state.messages.length === 0) {
+        store.notify('No messages in session to export', 'warn');
+        return;
+      }
+
+      const fs = require('fs');
+      const path = require('path');
+
+      let targetFile = arg ? arg.trim() : '';
+      if (!targetFile) {
+        const now = new Date();
+        const pad = (n: number) => String(n).padStart(2, '0');
+        const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+        targetFile = `exports/session-${stamp}.md`;
+      } else if (!targetFile.endsWith('.md')) {
+        targetFile += '.md';
+      }
+
+      const fullPath = path.isAbsolute(targetFile) ? targetFile : path.resolve(process.cwd(), targetFile);
+      const relativePath = path.relative(process.cwd(), fullPath) || targetFile;
+
+      try {
+        fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+
+        const lines: string[] = [];
+        lines.push(`# 📜 TSUKA Chat Session Export`);
+        lines.push('');
+        lines.push(`> **Export Date:** ${new Date().toLocaleString()}  `);
+        lines.push(`> **Active Persona:** \`${state.activeAiName}\` (Role: \`${state.activeCharacterRole}\`, Trait: \`${state.activeCharacterTrait}\`)  `);
+        lines.push(`> **Provider / Model:** \`${state.activeProvider}\` / \`${state.activeModel}\`  `);
+        lines.push(`> **Metrics:** ${state.stats.turnCount} turns • ${state.stats.toolCallsCount} tool calls • ${state.stats.usedTokens} active tokens (${(state.stats.totalSessionTokens || state.stats.usedTokens).toLocaleString()} total burned)  `);
+        lines.push('');
+        lines.push('---');
+        lines.push('');
+
+        for (const msg of state.messages) {
+          const time = msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString() : '';
+          const timeBadge = time ? ` *[${time}]*` : '';
+
+          if (msg.role === 'user') {
+            lines.push(`### 👤 User${timeBadge}`);
+            lines.push('');
+            lines.push(msg.content || '');
+            lines.push('');
+          } else if (msg.role === 'assistant') {
+            const author = msg.authorName || state.activeAiName;
+            lines.push(`### 🤖 @${author}${timeBadge}`);
+            lines.push('');
+
+            if (msg.thinkingContent) {
+              lines.push('<details>');
+              lines.push(`<summary>💭 <i>Reasoning Trace (${msg.thinkingTokens ? msg.thinkingTokens.toLocaleString() + ' tokens' : 'Chain of Thought'})</i></summary>`);
+              lines.push('');
+              lines.push(msg.thinkingContent);
+              lines.push('');
+              lines.push('</details>');
+              lines.push('');
+            }
+
+            if (msg.toolCalls && msg.toolCalls.length > 0) {
+              for (const tc of msg.toolCalls) {
+                lines.push('<details>');
+                lines.push(`<summary>⚡ <b>Tool Execution: \`${tc.name}\`</b> (${tc.status}${tc.durationMs ? ` in ${tc.durationMs}ms` : ''})</summary>`);
+                lines.push('');
+                lines.push('**Arguments:**');
+                lines.push('```json');
+                lines.push(tc.args || '{}');
+                lines.push('```');
+                if (tc.output) {
+                  lines.push('');
+                  lines.push('**Output:**');
+                  lines.push('```');
+                  lines.push(tc.output);
+                  lines.push('```');
+                }
+                lines.push('');
+                lines.push('</details>');
+                lines.push('');
+              }
+            }
+
+            if (msg.content) {
+              lines.push(msg.content);
+              lines.push('');
+            }
+          } else if (msg.role === 'system') {
+            lines.push(`> ℹ️ **System Notification**${timeBadge}: ${msg.content}`);
+            lines.push('');
+          }
+        }
+
+        const mdContent = lines.join('\n');
+        fs.writeFileSync(fullPath, mdContent, 'utf-8');
+
+        store.addMessage({
+          role: 'system',
+          content: `✔ **Session exported successfully** to \`${relativePath}\` (${(mdContent.length / 1024).toFixed(1)} KB).`,
+        });
+        store.notify(`Session exported to ${relativePath}!`, 'success');
+      } catch (err: any) {
+        store.notify(`Export failed: ${err.message || String(err)}`, 'error');
+      }
+      return;
+    }
+
     if (cmd === '/exit') {
       this.ctx.stopApp();
       process.exit(0);

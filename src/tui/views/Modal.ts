@@ -13,6 +13,61 @@ export class ModalView {
     const maxInnerHeight = Math.max(4, Math.min(screenHeight - 6, 12));
     const contentLines: string[] = [];
 
+    if (modal.type === 'file_viewer' && modal.fileViewer) {
+      const fv = modal.fileViewer;
+      const modalWidth = Math.min(105, Math.max(40, screenWidth - 6));
+      const modalHeight = Math.min(26, Math.max(10, screenHeight - 4));
+      const innerHeight = Math.max(4, modalHeight - 5);
+      const innerWidth = Math.max(10, modalWidth - 4);
+
+      const sizeKb = (fv.fileSize / 1024).toFixed(1);
+      contentLines.push(
+        chalk.gray(`Size: ${chalk.cyan(sizeKb + ' KB')} • Lines: ${chalk.cyan(fv.totalLines)} • Path: ${chalk.gray(fv.filePath)}`)
+      );
+      contentLines.push('');
+
+      const padLen = Math.max(2, String(fv.totalLines).length);
+      const startIdx = Math.max(0, Math.min(fv.totalLines - 1, fv.scrollOffset));
+      const endIdx = Math.min(fv.totalLines, startIdx + innerHeight);
+
+      for (let i = startIdx; i < endIdx; i++) {
+        const rawLine = fv.lines[i] ?? '';
+        const lineNum = chalk.gray(String(i + 1).padStart(padLen, ' ') + ' │ ');
+        const availWidth = Math.max(5, innerWidth - padLen - 3);
+        const displayLine = rawLine.length > availWidth ? rawLine.slice(0, availWidth - 1) + '…' : rawLine;
+        contentLines.push(lineNum + chalk.white(displayLine));
+      }
+
+      while (contentLines.length < innerHeight + 2) {
+        contentLines.push('');
+      }
+
+      contentLines.push(chalk.gray('[▲/▼ / PgUp/PgDn scroll • i insert in prompt • c copy path • Esc / Enter close]'));
+
+      const modalBox = TuiScreen.drawBox(
+        modal.title || `📄 File Viewer: ${fv.filename}`,
+        contentLines,
+        modalWidth,
+        modalHeight,
+        true,
+        chalk.hex('#38bdf8'),
+        { total: fv.totalLines, visible: innerHeight, offset: fv.scrollOffset }
+      );
+
+      const startY = Math.max(1, Math.floor((screenHeight - modalHeight) / 2));
+      const startX = Math.max(1, Math.floor((screenWidth - modalWidth) / 2));
+      const rightMargin = Math.max(0, screenWidth - startX - modalWidth);
+
+      const result = [...screenLines];
+      for (let i = 0; i < modalBox.length; i++) {
+        const lineIdx = startY + i;
+        if (lineIdx >= 0 && lineIdx < result.length) {
+          result[lineIdx] = ' '.repeat(startX) + modalBox[i] + ' '.repeat(rightMargin);
+        }
+      }
+      return result;
+    }
+
     if (modal.type === 'permission' && modal.permissionReq) {
       const req = modal.permissionReq;
       const riskBadge = req.riskLevel === 'DANGEROUS'

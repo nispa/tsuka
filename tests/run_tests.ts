@@ -84,7 +84,8 @@ const suites = [
   'test_continue_command.ts',
   'test_config_limits.ts',
   'test_tui.ts',
-  'test_tui_subagent_queue_copy.ts'
+  'test_tui_subagent_queue_copy.ts',
+  'test_tui_fileviewer_export.ts'
 ];
 
 let passed = 0;

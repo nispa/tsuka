@@ -23,7 +23,7 @@ import { resolveReasoningEffort } from '../core/agent';
 import { withEffortPin, describeEffortSource } from '../core/effortControl';
 import { detectContextWindow } from '../core/discovery';
 import { LayoutConfigManager, TuiLayoutConfig } from './layoutConfig';
-import { ModalKeyHandler, PersonaModals, SystemModals, LayoutModals } from './modals';
+import { ModalKeyHandler, PersonaModals, SystemModals, LayoutModals, FileViewerModal } from './modals';
 import { TuiCommandController, TuiTurnRunner } from './controllers';
 import { setLogSink, resetLogSink } from '../core/logSink';
 import { copyToClipboard } from '../core/platform';
@@ -489,6 +489,15 @@ export class TuiApp {
     } else if (key.name === 'return') {
       const file = files[state.selectedFileIndex];
       if (file) {
+        if (file.isDir) {
+          this.store.notify(`'${file.name}' is a directory`, 'info');
+        } else {
+          FileViewerModal.openFileModal(this.store, file.name);
+        }
+      }
+    } else if (key.name === 'i' || key.name === 'space') {
+      const file = files[state.selectedFileIndex];
+      if (file) {
         const currentInput = this.store.getState().inputText;
         const insertText = (currentInput ? currentInput + ' ' : '') + file.name;
         this.store.setInputText(insertText);
@@ -601,14 +610,18 @@ export class TuiApp {
           const clickedRow = mouse.row - headerHeight - profileHeight - 1;
           const targetIndex = state.filesScrollOffset + clickedRow;
           if (targetIndex >= 0 && targetIndex < files.length) {
+            const isAlreadySelected = state.selectedFileIndex === targetIndex;
             this.store.setState({ selectedFileIndex: targetIndex });
             const file = files[targetIndex];
             if (file) {
-              const currentInput = this.store.getState().inputText;
-              const insertText = (currentInput ? currentInput + ' ' : '') + file.name;
-              this.store.setInputText(insertText);
-              this.store.setFocus('input');
-              this.store.notify(`Inserted '${file.name}' into input prompt`, 'info');
+              if (isAlreadySelected && !file.isDir) {
+                FileViewerModal.openFileModal(this.store, file.name);
+              } else {
+                const currentInput = this.store.getState().inputText;
+                const insertText = (currentInput ? currentInput + ' ' : '') + file.name;
+                this.store.setInputText(insertText);
+                this.store.notify(`Selected '${file.name}' (Click again to preview)`, 'info');
+              }
             }
           }
         }
