@@ -40,6 +40,7 @@ import { handleTeam } from './commands/team';
 import { handleGoal } from './commands/goal';
 import { handleEffort } from './commands/effort';
 import { handleBlackboard } from './commands/blackboard';
+import { handleExport } from './commands/exportSession';
 import { listThinkingTraces, resolveThinkingTrace, buildResumeDirective } from './commands/continueSession';
 
 import { handleInitCmd } from './initCmd';
@@ -250,6 +251,8 @@ async function main() {
     '/context':    handleContext,
     '/effort':     handleEffort,
     '/blackboard': handleBlackboard,
+    '/export':     handleExport,
+    '/save':       handleExport,
     '/search-engine': handleSearchEngine,
   };
 

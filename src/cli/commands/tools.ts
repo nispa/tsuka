@@ -28,12 +28,31 @@ export async function handleTools(ctx: CommandCtx, _arg: string): Promise<void> 
     return;
   }
 
+  const query = _arg ? _arg.trim().toLowerCase() : '';
+  const candidateTools = query
+    ? allRegisteredTools.filter((t) => {
+        const schema = loadToolSchema(t.name);
+        return (
+          t.name.toLowerCase().includes(query) ||
+          t.riskLevel.toLowerCase() === query ||
+          schema.requiredTier.toLowerCase() === query ||
+          (schema.description && schema.description.toLowerCase().includes(query))
+        );
+      })
+    : allRegisteredTools;
+
+  if (candidateTools.length === 0) {
+    CLITheme.warning(`No tools matching filter "${query}". Use /tools without arguments to list all.`);
+    return;
+  }
+
   const visibleForLlm = ctx.registry.listForLLM(model, role.allowedTools, effort);
   const visibleNames = new Set(visibleForLlm.map((t) => t.function.name));
 
   logSink.log(chalk.bold(`\n🛠️  Agent Toolbox — ${char ? `${char.displayName} (${char.aiName})` : role.displayName}`));
   logSink.log(chalk.gray(`   Model: ${chalk.green(model)} · Detected Tier: ${chalk.yellow(tier.toUpperCase())} · Reasoning Effort: ${chalk.magenta(effort || 'standard')}`));
-  logSink.log(chalk.gray(`   Tools enabled for this turn: ${chalk.green(visibleNames.size)} of ${allRegisteredTools.length} total\n`));
+  const filterLabel = query ? ` · Filter: "${chalk.cyan(query)}"` : '';
+  logSink.log(chalk.gray(`   Tools enabled for this turn: ${chalk.green(visibleNames.size)} of ${allRegisteredTools.length} total (showing ${candidateTools.length})${filterLabel}\n`));
 
   const formatRisk = (risk: RiskLevel) => {
     switch (risk) {
@@ -48,7 +67,7 @@ export async function handleTools(ctx: CommandCtx, _arg: string): Promise<void> 
     }
   };
 
-  const sortedTools = [...allRegisteredTools].sort((a, b) => {
+  const sortedTools = [...candidateTools].sort((a, b) => {
     const aVis = visibleNames.has(a.name) ? 0 : 1;
     const bVis = visibleNames.has(b.name) ? 0 : 1;
     if (aVis !== bVis) return aVis - bVis;

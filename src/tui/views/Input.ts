@@ -33,27 +33,69 @@ export class InputView {
   static render(state: TuiState, width: number, height: number): string[] {
     const lines: string[] = [];
     const innerWidth = Math.max(10, width - 4);
+    const innerHeight = Math.max(1, height - 2);
 
-    // Text & cursor
     const { inputText, inputCursor } = state;
-    const prefix = chalk.bold.cyan('❯ ');
-    
-    let renderedInput = '';
+    const rawLines = inputText.split(/\r?\n/);
+    const isMultiline = rawLines.length > 1;
+
     if (state.focus === 'input') {
-      const before = inputText.slice(0, inputCursor);
-      const under = inputText.slice(inputCursor, inputCursor + 1) || ' ';
-      const after = inputText.slice(inputCursor + 1);
-      renderedInput = before + chalk.inverse(under) + after;
+      // Find line and column of cursor
+      let runningChars = 0;
+      let cursorLine = 0;
+      let cursorCol = 0;
+
+      for (let l = 0; l < rawLines.length; l++) {
+        const lineLen = rawLines[l].length;
+        if (inputCursor <= runningChars + lineLen) {
+          cursorLine = l;
+          cursorCol = inputCursor - runningChars;
+          break;
+        }
+        runningChars += lineLen + 1; // +1 for the newline
+      }
+
+      // Calculate vertical window of lines
+      let startLine = 0;
+      if (cursorLine >= innerHeight) {
+        startLine = cursorLine - innerHeight + 1;
+      }
+      const endLine = Math.min(rawLines.length, startLine + innerHeight);
+
+      for (let l = startLine; l < endLine; l++) {
+        const lineStr = rawLines[l] ?? '';
+        const linePrefix = l === 0 ? chalk.bold.cyan('❯ ') : chalk.gray('│ ');
+
+        let renderedLine = '';
+        if (l === cursorLine) {
+          const before = lineStr.slice(0, cursorCol);
+          const under = lineStr.slice(cursorCol, cursorCol + 1) || ' ';
+          const after = lineStr.slice(cursorCol + 1);
+          renderedLine = before + chalk.inverse(under) + after;
+        } else {
+          renderedLine = lineStr;
+        }
+
+        lines.push(TuiScreen.truncateOrPad(linePrefix + renderedLine, innerWidth));
+      }
     } else {
-      renderedInput = inputText || chalk.gray('(Press Tab to focus input)');
+      const displayLines = inputText
+        ? rawLines.slice(0, innerHeight).map((l, i) => (i === 0 ? chalk.cyan('❯ ') : chalk.gray('│ ')) + l)
+        : [chalk.gray('❯ (Press Tab to focus input)')];
+      for (const d of displayLines) {
+        lines.push(TuiScreen.truncateOrPad(d, innerWidth));
+      }
     }
 
-    const contentLine = prefix + renderedInput;
-    lines.push(TuiScreen.truncateOrPad(contentLine, innerWidth));
+    // Fill blank lines if fewer than innerHeight
+    while (lines.length < innerHeight) {
+      lines.push(TuiScreen.truncateOrPad('', innerWidth));
+    }
 
     // Slash command suggestion or active generation title
-    const isSlash = inputText.startsWith('/') && state.focus === 'input';
-    let title = 'Prompt Input';
+    const isSlash = inputText.startsWith('/') && state.focus === 'input' && !isMultiline;
+    let title = isMultiline ? `Prompt Input (${rawLines.length} lines • Shift+Enter: newline • Enter: send)` : 'Prompt Input';
+
     if (state.isGenerating) {
       const gen = state.generationStatus;
       const phase = gen?.phase || 'reasoning';

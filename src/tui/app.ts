@@ -254,7 +254,8 @@ export class TuiApp {
 
     const headerLines = HeaderView.render(state, effectiveWidth, this.activeTab);
     const headerHeight = headerLines.length;
-    const inputHeight = 3;
+    const rawLineCount = state.inputText ? state.inputText.split(/\r?\n/).length : 1;
+    const inputHeight = Math.min(6, Math.max(3, rawLineCount + 2));
     const mainHeight = Math.max(5, height - headerHeight - inputHeight);
 
     const layout = this.layoutConfig;
@@ -338,53 +339,31 @@ export class TuiApp {
     }
     if (key.name === 'f3') {
       if (state.activeModal?.title === 'Select Active Persona') this.store.closeModal();
-      else {
-        if (state.activeModal) this.store.closeModal();
-        PersonaModals.openPersonaModal(this.store, this.configManager, () => { this.agent = this.recreateAgent(); }, () => this.syncInitialState());
-      }
+      else PersonaModals.openPersonaModal(this.store, this.configManager, () => { this.agent = this.recreateAgent(); }, () => this.syncInitialState());
       return;
     }
     if (key.name === 'f4') {
-      if (state.activeModal?.title === 'Select Multi-Agent Team') this.store.closeModal();
-      else {
-        if (state.activeModal) this.store.closeModal();
-        PersonaModals.openTeamModal(this.store);
-      }
+      if (state.activeModal?.title === 'Select Active Team') this.store.closeModal();
+      else PersonaModals.openTeamModal(this.store);
       return;
     }
     if (key.name === 'f5') {
-      if (state.activeModal?.title?.includes('Memory')) this.store.closeModal();
-      else {
-        if (state.activeModal) this.store.closeModal();
-        SystemModals.openMemoryModal(this.store);
-      }
+      if (state.activeModal?.title?.includes('Persistent Memories')) this.store.closeModal();
+      else SystemModals.openMemoryModal(this.store);
       return;
     }
     if (key.name === 'f6') {
-      if (state.activeModal?.title === 'Select Backend LLM Model') this.store.closeModal();
-      else {
-        if (state.activeModal) this.store.closeModal();
-        SystemModals.openModelModal(
-          this.store,
-          this.provider,
-          this.configManager,
-          () => { this.agent = this.recreateAgent(); },
-          () => this.syncInitialState(),
-          () => this.probeContextWindow()
-        );
-      }
+      if (state.activeModal?.title?.includes('Select Active Model')) this.store.closeModal();
+      else SystemModals.openModelModal(this.store, this.provider, this.configManager, () => { this.agent = this.recreateAgent(); }, () => this.syncInitialState(), () => this.probeContextWindow());
       return;
     }
     if (key.name === 'f7') {
-      if (state.activeModal?.title?.includes('Layout')) this.store.closeModal();
-      else {
-        if (state.activeModal) this.store.closeModal();
-        LayoutModals.openLayoutModal(this.store, this.layoutConfig);
-      }
+      if (state.activeModal?.title === 'TUI Layout & Workspace Configuration') this.store.closeModal();
+      else LayoutModals.openLayoutModal(this.store, this.layoutConfig);
       return;
     }
-    if (key.name === 'f12' || (key.name === 'h' && key.ctrl)) {
-      if (state.activeModal) this.store.closeModal();
+    if (key.name === 'f12' || key.name === '?') {
+      if (state.activeModal?.title?.includes('Cheatsheet')) this.store.closeModal();
       else SystemModals.openHelpModal(this.store, (cmd: string) => this.commandController.handleCommand(cmd));
       return;
     }
@@ -420,6 +399,10 @@ export class TuiApp {
   }
 
   private handleInputKey(key: KeyPressEvent): void {
+    if (key.name === 'linefeed' || (key.name === 'return' && (key.shift || key.meta || key.ctrl))) {
+      this.store.insertInputChar('\n');
+      return;
+    }
     if (key.name === 'return') {
       const prompt = this.store.commitInput();
       if (prompt) this.turnRunner.handleUserPrompt(prompt);
@@ -470,6 +453,22 @@ export class TuiApp {
   private handleToolsKey(key: KeyPressEvent): void {
     if (key.name === 'up') this.store.scroll('tools', -2);
     else if (key.name === 'down') this.store.scroll('tools', 2);
+    else if (key.name === 'pageup') this.store.scroll('tools', -10);
+    else if (key.name === 'pagedown') this.store.scroll('tools', 10);
+    else if (key.name === 'escape') {
+      const current = this.store.getState().toolsFilter;
+      if (current) {
+        this.store.setState({ toolsFilter: '' });
+      } else {
+        this.store.setFocus('input');
+      }
+    } else if (key.name === 'backspace') {
+      const current = this.store.getState().toolsFilter || '';
+      this.store.setState({ toolsFilter: current.slice(0, -1), toolsScrollOffset: 0 });
+    } else if (key.char && !key.ctrl && !key.meta) {
+      const current = this.store.getState().toolsFilter || '';
+      this.store.setState({ toolsFilter: current + key.char, toolsScrollOffset: 0 });
+    }
   }
 
   private handleFilesKey(key: KeyPressEvent): void {

@@ -58,7 +58,8 @@ export class InputParser {
         return { name: 'd', sequence: '\x04', ctrl: true, meta: false, shift: false };
       case 9: // Tab
         return { name: 'tab', sequence: '\t', ctrl: false, meta: false, shift: false };
-      case 10: // Line Feed
+      case 10: // Line Feed (Ctrl+J, Shift+Enter)
+        return { name: 'linefeed', sequence: '\n', ctrl: true, meta: false, shift: false, char: '\n' };
       case 13: // Carriage Return
         return { name: 'return', sequence: '\r', ctrl: false, meta: false, shift: false };
       case 12: // Ctrl+L (Redraw)

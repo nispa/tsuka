@@ -85,7 +85,8 @@ const suites = [
   'test_config_limits.ts',
   'test_tui.ts',
   'test_tui_subagent_queue_copy.ts',
-  'test_tui_fileviewer_export.ts'
+  'test_tui_fileviewer_export.ts',
+  'test_multiline_tools_filter.ts'
 ];
 
 let passed = 0;

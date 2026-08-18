@@ -132,6 +132,7 @@ export interface TuiState {
   filesScrollOffset: number;
   selectedFileIndex: number;
   toolsScrollOffset: number;
+  toolsFilter?: string;
   isGenerating: boolean;
   expandAllThinking?: boolean;
   activeTeam?: string;
