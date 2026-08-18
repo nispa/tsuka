@@ -112,11 +112,18 @@ export interface TuiInferenceCandidate {
 
 export interface TuiInferenceTelemetry {
   phase: 'idle' | 'prefill' | 'decoding' | 'tool';
+  /** Prompt tokens: an estimate while ingesting, the exact figure once usage arrives. */
   prefillTokens?: number;
+  prefillTokensEstimated?: boolean;
+  /** Prompt ingestion speed measured on the previous turn (promptTokens / TTFT). */
   prefillTokensPerSec?: number;
   ttftMs?: number;
   tokensPerSec?: number;
+  /** Tokens generated in the current turn, as counted by the provider. */
+  decodedTokens?: number;
+  /** Real confidence (0-100) of the last emitted token: only with backend logprobs. */
   confidence?: number;
+  /** Alternatives weighed by the model: only with backend logprobs. */
   topCandidates?: TuiInferenceCandidate[];
   lastUpdated?: number;
 }

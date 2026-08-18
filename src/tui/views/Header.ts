@@ -21,7 +21,7 @@ export class HeaderView {
           { id: 'memory', label: 'F5' },
           { id: 'models', label: 'F6' },
           { id: 'layout', label: 'F7' },
-          { id: 'help', label: '?' },
+          { id: 'help', label: 'F12' },
         ]
       : width < 110
       ? [
@@ -32,7 +32,7 @@ export class HeaderView {
           { id: 'memory', label: 'F5 Mem' },
           { id: 'models', label: 'F6 Models' },
           { id: 'layout', label: 'F7 Layout' },
-          { id: 'help', label: '?' },
+          { id: 'help', label: 'F12' },
         ]
       : [
           { id: 'chat', label: 'F1 💬 Chat' },
@@ -42,7 +42,7 @@ export class HeaderView {
           { id: 'memory', label: 'F5 🧠 Memory' },
           { id: 'models', label: 'F6 ⚡ Models' },
           { id: 'layout', label: 'F7 📐 Layout' },
-          { id: 'help', label: '? Help' },
+          { id: 'help', label: 'F12 Help' },
         ];
 
     let tabsRow = ' ';
@@ -55,7 +55,7 @@ export class HeaderView {
       }
     }
 
-    const brand = chalk.bold.hex('#e879f9')('TSUKA') + (width > 95 ? chalk.gray(' v0.5.0') : '');
+    const brand = chalk.bold.hex('#e879f9')('TSUKA') + (width > 95 ? chalk.gray(' v0.5.1') : '');
     const tabsRowWidth = TuiScreen.stringWidth(tabsRow);
     const brandWidth = TuiScreen.stringWidth(brand);
     const spacing0 = Math.max(1, width - tabsRowWidth - brandWidth - 2);

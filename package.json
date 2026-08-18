@@ -1,6 +1,6 @@
 {
   "name": "tsuka",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Lightweight deterministic multi-agent harness in TypeScript for local and open LLM backends",
   "main": "dist/cli/index.js",
   "bin": {

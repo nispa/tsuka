@@ -8,35 +8,84 @@ import { AgentEvent, AgentEventHandler } from '../core/agentEvents';
 import { StreamChannel } from '../core/thinkParser';
 import { PermissionManager, PermissionPromptRequest } from '../safety/permissions';
 import { setLogSink } from '../core/logSink';
+import { ChatStats, InferenceTelemetryEvent, setInferenceTelemetrySink } from '../core/provider';
 
 export class TuiBridge {
   private store: TuiStore;
   private permissionManager: PermissionManager;
   private currentAssistantMsgId?: string;
   private currentToolExecMap: Map<string, string> = new Map();
-  private turnStartTime?: number;
-  private firstTokenReceived: boolean = false;
   private lastTtftMs?: number;
-  private streamChunkCount: number = 0;
+  /** Prompt ingestion speed measured on the last completed turn. */
+  private lastPrefillTokensPerSec?: number;
 
   constructor(store: TuiStore, permissionManager: PermissionManager) {
     this.store = store;
     this.permissionManager = permissionManager;
     this.setupPermissionHandler();
     this.setupLogSink();
+    this.setupInferenceTelemetry();
   }
 
-  notifyTurnStart(promptTokens?: number): void {
-    this.turnStartTime = Date.now();
-    this.firstTokenReceived = false;
-    this.streamChunkCount = 0;
+  /**
+   * Before the response arrives the exact prompt size is unknown: the context
+   * occupancy is shown as an explicit estimate and replaced by the real
+   * usage.prompt_tokens once the turn completes.
+   */
+  notifyTurnStart(promptTokensEstimate?: number): void {
     this.store.setState({
       telemetry: {
         phase: 'prefill',
-        prefillTokens: promptTokens || this.store.getState().stats.usedTokens,
+        prefillTokens: promptTokensEstimate,
+        prefillTokensEstimated: promptTokensEstimate !== undefined,
+        prefillTokensPerSec: this.lastPrefillTokensPerSec,
         lastUpdated: Date.now(),
       },
     });
+  }
+
+  /**
+   * Subscribes to the real telemetry emitted by the provider streaming loop (T14.9):
+   * TTFT, decode speed and — only when the backend exposes logprobs — token
+   * confidence and top candidates. The bridge never computes these values itself.
+   */
+  private setupInferenceTelemetry(): void {
+    setInferenceTelemetrySink((ev) => this.handleInferenceTelemetry(ev));
+  }
+
+  handleInferenceTelemetry(ev: InferenceTelemetryEvent): void {
+    const current = this.store.getState().telemetry;
+
+    if (ev.type === 'first_token') {
+      this.lastTtftMs = ev.ttftMs;
+      this.store.setState({
+        telemetry: {
+          ...current,
+          phase: 'decoding',
+          ttftMs: ev.ttftMs,
+          lastUpdated: Date.now(),
+        },
+      });
+      return;
+    }
+
+    if (ev.type === 'decode') {
+      const tokensPerSec = ev.decodeMs > 0
+        ? Math.round((ev.tokens / (ev.decodeMs / 1000)) * 10) / 10
+        : undefined;
+      this.store.setState({
+        telemetry: {
+          ...current,
+          phase: 'decoding',
+          ttftMs: this.lastTtftMs,
+          decodedTokens: ev.tokens,
+          tokensPerSec,
+          confidence: ev.confidence,
+          topCandidates: ev.topCandidates,
+          lastUpdated: Date.now(),
+        },
+      });
+    }
   }
 
   private setupPermissionHandler(): void {
@@ -94,25 +143,14 @@ export class TuiBridge {
       const isReasoning = channel === 'reasoning';
       const effectiveAuthor = authorName || this.store.getState().activeAiName;
 
-      // Track TTFT on first token received
-      if (!this.firstTokenReceived && this.turnStartTime) {
-        this.firstTokenReceived = true;
-        this.lastTtftMs = Date.now() - this.turnStartTime;
+      // Telemetry values come from the provider sink. Here we only leave the prefill
+      // phase, so the LEDs stay right even with a provider that emits no telemetry.
+      const telemetry = this.store.getState().telemetry;
+      if (telemetry?.phase === 'prefill') {
+        this.store.setState({
+          telemetry: { ...telemetry, phase: 'decoding', lastUpdated: Date.now() },
+        });
       }
-      this.streamChunkCount++;
-
-      const elapsedSec = this.turnStartTime ? Math.max(0.1, (Date.now() - this.turnStartTime) / 1000) : 1;
-      const liveTokensPerSec = this.streamChunkCount / elapsedSec;
-
-      this.store.setState({
-        telemetry: {
-          phase: 'decoding',
-          ttftMs: this.lastTtftMs,
-          tokensPerSec: Math.round(liveTokensPerSec * 10) / 10,
-          confidence: Math.min(99, 85 + (this.streamChunkCount % 14)),
-          lastUpdated: Date.now(),
-        },
-      });
 
       // If switching authors (e.g. subagent vs parent), or if switching from content to reasoning,
       // finalize previous message so the new reasoning / author block starts fresh.
@@ -153,7 +191,7 @@ export class TuiBridge {
   /**
    * Creates a live stats update handler for Agent.run().
    */
-  createStatsHandler(): (stats: { durationMs: number; tokenCount: number; tokensPerSecond: number; promptTokens: number; totalTokens: number }, agentLabel?: string) => void {
+  createStatsHandler(): (stats: ChatStats, agentLabel?: string) => void {
     return (stats, agentLabel) => {
       const currentState = this.store.getState();
       const maxTokens = currentState.stats.maxTokens || 8192;
@@ -161,12 +199,20 @@ export class TuiBridge {
       const prevTotalSession = currentState.stats.totalSessionTokens || 0;
       const newTotalSession = prevTotalSession + addedTokens;
 
+      if (stats.ttftMs !== undefined) this.lastTtftMs = stats.ttftMs;
+      if (stats.prefillTokensPerSecond !== undefined) this.lastPrefillTokensPerSec = stats.prefillTokensPerSecond;
+
+      // End of turn: figures become exact (usage from the backend). Confidence and
+      // candidates belong to the token being generated, so they are cleared here.
       this.store.setState({
         telemetry: {
           phase: 'idle',
           ttftMs: this.lastTtftMs,
-          tokensPerSec: stats.tokensPerSecond || this.store.getState().telemetry?.tokensPerSec,
-          confidence: 96,
+          tokensPerSec: stats.tokensPerSecond || currentState.telemetry?.tokensPerSec,
+          decodedTokens: stats.tokenCount || currentState.telemetry?.decodedTokens,
+          prefillTokens: stats.promptTokens || currentState.telemetry?.prefillTokens,
+          prefillTokensEstimated: stats.promptTokens ? false : currentState.telemetry?.prefillTokensEstimated,
+          prefillTokensPerSec: this.lastPrefillTokensPerSec,
           lastUpdated: Date.now(),
         },
       });
@@ -352,5 +398,14 @@ export class TuiBridge {
       this.currentAssistantMsgId = undefined;
     }
     this.currentToolExecMap.clear();
+
+    // An interrupted turn produces no final stats: confidence and candidates refer
+    // to a token that is no longer being generated, so they must not stay on screen.
+    const telemetry = this.store.getState().telemetry;
+    if (telemetry && telemetry.phase !== 'idle') {
+      this.store.setState({
+        telemetry: { ...telemetry, phase: 'idle', confidence: undefined, topCandidates: undefined, lastUpdated: Date.now() },
+      });
+    }
   }
 }

@@ -57,6 +57,8 @@
 | T14.6 | ✅ Fatto | **Interactive Tools Search & History Filter (CLI + TUI Parity)**: Filtro di ricerca testuale dinamico in tempo reale per la vista Tool Inspector (`F2` / `/tools`) e per il comando CLI `/tools [query]` su nome tool, tier di sicurezza (`SAFE`/`RESTRICTED`/`DANGEROUS`) ed esecuzioni; suite `tests/test_multiline_tools_filter.ts`. |
 | T14.7 | ✅ Fatto | **Real-Time Inference Telemetry & Latent Space Inspector Widget**: Widget autonomo posizionato nella sidebar (tra Agent Profile e Files Explorer) per monitorare lo stato di prefill (KV Cache ingestion), Time To First Token (TTFT), velocità di decode (tok/s), confidenza del modello e top token candidati latenti (`logprobs`); suite `tests/test_inference_telemetry.ts`. |
 | T14.8 | ✅ Fatto | **Hardware Status LEDs Widget (Compact Mode)**: Widget compatto a indicatori LED luminosi (`[RDY]`, `[PRE]`, `[THK]`, `[DEC]`, `[TOL]`) per un monitoraggio visivo immediato senza percentuali matematiche, selezionabile e configurabile tramite layout engine (`F7` / `/layout`); suite `tests/test_inference_telemetry.ts`. |
+| T14.9 | ✅ Fatto | **Telemetria di Inferenza Reale**: Rimossi i valori sintetici del widget T14.7 (confidenza calcolata da `chunkCount`, riga logits mai popolata, tok/s che includeva il prefill). Nuovo canale `setInferenceTelemetrySink` in `provider.ts` (stesso pattern di `setLogSink`/`setTimeoutPromptHandler`): TTFT misurato dall'inizio del tentativo corrente, finestra di decode separata dal prefill, conteggio token da `logprobs.content` con fallback per-delta. `ChatStats` estesa con `ttftMs`/`decodeMs`/`prefillTokensPerSecond` e `tokensPerSecond` ridefinita sulla sola finestra di decode (aggregazione multi-round coerente in `Agent`). Logprobs reali opt-in (`inferenceLogprobs`, default `false`) con disattivazione automatica **loggata** e ritentativo se il backend rifiuta il parametro; senza logprobs il widget non mostra né barra di confidenza né riga logits. Suite `tests/test_inference_telemetry.ts` (13 test, inclusi 3 sul provider reale con stream simulato). |
+| T14.10 | ✅ Fatto | **Il Tasto `?` Digitabile nel Prompt**: `?` non è più una scorciatoia globale che intercetta la digitazione (`isHelpShortcut` in `inputParser.ts`): l'help resta su `F12` (sempre attivo) e `?` apre la cheatsheet solo con il focus fuori dall'input e nessuna modale aperta. Etichette dell'header allineate (`F12 Help`). |
 
 Tutti i task pianificati e di backlog sono completati con 62 suite di test verdi.
 
@@ -1720,3 +1722,68 @@ Integrare un micro-widget autonomo (`InferenceTelemetryWidget.ts`) nella sidebar
 
 
 
+
+---
+
+## T14.9 — Telemetria di Inferenza Reale (Rimozione Metriche Sintetiche)
+
+**Dipende da:** T14.7, T14.8 · **Sforzo:** medio · **Priorità:** alta
+
+Il widget `InferenceTelemetryWidget` introdotto in T14.7 mostra tre valori che **non provengono
+dal backend**: la barra `Conf` è calcolata come `85 + (chunkCount % 14)`, la riga `Logits:` non
+viene mai popolata (`topCandidates` non è scritto da nessuna parte) e `tokensPerSec` conta i
+*chunk* dello stream divisi per il tempo trascorso **dall'inizio del turno**, quindi include il
+prefill e sottostima la velocità di decode. In un progetto didattico una metrica inventata
+presentata come lettura dello spazio latente insegna una cosa falsa: va sostituita con dati
+misurati o rimossa.
+
+- **Canale di telemetria dal provider** (`src/core/provider.ts`):
+  - Introdurre un sink globale opzionale (`setInferenceTelemetrySink`), stesso pattern già usato
+    per `setTimeoutPromptHandler` / `setLogSink`: il core non stampa e non conosce la TUI, si
+    limita a emettere eventi (`first_token`, `decode`, `complete`).
+  - Misurare il **TTFT reale** dall'inizio del tentativo corrente (non dal primo turno, così un
+    retry non falsa la misura) e la **finestra di decode** separata dal prefill.
+  - Contare i token generati da `logprobs.content` quando disponibile, con fallback a un delta
+    per chunk; il totale esatto resta `usage.completion_tokens`.
+- **Logprobs reali & opt-in** (`inferenceLogprobs` in `tsuka.config.json`, default `false`):
+  - Quando attivo, la richiesta include `logprobs: true` / `top_logprobs: 3`; confidenza e top
+    candidati derivano da `Math.exp(logprob)` del token effettivamente emesso.
+  - Se il backend rifiuta il parametro, disattivazione automatica per la sessione con log
+    visibile (mai degradazione silenziosa) e ritentativo della richiesta senza `logprobs`.
+  - Se i logprobs non ci sono, il widget **non mostra** barra di confidenza né riga logits.
+- **Statistiche onestamente definite** (`ChatStats`, `src/core/agent.ts`):
+  - `tokensPerSecond` = token generati / finestra di **decode** (esclude il prefill).
+  - Nuovi campi `ttftMs`, `decodeMs`, `prefillTokensPerSecond` (= `promptTokens / TTFT`, cioè la
+    velocità di ingestione del prompt misurata lato client); aggregazione multi-round in `Agent`
+    coerente (somma delle finestre di decode, TTFT del primo round).
+- **UI** (`src/tui/bridge.ts`, `src/tui/widgets/InferenceTelemetryWidget.ts`):
+  - Rimozione totale dei valori sintetici; il bridge non fabbrica più numeri, si limita a
+    inoltrare allo store ciò che il provider misura.
+  - In fase di prefill il conteggio token è marcato come stima (`~N tok est.`) perché prima della
+    risposta il numero esatto non esiste; diventa esatto quando arriva `usage.prompt_tokens`.
+
+**Accettazione:** nessun valore mostrato dal widget è calcolato senza un dato reale del backend;
+con `inferenceLogprobs: false` (default) barra di confidenza e riga logits non compaiono; con il
+flag attivo su un backend che espone `logprobs` mostrano probabilità reali. Suite di test
+aggiornata.
+
+---
+
+## T14.10 — Il Tasto `?` Deve Poter Essere Digitato nel Prompt
+
+**Dipende da:** T14.1 · **Sforzo:** basso · **Priorità:** alta
+
+Nella TUI il tasto `?` è intercettato come scorciatoia globale per l'help (`src/tui/app.ts`)
+**prima** dello smistamento per pannello attivo: digitando una domanda nel box di input si apre
+la cheatsheet invece di inserire il carattere, rendendo impossibile scrivere un prompt
+interrogativo.
+
+- L'help resta su un tasto funzione dedicato: `F12` (globale, sempre attivo, già presente).
+- `?` apre l'help **solo** quando il focus non è sull'input e nessuna modale è aperta (comodo
+  scorrendo la chat o i tool), altrimenti è un normale carattere digitabile.
+- Aggiornare le etichette della UI che pubblicizzano `?` come scorciatoia (`Header.ts`) in `F12`,
+  coerentemente con `QuickKeysWidget` che già indica `F12`.
+
+**Accettazione:** con il focus sull'input, digitando `Come faccio X?` il carattere `?` finisce nel
+buffer e nessuna modale si apre; premendo `F12` (da qualsiasi focus) o `?` con focus su chat/tool
+la cheatsheet si apre come prima. Suite di test aggiornata.

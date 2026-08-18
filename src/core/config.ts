@@ -60,6 +60,12 @@ export interface AppConfig {
   downloadFetchTimeoutMs?: number;
   /** Default UI mode when launching tsuka without flags ('tui' or 'cli'). Default: 'tui'. */
   defaultUi?: 'tui' | 'cli';
+  /**
+   * Requests per-token logprobs from the backend to feed the latent space inspector
+   * (confidence + top candidates) with real data. Default: false, because not every
+   * OpenAI-compatible backend accepts the parameter (T14.9).
+   */
+  inferenceLogprobs?: boolean;
 }
 
 export const CONFIG_PATH = homePath('tsuka.config.json');
@@ -453,6 +459,14 @@ export class ConfigManager {
       return Math.floor(value);
     }
     return 8192;
+  }
+
+  /**
+   * Whether streaming calls request per-token logprobs for the latent space
+   * inspector. Default: false (not all OpenAI-compatible backends accept it).
+   */
+  getInferenceLogprobsEnabled(): boolean {
+    return this.config.inferenceLogprobs === true;
   }
 
   /**

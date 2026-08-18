@@ -1,6 +1,12 @@
 import chalk from 'chalk';
 import { TuiState } from '../types';
 
+/**
+ * Real inference telemetry (T14.9).
+ * Every value shown here is measured: TTFT and speeds come from the provider clock,
+ * confidence and candidates only exist when the backend returns logprobs
+ * (`inferenceLogprobs` in the config). Nothing is synthesized to fill the panel.
+ */
 export class InferenceTelemetryWidget {
   static render(state: TuiState, width: number): string[] {
     const lines: string[] = [];
@@ -11,21 +17,32 @@ export class InferenceTelemetryWidget {
 
     // Status / Phase badge
     if (telem.phase === 'prefill') {
-      const pTok = telem.prefillTokens ? `${telem.prefillTokens.toLocaleString('en-US')} tok` : 'Context Ingestion';
-      const pSpeed = telem.prefillTokensPerSec ? ` @ ${chalk.yellow(Math.round(telem.prefillTokensPerSec))} t/s` : '';
-      lines.push(chalk.hex('#fbbf24').bold('  ⚡ PREFILL: ') + chalk.white(`${pTok}${pSpeed}`));
+      const prefix = telem.prefillTokensEstimated ? '~' : '';
+      const suffix = telem.prefillTokensEstimated ? ' est.' : '';
+      const pTok = telem.prefillTokens
+        ? `${prefix}${telem.prefillTokens.toLocaleString('en-US')} tok${suffix}`
+        : 'Context Ingestion';
+      lines.push(chalk.hex('#fbbf24').bold('  ⚡ PREFILL: ') + chalk.white(pTok));
     } else if (telem.phase === 'decoding') {
-      const speed = telem.tokensPerSec ? `${telem.tokensPerSec.toFixed(1)} t/s` : 'streaming';
-      const ttft = telem.ttftMs ? ` (TTFT: ${telem.ttftMs}ms)` : '';
-      lines.push(chalk.hex('#22c55e').bold('  🌊 DECODE:  ') + chalk.green(`${speed}`) + chalk.gray(ttft));
+      const speed = telem.tokensPerSec !== undefined ? `${telem.tokensPerSec.toFixed(1)} t/s` : 'streaming';
+      const tokens = telem.decodedTokens ? chalk.gray(` · ${telem.decodedTokens} tok`) : '';
+      lines.push(chalk.hex('#22c55e').bold('  🌊 DECODE:  ') + chalk.green(speed) + tokens);
     } else if (telem.phase === 'tool') {
       lines.push(chalk.hex('#e879f9').bold('  🔧 TOOL:    ') + chalk.magenta('Executing tool...'));
     } else {
-      const ttft = telem.ttftMs ? ` · TTFT: ${telem.ttftMs}ms` : '';
-      lines.push(chalk.gray('  ● IDLE:     ') + chalk.green('Ready') + chalk.gray(ttft));
+      const speed = telem.tokensPerSec !== undefined ? chalk.gray(` · ${telem.tokensPerSec.toFixed(1)} t/s`) : '';
+      lines.push(chalk.gray('  ● IDLE:     ') + chalk.green('Ready') + speed);
     }
 
-    // Confidence / Latent state if available
+    // Measured latency line: TTFT and prompt ingestion speed (promptTokens / TTFT)
+    const latencyParts: string[] = [];
+    if (telem.ttftMs !== undefined) latencyParts.push(`TTFT: ${telem.ttftMs}ms`);
+    if (telem.prefillTokensPerSec !== undefined) latencyParts.push(`prefill ${Math.round(telem.prefillTokensPerSec)} t/s`);
+    if (latencyParts.length > 0) {
+      lines.push(chalk.gray('  ' + latencyParts.join(' · ')));
+    }
+
+    // Latent space: shown only with real logprobs from the backend
     if (telem.confidence !== undefined && telem.confidence > 0) {
       const confPct = Math.min(100, Math.max(0, Math.round(telem.confidence)));
       const barWidth = Math.max(4, Math.min(10, innerWidth - 18));
@@ -35,7 +52,6 @@ export class InferenceTelemetryWidget {
       lines.push(chalk.white(`  Conf : [${confBar}] ${chalk.yellow(confPct + '%')}`));
     }
 
-    // Top candidates from logits if available
     if (telem.topCandidates && telem.topCandidates.length > 0) {
       const topStr = telem.topCandidates
         .slice(0, 2)

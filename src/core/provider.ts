@@ -68,6 +68,73 @@ export function setTimeoutPromptHandler(handler: TimeoutPromptHandler | undefine
   globalTimeoutPromptHandler = handler;
 }
 
+/** Number of alternative tokens requested when logprobs inspection is enabled (T14.9). */
+export const LOGPROBS_TOP_N = 3;
+
+/** Minimum interval between two live decode telemetry events, to avoid one re-render per token. */
+const TELEMETRY_EMIT_INTERVAL_MS = 100;
+
+/** One alternative considered by the model for a single generated token. */
+export interface InferenceCandidate {
+  token: string;
+  /** Linear probability in [0,1], derived from the backend logprob. */
+  prob: number;
+}
+
+/**
+ * Real inference telemetry emitted by the streaming loop (T14.9).
+ * The core never renders: it only publishes measured values, the presentation
+ * layer (TUI) decides what to display. Every field comes from the backend or
+ * from a clock, never from an estimate presented as a measure.
+ */
+export type InferenceTelemetryEvent =
+  | { type: 'first_token'; ttftMs: number }
+  | { type: 'decode'; tokens: number; decodeMs: number; confidence?: number; topCandidates?: InferenceCandidate[] }
+  | { type: 'complete'; stats: ChatStats };
+
+export type InferenceTelemetrySink = (event: InferenceTelemetryEvent) => void;
+
+let globalInferenceTelemetrySink: InferenceTelemetrySink | undefined;
+
+export function setInferenceTelemetrySink(sink: InferenceTelemetrySink | undefined): void {
+  globalInferenceTelemetrySink = sink;
+}
+
+function emitInferenceTelemetry(event: InferenceTelemetryEvent): void {
+  if (!globalInferenceTelemetrySink) return;
+  try {
+    globalInferenceTelemetrySink(event);
+  } catch {}
+}
+
+/** Set once a backend rejects the logprobs parameters: no point in retrying for the rest of the session. */
+let logprobsUnsupported = false;
+let logprobsEnabledForTest: boolean | undefined;
+
+export function isLogprobsEnabled(): boolean {
+  if (logprobsUnsupported) return false;
+  if (logprobsEnabledForTest !== undefined) return logprobsEnabledForTest;
+  try {
+    return new ConfigManager().getInferenceLogprobsEnabled();
+  } catch {
+    return false;
+  }
+}
+
+/** Identifies a backend rejecting logprobs / top_logprobs (unsupported parameter). */
+function isLogprobsRejectionError(message: string): boolean {
+  return /logprob/i.test(message || '');
+}
+
+/**
+ * Testing helper: forces logprobs on/off without touching the user config and
+ * clears any rejection recorded by a previous test.
+ */
+export function __setLogprobsEnabledForTest(enabled: boolean | undefined): void {
+  logprobsEnabledForTest = enabled;
+  logprobsUnsupported = false;
+}
+
 /**
  * Identifies malformed tool call JSON syntax errors from model output (T9.8).
  */
@@ -147,11 +214,19 @@ export function resolveSamplingParams(options?: ChatOptions): {
 }
 
 export interface ChatStats {
+  /** Total wall-clock time of the call, prompt ingestion included. */
   durationMs: number;
   tokenCount: number;
+  /** Generation speed: tokens divided by the decode window only (prefill excluded). */
   tokensPerSecond: number;
   promptTokens: number;
   totalTokens: number;
+  /** Time to first token, measured from the start of the successful attempt (T14.9). */
+  ttftMs?: number;
+  /** Duration of the decode phase, from the first token to the end of the stream. */
+  decodeMs?: number;
+  /** Prompt ingestion speed measured client-side: promptTokens / TTFT. */
+  prefillTokensPerSecond?: number;
 }
 
 export interface ChatResponse {
@@ -262,10 +337,12 @@ export class LLMProvider implements ILLMProvider {
     const maxRetries = getMaxRetries();
     const firstTokenTimeout = getFirstTokenTimeoutMs();
     const maxTokensCeiling = getMaxTokensCeiling();
+    let logprobsEnabled = isLogprobsEnabled();
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       if (signal?.aborted) break;
 
+      const attemptStartTime = Date.now();
       const attemptAbort = new AbortController();
       let timedOut = false;
       let generationTimedOut = false;
@@ -340,6 +417,7 @@ export class LLMProvider implements ILLMProvider {
           tool_choice: tools && tools.length > 0 ? 'auto' : undefined,
           stream: !!onChunk,
           ...(onChunk ? { stream_options: { include_usage: true } } : {}),
+          ...(onChunk && logprobsEnabled ? { logprobs: true, top_logprobs: LOGPROBS_TOP_N } : {}),
           max_tokens: maxTokensCeiling,
           ...(options?.reasoningEffort ? { reasoning_effort: options.reasoningEffort as any } : {}),
           ...resolveSamplingParams(options)
@@ -353,6 +431,12 @@ export class LLMProvider implements ILLMProvider {
           const toolCallsAccumulator: ToolCall[] = [];
           let chunkCount = 0;
           let usage: any = null;
+          // Real telemetry of the decode phase (T14.9): measured, never estimated.
+          let firstTokenAt = 0;
+          let decodedTokens = 0;
+          let lastTelemetryAt = 0;
+          let lastConfidence: number | undefined;
+          let lastCandidates: InferenceCandidate[] | undefined;
 
           const thinkParser = new ThinkTagParser((text, channel) => {
             if (channel === 'content') {
@@ -376,6 +460,42 @@ export class LLMProvider implements ILLMProvider {
             const choice = chunk.choices?.[0];
             const content = choice?.delta?.content || '';
             const reasoning = (choice?.delta as any)?.reasoning || (choice?.delta as any)?.reasoning_content || '';
+
+            if (content || reasoning) {
+              const logprobEntries = (choice as any)?.logprobs?.content as
+                | Array<{ token: string; logprob: number; top_logprobs?: Array<{ token: string; logprob: number }> }>
+                | undefined;
+
+              if (logprobEntries && logprobEntries.length > 0) {
+                // Exact count: the backend reports one entry per generated token.
+                decodedTokens += logprobEntries.length;
+                const last = logprobEntries[logprobEntries.length - 1];
+                lastConfidence = Math.round(Math.exp(last.logprob) * 1000) / 10;
+                lastCandidates = (last.top_logprobs || [])
+                  .slice(0, LOGPROBS_TOP_N)
+                  .map((c) => ({ token: c.token, prob: Math.exp(c.logprob) }));
+              } else {
+                // Fallback without logprobs: one delta counts as one token (approximation).
+                decodedTokens++;
+              }
+
+              if (!firstTokenAt) {
+                firstTokenAt = Date.now();
+                emitInferenceTelemetry({ type: 'first_token', ttftMs: firstTokenAt - attemptStartTime });
+              }
+
+              const now = Date.now();
+              if (now - lastTelemetryAt >= TELEMETRY_EMIT_INTERVAL_MS) {
+                lastTelemetryAt = now;
+                emitInferenceTelemetry({
+                  type: 'decode',
+                  tokens: decodedTokens,
+                  decodeMs: now - firstTokenAt,
+                  confidence: lastConfidence,
+                  topCandidates: lastCandidates,
+                });
+              }
+            }
 
             if (reasoning) {
               chunkCount++;
@@ -416,23 +536,40 @@ export class LLMProvider implements ILLMProvider {
             (tc) => tc && tc.function && tc.function.name
           );
 
-          const durationMs = Date.now() - startTime;
-          const tokenCount = usage?.completion_tokens ?? chunkCount;
+          const endTime = Date.now();
+          const durationMs = endTime - startTime;
+          const tokenCount = usage?.completion_tokens ?? (decodedTokens || chunkCount);
           const promptTokens = usage?.prompt_tokens ?? 0;
           const totalTokens = usage?.total_tokens ?? (promptTokens + tokenCount);
-          const tokensPerSecond = durationMs > 0 ? (tokenCount / (durationMs / 1000)) : 0;
+
+          // Decode speed measures generation only: including the prefill would
+          // report a lower speed than the model actually sustains.
+          const ttftMs = firstTokenAt ? firstTokenAt - attemptStartTime : undefined;
+          const decodeMs = firstTokenAt ? endTime - firstTokenAt : 0;
+          const decodeWindowMs = decodeMs > 0 ? decodeMs : durationMs;
+          const tokensPerSecond = decodeWindowMs > 0 ? (tokenCount / (decodeWindowMs / 1000)) : 0;
+          const prefillTokensPerSecond = ttftMs && ttftMs > 0 && promptTokens > 0
+            ? parseFloat((promptTokens / (ttftMs / 1000)).toFixed(1))
+            : undefined;
+
+          const stats: ChatStats = {
+            durationMs,
+            tokenCount,
+            tokensPerSecond: parseFloat(tokensPerSecond.toFixed(1)),
+            promptTokens,
+            totalTokens,
+            ttftMs,
+            decodeMs,
+            prefillTokensPerSecond
+          };
+
+          emitInferenceTelemetry({ type: 'complete', stats });
 
           return {
             content: fullText,
             toolCalls: cleanToolCalls.length > 0 ? cleanToolCalls : undefined,
             reasoningText: reasoningText || undefined,
-            stats: {
-              durationMs,
-              tokenCount,
-              tokensPerSecond: parseFloat(tokensPerSecond.toFixed(1)),
-              promptTokens,
-              totalTokens
-            }
+            stats
           };
         } else {
           const nonStreamResponse = response as any;
@@ -494,6 +631,22 @@ export class LLMProvider implements ILLMProvider {
 
         if (error.message?.includes('reasoning_effort') && options?.reasoningEffort) {
           options = { ...options, reasoningEffort: undefined };
+          continue;
+        }
+
+        // Backend without logprobs support: degrade visibly, never silently (T14.9).
+        if (logprobsEnabled && isLogprobsRejectionError(error.message)) {
+          logprobsEnabled = false;
+          logprobsUnsupported = true;
+          logSink.log(
+            chalk.yellow(
+              `[Telemetry] Model '${this.currentModel}' rejected 'logprobs': latent space inspection ` +
+              `disabled for this session, retrying without it.`
+            )
+          );
+          // A rejected parameter is our fault, not the model's: the retry budget stays intact
+          // (this branch can run only once per session, logprobsUnsupported is now set).
+          attempt--;
           continue;
         }
 

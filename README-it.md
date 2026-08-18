@@ -30,7 +30,7 @@
 
 | Caratteristica | Descrizione |
 |---------------|-------------|
-| 🖥️ **TUI Interattiva v0.5.0** | Dashboard a schermo intero (`tsuka --tui`), double-buffering zero-flicker, supporto mouse SGR 1006, file viewer modal, input multilinea, ricerca live dei tool e telemetria di inferenza in tempo reale |
+| 🖥️ **TUI Interattiva v0.5.1** | Dashboard a schermo intero (`tsuka --tui`), double-buffering zero-flicker, supporto mouse SGR 1006, file viewer modal, input multilinea, ricerca live dei tool e telemetria di inferenza in tempo reale |
 | 📡 **Telemetria di Inferenza in Tempo Reale** | Widget nella sidebar che monitora prefill (ingestione contesto KV Cache), TTFT (Time To First Token), velocità di decode (tok/s), confidenza del modello e logits candidati latenti |
 | 💾 **Esportazione Sessione Markdown** | Comandi `/export [file]` e `/save` sia in CLI sia in TUI per salvare archivi di sessione completi con CoT collassabile ed esiti tool |
 | 🧩 **Tool a caldo** | Aggiungi un file `.ts` in `src/tools/impl/` — scoperto automaticamente all'avvio |
@@ -95,9 +95,9 @@ tsuka --tui
 ### ✨ Funzionalità della Dashboard TUI:
 * **Double-Buffering Differenziale a Zero-Sfarfallio**: Aggiornamenti a 0ms di latenza visiva, box drawing ANSI sicuro e protezione contro l'auto-wrapping del terminale.
 * **Telemetria di Inferenza in Tempo Reale (`InferenceTelemetryWidget`)**: Elimina l'attesa cieca durante l'inferenza locale monitorando:
-  * `⚡ PREFILL`: Ingestione contesto KV Cache e velocità di elaborazione (`N tok @ X t/s`).
-  * `🌊 DECODE`: Velocità di streaming token e **TTFT** (*Time to First Token*) in millisecondi.
-  * `📊 Stato Latente & Logits`: Barra di confidenza del modello `[████████░░] 94%` e top token alternativi candidati.
+  * `⚡ PREFILL`: Ingestione del prompt nella KV Cache; il conteggio token è marcato come stima (`~N tok est.`) finché il backend non comunica la dimensione esatta.
+  * `🌊 DECODE`: Velocità di generazione misurata sulla sola finestra di decode (prefill escluso) e **TTFT** (*Time to First Token*) in millisecondi.
+  * `📊 Stato Latente & Logits`: Barra di confidenza `[████████░░] 94%` e top candidati — mostrati **solo** se il backend restituisce davvero i logprobs.
 * **Workspace File Explorer & Modale di Anteprima Codice**:
   * Albero dei file in tempo reale con icone per estensione (`📁`, `🟦 TS`, `🟨 JS`, `⚙️ JSON`, `📝 MD`, `🧪 Test`, `🔒 Secrets`).
   * Premendo **`Enter`** (o doppio clic) si apre il **Workspace File Viewer Modal** con numeri di riga formattati, scroll fluido e scorciatoia per copiare/incollare.
@@ -126,8 +126,10 @@ tsuka --tui
   * **Rinnovo Timeout**: Quando il modello riflette a lungo (es. 2 min), un modale ti chiede se concedere altro tempo (+2m, illimitato, interrompi).
   * **Estensione Round Tool**: Quando si raggiunge il limite di esecuzioni consecutive dei tool, un modale ti permette di aggiungere altri cicli (+15 round, concludi, ferma).
 * **Auto-Calibrazione del Contesto del Modello**: Rileva automaticamente i limiti del context window via `detectContextWindow` all'avvio e ad ogni cambio modello (`F6` / `/models`).
+* **Telemetria di Inferenza Misurata**: TTFT, velocità di decode (prefill escluso dalla finestra) e velocità di ingestione del prompt sono misurati dentro il loop di streaming, mai sintetizzati. Confidenza del token e candidati alternativi compaiono solo se il backend restituisce davvero i logprobs (`"inferenceLogprobs": true` in `tsuka.config.json`, disattivo di default); se il backend rifiuta il parametro, la degradazione viene loggata e la richiesta ripetuta senza.
 * **Tasti Funzione & Guida Rapida**:
   * `F1`: Vista Chat · `F2`: Vista Tools · `F3`: Selettore Agenti · `F4`: Selettore Team · `F5`: Ispettore Memoria · `F6`: Cambio Modello · `F12`: Elenco Comandi REPL.
+  * `?` apre la guida solo quando il focus non è sul prompt: nel messaggio il punto interrogativo resta un carattere digitabile.
 
 ## 🏗 Architettura
 

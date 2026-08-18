@@ -4,6 +4,7 @@
  */
 
 import { TuiScreen, KeyPressEvent, TuiMouseEvent } from './screen';
+import { isHelpShortcut } from './inputParser';
 import { TuiStore } from './store';
 import { TuiBridge } from './bridge';
 import { HeaderView } from './views/Header';
@@ -362,7 +363,9 @@ export class TuiApp {
       else LayoutModals.openLayoutModal(this.store, this.layoutConfig);
       return;
     }
-    if (key.name === 'f12' || key.name === '?') {
+    // Help lives on F12. '?' is only a shortcut where it cannot be a typed character:
+    // with the focus on the input it must reach the prompt buffer (T14.10).
+    if (isHelpShortcut(key, state.focus, !!state.activeModal)) {
       if (state.activeModal?.title?.includes('Cheatsheet')) this.store.closeModal();
       else SystemModals.openHelpModal(this.store, (cmd: string) => this.commandController.handleCommand(cmd));
       return;

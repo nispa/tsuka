@@ -15,6 +15,17 @@ export interface KeyPressEvent {
 }
 
 export type KeyPressHandler = (key: KeyPressEvent) => void;
+
+/**
+ * Decides whether a key opens the help cheatsheet (T14.10).
+ * F12 is the dedicated shortcut and always works; '?' is accepted only where it
+ * cannot be a typed character, otherwise a question mark could never be written
+ * in the prompt buffer.
+ */
+export function isHelpShortcut(key: KeyPressEvent | { name: string }, focus: string, hasModal: boolean): boolean {
+  if (key.name === 'f12') return true;
+  return key.name === '?' && focus !== 'input' && !hasModal;
+}
 export type ResizeHandler = (cols: number, rows: number) => void;
 
 export interface TuiMouseEvent {

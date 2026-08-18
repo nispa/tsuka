@@ -1,4 +1,4 @@
-import { ILLMProvider, ChatOptions, ReasoningEffort } from './provider';
+import { ILLMProvider, ChatOptions, ChatStats, ReasoningEffort } from './provider';
 import { ToolRegistry } from '../tools/registry';
 import { PermissionManager } from '../safety/permissions';
 import { AgentEvent, AgentEventHandler } from './agentEvents';
@@ -368,7 +368,7 @@ export class Agent {
   async run(
     userMessage: string,
     onChunk?: (chunk: string, channel?: StreamChannel) => void,
-    onStats?: (stats: { durationMs: number; tokenCount: number; tokensPerSecond: number; promptTokens: number; totalTokens: number }, agentLabel?: string) => void,
+    onStats?: (stats: ChatStats, agentLabel?: string) => void,
     onEvent?: AgentEventHandler,
     signal?: AbortSignal,
     reasoningEffortOverride?: ReasoningEffort
@@ -380,7 +380,14 @@ export class Agent {
     let isDone = false;
     let finalAnswer = '';
     let toolRounds = 0;
-    let cumStats = { durationMs: 0, tokenCount: 0, promptTokens: 0, totalTokens: 0 };
+    let cumStats: ChatStats = {
+      durationMs: 0,
+      decodeMs: 0,
+      tokenCount: 0,
+      tokensPerSecond: 0,
+      promptTokens: 0,
+      totalTokens: 0
+    };
     let everCalledTool = false;
     let noToolNudgeUsed = false;
 
@@ -437,19 +444,19 @@ export class Agent {
 
         if (stats && onStats) {
           cumStats.durationMs += stats.durationMs;
+          cumStats.decodeMs = (cumStats.decodeMs ?? 0) + (stats.decodeMs ?? 0);
           cumStats.tokenCount += stats.tokenCount;
           cumStats.promptTokens = Math.max(cumStats.promptTokens, (stats as any).promptTokens ?? 0);
           cumStats.totalTokens = Math.max(cumStats.totalTokens, (stats as any).totalTokens ?? 0);
-          const tps = cumStats.durationMs > 0
-            ? parseFloat((cumStats.tokenCount / (cumStats.durationMs / 1000)).toFixed(1))
+          // TTFT of the first round: it is the latency the user actually waited for.
+          if (cumStats.ttftMs === undefined && stats.ttftMs !== undefined) cumStats.ttftMs = stats.ttftMs;
+          if (stats.prefillTokensPerSecond !== undefined) cumStats.prefillTokensPerSecond = stats.prefillTokensPerSecond;
+          // Speed over the summed decode windows: tool rounds and prompt ingestion do not count.
+          const decodeWindowMs = (cumStats.decodeMs ?? 0) > 0 ? (cumStats.decodeMs as number) : cumStats.durationMs;
+          cumStats.tokensPerSecond = decodeWindowMs > 0
+            ? parseFloat((cumStats.tokenCount / (decodeWindowMs / 1000)).toFixed(1))
             : 0;
-          onStats({
-            durationMs: cumStats.durationMs,
-            tokenCount: cumStats.tokenCount,
-            tokensPerSecond: tps,
-            promptTokens: cumStats.promptTokens,
-            totalTokens: cumStats.totalTokens
-          });
+          onStats({ ...cumStats });
         }
 
         if (!toolCalls || toolCalls.length === 0) {

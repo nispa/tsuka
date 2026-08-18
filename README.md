@@ -30,7 +30,7 @@
 
 | Feature | Description |
 |---------|-------------|
-| 🖥️ **Interactive TUI v0.5.0** | Full-screen dashboard (`tsuka --tui`), zero-flicker double-buffering, SGR 1006 mouse tracking, file viewer modal, multiline input, live tools search, and real-time inference telemetry |
+| 🖥️ **Interactive TUI v0.5.1** | Full-screen dashboard (`tsuka --tui`), zero-flicker double-buffering, SGR 1006 mouse tracking, file viewer modal, multiline input, live tools search, and real-time inference telemetry |
 | 📡 **Real-Time Inference Telemetry** | Sidebar widget monitoring prefill (KV Cache context ingestion), TTFT (Time To First Token), decode tok/s, model confidence, and latent candidate logits |
 | 💾 **Markdown Session Export** | `/export [file]` & `/save` commands in both CLI & TUI saving clean session archives with collapsible CoT traces and tool outputs |
 | 🧩 **Hot-plug tools** | Drop a `.ts` file into `src/tools/impl/` — auto-discovered at startup |
@@ -95,9 +95,9 @@ tsuka --tui
 ### ✨ Key Dashboard Capabilities:
 * **Zero-Flicker Double-Buffering**: Differential line rendering with 0ms visual latency, ANSI-safe box drawing, and terminal boundary wrapping protection.
 * **Real-Time Inference Telemetry (`InferenceTelemetryWidget`)**: Eliminates "blind waiting" during local inference by tracking:
-  * `⚡ PREFILL`: KV Cache prompt ingestion progress and speed (`N tok @ X t/s`).
-  * `🌊 DECODE`: Live streaming token speed and **TTFT** (*Time to First Token*) in milliseconds.
-  * `📊 Latent State & Logits`: Model confidence meter `[████████░░] 94%` and top candidate alternatives.
+  * `⚡ PREFILL`: KV Cache prompt ingestion; the token count is marked as an estimate (`~N tok est.`) until the backend reports the exact prompt size.
+  * `🌊 DECODE`: generation speed measured over the decode window only (prefill excluded) and **TTFT** (*Time to First Token*) in milliseconds.
+  * `📊 Latent State & Logits`: confidence meter `[████████░░] 94%` and top candidates — shown **only** when the backend actually returns logprobs.
 * **Workspace File Explorer & Code Preview Modal**:
   * Real-time file tree with file-type icons (`📁`, `🟦 TS`, `🟨 JS`, `⚙️ JSON`, `📝 MD`, `🧪 Test`, `🔒 Secrets`).
   * Press **`Enter`** (or double-click) to open the **Workspace File Viewer Modal** with line numbers, smooth scrolling, and clipboard copy.
@@ -126,8 +126,10 @@ tsuka --tui
   * **Timeout Renewal**: When reasoning takes long (e.g. 2 min), prompts to extend (+2m, unlimited, abort).
   * **Tool Round Extension**: When maximum consecutive tool executions are reached, prompts to extend (+15 rounds, conclude, abort).
 * **Dynamic Context Window Calibration**: Automatically detects backend context limits via `detectContextWindow` on startup and on model change (`F6` / `/models`).
+* **Measured Inference Telemetry**: TTFT, decode speed (prefill excluded from the window) and prompt ingestion rate are measured inside the streaming loop — never synthesized. Token confidence and top candidates are shown only when the backend actually returns logprobs (`"inferenceLogprobs": true` in `tsuka.config.json`, off by default); a backend rejecting the parameter is logged and retried without it.
 * **Function Keys & Help Cheatsheet**:
   * `F1`: Chat View · `F2`: Tools View · `F3`: Agent Picker · `F4`: Team Picker · `F5`: Memory Inspector · `F6`: Model Switcher · `F12`: REPL Help Cheatsheet.
+  * `?` opens the cheatsheet only when the prompt is not focused, so a question mark stays typable in your message.
 
 ## 🏗 Architecture
 

@@ -38,5 +38,6 @@
   "llmMaxTokensCeiling": 8192,
   "browseFetchTimeoutMs": 30000,
   "downloadFetchTimeoutMs": 60000,
-  "defaultUi": "tui"
+  "defaultUi": "tui",
+  "inferenceLogprobs": false
 }
