@@ -225,7 +225,6 @@ export class TuiStore {
 
   finishStreaming(id: string): void {
     this.updateMessage(id, { isStreaming: false });
-    this.setState({ isGenerating: false });
   }
 
   // ── Tool Executions ──

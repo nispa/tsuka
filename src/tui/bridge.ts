@@ -264,6 +264,14 @@ export class TuiBridge {
             this.store.finishStreaming(this.currentAssistantMsgId);
             this.currentAssistantMsgId = undefined;
           }
+          const isNoEffortContinue = this.store.getState().activeReasoningEffort === 'none';
+          this.store.setState({
+            isGenerating: true,
+            generationStatus: {
+              phase: isNoEffortContinue ? 'streaming' : 'reasoning',
+              agentName: this.store.getState().activeAiName,
+            },
+          });
           break;
         }
 
