@@ -30,7 +30,9 @@
 
 | Caratteristica | Descrizione |
 |---------------|-------------|
-| 🖥️ **TUI Interattiva** | Dashboard a schermo intero (`tsuka --tui`), double-buffering zero-flicker, supporto mouse SGR 1006, file explorer, scrollbar |
+| 🖥️ **TUI Interattiva v0.5.0** | Dashboard a schermo intero (`tsuka --tui`), double-buffering zero-flicker, supporto mouse SGR 1006, file viewer modal, input multilinea, ricerca live dei tool e telemetria di inferenza in tempo reale |
+| 📡 **Telemetria di Inferenza in Tempo Reale** | Widget nella sidebar che monitora prefill (ingestione contesto KV Cache), TTFT (Time To First Token), velocità di decode (tok/s), confidenza del modello e logits candidati latenti |
+| 💾 **Esportazione Sessione Markdown** | Comandi `/export [file]` e `/save` sia in CLI sia in TUI per salvare archivi di sessione completi con CoT collassabile ed esiti tool |
 | 🧩 **Tool a caldo** | Aggiungi un file `.ts` in `src/tools/impl/` — scoperto automaticamente all'avvio |
 | 📡 **Auto-discovery dei server** | All'avvio scansiona i server LLM locali (Ollama, Unsloth, …) e si aggancia a quello vivo — preferendo il modello già caricato in RAM |
 | 🎭 **Sistema personaggi** | Ruoli (competenze) × Tratti (personalità) × Personaggi (agenti nominati) in JSON |
@@ -92,12 +94,24 @@ tsuka --tui
 
 ### ✨ Funzionalità della Dashboard TUI:
 * **Double-Buffering Differenziale a Zero-Sfarfallio**: Aggiornamenti a 0ms di latenza visiva, box drawing ANSI sicuro e protezione contro l'auto-wrapping del terminale.
-* **Layout a 4 Quadranti**:
-  * **Header in Alto**: Schede di navigazione (`F1 Chat`, `F2 Tools`), barra del budget bicolore stacked (Teal per l'agente principale + Viola per i subagenti `[██████░░░░] %`), badge di stato dinamico (`⚡ THINKING @Agent`, `🔧 Tool`, `💬 TYPING`), Provider e Modello attivi.
-  * **Agent Profile & Subagent Inspector (In Alto a Sinistra)**: Personaggio, Ruolo, Tratto, metriche token di sessione, tag dei tool autorizzati e **box dedicato per i Subagenti Spawnati** che traccia stato in tempo reale, tool in esecuzione, task assegnato e token consumati.
-  * **File Explorer del Workspace (In Basso a Sinistra)**: Albero dei file in tempo reale con icone per estensione (`📁`, `🟦 TS`, `🟨 JS`, `⚙️ JSON`, `📝 MD`, `🧪 Test`, `🔒 Secrets`), barra di scorrimento verticale e click per inserire il path nel prompt.
-  * **Feed di Conversazione & Tools (Area Principale)**: Parsing Markdown formattato, blocchi di codice con sintassi evidenziata, contenitori stilizzati per il reasoning `<think>` e card di esecuzione dei tool.
-  * **Prompt di Input (In Basso)**: Buffer multi-riga, cronologia dei comandi (`↑`/`↓`), cursore ANSI, badge per i messaggi in coda (`[IN CODA #1]`) e spinner di stato `(⏳ Working...)`.
+* **Telemetria di Inferenza in Tempo Reale (`InferenceTelemetryWidget`)**: Elimina l'attesa cieca durante l'inferenza locale monitorando:
+  * `⚡ PREFILL`: Ingestione contesto KV Cache e velocità di elaborazione (`N tok @ X t/s`).
+  * `🌊 DECODE`: Velocità di streaming token e **TTFT** (*Time to First Token*) in millisecondi.
+  * `📊 Stato Latente & Logits`: Barra di confidenza del modello `[████████░░] 94%` e top token alternativi candidati.
+* **Workspace File Explorer & Modale di Anteprima Codice**:
+  * Albero dei file in tempo reale con icone per estensione (`📁`, `🟦 TS`, `🟨 JS`, `⚙️ JSON`, `📝 MD`, `🧪 Test`, `🔒 Secrets`).
+  * Premendo **`Enter`** (o doppio clic) si apre il **Workspace File Viewer Modal** con numeri di riga formattati, scroll fluido e scorciatoia per copiare/incollare.
+  * Premendo **`i`** o **`Space`** si incolla il nome del file selezionato direttamente nel prompt di input.
+* **Input Multi-linea & Preservazione Incollamento**:
+  * **`Shift+Enter`** / **`Ctrl+J`** / **`Alt+Enter`** inserisce una nuova riga senza inviare prematuramente.
+  * Box di input ad altezza elastica dinamica che si espande da 3 a 6 righe in base al contenuto.
+  * Navigazione cursore 2D su più righe e supporto all'incollamento di blocchi di codice dal clipboard.
+* **Filtro di Ricerca Tool Interattivo**:
+  * Nella scheda **`F2`** Tools, digitando direttamente o premendo `/` è possibile filtrare in tempo reale tutti i 27 tool nativi, i tier di sicurezza (`SAFE`, `RESTRICTED`, `DANGEROUS`) e le esecuzioni passate.
+* **Esportazione Sessione in Markdown**:
+  * Digitando `/export` o `/save` l'intera sessione (chat, ragionamenti e chiamate tool) viene esportata in `exports/session-<timestamp>.md`.
+* **Motore di Layout Configurabile (`F7` / `/layout`)**:
+  * Selezione dinamica dei preset (*Default Quadrant*, *Wide Chat*, *Sidebar a Destra*, *Zen Focus*) e 5 palette colore curate (*Cyan*, *Neon*, *Amber*, *Matrix*, *Minimal*).
 * **Parità Completa dei Comandi Slash nella TUI**:
   * `/goal <obiettivo>`: Esegue workflow dell'orchestratore multi-agente autonomo direttamente in chat.
   * `/team <team> "<task>"`: Esegue pipeline di team collaborativi multi-agente.
@@ -473,7 +487,9 @@ I prompt sono **serializzati da una coda interna**: due agenti in parallelo non 
 | `/effort [livello]` | Gestisce lo sforzo di ragionamento (`none`\|`low`\|`medium`\|`xhigh`\|`auto`\|`ask`) |
 | `/benchmark [modello\|all]` | Misura le capacità del modello (tier e tok/s) |
 | `/agent [nome]` | Mostra o seleziona l'agente attivo |
-| `/tools` | Mostra i tool abilitati per ruolo, tier ed effort |
+| `/tools [query]` | Mostra e filtra i tool abilitati per ruolo, tier ed effort |
+| `/export [file]` | Esporta la sessione completa, i ragionamenti e i log dei tool in Markdown (alias: `/save`) |
+| `/stop` | Interrompe la generazione, il reasoning o l'esecuzione tool in corso (alias: `Esc` / `Ctrl+X`) |
 | `/context` | Mostra il consumo di token della cronologia rispetto al budget (e da dove viene il limite) |
 | `/memory [clear\|<id>]` | Gestisce, legge o svuota i ricordi persistenti |
 | `/blackboard` | Mostra note e stato dell'ultimo workflow/goal |
@@ -572,7 +588,7 @@ npx tsx tests/test_self_authoring.ts
 npx tsx tests/test_platform.ts
 ```
 
-Stato attuale: **57 suite di test, 1178 assertion — tutte verdi**. Ogni suite gira senza rete e senza un LLM vivo (`MockLLMProvider`) e su un file di memoria temporaneo, così `npm test` non tocca mai i ricordi reali.
+Stato attuale: **62 suite di test, 1200+ assertion — tutte verdi**. Ogni suite gira senza rete e senza un LLM vivo (`MockLLMProvider`) e su un file di memoria temporaneo, così `npm test` non tocca mai i ricordi reali.
 
 ## 📚 Documentazione
 

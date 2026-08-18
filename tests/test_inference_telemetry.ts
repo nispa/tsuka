@@ -107,4 +107,45 @@ describe('TUI Inference Telemetry & Latent Space Inspector (T14.7)', () => {
     assert.ok(plain.includes('PREFILL'), 'Must render prefill in sidebar');
   });
 
+  it('InferenceLedsWidget: renders status LEDs across all operational phases (T14.8 Option B)', () => {
+    const store = new TuiStore();
+
+    // 1. IDLE / READY state
+    store.setState({ isGenerating: false, telemetry: { phase: 'idle' } });
+    let lines = SidebarView.render(store.getState(), 35, 20, ['telemetry_leds']);
+    let plain = lines.map((l) => TuiScreen.stripAnsi(l)).join('\n');
+    assert.ok(plain.includes('STATUS LEDS'), 'Must display LED widget header');
+    assert.ok(plain.includes('[RDY]'), 'Must highlight [RDY]');
+    assert.ok(plain.includes('Ready'), 'Must indicate Ready in text');
+
+    // 2. PREFILL state
+    store.setState({ isGenerating: true, telemetry: { phase: 'prefill', prefillTokens: 1024 } });
+    lines = SidebarView.render(store.getState(), 35, 20, ['telemetry_leds']);
+    plain = lines.map((l) => TuiScreen.stripAnsi(l)).join('\n');
+    assert.ok(plain.includes('[PRE]'), 'Must highlight [PRE]');
+    assert.ok(plain.includes('KV Ingestion'), 'Must indicate KV Cache ingestion');
+
+    // 3. REASONING / THINKING state
+    store.setState({ isGenerating: true, generationStatus: { phase: 'reasoning', agentName: 'Spock' } });
+    lines = SidebarView.render(store.getState(), 35, 20, ['telemetry_leds']);
+    plain = lines.map((l) => TuiScreen.stripAnsi(l)).join('\n');
+    assert.ok(plain.includes('[THK]'), 'Must highlight [THK]');
+    assert.ok(plain.includes('Thinking'), 'Must indicate reasoning in text');
+
+    // 4. DECODE / STREAMING state
+    store.setState({ isGenerating: true, generationStatus: { phase: 'streaming' }, telemetry: { phase: 'decoding' } });
+    lines = SidebarView.render(store.getState(), 35, 20, ['telemetry_leds']);
+    plain = lines.map((l) => TuiScreen.stripAnsi(l)).join('\n');
+    assert.ok(plain.includes('[DEC]'), 'Must highlight [DEC]');
+    assert.ok(plain.includes('Streaming Response'), 'Must indicate decoding in text');
+
+    // 5. TOOL execution state
+    store.setState({ isGenerating: true, generationStatus: { phase: 'tool', toolName: 'read_file' }, telemetry: { phase: 'tool' } });
+    lines = SidebarView.render(store.getState(), 35, 20, ['telemetry_leds']);
+    plain = lines.map((l) => TuiScreen.stripAnsi(l)).join('\n');
+    assert.ok(plain.includes('[TOL]'), 'Must highlight [TOL]');
+    assert.ok(plain.includes('Tool Execution'), 'Must indicate tool execution');
+  });
+
 });
+

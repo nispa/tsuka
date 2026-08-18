@@ -4,9 +4,9 @@
   <p>Read in <a href="architecture.md">🇬🇧 English</a></p>
 </div>
 
-> Questo documento descrive l'architettura tecnica, i principi di progettazione e l'organizzazione modulare del framework **TSUKA** (v0.4.0). Per le linee guida operative di contribuzione al codice si rimanda ad [`AGENTS.md`](../AGENTS.md); per l'elenco dei task completati e pianificati, consultare [`TASKS.md`](../TASKS.md).
+> Questo documento descrive l'architettura tecnica, i principi di progettazione e l'organizzazione modulare del framework **TSUKA** (v0.5.0). Per le linee guida operative di contribuzione al codice si rimanda ad [`AGENTS.md`](../AGENTS.md); per l'elenco dei task completati e pianificati, consultare [`TASKS.md`](../TASKS.md).
 >
-> 📊 **Metriche di sistema**: 27 tool · 19 comandi REPL · 24 moduli core · 21 ruoli · 9 tratti · 24 personaggi (agenti) · 10 team configurati · 58 suite di test automatici · Doppia interfaccia CLI & TUI.
+> 📊 **Metriche di sistema**: 27 tool · 20 comandi REPL · 24 moduli core · 21 ruoli · 9 tratti · 24 personaggi (agenti) · 10 team configurati · 62 suite di test automatici · Doppia interfaccia CLI & TUI.
 
 ---
 

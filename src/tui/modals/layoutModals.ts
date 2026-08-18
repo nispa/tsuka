@@ -186,6 +186,8 @@ export class LayoutModals {
     const allWidgets: Array<{ id: TuiWidgetId; label: string; hint: string }> = [
       { id: 'persona', label: '👤 Agent Profile', hint: 'Agent name, role, trait, effort & team' },
       { id: 'metrics', label: '📊 Session Metrics', hint: 'Turn counter, tool calls & token usage' },
+      { id: 'telemetry_leds', label: '💡 Hardware Status LEDs', hint: 'Compact LED indicators (RDY, PRE, THK, DEC, TOL)' },
+      { id: 'telemetry', label: '📡 Detailed Telemetry', hint: 'KV Cache ingestion, TTFT ms, decode tok/s & logits' },
       { id: 'tool_activity', label: '🛠️ Tool Activity', hint: 'History & status of recent tool executions' },
       { id: 'quick_keys', label: '⌨️ Quick Keys', hint: 'Quick shortcut key reference' },
     ];
@@ -197,8 +199,8 @@ export class LayoutModals {
       hint: w.hint,
     }));
 
-    options.push({ label: '★ Enable All Widgets', value: 'all', hint: 'Display all 4 sections' });
-    options.push({ label: '★ Minimal Profile Only', value: 'minimal', hint: 'Only agent card & metrics' });
+    options.push({ label: '★ Enable All Widgets', value: 'all', hint: 'Display all sidebar sections' });
+    options.push({ label: '★ Minimal Profile Only', value: 'minimal', hint: 'Only agent card, metrics & LEDs' });
 
     store.showModal({
       type: 'slash_menu',
@@ -207,9 +209,9 @@ export class LayoutModals {
       options,
       onSelect: (chosen) => {
         if (chosen === 'all') {
-          layoutConfig.visibleWidgets = ['persona', 'metrics', 'tool_activity', 'quick_keys'];
+          layoutConfig.visibleWidgets = ['persona', 'metrics', 'telemetry_leds', 'telemetry', 'tool_activity', 'quick_keys'];
         } else if (chosen === 'minimal') {
-          layoutConfig.visibleWidgets = ['persona', 'metrics'];
+          layoutConfig.visibleWidgets = ['persona', 'metrics', 'telemetry_leds'];
         } else {
           const wId = chosen as TuiWidgetId;
           if (current.has(wId)) {

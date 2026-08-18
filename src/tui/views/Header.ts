@@ -55,7 +55,7 @@ export class HeaderView {
       }
     }
 
-    const brand = chalk.bold.hex('#e879f9')('TSUKA') + (width > 95 ? chalk.gray(' v0.4.0') : '');
+    const brand = chalk.bold.hex('#e879f9')('TSUKA') + (width > 95 ? chalk.gray(' v0.5.0') : '');
     const tabsRowWidth = TuiScreen.stringWidth(tabsRow);
     const brandWidth = TuiScreen.stringWidth(brand);
     const spacing0 = Math.max(1, width - tabsRowWidth - brandWidth - 2);

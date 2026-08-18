@@ -30,7 +30,9 @@
 
 | Feature | Description |
 |---------|-------------|
-| 🖥️ **Interactive TUI** | Full-screen dashboard (`tsuka --tui`), double-buffering zero-flicker, SGR 1006 mouse tracking, file explorer, scrollbars |
+| 🖥️ **Interactive TUI v0.5.0** | Full-screen dashboard (`tsuka --tui`), zero-flicker double-buffering, SGR 1006 mouse tracking, file viewer modal, multiline input, live tools search, and real-time inference telemetry |
+| 📡 **Real-Time Inference Telemetry** | Sidebar widget monitoring prefill (KV Cache context ingestion), TTFT (Time To First Token), decode tok/s, model confidence, and latent candidate logits |
+| 💾 **Markdown Session Export** | `/export [file]` & `/save` commands in both CLI & TUI saving clean session archives with collapsible CoT traces and tool outputs |
 | 🧩 **Hot-plug tools** | Drop a `.ts` file into `src/tools/impl/` — auto-discovered at startup |
 | 📡 **Server auto-discovery** | Startup scans local LLM servers (Ollama, Unsloth, …) and hooks onto the live one — preferring the model already loaded in RAM |
 | 🎭 **Character system** | Roles (skills) × Traits (personality) × Presets (named agents) in JSON |
@@ -92,12 +94,24 @@ tsuka --tui
 
 ### ✨ Key Dashboard Capabilities:
 * **Zero-Flicker Double-Buffering**: Differential line rendering with 0ms visual latency, ANSI-safe box drawing, and terminal boundary wrapping protection.
-* **4-Quadrant Layout**:
-  * **Header**: Live Tabs (`F1 Chat`, `F2 Tools`), Dual-Color Stacked Context Meter (Teal main + Purple subagents `[██████░░░░] %`), Dynamic State Badge (`⚡ THINKING @Agent`, `🔧 Tool`, `💬 TYPING`), Active Provider & Model.
-  * **Agent Profile & Subagent Inspector (Top Left)**: Active Character, Role, Trait, token usage metrics, authorized tool tags, plus a **dedicated Spawned Subagent Box** tracking live subagent state, assigned task, and tokens.
-  * **Workspace File Explorer (Bottom Left)**: Real-time file tree with file-type icons (`📁`, `🟦 TS`, `🟨 JS`, `⚙️ JSON`, `📝 MD`, `🧪 Test`, `🔒 Secrets`), vertical scrollbar, and click-to-insert into prompt.
-  * **Conversation & Tools Feed (Main Area)**: Markdown parsing, syntax-highlighted code blocks, formatted `<think>` reasoning containers, and live tool execution cards.
-  * **Interactive Prompt (Bottom)**: Multi-line prompt buffer, command history (`↑`/`↓`), ANSI cursor, queued prompt badges (`[IN CODA #1]`), and working status spinner.
+* **Real-Time Inference Telemetry (`InferenceTelemetryWidget`)**: Eliminates "blind waiting" during local inference by tracking:
+  * `⚡ PREFILL`: KV Cache prompt ingestion progress and speed (`N tok @ X t/s`).
+  * `🌊 DECODE`: Live streaming token speed and **TTFT** (*Time to First Token*) in milliseconds.
+  * `📊 Latent State & Logits`: Model confidence meter `[████████░░] 94%` and top candidate alternatives.
+* **Workspace File Explorer & Code Preview Modal**:
+  * Real-time file tree with file-type icons (`📁`, `🟦 TS`, `🟨 JS`, `⚙️ JSON`, `📝 MD`, `🧪 Test`, `🔒 Secrets`).
+  * Press **`Enter`** (or double-click) to open the **Workspace File Viewer Modal** with line numbers, smooth scrolling, and clipboard copy.
+  * Press **`i`** or **`Space`** to insert the selected file name directly into the prompt buffer.
+* **Multi-line Input Prompt & Paste Preservation**:
+  * **`Shift+Enter`** / **`Ctrl+J`** / **`Alt+Enter`** inserts a newline without prematurely sending.
+  * Dynamic elastic input box expanding smoothly from 3 to 6 rows.
+  * 2D cursor navigation across lines and seamless multi-line clipboard pasting.
+* **Interactive Tools Search & History Filter**:
+  * In the **`F2`** Tools tab, type to live-search across all 27 native tools, risk tiers (`SAFE`, `RESTRICTED`, `DANGEROUS`), and execution logs.
+* **Markdown Session Exporter**:
+  * Type `/export` or `/save` to save the active conversation, reasoning blocks, and tool executions to `exports/session-<timestamp>.md`.
+* **Configurable Layout Engine (`F7` / `/layout`)**:
+  * Switch between presets (*Default Quadrant*, *Wide Chat*, *Right Sidebar*, *Zen Focus Mode*) and 5 curated color themes (*Cyan*, *Neon*, *Amber*, *Matrix*, *Minimal*).
 * **Full REPL Slash Command Parity in TUI**:
   * `/goal <objective>`: Runs dynamic multi-agent orchestrator workflows directly in chat.
   * `/team <team> "<task>"`: Runs multi-agent team collaborative pipelines.
@@ -473,7 +487,9 @@ Prompts are **serialized through an internal queue**: two agents running in para
 | `/effort [level]` | Manage reasoning effort (`none`\|`low`\|`medium`\|`xhigh`\|`auto`\|`ask`) |
 | `/benchmark [model\|all]` | Measure model capabilities (tier & tok/s) |
 | `/agent [name]` | Show or select the active agent |
-| `/tools` | List enabled tools for active role, tier, and effort |
+| `/tools [query]` | List & filter enabled tools for active role, tier, and effort |
+| `/export [file]` | Export complete conversation session, reasoning & tool logs to Markdown (alias: `/save`) |
+| `/stop` | Abort currently running generation, reasoning, or tool execution (alias: `Esc` / `Ctrl+X`) |
 | `/context` | Show history token usage against the context budget (and where the limit came from) |
 | `/memory [clear\|<id>]` | Inspect, manage, or wipe persistent memories |
 | `/blackboard` | Show notes and state of the latest workflow/goal |
@@ -572,7 +588,7 @@ npx tsx tests/test_self_authoring.ts
 npx tsx tests/test_platform.ts
 ```
 
-Current status: **57 test suites, 1178 assertions — all green**. Every suite runs without network access or a live LLM (`MockLLMProvider`) and against a temporary memory file, so `npm test` never touches your real memories.
+Current status: **62 test suites, 1200+ assertions — all green**. Every suite runs without network access or a live LLM (`MockLLMProvider`) and against a temporary memory file, so `npm test` never touches your real memories.
 
 ## 📚 Documentation
 

@@ -56,6 +56,7 @@
 | T14.5 | ✅ Fatto | **Multi-line Input Prompt & Paste Preservation**: Supporto per input su più righe nel prompt buffer (`Shift+Enter`, `Ctrl+J`, paste multi-linea) con rendering dinamico multilinea, box ad altezza elastica e navigazione cursore 2D; suite `tests/test_multiline_tools_filter.ts`. |
 | T14.6 | ✅ Fatto | **Interactive Tools Search & History Filter (CLI + TUI Parity)**: Filtro di ricerca testuale dinamico in tempo reale per la vista Tool Inspector (`F2` / `/tools`) e per il comando CLI `/tools [query]` su nome tool, tier di sicurezza (`SAFE`/`RESTRICTED`/`DANGEROUS`) ed esecuzioni; suite `tests/test_multiline_tools_filter.ts`. |
 | T14.7 | ✅ Fatto | **Real-Time Inference Telemetry & Latent Space Inspector Widget**: Widget autonomo posizionato nella sidebar (tra Agent Profile e Files Explorer) per monitorare lo stato di prefill (KV Cache ingestion), Time To First Token (TTFT), velocità di decode (tok/s), confidenza del modello e top token candidati latenti (`logprobs`); suite `tests/test_inference_telemetry.ts`. |
+| T14.8 | ✅ Fatto | **Hardware Status LEDs Widget (Compact Mode)**: Widget compatto a indicatori LED luminosi (`[RDY]`, `[PRE]`, `[THK]`, `[DEC]`, `[TOL]`) per un monitoraggio visivo immediato senza percentuali matematiche, selezionabile e configurabile tramite layout engine (`F7` / `/layout`); suite `tests/test_inference_telemetry.ts`. |
 
 Tutti i task pianificati e di backlog sono completati con 62 suite di test verdi.
 
