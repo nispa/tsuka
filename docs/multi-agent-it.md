@@ -49,7 +49,7 @@ Il comando `/team` avvia una sessione operativa in cui gli agenti collaborano su
 ### Le 4 strategie di coordinamento (`mode`):
 1. **`orchestrated` (consigliata)**: un agente supervisore dedicato (`orchestrator`, es. `pike`) riceve un digest dei progressi ad ogni turno e decide chi far intervenire tramite il tool `route_next(agent, reason)` (o dichiara `FINE`).
 2. **`round-robin`**: sequenza ciclica fissa tra i membri del team per un massimo di round (`teamMaxRounds`, default 3).
-3. **`pipeline`**: catena di montaggio a passaggio singolo in cui ogni stazione riceve l'output della precedente, lo perfeziona e lo trasmette alla successiva. Supporta criteri di accettazione oggettivi ([`src/core/loop.ts`](file:///f:/progetti_ai/harness/src/core/loop.ts)).
+3. **`pipeline`**: catena di montaggio a passaggio singolo in cui ogni stazione riceve l'output della precedente, lo perfeziona e lo trasmette alla successiva. Supporta criteri di accettazione oggettivi ([`src/core/loop.ts`](../src/core/loop.ts)).
 4. **`hybrid`**: impostando `discussionRounds > 0`, al termine di ogni round operativo si apre una discussione collegiale con votazione formale (`cast_vote`).
 
 ### Protocollo di coordinamento a tool call:

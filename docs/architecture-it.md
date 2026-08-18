@@ -6,7 +6,7 @@
 
 > Questo documento descrive l'architettura tecnica, i principi di progettazione e l'organizzazione modulare del framework **TSUKA** (v0.5.1). Per le linee guida operative di contribuzione al codice si rimanda ad [`AGENTS.md`](../AGENTS.md); per l'elenco dei task completati e pianificati, consultare [`TASKS.md`](../TASKS.md).
 >
-> 📊 **Metriche di sistema**: 27 tool · 20 comandi REPL · 24 moduli core · 21 ruoli · 9 tratti · 24 personaggi (agenti) · 10 team configurati · 64 suite di test automatici · Doppia interfaccia CLI & TUI.
+> 📊 **Metriche di sistema**: 27 tool · 20 comandi REPL · 24 moduli core · 21 ruoli · 9 tratti · 24 personaggi (agenti) · 10 team configurati · 65 suite di test automatici · Doppia interfaccia CLI & TUI.
 
 ---
 
@@ -97,7 +97,7 @@ La codebase è organizzata in quattro layer indipendenti con chiare responsabili
 ### Disaccoppiamento dell'I/O: `AgentEvents` e `logSink`
 Il livello core non invoca mai direttamente `console.log` o stream TTY:
 * Le esecuzioni dell'agente notificano gli avanzamenti all'interfaccia tramite contratti di evento (`onChunk`, `onStats`, `onEvent`, `AbortSignal` in `agentEvents.ts`).
-* I moduli infrastrutturali di servizio (`MemoryStore`, `ConfigManager`, `ToolRegistry`) utilizzano un sink iniettabile e intercettabile ([`src/core/logSink.ts`](file:///f:/progetti_ai/harness/src/core/logSink.ts)), consentendo una futura integrazione con interfacce web o server headless senza dover rifattorizzare il motore logico.
+* I moduli infrastrutturali di servizio (`MemoryStore`, `ConfigManager`, `ToolRegistry`) utilizzano un sink iniettabile e intercettabile ([`src/core/logSink.ts`](../src/core/logSink.ts)), consentendo una futura integrazione con interfacce web o server headless senza dover rifattorizzare il motore logico.
 
 ---
 
@@ -273,7 +273,7 @@ Nei modelli di reasoning (es. DeepSeek R1, Qwen QwQ), il tempo di elaborazione d
 ### Le quattro strategie collaborative di `/team`:
 * **`orchestrated` (consigliata)**: un agente supervisore valuta i progressi turno per turno e assegna dinamicamente l'intervento al membro più idoneo tramite il tool `route_next`.
 * **`round-robin`**: rotazione ciclica sequenziale tra tutti i membri del team fino alla risoluzione del task.
-* **`pipeline`**: catena di montaggio a passaggio singolo in cui ogni stazione perfeziona l'output della precedente, con supporto per il loop di verifica oggettiva ([`src/core/loop.ts`](file:///f:/progetti_ai/harness/src/core/loop.ts)).
+* **`pipeline`**: catena di montaggio a passaggio singolo in cui ogni stazione perfeziona l'output della precedente, con supporto per il loop di verifica oggettiva ([`src/core/loop.ts`](../src/core/loop.ts)).
 * **`hybrid`**: inserisce round periodici di discussione e votazione formale (`cast_vote`) tra i cicli di lavoro operativo.
 
 ### Concorrenza nei blocchi `PARALLELO` di `/goal`:

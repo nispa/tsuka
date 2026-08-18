@@ -1,0 +1,9 @@
+{
+  "//": "Type-checks the maintenance scripts too: `npm run build` compiles only src/ into dist/, so scripts/ would otherwise be checked by nothing. tests/ is deliberately left out — it carries pre-existing type errors that tsx does not enforce.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": "."
+  },
+  "include": ["src/**/*", "scripts/**/*"]
+}

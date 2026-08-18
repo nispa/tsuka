@@ -595,7 +595,7 @@ npx tsx tests/test_self_authoring.ts
 npx tsx tests/test_platform.ts
 ```
 
-Current status: **64 test suites, 1200+ assertions — all green**. Every suite runs without network access or a live LLM (`MockLLMProvider`) and against a temporary memory file, so `npm test` never touches your real memories.
+Current status: **65 test suites, 1200+ assertions — all green**. Every suite runs without network access or a live LLM (`MockLLMProvider`) and against a temporary memory file, so `npm test` never touches your real memories.
 
 ## 📚 Documentation
 
@@ -607,6 +607,11 @@ Current status: **64 test suites, 1200+ assertions — all green**. Every suite 
 | [Security](docs/security.md) | Permission manager, workspace jail, deterministic source logging |
 | [Use cases](docs/use-cases.md) | Concrete recipes with characters, roles and teams |
 | [Educational guide](docs/educational-guide.md) | Step by step: how to build an agentic harness from scratch |
+
+The [GitHub wiki](https://github.com/nispa/tsuka/wiki) is **generated** from these files by `npm run wiki:build`
+(`scripts/buildWiki.ts`) and republished by the `Wiki` workflow: pages are never edited there, so the wiki
+cannot drift from the documentation in the repository. The slash commands page is built straight from the
+command table, so it always matches the code.
 
 ## 🗺 Roadmap
 

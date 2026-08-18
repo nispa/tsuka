@@ -89,7 +89,8 @@ const suites = [
   'test_multiline_tools_filter.ts',
   'test_inference_telemetry.ts',
   'test_tui_data_driven.ts',
-  'test_files_explorer.ts'
+  'test_files_explorer.ts',
+  'test_wiki_build.ts'
 ];
 
 let passed = 0;

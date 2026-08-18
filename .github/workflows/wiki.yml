@@ -1,0 +1,58 @@
+name: Wiki
+
+# Publishes the GitHub wiki from the repository documentation.
+# The wiki is a separate git repository and GitHub creates it only when the
+# first page is saved from the web UI: do that once, then this workflow keeps
+# every page in sync with docs/, the READMEs and the command table.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - 'README.md'
+      - 'README-it.md'
+      - 'src/tui/commands/**'
+      - 'scripts/buildWiki.ts'
+      - '.github/workflows/wiki.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    name: Generate and publish wiki
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Clone wiki repository
+        run: |
+          git clone "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.wiki.git" wiki
+          git -C wiki config user.name "github-actions[bot]"
+          git -C wiki config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Generate pages
+        run: npm run wiki:build -- --out wiki --repo "${{ github.repository }}"
+
+      - name: Publish
+        working-directory: wiki
+        run: |
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Wiki already matches the documentation."
+            exit 0
+          fi
+          git commit -m "docs(wiki): sync from ${{ github.sha }}"
+          git push

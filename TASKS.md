@@ -64,7 +64,9 @@
 
 | T14.12 | ✅ Fatto | **Navigazione Directory nel Files Explorer**: Esplorazione iterativa dell'albero del workspace (`src/tui/fileExplorer.ts`): `→` entra nella cartella selezionata, `←` risale, `Enter` è contestuale (cartella → entra, file → anteprima), voce `.. (up)` come prima riga fuori dalla root e titolo del pannello come breadcrumb. Ogni risoluzione passa da `resolveSafePath`, quindi nessuna sequenza di tasti esce dalla workspace jail; `i`/`Space` e il click inseriscono ora il percorso completo relativo alla root invece del solo nome file. Suite `tests/test_files_explorer.ts`. |
 
-Tutti i task pianificati e di backlog sono completati con 64 suite di test verdi.
+| T14.13 | ✅ Fatto | **Wiki GitHub Generato dalla Documentazione**: `scripts/buildWiki.ts` (`npm run wiki:build`) costruisce le pagine wiki da una tabella `PAGES` derivandole da `docs/`, da sezioni dei README e dalla tabella dei comandi (`Slash-Commands` nasce da `TUI_COMMANDS`, quindi alias e descrizioni non possono divergere dal codice); riscrive i link — rimandi tra documenti → pagine wiki, riferimenti al codice → URL assoluti `blob/main` — perché il wiki è un repository separato. `Home`, `_Sidebar` e `_Footer` sono generati; workflow `.github/workflows/wiki.yml` ripubblica su push a `main` (la prima pagina va creata a mano dal browser, GitHub crea il repo del wiki solo allora). Aggiunti `tsconfig.check.json` + `npm run typecheck` (`npm run build` compila solo `src/`) e corretti 4 link `file:///` locali nei docs. Suite `tests/test_wiki_build.ts`. |
+
+Tutti i task pianificati e di backlog sono completati con 65 suite di test verdi.
 
 ---
 
@@ -1607,7 +1609,7 @@ Implementare la protezione a più livelli contro il sovraccarico di contesto cau
 
 **Dipende da:** nessuno · **Sforzo:** medio · **Priorità:** media
 
-Sostituire l'attuale funzione Regex in [`src/tools/impl/browseUrl.ts`](file:///f:/progetti_ai/harness/src/tools/impl/browseUrl.ts) con una libreria avanzata di parsing HTML e content extraction (`node-html-markdown`).
+Sostituire l'attuale funzione Regex in [`src/tools/impl/browseUrl.ts`](src/tools/impl/browseUrl.ts) con una libreria avanzata di parsing HTML e content extraction (`node-html-markdown`).
 
 - Estrarre in modo pulito il contenuto principale del documento (modalità Reader View), scartando parti non rilevanti (navigation, footer, ad, sidebar, cookie banner).
 - Preservare e formattare correttamente gli elementi strutturati ed i media:
@@ -1871,3 +1873,39 @@ risalire. L'esplorazione diventa iterativa, con la jail del workspace come unico
 contenuto, `←` torna al livello superiore, `Enter` su un file apre l'anteprima; nessuna sequenza
 di tasti permette di uscire dalla workspace. Suite `tests/test_files_explorer.ts` (8 test su
 albero temporaneo isolato con `withWorkspaceOverride`).
+
+---
+
+## T14.13 — Wiki GitHub Generato dalla Documentazione
+
+**Dipende da:** T14.11 · **Sforzo:** basso · **Priorità:** media
+
+Il wiki di GitHub vive in un repository separato (`<repo>.wiki.git`) che nessun test del progetto
+può controllare: copiarci dentro `docs/` significherebbe creare una seconda fonte di verità
+destinata a divergere al primo task. Le pagine vengono quindi **derivate**, mai scritte a mano.
+
+- **Generatore** (`scripts/buildWiki.ts`, `npm run wiki:build -- --out ../tsuka.wiki [--push]`):
+  - Tabella `PAGES` (una riga per pagina: nome, titolo, lingua, controparte nell'altra lingua,
+    sintesi, sorgente) con tre tipi di sorgente: documento intero di `docs/`, sezioni selezionate
+    di un README, contenuto generato.
+  - Riscrittura dei link, indispensabile perché il wiki sta in un altro repository: i rimandi tra
+    documenti diventano pagine wiki (`docs/multi-agent.md` → `Multi-Agent-Workflows`), tutto ciò
+    che punta al codice diventa un URL assoluto `blob/main`, link esterni e ancore restano intatti.
+    Recupera anche gli eventuali `file:///…/harness/…` lasciati da un editor.
+  - Pagine generate: `Home` (indice bilingue dalla tabella), `_Sidebar.md`, `_Footer.md` (versione
+    da `package.json`) e `Slash-Commands`, costruita da `TUI_COMMANDS`: comandi, alias e
+    descrizioni non possono disallinearsi dal software.
+  - Intestazione automatica su ogni pagina con lo switch di lingua e il link al file sorgente
+    ("edit that file in the repository, not this page").
+- **Pubblicazione** (`.github/workflows/wiki.yml`): su push a `main` che tocchi `docs/`, i README,
+  `src/tui/commands/` o il generatore, clona il wiki con `GITHUB_TOKEN`, rigenera e committa solo
+  se qualcosa è cambiato. La **prima pagina va creata a mano dal browser**: GitHub crea il
+  repository del wiki solo in quel momento e nessuna API lo fa al posto tuo.
+- **Contorno**: `tsconfig.check.json` + `npm run typecheck` (con step in CI) perché `npm run build`
+  compila solo `src/` e `scripts/` sarebbe rimasto senza alcun controllo di tipi; corretti 4 link
+  `file:///f:/progetti_ai/harness/…` in `docs/architecture-it.md`, `docs/multi-agent-it.md` e
+  `TASKS.md`, rotti per chiunque non fosse su quella macchina.
+
+**Accettazione:** `npm run wiki:build` produce 18 file pubblicabili senza un solo link relativo al
+repository; rigenerare due volte dà lo stesso risultato. Suite `tests/test_wiki_build.ts` (9 test
+su riscrittura dei link, estrazione delle sezioni, pagine prodotte e derivazione dei comandi).

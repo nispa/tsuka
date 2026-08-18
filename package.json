@@ -44,6 +44,8 @@
     "build": "tsc",
     "start": "node dist/cli/index.js",
     "test": "tsx tests/run_tests.ts",
+    "wiki:build": "tsx scripts/buildWiki.ts",
+    "typecheck": "tsc -p tsconfig.check.json",
     "test:roles": "tsx tests/test_roles.ts",
     "test:memory": "tsx tests/test_memory.ts",
     "test:puzznic": "node workspace\\puzznic\\tests\\run_tests.js",

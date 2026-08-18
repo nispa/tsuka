@@ -595,7 +595,7 @@ npx tsx tests/test_self_authoring.ts
 npx tsx tests/test_platform.ts
 ```
 
-Stato attuale: **64 suite di test, 1200+ assertion — tutte verdi**. Ogni suite gira senza rete e senza un LLM vivo (`MockLLMProvider`) e su un file di memoria temporaneo, così `npm test` non tocca mai i ricordi reali.
+Stato attuale: **65 suite di test, 1200+ assertion — tutte verdi**. Ogni suite gira senza rete e senza un LLM vivo (`MockLLMProvider`) e su un file di memoria temporaneo, così `npm test` non tocca mai i ricordi reali.
 
 ## 📚 Documentazione
 
@@ -607,6 +607,11 @@ Stato attuale: **64 suite di test, 1200+ assertion — tutte verdi**. Ogni suite
 | [Sicurezza](docs/security-it.md) | Gestore dei permessi, jail del workspace, tracciamento deterministico delle fonti |
 | [Casi d'uso](docs/use-cases-it.md) | Ricette concrete con personaggi, ruoli e team |
 | [Guida didattica](docs/guida-didattica.md) | Tappa per tappa: come si costruisce un harness agentico come questo |
+
+Il [wiki GitHub](https://github.com/nispa/tsuka/wiki) è **generato** da questi file con `npm run wiki:build`
+(`scripts/buildWiki.ts`) e ripubblicato dal workflow `Wiki`: le pagine non si modificano lì, quindi il wiki
+non può divergere dalla documentazione del repository. La pagina dei comandi slash nasce direttamente dalla
+tabella dei comandi, quindi è sempre allineata al codice.
 
 ## 🗺 Roadmap
 
