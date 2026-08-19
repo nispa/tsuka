@@ -6,6 +6,7 @@
  * (chars inviati / usage.prompt_tokens reale dell'API) dopo ogni risposta.
  * Esecuzione: npx tsx tests/test_token_calibration.ts
  */
+import './isolateMemory';
 import { Agent } from '../src/core/agent';
 import { ToolRegistry } from '../src/tools/registry';
 import { PermissionManager } from '../src/safety/permissions';

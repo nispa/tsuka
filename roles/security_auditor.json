@@ -19,6 +19,15 @@
     "web_search",
     "write_file"
   ],
+  "coreTools": [
+    "audit_code",
+    "read_file",
+    "write_file",
+    "grep_search",
+    "list_dir",
+    "save_memory",
+    "recall_memory"
+  ],
   "reasoningEffort": "xhigh",
   "creativity": "precise"
 }

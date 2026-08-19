@@ -6,6 +6,7 @@
  *
  * Esecuzione: npx tsx tests/test_reasoning_memory.ts
  */
+import './isolateMemory';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';

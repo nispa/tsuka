@@ -13,6 +13,7 @@ import { withEffortPin, logEffortDivergence } from '../../core/effortControl';
 import { resolveSafePath } from './utils';
 import { MemoryStore } from '../../core/memory';
 import { capForContext } from '../../core/contextBudget';
+import { resolveToolSet } from '../../core/toolSet';
 
 const MAX_TASK_LENGTH = 2000;
 const MAX_BRIEFING_FILE_LENGTH = 12000;
@@ -88,10 +89,9 @@ export const spawnAgentTool: Tool = {
     const label = char?.aiName || roleName;
 
     const blackboard = Blackboard.current();
-    const baseTools = roleObj.allowedTools || [];
     const memoryTools = ['save_memory', 'recall_memory'];
     const blackboardTools = blackboard ? ['post_note', 'read_notes'] : [];
-    const subAllowedTools = Array.from(new Set([...baseTools, ...memoryTools, ...blackboardTools]));
+    const toolSet = resolveToolSet(roleObj, { alwaysActive: [...memoryTools, ...blackboardTools] });
 
     const effectiveOverride = withEffortPin(reasoningEffortOverride);
     logEffortDivergence(label, effectiveOverride, configManager.getDefaultReasoningEffort());
@@ -104,11 +104,12 @@ export const spawnAgentTool: Tool = {
     }
 
     const subAgent = new Agent(
-      provider, registry, permissionManager, sysPrompt, subAllowedTools,
+      provider, registry, permissionManager, sysPrompt, toolSet.active,
       configManager.getMaxHistoryMessages(), configManager.getMaxHistoryTokens(),
       label, undefined, undefined,
       configManager.getMaxToolRounds()
     );
+    subAgent.setDeferredTools(toolSet.deferred);
 
     const onChunk = context?.onChunk;
     const onStats = context?.onStats;

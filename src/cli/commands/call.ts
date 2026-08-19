@@ -136,7 +136,9 @@ export async function handleCall(ctx: CommandCtx, arg: string, directTopic?: str
         const cascadedEffort = resolveReasoningEffort(undefined, p, roleObj, ctx.configManager.getDefaultReasoningEffort());
         const reasoningEffort = withEffortPin(cascadedEffort);
 
-        let sysPrompt = loadSystemPrompt(roleObj, traitObj, ctx.provider.getCurrentModel(), ctx.registry, p, topic, reasoningEffort);
+        // No registry on purpose: a call turn is passed an empty `tools` array, so listing the
+        // role's tools here would advertise capabilities the participant cannot actually use.
+        let sysPrompt = loadSystemPrompt(roleObj, traitObj, ctx.provider.getCurrentModel(), undefined, p, topic, reasoningEffort);
         sysPrompt += '\n\n[CONTEXT]: You are participating in a group call with colleagues. Reply to prior points, addressing colleagues directly when appropriate. Keep your turn brief (max 4 sentences) and stay in character.';
 
         callMessages[0] = { role: 'system', content: sysPrompt };

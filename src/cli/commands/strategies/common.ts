@@ -5,6 +5,7 @@ import { StreamRenderer } from '../../stream';
 import { GenerationInterrupt } from '../../interrupt';
 import { loadSystemPrompt, resolveCharacter } from '../../shared';
 import { Agent, resolveReasoningEffort } from '../../../core/agent';
+import { resolveToolSet } from '../../../core/toolSet';
 import { withEffortPin, logEffortDivergence } from '../../../core/effortControl';
 import { setCurrentSenderName, dequeueMessages, formatPendingMessages } from '../../../core/messageQueue';
 import { ContextTracker } from '../../../core/contextTracker';
@@ -159,7 +160,7 @@ Do NOT declare FALLITO just because the blackboard or a tool call was empty/unhe
 
 SHARED BLACKBOARD (optional): this run has a shared blackboard, separate from the message history. Use 'read_notes' at the start of your turn to see decisions, artifacts or open points colleagues left for THIS run, and 'post_note' to leave your own before finishing — it is NOT persistent memory, it disappears when the run ends. An EMPTY blackboard is normal (e.g. you are the first to work, or no shared context was needed) — it is not a reason to skip your task.`;
 
-  const memberAllowedTools = [...(roleObj.allowedTools || []), 'report_status', 'post_note', 'read_notes'];
+  const toolSet = resolveToolSet(roleObj, { alwaysActive: ['report_status', 'post_note', 'read_notes'] });
   logEffortDivergence(memberChar.aiName, reasoningEffort, ctx.configManager.getDefaultReasoningEffort());
 
   const tempAgent = new Agent(
@@ -167,7 +168,7 @@ SHARED BLACKBOARD (optional): this run has a shared blackboard, separate from th
     ctx.registry,
     ctx.permissionManager,
     sysPrompt,
-    memberAllowedTools,
+    toolSet.active,
     ctx.configManager.getMaxHistoryMessages(),
     ctx.configManager.getMaxHistoryTokens(),
     memberChar.aiName,
@@ -175,6 +176,7 @@ SHARED BLACKBOARD (optional): this run has a shared blackboard, separate from th
     hasAnyStatusMarker,
     ctx.configManager.getMaxToolRounds()
   );
+  tempAgent.setDeferredTools(toolSet.deferred);
 
   setCurrentSenderName(memberChar.aiName);
 

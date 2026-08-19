@@ -2,6 +2,7 @@
  * Test di regressione per le ottimizzazioni della Fase 2 (OPTIMIZATION_PLAN.md).
  * Esecuzione: npx tsx test_phase2_fixes.ts
  */
+import './isolateMemory';
 import * as fs from 'fs';
 import * as path from 'path';
 import { loadToolSchema, ToolRegistry, getModelTier } from '../src/tools/registry';

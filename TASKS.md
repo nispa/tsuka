@@ -66,7 +66,17 @@
 
 | T14.13 | ✅ Fatto | **Wiki GitHub Generato dalla Documentazione**: `scripts/buildWiki.ts` (`npm run wiki:build`) costruisce le pagine wiki da una tabella `PAGES` derivandole da `docs/`, da sezioni dei README e dalla tabella dei comandi (`Slash-Commands` nasce da `TUI_COMMANDS`, quindi alias e descrizioni non possono divergere dal codice); riscrive i link — rimandi tra documenti → pagine wiki, riferimenti al codice → URL assoluti `blob/main` — perché il wiki è un repository separato. `Home`, `_Sidebar` e `_Footer` sono generati; workflow `.github/workflows/wiki.yml` ripubblica su push a `main` (la prima pagina va creata a mano dal browser, GitHub crea il repo del wiki solo allora). Aggiunti `tsconfig.check.json` + `npm run typecheck` (`npm run build` compila solo `src/`) e corretti 4 link `file:///` locali nei docs. Suite `tests/test_wiki_build.ts`. |
 
-Tutti i task pianificati e di backlog sono completati con 65 suite di test verdi.
+| T14.14 | ✅ Fatto | **Schemi dei Tool Differiti (`coreTools` + `load_tools`)**: il prefisso fisso del prompt era quasi tutto schemi di tool (89% su `developer`), ripagato a ogni round del loop ReAct. `resolveToolSet` (`src/core/toolSet.ts`) fa dichiarare a un ruolo un `coreTools` sempre presente per intero; il resto è differito (solo il nome nel prompt) e si attiva a runtime col tool `load_tools` (`src/tools/impl/loadTools.ts`), senza mai allargare `allowedTools`. Corretto anche un bug di chiave (`request_goal/team/call.json` usavano `"schema"` invece di `"parameters"`: il modello li vedeva senza parametri). `developer`: 4.254→1.868 token di soli schemi (−56%); su un modello non profilato il prefisso fisso totale passa da 5.478 a 1.909 token (−65%). Suite `tests/test_deferred_tools.ts` (36 test). |
+
+| T14.15 | ✅ Fatto | **Rumore nella Memoria Iniettata nel Prompt**: uno store reale con 200 fatti ne aveva 168 di tipo `run`, quattro ripetuti dieci volte ciascuno. Deduplica in scrittura (`memory.ts`, `addFact`: una ripetizione fonde nel fatto esistente invece di aprirne uno nuovo) e guarigione al `load()` degli store scritti prima del fix. `formatForPrompt` selezionava per sola recency mentre l'eviction classificava già i `run` come da buttare per primi — ora riusa lo stesso punteggio (`rankByRetentionValue`): una regola sola, due viste. Isolamento dei test reso strutturale (`tests/isolateMemory.ts`, importato da 26 suite): una suite lanciata da sola non tocca più `memory/memory.json` dell'utente. Suite `tests/test_memory_dedup.ts` (17 test). |
+
+| T14.16 | ✅ Fatto | **`/benchmark` nella TUI & Autodiscovery del Modello all'Avvio**: `require('../../cli/commands/benchmark')` in `workflowCommands.ts` puntava a un file inesistente (`handleBenchmark` vive in `cli/commands/provider.ts`) — il comando falliva sempre a runtime pur superando `assertMenuCoverage()`, che verifica solo che il *nome* del comando sia registrato, non che il suo `require()` risolva davvero. Corretto il percorso e rafforzato il test perché lo stesso bug non possa ripassare inosservato. Aggiunta anche `TuiApp.discoverModelAtStartup()`: all'avvio la TUI chiamava solo `detectContextWindow` sul modello già scritto in config, mai `probeProvider` — un modello configurato ma non più servito dal backend, o un modello diverso caricato in RAM, passavano inosservati fino al primo `/provider` manuale. Ora riconcilia config e server allo startup nello stesso spirito di `handleProvider`. |
+
+| T14.17 | ✅ Fatto | **Spinner CLI Sotto la TUI: Terminale Corrotto e Schermo Congelato**: `CLITheme.createSpinner` restituiva sempre un'istanza `ora` reale, che scrive ANSI grezzo sullo stesso stdout posseduto dal renderer double-buffered della TUI — `/benchmark`, con `spinner.text` aggiornato più volte al secondo per modello, era il caso più visibile. Sotto `TSUKA_TUI`, `createSpinner` ora restituisce uno shim che non tocca mai stdout: `succeed`/`fail` passano da `logSink` come ogni altro messaggio `CLITheme`. Il fix ha esposto un secondo problema, non previsto in origine: silenziare gli aggiornamenti intermedi toglieva anche l'unico motivo per cui lo schermo si ridisegnava durante un workflow lungo — l'input restava visivamente "congelato" per minuti. Nuovo canale `core/progressSink.ts` (gemello di `logSink`, ma per testo effimero): lo spinner vi inoltra ogni passo, l'header lo mostra in tempo reale sotto la barra di stato (`TuiGenerationStatus.detail`). Suite `tests/test_cli_spinner.ts` (4 test) + nuovo blocco in `tests/test_tui_data_driven.ts` (4 test). |
+
+| T14.18 | ✅ Fatto | **Fedeltà del Renderer Markdown (CLI + TUI)**: `renderMarkdownToLines` (`src/cli/markdown.ts`, condiviso da CLI e TUI) convertiva l'HTML di `marked` in testo scartando ogni tag — grassetto, corsivo, codice inline e link perdevano ogni distinzione visiva, e i link perdevano proprio l'URL; le tabelle non avevano un `case` dedicato e cadevano nel `default`, che stampava ogni cella su una riga separata; le liste ordinate mostravano sempre `•`, mai la numerazione. Nuovo `inlineHtmlToAnsi` (stack di stili generico: un tag non mappato è un no-op, non serve un caso per ciascuno) applica ANSI reale a grassetto/corsivo/barrato/codice inline e mantiene l'URL dei link come `(url)` in coda; nuovo `case 'table'` allinea le colonne rispettando `:--`/`--:`/`:-:`, restringendole proporzionalmente se non entrano nella larghezza disponibile; le liste ordinate numerano davvero. Trovati e corretti in corsa anche checklist (`- [ ]`/`- [x]`, checkbox assente prima) e immagini (`![alt](src)`, sparivano senza traccia). +9 casi in `tests/test_markdown_render.ts` (MD6–MD9). |
+
+Tutti i task pianificati e di backlog sono completati con 68 suite di test verdi.
 
 ---
 
@@ -1909,3 +1919,234 @@ destinata a divergere al primo task. Le pagine vengono quindi **derivate**, mai 
 **Accettazione:** `npm run wiki:build` produce 18 file pubblicabili senza un solo link relativo al
 repository; rigenerare due volte dà lo stesso risultato. Suite `tests/test_wiki_build.ts` (9 test
 su riscrittura dei link, estrazione delle sezioni, pagine prodotte e derivazione dei comandi).
+---
+
+## T14.14 — Schemi dei Tool Differiti (`coreTools` + `load_tools`)
+
+**Dipende da:** T8.9 · **Sforzo:** medio · **Priorità:** alta
+
+Il costo fisso del prompt è quasi tutto negli schemi dei tool, e viene ripagato a **ogni round**
+del loop ReAct, non una volta per turno. Misurato sul ruolo `developer`: ~4.3k token di prefisso,
+di cui ~3.8k di soli schemi (89%). Il `systemPrompt` del ruolo pesa 58 token, il tratto 32: lì non
+c'era niente da spremere. Con `maxToolRounds: 25` quegli schemi possono valere ~96k token di
+prefill per singolo turno utente.
+
+- **Ripartizione dichiarata dal ruolo** (`src/core/toolSet.ts`, `resolveToolSet`): un ruolo può
+  elencare `coreTools`, il sottoinsieme di `allowedTools` il cui schema completo viaggia sempre.
+  Il resto diventa **differito**: nel system prompt compare solo il nome. Un ruolo *senza*
+  `coreTools` si comporta esattamente come prima — la modifica è opt-in, ruolo per ruolo, e il
+  flag `deferredToolsEnabled` (default `true`) la disattiva ovunque in un colpo solo.
+- **Attivazione a runtime** (`load_tools`, `src/tools/impl/loadTools.ts`): il modello chiede i tool
+  che gli servono e dal round successivo ne riceve lo schema completo. L'Agent implementa
+  `ToolSetController` (`registry.ts`) e riceve la propria vista sul tool set dentro
+  `ToolExecutionContext`: il registry resta condiviso e non conosce l'Agent concreto.
+- **Il perimetro non si allarga mai**: si può attivare soltanto ciò che `allowedTools` già
+  consentiva. Un `coreTools` che nomina un tool non autorizzato non lo concede, e
+  `Agent.activateTools` rifiuta qualunque nome non dichiarato differito.
+- **Tool di contesto sempre attivi** (`alwaysActive`): protocollo di coordinamento (`report_status`),
+  blackboard (`post_note`, `read_notes`) e memoria dei sub-agenti non sono mai differiti — chiedere
+  al modello di *caricare* un tool che gli stiamo ordinando di chiamare sarebbe un giro a vuoto.
+- **Elenco testuale senza descrizioni** (`shared.ts`): per i modelli senza function calling nativo
+  misurato, T8.9 aveva già reso condizionale la sezione "Available tools", ma quando veniva scritta
+  ripeteva nome **e** descrizione di ogni tool — le stesse descrizioni che viaggiano comunque
+  nell'array `tools` della richiesta. Ora è un elenco di soli nomi: 1.111 token in meno per
+  `developer`, su ogni round, per i modelli non profilati.
+- **Bug corretto**: `request_goal.json`, `request_team.json` e `request_call.json` usavano la chiave
+  `"schema"` invece di `"parameters"`. `loadToolSchema` non la leggeva e ripiegava su un oggetto
+  vuoto: il modello vedeva quei tre tool **senza parametri** e doveva indovinarne i nomi, mentre
+  `validateToolArgs` non aveva nulla da validare. Chiavi corrette e `"schema"` accettata come alias
+  storico, perché la usano anche gli schemi scritti a mano dagli utenti.
+
+Ruoli convertiti (i cinque più pesanti; gli altri 16 restano invariati):
+
+| Ruolo | Prima | Dopo | Risparmio |
+|---|---|---|---|
+| `developer` | 4.254 | 1.868 | −56% |
+| `sysadmin` | 3.958 | 1.571 | −60% |
+| `security_auditor` | 3.313 | 1.862 | −44% |
+| `architect` | 3.037 | 1.587 | −48% |
+| `researcher` | 2.996 | 1.572 | −48% |
+
+(Solo array `tools`, token stimati a 3,5 caratteri/token — la stessa convenzione di `Agent`. Il
+"prima" include gli ~830 token che il fix delle tre chiavi ha *aggiunto*: prima di quello
+`developer` misurava 3.835.) Sommando l'elenco testuale, su un modello **non profilato** come quelli
+in uso oggi il prefisso fisso di `developer` passa da **5.478 a 1.909 token per richiesta, −65%**.
+
+Ripulita anche una contraddizione preesistente che la modifica avrebbe allargato: `/call` e la fase
+di discussione di `/team` passano al modello un array `tools` vuoto (o il solo `cast_vote`), ma
+`loadSystemPrompt` riceveva comunque il registry e gli elencava tutti i tool del ruolo — proprio
+sopra la riga "No tools available — just your voice". Ora quei due punti non passano il registry:
+prompt coerente e qualche centinaio di token in meno per ogni turno di discussione.
+
+Nota sul backend locale: il guadagno di queste due leve è doppio perché agiscono sul **prefisso**
+del prompt e lo lasciano stabile. Potare o comprimere la cronologia risparmia token ma invalida la
+KV cache di prefisso di llama-server da quel punto in poi, quindi non risparmia tempo; togliere
+schemi dalla testa del prompt sì. Per lo stesso motivo `load_tools` costa un re-prefill quando
+scatta: conviene che il modello chieda in una sola chiamata tutti i tool della fase corrente, ed è
+quello che dice la sua description.
+
+**Accettazione:** un agente `developer` parte con 8 schemi invece di 18 e attiva i restanti su
+richiesta senza perdere alcuna capacità; `deferredToolsEnabled: false` ripristina il comportamento
+precedente. Suite `tests/test_deferred_tools.ts` (36 test su ripartizione, perimetro di sicurezza,
+giro completo nel loop ReAct con ispezione dell'array `tools` realmente inviato a ogni round,
+testo del prompt e parametri degli schemi di escalation).
+---
+
+## T14.15 — Rumore nella Memoria Iniettata nel Prompt
+
+**Dipende da:** T6.1, T8.2 · **Sforzo:** basso · **Priorità:** media
+
+Il prompt riserva `memoryMaxChars` (600 di default) alla memoria persistente. Su uno store reale
+quel budget veniva speso quasi tutto in rumore: 200 fatti di cui 168 di tipo `run`, con quattro
+contenuti ripetuti **dieci volte ciascuno** — fra cui `[Goal] Pike: AGENTE: @developer — do work
+FINE`. Due cause distinte, entrambe corrette.
+
+- **Nessuna deduplica in scrittura** (`memory.ts`, `addFact`): ogni ripetizione creava una voce
+  nuova, che occupava uno slot del cap di eviction e una riga del prompt. Ora una ripetizione si
+  fonde nel fatto esistente tenendo la versione più forte di ogni campo (il `kind` più durevole, i
+  timestamp più freschi, i tag uniti, `pinned` se presente in una qualsiasi) e incrementando `hits`:
+  un fatto ripetuto dieci volte è **un** fatto che è contato dieci volte, non dieci fatti. La chiave
+  normalizza spazi e maiuscole, ma **non** lo scope: la stessa frase in scope diversi resta distinta.
+- **Guarigione degli store esistenti**: i file scritti prima di questa modifica vengono deduplicati
+  al `load()`. Una pulizia manuale che nessuno lancia non è una soluzione.
+- **Selezione per sola recency** (`formatForPrompt`): prendeva i fatti più recenti via `getRecent`,
+  mentre `evictionScore` classificava già i `run` come la prima cosa da buttare. Il prompt mostrava
+  cioè esattamente ciò che la memoria considerava privo di valore. Ora la selezione riusa lo stesso
+  punteggio di ritenzione (`rankByRetentionValue`): **una regola sola, due viste** — ciò che la
+  memoria protegge più a lungo dall'eviction è ciò che mostra per primo. `getRecent` resta
+  cronologico, perché alimenta l'elenco di `/memory`, dove "i più recenti" è la risposta giusta.
+
+- **Isolamento dei test reso strutturale** (`tests/isolateMemory.ts`): `MemoryStore.getInstance()`
+  punta alla memoria reale dell'utente se `TSUKA_MEMORY_FILE` non è impostata. `run_tests.ts` la
+  imposta prima di lanciare ogni suite, quindi `npm test` era sicuro — ma una suite lanciata **da
+  sola** (`npx tsx tests/test_memory.ts`, il modo documentato per fare debug) non ereditava niente,
+  scriveva sullo store reale, e la `clear()` finale di `test_memory.ts` cancellava la memoria
+  dell'utente in modo irrecuperabile (`memory/` è in `.gitignore`). Un commento che avverte non è
+  una guardia: funziona solo se lo leggi prima. Ora 26 suite importano `./isolateMemory` come primo
+  import, che dirotta su una cartella temporanea quando la variabile non c'è ed è un no-op quando il
+  runner l'ha già impostata — le due strade non possono più divergere. Violava la direttiva 6 di
+  AGENTS.md ("mai mutare la `memory.json` dell'utente").
+
+**Accettazione:** venti ripetizioni della stessa nota non possono più espellere dal prompt l'unica
+decisione reale; uno store con 40 voci e 4 contenuti distinti si riduce a 4 fatti al primo caricamento;
+una suite lanciata da sola non tocca `memory/memory.json`. Suite `tests/test_memory_dedup.ts`
+(17 test su deduplica in scrittura, merge dei campi, guarigione al load, ordinamento per valore di
+ritenzione e budget di caratteri).
+
+---
+
+## T14.16 — `/benchmark` nella TUI & Autodiscovery del Modello all'Avvio
+
+**Dipende da:** T14.11 · **Sforzo:** basso · **Priorità:** alta
+
+Segnalato dall'utente: `/benchmark` dalla TUI falliva sempre, e la TUI non si accorgeva mai se il
+modello effettivamente servito dal backend non corrispondeva a quello scritto in config.
+
+- **`require` a un file inesistente** (`src/tui/commands/workflowCommands.ts`): `/benchmark`
+  chiamava `require('../../cli/commands/benchmark')`, ma quel file non esiste — `handleBenchmark`
+  vive in `cli/commands/provider.ts`. Il comando falliva a runtime a ogni utilizzo pur superando
+  `assertMenuCoverage()`, che verifica solo che il *nome* del comando sia registrato, non che il
+  suo `require()` lazy risolva davvero. Corretto il percorso.
+- **Il test non poteva intercettarlo**: nuovo caso in `tests/test_tui_data_driven.ts` che scansiona
+  ogni `require('../../cli/commands/x')` lazy nei file di `src/tui/commands/`, lo risolve per
+  davvero e verifica che il nome destrutturato sia effettivamente esportato dal modulo. Verificato
+  a ritroso reintroducendo il bug: il test fallisce con lo stesso errore reale (`Cannot find
+  module`), poi torna verde col fix.
+- **Nessuna autodiscovery all'avvio** (`src/tui/app.ts`): la TUI chiamava solo `detectContextWindow`
+  sul modello già scritto in config — mai `probeProvider` (`src/core/discovery.ts`), la stessa
+  funzione che `/provider` e `/models` già usano in CLI. Un modello configurato ma non più servito
+  dal backend, o un modello diverso caricato in RAM dopo un riavvio del server, passavano
+  inosservati fino al primo `/provider` manuale. Nuovo `TuiApp.discoverModelAtStartup()`, chiamato
+  una volta in `start()`: se il modello in config non è tra quelli serviti, passa automaticamente al
+  primo disponibile e avvisa (stesso auto-recovery di `handleProvider` dopo uno switch manuale); se
+  un modello diverso è caricato in RAM, solo avviso — niente swap forzato, ricaricare un modello
+  locale è costoso (stessa logica opt-in di `maybeWarmUp` in CLI); calibra comunque la context
+  window dallo stesso scan, senza una seconda chiamata di rete.
+
+**Accettazione:** `/benchmark` dalla TUI esegue invece di fallire; un modello rimosso dal server o
+sostituito in RAM viene segnalato all'apertura della TUI senza dover lanciare `/provider` a mano.
+Nessuna suite dedicata nuova — copertura nel blocco `require()` esteso di `test_tui_data_driven.ts`.
+
+---
+
+## T14.17 — Spinner CLI Sotto la TUI: Terminale Corrotto e Schermo Congelato
+
+**Dipende da:** T14.16 · **Sforzo:** medio · **Priorità:** alta
+
+Segnalato dall'utente dopo il fix di T14.16: `/benchmark` ora eseguiva, ma "sporcava" il prompt, e
+in un tentativo successivo l'input è rimasto visivamente congelato mentre l'header mostrava
+"thinking" senza mai dire su cosa.
+
+- **Causa radice**: `CLITheme.createSpinner` (`src/cli/ui.ts`) restituiva sempre un'istanza `ora`
+  reale, che scrive sequenze ANSI di controllo cursore direttamente su `process.stdout` — corretto
+  su una CLI nuda, ma la TUI possiede lo stesso stdout col proprio renderer double-buffered
+  (`TuiScreen`), quindi i due scrittori si contendono il cursore. Ogni altro messaggio `CLITheme`
+  (`success`/`error`/`warning`/`info`, usati da `/goal`, `/team`, `/call`) passa già da `logSink`,
+  che la TUI intercetta e trasforma in bolle di chat pulite — solo lo spinner bypassava quel
+  meccanismo, e `/benchmark` lo usa più intensamente di chiunque altro (`spinner.text = ...`
+  aggiornato più volte al secondo per modello), rendendo il problema molto più visibile lì.
+- **Primo fix**: sotto `TSUKA_TUI` (stesso flag già letto da `InteractiveMenu.select`),
+  `createSpinner` restituisce ora uno shim (`TuiSpinner`) che non tocca mai stdout — solo gli eventi
+  finali `succeed`/`fail` passano da `logSink`, come ogni altro messaggio `CLITheme`.
+- **Effetto collaterale scoperto provando il fix**: silenziare gli aggiornamenti intermedi
+  (`spinner.text = ...`) toglieva anche l'unico motivo per cui lo schermo si ridisegnava — la TUI
+  ridisegna solo quando lo store cambia stato (`store.subscribe → requestRender`). Durante un
+  benchmark lungo, senza quegli aggiornamenti, passavano minuti senza un solo cambio di stato: lo
+  schermo restava fermo sull'ultimo frame (input "congelato"), finché il primo evento vero non
+  arrivava e ridisegnava tutto in un colpo — da cui l'impressione di un comando "comparso sotto"
+  quello vecchio.
+- **Fix del secondo problema**: nuovo canale `src/core/progressSink.ts`, gemello di `logSink` ma per
+  testo effimero (un `succeed`/`fail` va ricordato come riga di chat, un "step 3 di 8" no — instrada
+  qui invece di spammare la chat con una riga per tick). `TuiSpinner` vi inoltra ogni `.text = ...`
+  e il testo iniziale di `.start()`; `TuiApp.start()` lo registra e aggiorna
+  `generationStatus.detail`; l'header (`src/tui/views/Header.ts`) mostra una riga live sotto la
+  barra di stato quando presente (`└─ Benchmarking 'llama3' — step 3 di 8`), troncata con ellissi se
+  più larga dello schermo, assente quando non c'è nulla da dire.
+
+**Accettazione:** nessuna corruzione del terminale durante `/benchmark` o `/goal` (che usa lo stesso
+spinner per i gruppi paralleli); lo schermo si ridisegna regolarmente durante un workflow lungo
+invece di restare fermo; l'header mostra cosa si sta effettivamente elaborando. Suite
+`tests/test_cli_spinner.ts` (4 test: nessuna riga prima che lo spinner si "assesti", inoltro al
+progressSink in ordine, fallback su `succeed()`/`fail()` senza argomento, comportamento invariato
+fuori TUI) + nuovo blocco "TUI header live-progress detail line" in `test_tui_data_driven.ts`
+(4 test: nessuna riga extra se non c'è nulla da dire, riga corretta durante la generazione, pulizia
+a fine turno nonostante il merge shallow di `setState`, troncamento con ellissi oltre larghezza).
+
+---
+
+## T14.18 — Fedeltà del Renderer Markdown (CLI + TUI)
+
+**Dipende da:** nessuno · **Sforzo:** medio · **Priorità:** media
+
+Segnalato dall'utente: la resa markdown nello schermo della TUI "non sempre è corretta" quando il
+modello scrive. `renderMarkdownToLines` (`src/cli/markdown.ts`) è condiviso da CLI e TUI
+(`src/tui/views/Chat.ts`), quindi il problema toccava entrambe.
+
+- **Formattazione inline scartata del tutto**: `htmlToText` convertiva l'HTML prodotto da `marked`
+  in testo scartando ogni tag invece di renderizzarlo — grassetto, corsivo e codice inline
+  perdevano ogni distinzione visiva, e un link perdeva persino l'URL (`[link](https://x.com)`
+  diventava il solo testo "link", senza modo di sapere dove punterebbe).
+- **Tabelle senza `case` dedicato**: lo `switch` su `t.type` non gestiva `'table'`, che cadeva nel
+  `default` — lo stesso strip-tag grezzo applicato all'HTML completo della tabella (`<table>
+  <thead>...`) produceva una cella per riga, senza intestazioni né allineamento: illeggibile.
+- **Liste ordinate senza numerazione**: il `case 'list'` non distingueva `ordered` da `unordered`,
+  mostrando sempre `•` anche per `1. 2. 3.`.
+- **Nuovo `inlineHtmlToAnsi`**: un convertitore HTML→ANSI generico con uno stack di stili (tag non
+  mappati sono no-op invece di richiedere un caso per ciascuno) sostituisce `htmlToText` in tutti i
+  casi (paragrafi, titoli, liste, citazioni, default). Grassetto/corsivo/barrato ottengono stile
+  ANSI reale; il codice inline resta racchiuso tra backtick colorati (leggibile anche senza colori
+  attivi); i link mantengono l'URL come `(url)` in coda al testo.
+- **Nuovo `case 'table'`**: colonne allineate rispettando `align` (`:--`/`--:`/`:-:`), larghezza
+  naturale calcolata per colonna e ristretta proporzionalmente (minimo 4 caratteri) se la tabella
+  non entra in `innerWidth`; celle troncate con `wrapAnsi` (sicuro sull'ANSI) invece di uno slice
+  manuale che romperebbe le sequenze di escape.
+- **Liste ordinate**: numerano davvero, rispettando anche uno `start` diverso da 1.
+- **Trovati e corretti in corsa** (stesso meccanismo generico, costo marginale): le checklist
+  (`- [ ]`/`- [x]`) non mostravano alcun checkbox — ora `☐`/`☑`; le immagini (`![alt](src)`)
+  sparivano senza traccia — ora `🖼 alt (src)`.
+
+**Accettazione:** grassetto/corsivo/codice inline/link visibilmente distinti nel terminale, link con
+URL preservato; una tabella markdown renderizzata come tabella (colonne allineate), non come un
+elenco di celle sparse; liste ordinate numerate. Suite `tests/test_markdown_render.ts` estesa
+(MD6–MD9, 9 nuovi casi su 15 totali): stile ANSI di grassetto/corsivo, testo e URL del link
+preservati, tabella su righe allineate con separatore, numerazione anche non da 1, checkbox resi.

@@ -2,6 +2,7 @@
  * Test della memoria condivisa persistente (feature M1-M5).
  * Esecuzione: npx tsx test_memory.ts
  */
+import './isolateMemory';
 import * as fs from 'fs';
 import * as path from 'path';
 import { MemoryStore } from '../src/core/memory';

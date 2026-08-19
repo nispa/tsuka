@@ -11,6 +11,7 @@
  *
  * Esecuzione: npx tsx tests/test_goal_orchestrator.ts
  */
+import './isolateMemory';
 import { handleGoal, parsePlan, formatAgentSignature } from '../src/cli/commands/goal';
 import { ContextTracker } from '../src/core/contextTracker';
 import { MockLLMProvider } from './mocks/mockProvider';

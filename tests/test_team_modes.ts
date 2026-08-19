@@ -14,6 +14,7 @@
  *
  * Esecuzione: npx tsx tests/test_team_modes.ts
  */
+import './isolateMemory';
 import { runRoundRobin, runOrchestrated, runPipeline } from '../src/cli/commands/team';
 import { GenerationInterrupt } from '../src/cli/interrupt';
 import { ContextTracker } from '../src/core/contextTracker';

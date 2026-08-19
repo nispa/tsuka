@@ -3,8 +3,42 @@ import ora from 'ora';
 import prompts from 'prompts';
 import { renderMarkdownToLines } from './markdown';
 import { logSink } from '../core/logSink';
+import { reportProgress } from '../core/progressSink';
 
 const TTY_WIDTH = () => Math.min(process.stdout.columns || 80, 100);
+
+/** Slice of ora's API that command handlers actually call — see `CLITheme.createSpinner`. */
+export interface Spinner {
+  text: string;
+  start(): Spinner;
+  stop(): Spinner;
+  succeed(text?: string): Spinner;
+  fail(text?: string): Spinner;
+}
+
+/**
+ * `ora` owns the terminal cursor directly (raw ANSI, no `logSink` in between) — fine on a bare
+ * CLI, but under the TUI it fights the screen's own double-buffered renderer for the same
+ * cursor and corrupts the display (T14.14: `/benchmark`'s per-model spinner was the most visible
+ * case, looping `.text = ...` many times a second). This shim never touches stdout: the two
+ * terminal events a spinner is ever used to communicate, `succeed`/`fail`, go through `logSink`
+ * like every other CLITheme message already does, landing as normal chat lines. The animated
+ * frames in between have nowhere safe to draw, but the *text* behind them is exactly what the
+ * user is missing while a long workflow runs silently (T14.15) — so it goes to `progressSink`
+ * instead, which the TUI header renders live. That also keeps the screen repainting regularly
+ * during the run; a run with no store updates for minutes at a time left the terminal looking
+ * frozen on whatever was last drawn.
+ */
+class TuiSpinner implements Spinner {
+  private _text: string;
+  constructor(text: string) { this._text = text; reportProgress(text); }
+  get text(): string { return this._text; }
+  set text(value: string) { this._text = value; reportProgress(value); }
+  start(): Spinner { reportProgress(this._text); return this; }
+  stop(): Spinner { return this; }
+  succeed(text?: string): Spinner { logSink.log(`✔ ${text ?? this._text}`); return this; }
+  fail(text?: string): Spinner { logSink.warn(`✘ ${text ?? this._text}`); return this; }
+}
 
 export class CLITheme {
   static banner() {
@@ -239,7 +273,8 @@ export class CLITheme {
     CLITheme.box('Session Status', lines, chalk.blue);
   }
 
-  static createSpinner(text: string) {
+  static createSpinner(text: string): Spinner {
+    if (process.env.TSUKA_TUI) return new TuiSpinner(text);
     return ora({
       text: chalk.cyan(text),
       color: 'cyan',

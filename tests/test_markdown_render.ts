@@ -59,6 +59,31 @@ function main() {
     check('MD5', false, `crash su fence senza linguaggio: ${e.message}`);
   }
 
+  // T14.16: la formattazione inline (bold/italic/inline code/link) non era resa affatto —
+  // htmlToText scartava ogni tag invece di convertirlo in stile ANSI, e i link perdevano l'URL.
+  const inlineColored = renderMarkdownToLines('This is **bold**, *italic*, and `code`, plus a [link](https://example.com).', 90).join('\n');
+  check('MD6a', /\x1b\[1m/.test(inlineColored), 'grassetto reso con ANSI bold');
+  check('MD6b', /\x1b\[3m/.test(inlineColored), 'corsivo reso con ANSI italic');
+  out = renderPlain('This is **bold**, *italic*, and `code`, plus a [link](https://example.com).');
+  check('MD6c', out.includes('bold') && out.includes('italic') && out.includes('`code`'), `testo inline preservato: ${JSON.stringify(out.trim())}`);
+  check('MD6d', out.includes('https://example.com'), `l'URL del link non deve andare perso: ${JSON.stringify(out.trim())}`);
+
+  // T14.16: le tabelle non avevano un case dedicato — cadevano nel default, che stampava
+  // ogni cella su una riga separata invece di allinearle in colonne.
+  out = renderPlain('| Name | Score |\n| --- | ---: |\n| Alice | 90 |\n| Bob | 85 |');
+  const tableLines = out.split('\n').filter((l) => l.trim());
+  check('MD7a', tableLines.some((l) => l.includes('Name') && l.includes('Score')), `intestazione su una riga: ${JSON.stringify(tableLines)}`);
+  check('MD7b', tableLines.some((l) => /Alice.*90/.test(l)), `riga dati su una riga sola: ${JSON.stringify(tableLines)}`);
+  check('MD7c', tableLines.some((l) => /^─+┼─+$/.test(l.trim())), 'riga separatrice header/corpo presente');
+
+  // T14.16: le liste ordinate perdevano la numerazione, sempre renderizzate con "•".
+  out = renderPlain('5. Fifth\n6. Sixth');
+  check('MD8', out.includes('5. Fifth') && out.includes('6. Sixth'), `numerazione (anche non da 1) preservata: ${JSON.stringify(out.trim())}`);
+
+  // T14.16: le checklist (- [ ] / - [x]) perdevano del tutto il checkbox.
+  out = renderPlain('- [ ] todo\n- [x] done');
+  check('MD9', out.includes('☐ todo') && out.includes('☑ done'), `checkbox resi: ${JSON.stringify(out.trim())}`);
+
   console.log(`\n=== Risultato: ${passed} passati, ${failed} falliti ===`);
   process.exit(failed > 0 ? 1 : 0);
 }

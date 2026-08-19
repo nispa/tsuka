@@ -2,6 +2,7 @@
  * Test unitari per il loop di completamento del /team.
  * Esecuzione: npx tsx tests/test_team_loop.ts
  */
+import './isolateMemory';
 import * as fs from 'fs';
 import * as path from 'path';
 import { hasCompletionMarker, hasUnanimousApproval } from '../src/cli/commands/team';

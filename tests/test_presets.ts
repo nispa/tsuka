@@ -13,6 +13,7 @@
  *
  * Esecuzione: npx tsx tests/test_presets.ts
  */
+import './isolateMemory';
 import * as fs from 'fs';
 import * as path from 'path';
 

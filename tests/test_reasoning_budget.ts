@@ -1,3 +1,4 @@
+import './isolateMemory';
 import assert from 'node:assert/strict';
 import { calculateReasoningBudget } from '../src/core/contextBudget';
 import { MockLLMProvider } from './mocks/mockProvider';

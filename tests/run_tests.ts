@@ -62,6 +62,8 @@ const suites = [
   'test_generation_timeout.ts',
   'test_spawn_agent_reasoning_effort.ts',
   'test_prompt_overhead.ts',
+  'test_deferred_tools.ts',
+  'test_memory_dedup.ts',
   'test_effort_command.ts',
   'test_multi_skill.ts',
   'test_loop.ts',
@@ -89,6 +91,7 @@ const suites = [
   'test_multiline_tools_filter.ts',
   'test_inference_telemetry.ts',
   'test_tui_data_driven.ts',
+  'test_cli_spinner.ts',
   'test_files_explorer.ts',
   'test_wiki_build.ts'
 ];

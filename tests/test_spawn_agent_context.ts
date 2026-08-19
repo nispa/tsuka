@@ -36,6 +36,7 @@
  * (impostare TSUKA_MEMORY_FILE prima se lanciato fuori da npm test — qui lo fa
  * lo script stesso, quindi nessun passo manuale necessario)
  */
+import './isolateMemory';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';

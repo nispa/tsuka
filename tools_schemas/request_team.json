@@ -3,7 +3,7 @@
   "description": "Proponi all'utente di convocare un team collaborativo predefinito (es. 'dev_ops', 'dev_security', 'cyber_audit', 'story_comedy') per eseguire un compito specifico in gruppo. Richiede approvazione esplicita dell'utente.",
   "requiredTier": "medium",
   "riskLevel": "RESTRICTED",
-  "schema": {
+  "parameters": {
     "type": "object",
     "properties": {
       "team_name": {

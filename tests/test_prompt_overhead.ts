@@ -30,6 +30,7 @@
  * per non toccare la memoria reale dell'utente — vedi run_tests.ts per il pattern:
  * compressHistory scrive un fatto '[Storia compressa]' in MemoryStore).
  */
+import './isolateMemory';
 import * as fs from 'fs';
 import * as path from 'path';
 import { Agent } from '../src/core/agent';

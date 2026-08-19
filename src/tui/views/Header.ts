@@ -126,7 +126,19 @@ export class HeaderView {
 
     lines.push(TuiScreen.truncateOrPad(leftLine2 + ' '.repeat(spacing1) + rightLine2, width));
 
-    // Line 3: Separator bar
+    // Line 3 (optional): live progress detail from a long-running CLI workflow's spinner
+    // (e.g. `/benchmark`'s current model/step — see core/progressSink.ts). Only while
+    // generating, and only once there is something to say — most turns never set it.
+    if (state.isGenerating && state.generationStatus?.detail) {
+      const prefix = '     └─ ';
+      const maxDetailWidth = Math.max(4, width - prefix.length);
+      const detail = state.generationStatus.detail.length > maxDetailWidth
+        ? state.generationStatus.detail.slice(0, maxDetailWidth - 1) + '…'
+        : state.generationStatus.detail;
+      lines.push(TuiScreen.truncateOrPad(chalk.gray(prefix) + chalk.hex('#94a3b8')(detail), width));
+    }
+
+    // Line: Separator bar
     lines.push(chalk.hex('#475569')('━'.repeat(width)));
 
     return lines;

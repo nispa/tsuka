@@ -26,6 +26,8 @@ export interface AppConfig {
   maxHistoryMessages?: number;
   maxHistoryTokens?: number;
   maxToolResultTokens?: number;
+  /** Whether roles with `coreTools` defer the rest behind `load_tools` (T14.14). Default: true. */
+  deferredToolsEnabled?: boolean;
   /** Maximum consecutive tool execution rounds per user turn. Default: 15. */
   maxToolRounds?: number;
   /** Maximum facts retained in persistent memory before score-based eviction. Default: 200. */
@@ -279,6 +281,14 @@ export class ConfigManager {
       return Math.floor(value);
     }
     return 65536;
+  }
+
+  /**
+   * Whether roles declaring `coreTools` defer the remaining tools behind `load_tools` (T14.14).
+   * Default: true. Set false to send every allowed tool schema on every round, as before T14.14.
+   */
+  getDeferredToolsEnabled(): boolean {
+    return this.config.deferredToolsEnabled !== false;
   }
 
   /**

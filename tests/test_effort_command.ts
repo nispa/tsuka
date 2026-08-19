@@ -31,6 +31,7 @@
  * Esecuzione isolata: node --import tsx tests/test_effort_command.ts
  * (imposta TSUKA_MEMORY_FILE a un file temporaneo prima di lanciarlo da solo).
  */
+import './isolateMemory';
 import * as fs from 'fs';
 import * as path from 'path';
 import { Agent, resolveReasoningEffort } from '../src/core/agent';

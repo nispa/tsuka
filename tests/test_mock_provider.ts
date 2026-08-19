@@ -5,6 +5,7 @@
  * finale) in modo deterministico, senza rete né LLM reale.
  * Esecuzione: npx tsx tests/test_mock_provider.ts
  */
+import './isolateMemory';
 import { Agent } from '../src/core/agent';
 import { ToolRegistry } from '../src/tools/registry';
 import { PermissionManager } from '../src/safety/permissions';

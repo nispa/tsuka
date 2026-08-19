@@ -2,6 +2,7 @@
  * Test unitari per l'interruzione utente (Esc/Ctrl+X) nel ciclo agentico.
  * Esecuzione: npx tsx tests/test_interrupt.ts
  */
+import './isolateMemory';
 import { Agent } from '../src/core/agent';
 import { PermissionManager } from '../src/safety/permissions';
 

@@ -21,6 +21,7 @@
  *
  * Esecuzione: npx tsx tests/test_blackboard.ts
  */
+import './isolateMemory';
 import { GenerationInterrupt } from '../src/cli/interrupt';
 import { MockLLMProvider, mockToolCall } from './mocks/mockProvider';
 import { buildMockCtx } from './mocks/mockCtx';

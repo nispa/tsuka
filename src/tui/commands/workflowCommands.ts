@@ -122,7 +122,7 @@ export const WORKFLOW_COMMANDS: TuiCommandSpec[] = [
     name: '/benchmark',
     description: 'Empirical capability test for the active model',
     run: async (c) => {
-      const { handleBenchmark } = require('../../cli/commands/benchmark');
+      const { handleBenchmark } = require('../../cli/commands/provider');
       await runCliWorkflow(c, {
         agentLabel: 'Benchmark Suite',
         echo: `/benchmark ${c.arg || ''}`.trim(),

@@ -3,6 +3,7 @@
  *
  * Esecuzione: npx tsx tests/test_multi_skill.ts
  */
+import './isolateMemory';
 import { loadCharacter, loadRole, loadTrait, loadSystemPrompt } from '../src/cli/shared';
 import { Agent } from '../src/core/agent';
 import { switchSkillTool } from '../src/tools/impl/switchSkill';

@@ -3,7 +3,7 @@
   "description": "Proponi all'utente di convocare una conferenza a tavola rotonda tra più agenti su un argomento specifico per confrontare pareri o fare brainstorming. Richiede approvazione esplicita dell'utente.",
   "requiredTier": "medium",
   "riskLevel": "RESTRICTED",
-  "schema": {
+  "parameters": {
     "type": "object",
     "properties": {
       "participants": {

@@ -59,7 +59,9 @@ export async function runDiscussionRound(
     const cascadedEffort = resolveReasoningEffort(undefined, memberChar, roleObj, ctx.configManager.getDefaultReasoningEffort());
     const reasoningEffort = withEffortPin(cascadedEffort);
 
-    let sysPrompt = loadSystemPrompt(roleObj, traitObj, ctx.provider.getCurrentModel(), ctx.registry, memberChar, task, reasoningEffort);
+    // No registry on purpose: a discussion turn only ever gets `cast_vote`, and the prompt below
+    // says so explicitly — listing the role's tools here would contradict it.
+    let sysPrompt = loadSystemPrompt(roleObj, traitObj, ctx.provider.getCurrentModel(), undefined, memberChar, task, reasoningEffort);
     sysPrompt += `\n\n[DISCUSSION CONTEXT]: You are in a team discussion on: "${task}".
 You are debating with colleagues about the work done so far (round ${round}). Express your opinion, constructive criticism or suggestions.
 Keep it brief (max 4 sentences) and true to your identity and style.

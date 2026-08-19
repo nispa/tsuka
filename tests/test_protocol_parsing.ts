@@ -10,6 +10,7 @@
  *
  * Esecuzione: npx tsx tests/test_protocol_parsing.ts
  */
+import './isolateMemory';
 import {
   hasCompletionMarker,
   hasUnanimousApproval,

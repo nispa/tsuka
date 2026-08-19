@@ -1,5 +1,5 @@
 import { ILLMProvider, ChatOptions, ChatStats, ReasoningEffort } from './provider';
-import { ToolRegistry } from '../tools/registry';
+import { ToolRegistry, ToolSetController } from '../tools/registry';
 import { PermissionManager } from '../safety/permissions';
 import { AgentEvent, AgentEventHandler } from './agentEvents';
 import { StreamChannel } from './thinkParser';
@@ -83,7 +83,7 @@ export interface ToolRoundsPromptInfo {
 
 export type ToolRoundsPromptHandler = (info: ToolRoundsPromptInfo) => Promise<ToolRoundsAction>;
 
-export class Agent {
+export class Agent implements ToolSetController {
   private static readonly DEFAULT_MAX_TOOL_ROUNDS = 15;
 
   private provider: ILLMProvider;
@@ -91,6 +91,7 @@ export class Agent {
   private permissionManager: PermissionManager;
   private messages: ChatMessage[] = [];
   private allowedTools?: string[];
+  private deferredTools: string[] = [];
   private maxHistoryMessages: number;
   private maxHistoryTokens: number;
   private maxToolRounds: number;
@@ -203,6 +204,46 @@ export class Agent {
 
   getAllowedTools(): string[] | undefined {
     return this.allowedTools;
+  }
+
+  /**
+   * Declares the tools the role allows but whose schema is withheld from the prompt
+   * until `load_tools` asks for them (T14.14).
+   */
+  setDeferredTools(names: string[] | undefined): void {
+    this.deferredTools = [...(names || [])];
+  }
+
+  getDeferredTools(): string[] {
+    return [...this.deferredTools];
+  }
+
+  /**
+   * Promotes deferred tools to active ones: from the next round their full schema
+   * travels in the `tools` array. Only tools already declared deferred can be
+   * activated, so the role's permission perimeter never widens here.
+   */
+  activateTools(names: string[]): { activated: string[]; alreadyActive: string[]; unknown: string[] } {
+    const activated: string[] = [];
+    const alreadyActive: string[] = [];
+    const unknown: string[] = [];
+
+    for (const name of names) {
+      if (this.deferredTools.includes(name)) {
+        activated.push(name);
+      } else if (!this.allowedTools || this.allowedTools.includes(name)) {
+        alreadyActive.push(name);
+      } else {
+        unknown.push(name);
+      }
+    }
+
+    if (activated.length > 0) {
+      this.deferredTools = this.deferredTools.filter((n) => !activated.includes(n));
+      this.allowedTools = [...(this.allowedTools || []), ...activated];
+    }
+
+    return { activated, alreadyActive, unknown };
   }
 
   /**
@@ -507,7 +548,8 @@ export class Agent {
             onChunk,
             onStats,
             emit,
-            signal
+            signal,
+            this
           );
 
           this.messages.push({

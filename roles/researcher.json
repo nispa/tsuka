@@ -17,5 +17,13 @@
     "web_search",
     "write_file"
   ],
+  "coreTools": [
+    "web_search",
+    "browse_url",
+    "read_file",
+    "write_file",
+    "save_memory",
+    "recall_memory"
+  ],
   "reasoningEffort": "medium"
 }

@@ -22,5 +22,14 @@
     "spawn_agent",
     "web_search"
   ],
+  "coreTools": [
+    "execute_command",
+    "read_file",
+    "grep_search",
+    "list_dir",
+    "get_ps_info",
+    "save_memory",
+    "recall_memory"
+  ],
   "reasoningEffort": "medium"
 }

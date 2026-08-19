@@ -25,6 +25,7 @@
  *
  * Esecuzione: npx tsx tests/test_parallel_workspace.ts
  */
+import './isolateMemory';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';

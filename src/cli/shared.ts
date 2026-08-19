@@ -11,6 +11,8 @@ export interface RoleConfig {
   description: string;
   systemPrompt: string;
   allowedTools: string[];
+  /** Subset of allowedTools always sent to the model; the rest is deferred behind load_tools (T14.14). */
+  coreTools?: string[];
   reasoningEffort?: string;
   creativity?: string;
 }
@@ -208,6 +210,7 @@ export function resolveCreativity(
 
 import { MemoryStore } from '../core/memory';
 import { ToolRegistry } from '../tools/registry';
+import { resolveToolSet } from '../core/toolSet';
 
 export function loadSystemPrompt(
   role: RoleConfig,
@@ -242,16 +245,32 @@ export function loadSystemPrompt(
   }
 
   if (registry) {
-    const tools = registry.listForLLM(modelName, role.allowedTools, effort);
+    const toolSet = resolveToolSet(role);
+    const tools = registry.listForLLM(modelName, toolSet.active, effort);
     if (tools.length > 0) {
       if (!hasNativeFunctionCalling(modelName, effort)) {
-        prompt += `\n\nAvailable tools:\n`;
-        for (const t of tools) {
-          prompt += `- **${t.function.name}**: ${t.function.description}\n`;
-        }
+        // Names only (T14.14): every description already travels in the `tools` array of
+        // the request, so repeating it here bills the same text twice on every round.
+        prompt += `\n\nAvailable tools:\n${tools.map((t) => t.function.name).join(', ')}\n`;
       }
       if (tools.some((t: any) => t.function.name === 'save_memory')) {
         prompt += `\nNote: you have persistent shared memory. Use **save_memory** for important facts to keep across sessions and **recall_memory** to retrieve them.`;
+      }
+    }
+
+    if (toolSet.deferred.length > 0) {
+      // Run the deferred names through the same tier and workflow-scope filtering the
+      // request applies, so the prompt never advertises a tool the model cannot receive.
+      // Tools registered as alwaysAllow bypass that filter, hence the final intersection.
+      const loadable = registry
+        .listForLLM(modelName, toolSet.deferred, effort)
+        .map((t) => t.function.name)
+        .filter((name) => toolSet.deferred.includes(name));
+      if (loadable.length > 0) {
+        prompt +=
+          `\n\nAdditional tools available on demand (their parameters are not loaded yet): ${loadable.join(', ')}.\n` +
+          `Call **load_tools** with the names you need — they become callable from your next response onward. ` +
+          `Do not invent parameters for them before loading.`;
       }
     }
   }

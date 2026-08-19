@@ -12,6 +12,7 @@ import { MemoryStore } from '../core/memory';
 import { createDefaultRegistry } from '../tools/index';
 import { PermissionManager } from '../safety/permissions';
 import { Agent, resolveReasoningEffort } from '../core/agent';
+import { resolveToolSet } from '../core/toolSet';
 import { getModelProfile, getRecommendedEffort } from '../core/modelProfile';
 import { withEffortPin, confirmEffortDivergence } from '../core/effortControl';
 import type { ReasoningEffort } from '../core/provider';
@@ -105,12 +106,14 @@ async function main() {
     const cascadedEffort = resolveReasoningEffort(undefined, char, role, configManager.getDefaultReasoningEffort());
     const reasoningEffort = withEffortPin(cascadedEffort);
 
+    const toolSet = resolveToolSet(role);
+
     const a = new Agent(
       provider,
       registry,
       permissionManager,
       loadSystemPrompt(role, trait, model, registry, char, undefined, reasoningEffort),
-      role.allowedTools,
+      toolSet.active,
       configManager.getMaxHistoryMessages(),
       configManager.getMaxHistoryTokens(),
       undefined,
@@ -118,6 +121,7 @@ async function main() {
       undefined,
       configManager.getMaxToolRounds()
     );
+    a.setDeferredTools(toolSet.deferred);
     if (typeof commandCtx !== 'undefined') {
       a.setCommandCtx(commandCtx);
     }

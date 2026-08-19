@@ -25,6 +25,7 @@
  *
  * Esecuzione isolata: node --import tsx tests/test_spawn_agent_reasoning_effort.ts
  */
+import './isolateMemory';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';

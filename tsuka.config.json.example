@@ -18,6 +18,7 @@
   "maxHistoryMessages": 500,
   "maxHistoryTokens": 65536,
   "maxToolResultTokens": 4000,
+  "deferredToolsEnabled": true,
   "memoryMaxChars": 600,
   "memoryMaxFacts": 200,
   "teamMaxRounds": 3,

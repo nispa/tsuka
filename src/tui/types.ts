@@ -103,6 +103,8 @@ export interface TuiGenerationStatus {
   phase: 'idle' | 'reasoning' | 'streaming' | 'tool';
   agentName?: string;
   toolName?: string;
+  /** Live progress text from a long CLI workflow's spinner (e.g. `/benchmark`'s current step). */
+  detail?: string;
 }
 
 export interface TuiInferenceCandidate {

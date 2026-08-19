@@ -15,6 +15,7 @@
  * (imposta TSUKA_MEMORY_FILE a un file temporaneo prima di lanciarlo da solo,
  * per non toccare la memoria reale dell'utente — vedi run_tests.ts per il pattern).
  */
+import './isolateMemory';
 import * as fs from 'fs';
 import * as path from 'path';
 import { Agent, resolveReasoningEffort } from '../src/core/agent';

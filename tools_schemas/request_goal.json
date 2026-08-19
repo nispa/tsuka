@@ -3,7 +3,7 @@
   "description": "Proponi all'utente di scalare il compito a un workflow '/goal' completo quando il task è troppo complesso, multidisciplinare o richiede pianificazione a più fasi con un supervisore e ruoli specialistici. Richiede approvazione esplicita dell'utente.",
   "requiredTier": "medium",
   "riskLevel": "RESTRICTED",
-  "schema": {
+  "parameters": {
     "type": "object",
     "properties": {
       "goal": {

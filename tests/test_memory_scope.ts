@@ -10,6 +10,7 @@
  * ogni MemoryStore qui è costruito su un file temporaneo dedicato, cancellato a fine test.
  * Esecuzione: npx tsx tests/test_memory_scope.ts
  */
+import './isolateMemory';
 import * as fs from 'fs';
 import * as path from 'path';
 import { MemoryStore, GLOBAL_SCOPE } from '../src/core/memory';

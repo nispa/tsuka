@@ -7,6 +7,7 @@
  * 5. ToolRegistry declarative permission detail formatters and tier hierarchy.
  */
 
+import './isolateMemory';
 import * as assert from 'assert';
 import { TuiStore } from '../src/tui/store';
 import { TuiBridge } from '../src/tui/bridge';

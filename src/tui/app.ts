@@ -18,6 +18,7 @@ import { ToolsView } from './views/Tools';
 import { FilesView } from './views/Files';
 import { ModalView } from './views/Modal';
 import { Agent, ToolRoundsAction } from '../core/agent';
+import { resolveToolSet } from '../core/toolSet';
 import { ConfigManager } from '../core/config';
 import { ILLMProvider, setTimeoutPromptHandler, TimeoutAction } from '../core/provider';
 import { ToolRegistry } from '../tools/registry';
@@ -25,11 +26,12 @@ import { PermissionManager } from '../safety/permissions';
 import { loadCharacter, loadRole, loadTrait, loadSystemPrompt } from '../cli/shared';
 import { resolveReasoningEffort } from '../core/agent';
 import { withEffortPin, describeEffortSource } from '../core/effortControl';
-import { detectContextWindow } from '../core/discovery';
+import { detectContextWindow, probeProvider } from '../core/discovery';
 import { LayoutConfigManager, TuiLayoutConfig } from './layoutConfig';
 import { ModalKeyHandler, PersonaModals, SystemModals, LayoutModals, FileViewerModal } from './modals';
 import { TuiCommandController, TuiTurnRunner } from './controllers';
 import { setLogSink, resetLogSink } from '../core/logSink';
+import { setProgressSink } from '../core/progressSink';
 import { copyToClipboard } from '../core/platform';
 
 export interface TuiAppOptions {
@@ -108,12 +110,14 @@ export class TuiApp {
     const cascadedEffort = resolveReasoningEffort(undefined, char, role, this.configManager.getDefaultReasoningEffort());
     const reasoningEffort = withEffortPin(cascadedEffort);
 
+    const toolSet = resolveToolSet(role);
+
     const a = new Agent(
       this.provider,
       this.registry,
       this.permissionManager,
       loadSystemPrompt(role, trait, model, this.registry, char, undefined, reasoningEffort),
-      role.allowedTools,
+      toolSet.active,
       this.configManager.getMaxHistoryMessages(),
       this.configManager.getMaxHistoryTokens(),
       undefined,
@@ -121,6 +125,7 @@ export class TuiApp {
       undefined,
       this.configManager.getMaxToolRounds()
     );
+    a.setDeferredTools(toolSet.deferred);
 
     a.setToolRoundsPromptHandler((info) => {
       return new Promise<ToolRoundsAction>((resolve) => {
@@ -219,15 +224,71 @@ export class TuiApp {
       warn: (msg: string) => this.store.notify(msg, 'warn'),
       error: (msg: string) => this.store.notify(msg, 'error'),
     });
+    setProgressSink((text: string) => {
+      const stripped = text.replace(/\x1b\[[0-9;]*m/g, '').trim();
+      if (!stripped) return;
+      const gen = this.store.getState().generationStatus;
+      this.store.setState({
+        generationStatus: { phase: gen?.phase ?? 'reasoning', agentName: gen?.agentName, toolName: gen?.toolName, detail: stripped },
+      });
+    });
     this.screen.start();
     this.screen.requestRender();
-    this.probeContextWindow().catch(() => {});
+    this.discoverModelAtStartup().catch(() => {});
   }
 
   stop(): void {
     delete process.env.TSUKA_TUI;
     this.screen.stop();
     resetLogSink();
+    setProgressSink(null);
+  }
+
+  /**
+   * Startup autodiscovery: what the CLI already does on `/provider` and `/models` (probeProvider,
+   * see cli/commands/provider.ts) but unattended, run once when the TUI opens. tsuka.config.json
+   * records a model name, but the server behind it can drift — restarted with a different model,
+   * or the configured one no longer served — and nothing short of manually running `/provider`
+   * used to notice. This reconciles config against what the server actually reports:
+   *  - configured model missing from the server's list → fall back to the first one available
+   *    (same auto-recovery `handleProvider` performs after a manual switch) and warn;
+   *  - a different model is loaded in RAM → warn only, since forcing a swap would reload the
+   *    server (same reasoning as `maybeWarmUp`'s opt-in prompt in the CLI);
+   *  - either way, calibrate the context window from the same scan instead of a second round trip.
+   * Silent on an unreachable server — `probeProvider` returning null just means "nothing to do".
+   */
+  async discoverModelAtStartup(): Promise<void> {
+    try {
+      const providerName = this.configManager.getActiveProviderName();
+      const activeConfig = this.configManager.getActiveProviderConfig();
+      const apiKey = this.configManager.getApiKey();
+      const configuredModel = this.provider.getCurrentModel();
+
+      const scan = await probeProvider(providerName, activeConfig, apiKey);
+      if (!scan) return;
+
+      if (scan.models.length > 0 && !scan.models.includes(configuredModel)) {
+        const fallback = scan.models[0];
+        this.provider.setCurrentModel(fallback);
+        this.configManager.updateActiveModel(fallback);
+        this.agent = this.recreateAgent();
+        this.store.notify(`Model '${configuredModel}' not found on server — switched to '${fallback}'`, 'warn');
+      } else if (scan.loadedModel && scan.loadedModel !== configuredModel) {
+        this.store.notify(`Server has '${scan.loadedModel}' loaded in RAM (config expects '${configuredModel}')`, 'warn');
+      }
+
+      const dynamicCtx = scan.contextWindow;
+      if (dynamicCtx && dynamicCtx >= 1024) {
+        this.configManager.setRuntimeContextTokens(dynamicCtx);
+        const usedTokens = this.store.getState().stats.usedTokens;
+        this.store.updateStats({
+          maxTokens: dynamicCtx,
+          percentage: Math.min(100, Math.round((usedTokens / dynamicCtx) * 100)),
+        });
+        this.agent = this.recreateAgent();
+        this.store.notify(`Context window calibrated: ${dynamicCtx.toLocaleString()} tokens (${this.provider.getCurrentModel()})`, 'info');
+      }
+    } catch {}
   }
 
   async probeContextWindow(): Promise<void> {

@@ -18,6 +18,14 @@
     "web_search",
     "write_file"
   ],
+  "coreTools": [
+    "read_file",
+    "write_file",
+    "grep_search",
+    "list_dir",
+    "save_memory",
+    "recall_memory"
+  ],
   "reasoningEffort": "xhigh",
   "creativity": "precise"
 }

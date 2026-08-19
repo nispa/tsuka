@@ -13,11 +13,27 @@ import type { AgentEventHandler } from '../core/agentEvents';
  * Optional execution context passed into tool executors (e.g. registry access
  * for hot-registering tools created by create_tool, or subagent event/chunk forwarding).
  */
+/**
+ * Minimal view the calling Agent exposes over its own active tool set (T14.14).
+ * Lets `load_tools` promote a deferred tool without the registry — shared by every
+ * agent — having to know about the concrete Agent.
+ */
+export interface ToolSetController {
+  /** Tools whose full schema travels in the `tools` array on every round. */
+  getAllowedTools(): string[] | undefined;
+  /** Tools available on demand, not yet sent to the model. */
+  getDeferredTools(): string[];
+  /** Moves the named tools from deferred to active. */
+  activateTools(names: string[]): { activated: string[]; alreadyActive: string[]; unknown: string[] };
+}
+
 export interface ToolExecutionContext {
   registry?: ToolRegistry;
   provider?: any;
   permissionManager?: PermissionManager;
   commandCtx?: any;
+  /** Calling Agent's tool set (T14.14): present only when the Agent exposes one. */
+  toolSet?: ToolSetController;
   /** Requesting agent label (e.g. character aiName) for logging and note authorship attribution. */
   requesterLabel?: string;
   onChunk?: (chunk: string, channel?: StreamChannel, authorName?: string) => void;
@@ -192,7 +208,10 @@ export function loadToolSchema(name: string): ToolSchemaData {
     const data = JSON.parse(raw);
     const schemaData: ToolSchemaData = {
       description: data.description || '',
-      schema: data.parameters || { type: 'object', properties: {} },
+      // 'schema' is a legacy alias of 'parameters': some schema files (and hand-written
+      // user tools) use that key. Without the alias the tool reaches the model with EMPTY
+      // parameters and nothing to validate against — silent and hard to spot.
+      schema: data.parameters || data.schema || { type: 'object', properties: {} },
       requiredTier: data.requiredTier || 'small'
     };
     schemaCache.set(name, { mtimeMs, data: schemaData });
@@ -288,7 +307,8 @@ export class ToolRegistry {
     onChunk?: (chunk: string, channel?: StreamChannel, authorName?: string) => void,
     onStats?: (stats: any, agentLabel?: string) => void,
     onEvent?: AgentEventHandler,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    toolSet?: ToolSetController
   ): Promise<ToolResult> {
     const tool = this.tools.get(name);
     if (!tool) {
@@ -328,6 +348,7 @@ export class ToolRegistry {
         permissionManager,
         requesterLabel,
         commandCtx,
+        toolSet,
         onChunk,
         onStats,
         onEvent,

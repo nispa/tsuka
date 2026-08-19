@@ -1,3 +1,4 @@
+import './isolateMemory';
 import assert from 'node:assert/strict';
 import { sanitizeAndParseToolArgs, Agent } from '../src/core/agent';
 import { MockLLMProvider } from './mocks/mockProvider';

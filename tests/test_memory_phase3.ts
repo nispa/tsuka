@@ -23,6 +23,7 @@
  * (impostare TSUKA_MEMORY_FILE non è necessario per questa suite — vedi sopra — ma è comunque
  * consigliato dalla procedura quando si lancia una suite di memoria a mano)
  */
+import './isolateMemory';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
