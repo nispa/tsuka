@@ -1,6 +1,6 @@
 {
   "name": "spawn_agent",
-  "description": "Crea un sub-agente temporaneo per eseguire un compito specifico. Il sub-agente lavora in modo indipendente e ritorna un resoconto. Puoi specificare un personaggio predefinito oppure un ruolo e tratto custom.",
+  "description": "Creates a temporary sub-agent to carry out a specific task. The sub-agent works independently and returns a report. You can specify a predefined character, or a custom role and trait.",
   "requiredTier": "medium",
   "riskLevel": "SAFE",
   "parameters": {
@@ -8,23 +8,23 @@
     "properties": {
       "task": {
         "type": "string",
-        "description": "Il compito specifico da assegnare al sub-agente, come testo inline breve. Limite: 2000 caratteri. Se non basta, NON accorciarlo (si perdono requisiti in silenzio): dividi in più chiamate a spawn_agent (una per compito autosufficiente), oppure usa 'briefingFile' per un briefing lungo. Se 'briefingFile' è presente, 'task' è opzionale e funge da introduzione breve davanti al contenuto del file."
+        "description": "The specific task to assign the sub-agent, as a short inline text. Limit: 2000 characters. If that's not enough, do NOT shorten it (requirements get silently lost): split it into multiple spawn_agent calls (one per self-contained task), or use 'briefingFile' for a long briefing. If 'briefingFile' is present, 'task' is optional and acts as a short introduction ahead of the file's content."
       },
       "briefingFile": {
         "type": "string",
-        "description": "Percorso di un file (scritto prima con write_file) che contiene il briefing completo per il sub-agente. Usalo per compiti lunghi o dettagliati invece di incollare tutto dentro 'task': un percorso è una stringa breve, facile da generare senza errori di formato; un briefing lungo incollato inline in 'task' rischia di rompere la generazione JSON della chiamata stessa. Limite: 12000 caratteri nel file."
+        "description": "Path to a file (written beforehand with write_file) containing the full briefing for the sub-agent. Use it for long or detailed tasks instead of pasting everything into 'task': a path is a short string, easy to generate without formatting errors; a long briefing pasted inline into 'task' risks breaking the JSON generation of the call itself. Limit: 12000 characters in the file."
       },
       "charName": {
         "type": "string",
-        "description": "Nome del personaggio predefinito da usare, come compare nel catalogo installato; in alternativa il ruolo/mestiere richiesto (es. 'security_auditor'). Opzionale: se omesso, usa ruolo e tratto specificati."
+        "description": "Name of the predefined character to use, as it appears in the installed catalog; alternatively, the required role/craft (e.g. 'security_auditor'). Optional: if omitted, uses the specified role and trait."
       },
       "roleName": {
         "type": "string",
-        "description": "Ruolo per il sub-agente (es. 'developer', 'sysadmin'). Usato solo se charName non è specificato."
+        "description": "Role for the sub-agent (e.g. 'developer', 'sysadmin'). Used only if charName is not specified."
       },
       "traitName": {
         "type": "string",
-        "description": "Tratto per il sub-agente (es. 'creative', 'grumpy'). Usato solo se charName non è specificato."
+        "description": "Trait for the sub-agent (e.g. 'creative', 'grumpy'). Used only if charName is not specified."
       },
       "reasoningEffort": {
         "type": "string",
@@ -34,7 +34,7 @@
           "medium",
           "xhigh"
         ],
-        "description": "Sforzo di ragionamento imposto al sub-agente per QUESTO compito, in override rispetto al personaggio/ruolo. Opzionale: se omesso, il sub-agente eredita la cascata normale (personaggio → ruolo → default). Abbassalo a 'none' o 'low' per compiti meccanici (applicare una modifica già nota, riformattare un file, estrarre campi da un testo): far ragionare a lungo un sub-agente su un compito meccanico è solo tempo perso. Lascialo a 'medium'/'xhigh' solo se il compito richiede davvero analisi o pianificazione."
+        "description": "Reasoning effort imposed on the sub-agent for THIS task, overriding the character/role. Optional: if omitted, the sub-agent inherits the normal cascade (character -> role -> default). Lower it to 'none' or 'low' for mechanical tasks (applying an already-known change, reformatting a file, extracting fields from text): having a sub-agent reason at length over a mechanical task is just wasted time. Leave it at 'medium'/'xhigh' only if the task genuinely requires analysis or planning."
       }
     },
     "required": []

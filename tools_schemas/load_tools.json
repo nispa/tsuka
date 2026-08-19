@@ -1,6 +1,6 @@
 {
   "name": "load_tools",
-  "description": "Attiva uno o più tool aggiuntivi fra quelli elencati come disponibili su richiesta nel system prompt. Serve quando il compito richiede una capacità che i tool già attivi non coprono (es. cercare sul web, creare un sub-agente, scaricare un file). I tool attivati restano disponibili per il resto della sessione e i loro parametri completi compaiono dalla tua risposta successiva: chiamali nel turno dopo, non in questo.",
+  "description": "Activates one or more additional tools among those listed as available on request in the system prompt. Use it when the task needs a capability the currently active tools don't cover (e.g. searching the web, spawning a sub-agent, downloading a file). Activated tools stay available for the rest of the session, and their full parameters appear starting with your next reply: call them on the following turn, not this one.",
   "requiredTier": "small",
   "riskLevel": "SAFE",
   "parameters": {
@@ -9,7 +9,7 @@
       "names": {
         "type": "array",
         "items": { "type": "string" },
-        "description": "Nomi dei tool da attivare, esattamente come compaiono nell'elenco dei tool disponibili su richiesta. Chiedi in una sola chiamata tutti quelli che ti servono per la fase corrente."
+        "description": "Names of the tools to activate, exactly as they appear in the list of tools available on request. Ask for everything you need for the current phase in a single call."
       }
     },
     "required": ["names"]

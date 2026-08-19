@@ -1,6 +1,6 @@
 {
   "name": "read_notes",
-  "description": "Legge le note lasciate dai colleghi sulla blackboard condivisa del run corrente (team o goal). Usalo all'inizio del tuo turno per vedere decisioni prese, artefatti prodotti o punti aperti dai colleghi precedenti in QUESTO run.",
+  "description": "Reads the notes colleagues left on the current run's shared blackboard (team or goal). Use it at the start of your turn to see decisions, artifacts, or open points from earlier colleagues in THIS run.",
   "requiredTier": "small",
   "riskLevel": "SAFE",
   "parameters": {
@@ -8,7 +8,7 @@
     "properties": {
       "prefix": {
         "type": "string",
-        "description": "Se specificato, mostra solo le note la cui chiave inizia con questo prefisso (case-insensitive). Omesso: mostra tutte le note del run."
+        "description": "If specified, only shows notes whose key starts with this prefix (case-insensitive). Omitted: shows every note in the run."
       }
     },
     "required": []

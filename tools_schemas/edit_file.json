@@ -1,21 +1,21 @@
 {
   "name": "edit_file",
-  "description": "Modifica un file esistente sostituendo una specifica sezione di testo (targetContent) con una nuova sezione (replacementContent). La sezione target deve corrispondere esattamente nel file.",
+  "description": "Edits an existing file by replacing a specific section of text (targetContent) with a new section (replacementContent). The target section must match the file exactly.",
   "requiredTier": "small",
   "parameters": {
     "type": "object",
     "properties": {
       "path": {
         "type": "string",
-        "description": "Il percorso del file da modificare."
+        "description": "The path of the file to edit."
       },
       "targetContent": {
         "type": "string",
-        "description": "Il blocco esatto di testo da cercare e sostituire (inclusi spazi e a capo)."
+        "description": "The exact block of text to find and replace (including whitespace and newlines)."
       },
       "replacementContent": {
         "type": "string",
-        "description": "Il nuovo blocco di testo da inserire al posto di targetContent."
+        "description": "The new block of text to insert in place of targetContent."
       }
     },
     "required": ["path", "targetContent", "replacementContent"]

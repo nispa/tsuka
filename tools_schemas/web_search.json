@@ -1,12 +1,12 @@
 {
   "name": "web_search",
-  "description": "Effettua una ricerca su internet per raccogliere informazioni in tempo reale e risposte aggiornate su notizie, documentazione o codice.",
+  "description": "Performs an internet search to gather real-time information and up-to-date answers on news, documentation, or code.",
   "parameters": {
     "type": "object",
     "properties": {
       "query": {
         "type": "string",
-        "description": "La frase o termine di ricerca da cercare sul web."
+        "description": "The search phrase or term to look up on the web."
       }
     },
     "required": ["query"]

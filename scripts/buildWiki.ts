@@ -58,7 +58,7 @@ const PAGES: WikiPage[] = [
     lang: 'en',
     counterpart: 'Guida-Rapida',
     summary: 'Install, initialize a workspace and run the first turn',
-    source: { kind: 'sections', file: 'README.md', headings: ['## ⚡ Quickstart', '## 🚀 Installation'] },
+    source: { kind: 'sections', file: 'README.md', headings: ['## ⚡ Quickstart', '## 🚀 Install & Setup'] },
   },
   {
     name: 'Guida-Rapida',
@@ -66,24 +66,17 @@ const PAGES: WikiPage[] = [
     lang: 'it',
     counterpart: 'Quickstart',
     summary: 'Installazione, inizializzazione della workspace e primo turno',
-    source: { kind: 'sections', file: 'README-it.md', headings: ['## ⚡ Guida Rapida in 60 Secondi', '## 🚀 Installazione e Setup'] },
+    source: { kind: 'sections', file: 'README-it.md', headings: ['## ⚡ Guida Rapida', '## 🚀 Installazione & Setup'] },
   },
-  {
-    name: 'TUI-Dashboard',
-    title: 'TUI Dashboard',
-    lang: 'en',
-    counterpart: 'Dashboard-TUI',
-    summary: 'The full-screen interactive dashboard: panels, keys, mouse',
-    source: { kind: 'sections', file: 'README.md', headings: ['## 🖥️ Interactive Terminal UI'] },
-  },
-  {
-    name: 'Dashboard-TUI',
-    title: 'Dashboard TUI',
-    lang: 'it',
-    counterpart: 'TUI-Dashboard',
-    summary: 'La dashboard interattiva a schermo intero: pannelli, tasti, mouse',
-    source: { kind: 'sections', file: 'README-it.md', headings: ['## 🖥️ TUI Interattiva a Schermo Intero'] },
-  },
+  // T14.23: 'TUI-Dashboard'/'Dashboard-TUI' used to source from a dedicated "## 🖥️ Interactive
+  // Terminal UI" README section. A prior, uncommitted README rewrite folded that content into a
+  // single row of the '✨ Highlights' table — the section these pages pulled from no longer
+  // exists at all, not just under a different heading (found while running the suite green
+  // again for the tools_schemas translation; not caused by it). Removed rather than pointed at
+  // stale content: a wiki page built from a section that isn't there is worse than no page.
+  // Restoring TUI documentation in the wiki needs a source decision (a new README section, or
+  // pulling from docs/architecture.md's TUI coverage instead) — flagged to the user, not silently
+  // decided here.
   {
     name: 'Slash-Commands',
     title: 'Slash commands',

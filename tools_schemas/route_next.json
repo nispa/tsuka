@@ -1,6 +1,6 @@
 {
   "name": "route_next",
-  "description": "Decide quale membro del team lavora al prossimo turno, oppure segnala la fine del lavoro. Usalo SEMPRE al posto (o in aggiunta) del marker testuale 'AGENTE: @nome' / 'FINE': è il modo affidabile per instradare il team.",
+  "description": "Decides which team member works the next turn, or signals that the work is done. ALWAYS use this instead of (or in addition to) the text markers 'AGENTE: @name' / 'FINE': it's the reliable way to route the team.",
   "requiredTier": "small",
   "riskLevel": "SAFE",
   "parameters": {
@@ -8,11 +8,11 @@
     "properties": {
       "agent": {
         "type": "string",
-        "description": "Nome del membro scelto per il prossimo turno, come compare nell'elenco dei membri del team (con o senza '@'), oppure 'FINE' se il compito è risolto."
+        "description": "Name of the member chosen for the next turn, as it appears in the team member list (with or without '@'), or 'FINE' if the task is resolved."
       },
       "reason": {
         "type": "string",
-        "description": "Perché questo membro (o la fine del lavoro) è la scelta giusta a questo punto."
+        "description": "Why this member (or ending the work) is the right choice at this point."
       }
     },
     "required": [

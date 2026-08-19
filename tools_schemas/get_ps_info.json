@@ -1,6 +1,6 @@
 {
   "name": "get_ps_info",
-  "description": "Recupera informazioni di sistema di sola lettura da Windows tramite cmdlet PowerShell predefinite (processi attivi, servizi in esecuzione, volumi disco, variabili d'ambiente).",
+  "description": "Retrieves read-only system information from Windows via built-in PowerShell cmdlets (running processes, active services, disk volumes, environment variables).",
   "requiredTier": "small",
   "parameters": {
     "type": "object",
@@ -8,7 +8,7 @@
       "category": {
         "type": "string",
         "enum": ["processes", "services", "disk", "env"],
-        "description": "La categoria di informazioni di sistema da raccogliere."
+        "description": "The category of system information to collect."
       }
     },
     "required": ["category"]

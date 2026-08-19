@@ -1,6 +1,6 @@
 {
   "name": "report_status",
-  "description": "Dichiara lo stato del tuo turno di lavoro in un team o pipeline. Usalo SEMPRE al posto (o in aggiunta) del marker testuale 'STATO: ...' per chiudere il tuo intervento: è il modo affidabile per comunicare l'esito ai colleghi e al coordinatore.",
+  "description": "Declares the status of your turn in a team or pipeline. ALWAYS use this instead of (or in addition to) the text marker 'STATO: ...' to close your turn: it's the reliable way to communicate the outcome to colleagues and the coordinator.",
   "requiredTier": "small",
   "riskLevel": "SAFE",
   "parameters": {
@@ -9,15 +9,15 @@
       "status": {
         "type": "string",
         "enum": ["COMPLETATO", "DA_CONTINUARE", "FALLITO"],
-        "description": "COMPLETATO se il compito di gruppo è definitivamente risolto; DA_CONTINUARE se serve ancora lavoro; FALLITO se il compito non è risolvibile con i mezzi a disposizione."
+        "description": "COMPLETATO if the group task is definitively resolved; DA_CONTINUARE if more work is still needed; FALLITO if the task cannot be solved with the means available."
       },
       "summary": {
         "type": "string",
-        "description": "Riassunto di cosa hai fatto in questo turno e, se non completato, cosa manca."
+        "description": "Summary of what you did this turn and, if not complete, what's still missing."
       },
       "next_hint": {
         "type": "string",
-        "description": "Suggerimento opzionale per il prossimo collega su cosa fare dopo."
+        "description": "Optional hint for the next colleague on what to do next."
       }
     },
     "required": ["status", "summary"]

@@ -1,6 +1,6 @@
 {
   "name": "request_team",
-  "description": "Proponi all'utente di convocare un team collaborativo predefinito (es. 'dev_ops', 'dev_security', 'cyber_audit', 'story_comedy') per eseguire un compito specifico in gruppo. Richiede approvazione esplicita dell'utente.",
+  "description": "Proposes to the user that a predefined collaborative team (e.g. 'dev_ops', 'dev_security', 'cyber_audit', 'story_comedy') be convened to carry out a specific task as a group. Requires the user's explicit approval.",
   "requiredTier": "medium",
   "riskLevel": "RESTRICTED",
   "parameters": {
@@ -8,15 +8,15 @@
     "properties": {
       "team_name": {
         "type": "string",
-        "description": "Il nome del team predefinito da convocare (es. 'dev_security', 'dev_ops', 'tech_docs', 'creative_promo'). Opzionale: se omesso, viene richiesto all'utente."
+        "description": "The name of the predefined team to convene (e.g. 'dev_security', 'dev_ops', 'tech_docs', 'creative_promo'). Optional: if omitted, the user is asked."
       },
       "task": {
         "type": "string",
-        "description": "La descrizione chiara del compito da assegnare al team."
+        "description": "A clear description of the task to assign to the team."
       },
       "reason": {
         "type": "string",
-        "description": "La motivazione chiara del perché è consigliabile attivare questo specifico team."
+        "description": "A clear rationale for why activating this specific team is advisable."
       }
     },
     "required": ["task", "reason"]

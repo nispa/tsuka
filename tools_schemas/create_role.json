@@ -1,36 +1,36 @@
 {
   "name": "create_role",
-  "description": "Crea o aggiorna una nuova personalità o ruolo dell'agente salvandolo in un file JSON nella cartella 'roles/'. Consente l'auto-adattamento dell'agente.",
+  "description": "Creates or updates a new agent personality or role, saving it as a JSON file in the 'roles/' folder. Enables the agent to self-adapt.",
   "requiredTier": "small",
   "parameters": {
     "type": "object",
     "properties": {
       "name": {
         "type": "string",
-        "description": "Il nome identificativo del file in minuscolo (es. 'lawyer')."
+        "description": "The lowercase identifier for the file (e.g. 'lawyer')."
       },
       "displayName": {
         "type": "string",
-        "description": "Il nome da visualizzare nella console con eventuali emoji (es. '⚖️ Avvocato')."
+        "description": "The name to display in the console, optionally with an emoji (e.g. '⚖️ Lawyer')."
       },
       "description": {
         "type": "string",
-        "description": "Una breve descrizione dello scopo e delle abilità del ruolo."
+        "description": "A short description of the role's purpose and skills."
       },
       "systemPrompt": {
         "type": "string",
-        "description": "Le istruzioni e direttive dettagliate sul carattere e sul comportamento del ruolo."
+        "description": "The detailed instructions and directives on the role's character and behavior."
       },
       "allowedTools": {
         "type": "array",
         "items": {
           "type": "string"
         },
-        "description": "I tool che questo ruolo è autorizzato ad usare (es. ['read_file', 'web_search'])."
+        "description": "The tools this role is authorized to use (e.g. ['read_file', 'web_search'])."
       },
       "global": {
         "type": "boolean",
-        "description": "Se true, salva il ruolo nella cartella globale TSUKA_HOME (accessibile in tutti i progetti). Se false o omesso, salva nel progetto locale (.tsuka/roles/)."
+        "description": "If true, saves the role in the global TSUKA_HOME folder (accessible across all projects). If false or omitted, saves it in the local project (.tsuka/roles/)."
       }
     },
     "required": ["name", "displayName", "description", "systemPrompt", "allowedTools"]

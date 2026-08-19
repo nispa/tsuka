@@ -1,6 +1,6 @@
 {
   "name": "cast_vote",
-  "description": "Esprime il tuo voto sul lavoro del team durante un round di discussione con votazione attiva. Usalo SEMPRE al posto (o in aggiunta) del marker testuale 'VOTO: ...': è il modo affidabile per far contare il tuo voto.",
+  "description": "Casts your vote on the team's work during a discussion round with active voting. ALWAYS use this instead of (or in addition to) the text marker 'VOTO: ...': it's the reliable way to make your vote count.",
   "requiredTier": "small",
   "riskLevel": "SAFE",
   "parameters": {
@@ -9,11 +9,11 @@
       "vote": {
         "type": "string",
         "enum": ["APPROVO", "MODIFICARE", "RIFIUTO"],
-        "description": "APPROVO se il lavoro è soddisfacente; MODIFICARE se servono cambiamenti (specificarli in reason); RIFIUTO se il lavoro è sbagliato e va rifatto."
+        "description": "APPROVO if the work is satisfactory; MODIFICARE if changes are needed (specify them in reason); RIFIUTO if the work is wrong and must be redone."
       },
       "reason": {
         "type": "string",
-        "description": "Motivazione del voto."
+        "description": "Rationale for the vote."
       }
     },
     "required": ["vote", "reason"]

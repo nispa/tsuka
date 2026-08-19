@@ -1,21 +1,21 @@
 {
   "name": "write_file",
-  "description": "Crea un nuovo file o sovrascrive completamente un file esistente con il contenuto fornito. LIMITE RIGIDO: 'content' non può superare 16000 caratteri per chiamata — oltre questa soglia la chiamata viene rifiutata con un errore. Per file ancora più lunghi dividi in più chiamate: la prima senza 'append' (o con append:false), le successive con 'append': true, finché il file non è completo.",
+  "description": "Creates a new file or fully overwrites an existing one with the given content. HARD LIMIT: 'content' cannot exceed 16000 characters per call — beyond that the call is rejected with an error. For longer files, split across multiple calls: the first without 'append' (or with append:false), the following ones with 'append': true, until the file is complete.",
   "requiredTier": "small",
   "parameters": {
     "type": "object",
     "properties": {
       "path": {
         "type": "string",
-        "description": "Il percorso relativo o assoluto del file da creare/sovrascrivere/accodare."
+        "description": "The relative or absolute path of the file to create/overwrite/append to."
       },
       "content": {
         "type": "string",
-        "description": "Il contenuto da scrivere. Senza 'append' (o con append:false) sostituisce l'intero file. MASSIMO 16000 caratteri per chiamata: se il contenuto totale è più lungo, dividilo in più chiamate con 'append'."
+        "description": "The content to write. Without 'append' (or with append:false) it replaces the entire file. MAXIMUM 16000 characters per call: if the total content is longer, split it across multiple calls with 'append'."
       },
       "append": {
         "type": "boolean",
-        "description": "Se true, accoda 'content' alla fine del file invece di sovrascriverlo (crea il file se non esiste ancora, come la prima chiamata). Usalo per le porzioni SUCCESSIVE alla prima quando costruisci un file lungo a pezzi."
+        "description": "If true, appends 'content' to the end of the file instead of overwriting it (creates the file if it doesn't exist yet, same as the first call). Use it for chunks AFTER the first one when building a long file piece by piece."
       }
     },
     "required": ["path", "content"]

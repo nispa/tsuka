@@ -1,17 +1,17 @@
 {
   "name": "execute_command",
-  "description": "Esegue un comando o uno script PowerShell arbitrario su Windows. Fornisce streaming in tempo reale di stdout/stderr sulla console dell'utente. Questo tool consente modifiche complete al sistema ed è pericoloso.",
+  "description": "Executes an arbitrary command or PowerShell script on Windows. Streams stdout/stderr live to the user's console. This tool allows full system modification and is dangerous.",
   "requiredTier": "medium",
   "parameters": {
     "type": "object",
     "properties": {
       "command": {
         "type": "string",
-        "description": "Il comando o lo script PowerShell da eseguire."
+        "description": "The command or PowerShell script to execute."
       },
       "timeout_ms": {
         "type": "integer",
-        "description": "Timeout massimo in millisecondi (opzionale, es. 300000 per build o installazioni lunghe; default 120000)."
+        "description": "Maximum timeout in milliseconds (optional, e.g. 300000 for long builds or installs; default 120000)."
       }
     },
     "required": ["command"]

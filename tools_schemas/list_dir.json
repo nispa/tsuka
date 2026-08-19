@@ -1,12 +1,12 @@
 {
   "name": "list_dir",
-  "description": "Elenca il contenuto di una directory (file e cartelle) in formato strutturato, escludendo cartelle nascoste o pesanti come .git e node_modules.",
+  "description": "Lists the contents of a directory (files and folders) in structured form, excluding hidden or heavy folders such as .git and node_modules.",
   "parameters": {
     "type": "object",
     "properties": {
       "path": {
         "type": "string",
-        "description": "Il percorso della cartella da elencare (opzionale, default è la cartella corrente)."
+        "description": "The path of the folder to list (optional, defaults to the current folder)."
       }
     }
   }

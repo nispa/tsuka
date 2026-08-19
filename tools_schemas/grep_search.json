@@ -1,17 +1,17 @@
 {
   "name": "grep_search",
-  "description": "Cerca in modo ricorsivo all'interno di tutti i file di testo nel workspace per trovare linee che contengono una query specifica.",
+  "description": "Recursively searches every text file in the workspace for lines matching a specific query.",
   "requiredTier": "small",
   "parameters": {
     "type": "object",
     "properties": {
       "query": {
         "type": "string",
-        "description": "Il termine o la frase da cercare."
+        "description": "The term or phrase to search for."
       },
       "path": {
         "type": "string",
-        "description": "Directory di partenza per la ricerca (opzionale, default cartella corrente)."
+        "description": "Starting directory for the search (optional, defaults to the current folder)."
       }
     },
     "required": ["query"]

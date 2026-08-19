@@ -8,7 +8,7 @@
  *
  * Esecuzione: npx tsx tests/test_loop.ts
  */
-import { runLoop, calculateAttemptSignature } from '../src/core/loop';
+import { runLoop, calculateAttemptSignature, checkAcceptance } from '../src/core/loop';
 import { Blackboard } from '../src/core/blackboard';
 
 let passed = 0;
@@ -124,6 +124,18 @@ async function main() {
     const sig1 = calculateAttemptSignature('Hello world', ['fileA.ts', 'fileB.ts']);
     const sig2 = calculateAttemptSignature('Hello   world\n', ['fileB.ts', 'fileA.ts']);
     check('T6.3-signature-normalization', sig1 === sig2, 'La firma gestisce correttamente spazi e ordine dei file');
+  }
+
+  // --- checkAcceptance con comando shell: verificato che il controllo guardi il marker reale
+  //     ('[Process exited with code:'), non quello italiano mai prodotto da executeCommandTool
+  //     ('[Il processo è terminato con codice di errore:') — bug trovato mentre si censiva
+  //     l'italiano nel codice per la traduzione integrale (regola AGENTS.md #1). ---
+  {
+    const okIssues = await checkAcceptance({ command: 'exit 0' });
+    check('T6.3-accept-command-pass', okIssues.length === 0, `comando con exit code 0 non produce issue (ricevute: ${JSON.stringify(okIssues)})`);
+
+    const failIssues = await checkAcceptance({ command: 'exit 1' });
+    check('T6.3-accept-command-fail', failIssues.length === 1 && /Verification command 'exit 1' failed/.test(failIssues[0]), `comando con exit code non zero rilevato come fallito: ${JSON.stringify(failIssues)}`);
   }
 
   console.log(`\n=== Risultato: ${passed} passati, ${failed} falliti ===`);

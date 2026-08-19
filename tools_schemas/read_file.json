@@ -1,28 +1,28 @@
 {
   "name": "read_file",
-  "description": "Legge il contenuto di un file di testo. Permette anche di leggere solo un intervallo di righe specifico, con startLine/endLine oppure con offset/limit. Un file grande viene comunque limitato a un tetto di contesto: la risposta include sempre come recuperare il resto (offset/limit successivi o grep_search).",
+  "description": "Reads the content of a text file. Also supports reading only a specific range of lines, with startLine/endLine or with offset/limit. A large file is still capped to a context ceiling: the response always explains how to retrieve the rest (a subsequent offset/limit, or grep_search).",
   "parameters": {
     "type": "object",
     "properties": {
       "path": {
         "type": "string",
-        "description": "Il percorso relativo o assoluto del file da leggere."
+        "description": "The relative or absolute path of the file to read."
       },
       "startLine": {
         "type": "integer",
-        "description": "La riga iniziale da cui iniziare a leggere (1-indexed, opzionale)."
+        "description": "The line to start reading from (1-indexed, optional)."
       },
       "endLine": {
         "type": "integer",
-        "description": "La riga finale in cui terminare la lettura (1-indexed, inclusiva, opzionale)."
+        "description": "The line to stop reading at (1-indexed, inclusive, optional)."
       },
       "offset": {
         "type": "integer",
-        "description": "La riga da cui iniziare a leggere (1-indexed, opzionale). Alternativa a startLine, pensata per la paginazione: usala insieme a limit per chiedere la porzione successiva di un file troppo grande."
+        "description": "The line to start reading from (1-indexed, optional). An alternative to startLine, meant for pagination: use it together with limit to request the next chunk of a file that's too large."
       },
       "limit": {
         "type": "integer",
-        "description": "Il numero di righe da leggere a partire da offset (opzionale, default: fino a fine file)."
+        "description": "Number of lines to read starting from offset (optional, default: to end of file)."
       }
     },
     "required": ["path"]

@@ -1,17 +1,17 @@
 {
   "name": "download_file",
-  "description": "Scarica un file, immagine, video o documento binario da un URL remoto (es. estratto da browse_url o web_search) e lo salva su disco all'interno del workspace.",
+  "description": "Downloads a file, image, video, or binary document from a remote URL (e.g. found via browse_url or web_search) and saves it to disk inside the workspace.",
   "requiredTier": "small",
   "parameters": {
     "type": "object",
     "properties": {
       "url": {
         "type": "string",
-        "description": "L'indirizzo URL remoto completo del file o media da scaricare (es. https://example.com/images/diagram.png)."
+        "description": "The full remote URL of the file or media to download (e.g. https://example.com/images/diagram.png)."
       },
       "path": {
         "type": "string",
-        "description": "Il percorso relativo di salvataggio all'interno del workspace (es. 'downloads/diagram.png' o 'media/intro.mp4'). Se omesso, viene salvato automaticamente nella cartella 'downloads/' con il nome dedotto dall'URL."
+        "description": "The relative save path inside the workspace (e.g. 'downloads/diagram.png' or 'media/intro.mp4'). If omitted, it's saved automatically in the 'downloads/' folder under a name derived from the URL."
       }
     },
     "required": ["url"]

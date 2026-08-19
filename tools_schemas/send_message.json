@@ -1,6 +1,6 @@
 {
   "name": "send_message",
-  "description": "Invia un messaggio a un altro agente del team. Il messaggio viene accodato e consegnato all'inizio del turno successivo del destinatario. Usalo per chiedere informazioni, coordinare il lavoro o segnalare risultati a un collega. Il mittente viene registrato automaticamente.",
+  "description": "Sends a message to another agent on the team. The message is queued and delivered at the start of the recipient's next turn. Use it to ask for information, coordinate work, or report results to a colleague. The sender is recorded automatically.",
   "requiredTier": "small",
   "riskLevel": "SAFE",
   "parameters": {
@@ -8,11 +8,11 @@
     "properties": {
       "target": {
         "type": "string",
-        "description": "Nome del destinatario come compare nell'elenco dei membri del run, oppure il ruolo che esercita. Il prefisso @ è opzionale."
+        "description": "Name of the recipient as it appears in the run's member list, or the role they hold. The @ prefix is optional."
       },
       "message": {
         "type": "string",
-        "description": "Il contenuto del messaggio per il collega (max 1000 caratteri)."
+        "description": "The message content for the colleague (max 1000 characters)."
       }
     },
     "required": [

@@ -1,6 +1,6 @@
 {
   "name": "post_note",
-  "description": "Scrive una nota sulla blackboard condivisa del run corrente (team o goal): decisioni prese, artefatti prodotti, punti aperti, visibili a tutti i colleghi di QUESTO run. Non è memoria persistente: la nota sparisce alla fine del run. Usa una 'key' breve e descrittiva (es. 'decisione-db', 'file-creato-config') così i colleghi possono filtrare con read_notes.",
+  "description": "Writes a note on the current run's shared blackboard (team or goal): decisions made, artifacts produced, open points — visible to every colleague in THIS run. Not persistent memory: the note disappears when the run ends. Use a short, descriptive 'key' (e.g. 'db-decision', 'config-file-created') so colleagues can filter with read_notes.",
   "requiredTier": "small",
   "riskLevel": "SAFE",
   "parameters": {
@@ -8,11 +8,11 @@
     "properties": {
       "key": {
         "type": "string",
-        "description": "Chiave breve che identifica la nota (es. 'decisione', 'artefatto', 'blocco'). Usata da read_notes per filtrare."
+        "description": "Short key identifying the note (e.g. 'decision', 'artifact', 'blocker'). Used by read_notes for filtering."
       },
       "value": {
         "type": "string",
-        "description": "Contenuto della nota: cosa hai deciso, prodotto o lasciato aperto per i colleghi."
+        "description": "The note's content: what you decided, produced, or left open for colleagues."
       }
     },
     "required": ["key", "value"]

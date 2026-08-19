@@ -114,7 +114,12 @@ export async function checkAcceptance(
         }
       }
       const output = await executeCommandTool.execute({ command: acceptance.command });
-      if (output.includes('[Il processo è terminato con codice di errore:') || output.includes('[ERRORE:')) {
+      // executeCommandTool (tools/impl/executeCommand.ts) never appends a marker on success —
+      // '[Process exited with code: N]' only appears when N !== 0, and '[ERROR: command timed
+      // out' on the watchdog path. This used to check for Italian marker text
+      // ('[Il processo è terminato con codice di errore:', '[ERRORE:') that the tool has never
+      // produced in any language, so a failing verification command was silently never detected.
+      if (output.includes('[Process exited with code:') || output.includes('[ERROR: command timed out')) {
         issues.push(`Verification command '${acceptance.command}' failed. Output:\n${output.slice(0, 1000)}`);
       }
     } catch (err: any) {

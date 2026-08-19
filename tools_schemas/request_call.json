@@ -1,6 +1,6 @@
 {
   "name": "request_call",
-  "description": "Proponi all'utente di convocare una conferenza a tavola rotonda tra più agenti su un argomento specifico per confrontare pareri o fare brainstorming. Richiede approvazione esplicita dell'utente.",
+  "description": "Proposes to the user that a round-table conference be convened between multiple agents on a specific topic, to compare views or brainstorm. Requires the user's explicit approval.",
   "requiredTier": "medium",
   "riskLevel": "RESTRICTED",
   "parameters": {
@@ -9,15 +9,15 @@
       "participants": {
         "type": "array",
         "items": { "type": "string" },
-        "description": "Lista dei partecipanti (almeno 2) da invitare (es. ['@geordi', '@spock', '@worf'])."
+        "description": "List of participants (at least 2) to invite (e.g. ['@geordi', '@spock', '@worf'])."
       },
       "topic": {
         "type": "string",
-        "description": "Il tema o la domanda di confronto su cui incentrare la discussione della conferenza."
+        "description": "The topic or question the conference discussion should focus on."
       },
       "reason": {
         "type": "string",
-        "description": "La motivazione chiara del perché è utile avviare un confronto collegiale su questo argomento."
+        "description": "A clear rationale for why a collegial discussion on this topic would be useful."
       }
     },
     "required": ["participants", "topic", "reason"]

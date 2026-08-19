@@ -251,7 +251,7 @@ async function main() {
       `l'enum copre esattamente i 4 livelli (ricevuto: ${JSON.stringify(prop?.enum)})`
     );
     const desc: string = prop?.description || '';
-    check('SE.6c', /meccanic/i.test(desc), `la descrizione indica il caso d'uso (compiti meccanici) per abbassare l'effort (${desc})`);
+    check('SE.6c', /mechanical/i.test(desc), `la descrizione indica il caso d'uso (compiti meccanici) per abbassare l'effort (${desc})`);
     check('SE.6d', /none|low/i.test(desc), `la descrizione indica esplicitamente verso quali livelli abbassare (${desc})`);
     check('SE.6e', !schema.parameters.required.includes('reasoningEffort'), "reasoningEffort resta opzionale (non in 'required')");
   }
