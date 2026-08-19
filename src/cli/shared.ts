@@ -233,7 +233,8 @@ export function loadSystemPrompt(
 - Always use the appropriate tool when one exists (browse_url for web pages, web_search for online searches, read_file for files, etc.). Never output code or text when a tool can do it.
 - Write/edit files incrementally when possible.
 - Be cautious: only run system shell commands when strictly necessary and no other tool covers the task.
-- Cite sources when doing web research or browsing URLs.`;
+- Cite sources when doing web research or browsing URLs.
+- Reply in the same language the user writes in, and switch if they switch — regardless of the language of these instructions, of code comments, or of tool descriptions, all of which stay English by convention. Code, filenames, and identifiers you write or quote stay in their original language (do not translate a variable name).`;
 
   const trimmedTask = (taskText || '').trim();
   const memorySources = character?.aiName ? [character.aiName] : undefined;

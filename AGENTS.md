@@ -6,18 +6,22 @@
 
 * **Runtime**: Node.js (v20+ recommended), TypeScript (strict mode, ES2022 target, CommonJS module output), `tsx` for live execution.
 * **Core Design**: Deterministic ReAct loop, hot-plug dynamic tool auto-discovery, orthogonal persona system (*Role* × *Trait* = *Character/Agent*), session-scoped run blackboard via `AsyncLocalStorage`, token-budgeted memory with semantic keyword scoring, and empirical capability fingerprinting (`/benchmark`).
-* **Metrics**: 28 native tools · 24 characters/agents · 21 roles · 9 traits · 10 preconfigured teams · 20 REPL slash commands · 67 automated test suites · Dual CLI & TUI Interactive Interfaces.
+* **Metrics**: 28 native tools · 24 characters/agents · 21 roles · 9 traits · 10 preconfigured teams · 20 REPL slash commands · 70 automated test suites · Dual CLI & TUI Interactive Interfaces.
 
 ---
 
 ## 🚨 Non-Negotiable Directives for Coding Agents
 
-1. **English Only Across Codebase**: Code, TypeScript types, interfaces, functions, variables, comments, and docstrings **must always be written in English**. User-facing CLI prompts and docs may be bilingual, but source code is strictly English.
+1. **English Only in Code, Comments, and Tool Schemas — No Exceptions**: Code, TypeScript types, interfaces, functions, variables, comments, and docstrings **must always be written in English**, in every directory including `tests/`. This extends explicitly to `tools_schemas/*.json` and `custom_tools_schemas/*.json`: a tool's `description` and parameter text are not documentation for a human — they travel verbatim inside the `tools` array of every LLM request (`ToolRegistry.listForLLM`), so they are prompt content, held to the same rule as everything else the model consumes. (Found in T14.22, being fixed in T14.23: 27 of 28 schema files were in Italian, silently inconsistent with this rule and with weaker instruction-following on the small/local models TSUKA targets.)
+
+   **Authoring language is separate from response language.** The rule above governs what *we* write; it says nothing about what the agent says back. The system prompt (`loadSystemPrompt`, `src/cli/shared.ts`) instructs the model to reply in whatever language the user is writing in — an Italian-speaking user gets Italian replies from an English-authored codebase, same as before. Never "fix" this by writing prompts, schemas, or comments in a non-English language to make the model's output feel more natural; the instruction to match the user does that job.
+
+   **The one deliberate exception**: project-planning documents written for the maintainer (`TASKS.md`, `PLANNING-QUALITA.md`) stay Italian, per their own stated header convention — they are not code, are never sent to a model, and exist to document work for a human who reads them in that language.
 2. **I/O Decoupling — Always Use `logSink`**: **NEVER** use direct `console.log`, `console.error`, `console.warn`, or raw TTY stream writes inside `src/core/`, `src/tools/`, `src/tui/`, or `src/safety/`. All logging and diagnostic output **must** go through the injectable `logSink` (`src/core/logSink.ts`) or the `AgentEvents` event contracts (`onChunk`, `onStats`, `onEvent`). The only directory permitted to use direct `console.*` is `src/cli/` (which owns the raw terminal). The TUI layer (`src/tui/app.ts`) installs a custom `setLogSink()` on startup that silences `log` and routes `warn`/`error` to `store.notify()`, so any stray `console.log` in core/tools would corrupt the double-buffered screen. When adding new code anywhere under `src/`, always `import { logSink } from '../core/logSink'` and call `logSink.log()`, `logSink.warn()`, `logSink.error()` instead of `console.*`.
 3. **Strict Workspace Jail**: All filesystem operations (`read_file`, `write_file`, `edit_file`, `delete_file`, `list_dir`, `grep_search`, `audit_code`) must be strictly confined within `workspaceRoot` via `resolveSafePath()`. Escaping via `..` is blocked.
 4. **Environment & Credential Masking**: Automatically mask sensitive environment variables (`KEY`, `SECRET`, `TOKEN`, `PASSWORD`, `CREDENTIAL`, `AUTH`) before logging or sending prompts.
 5. **Deterministic Multi-Agent Coordination**: Inter-agent communication in `/team` and `/goal` must use dedicated protocol tools (`report_status`, `route_next`, `cast_vote`) with automated fallback to text markers and visible degradation warnings.
-6. **No Test Regressions**: All 67 test suites (`npm test`) must pass cleanly before completing any task. Automated tests must use mock stores and temporary test directories—never mutate the active user's `memory.json`.
+6. **No Test Regressions**: All 70 test suites (`npm test`) must pass cleanly before completing any task. Automated tests must use mock stores and temporary test directories—never mutate the active user's `memory.json`.
 
 ---
 
@@ -116,7 +120,7 @@ harness/
 ├── presets/                         # Manifests: core.json & domain packs for tsuka init
 ├── tools_schemas/                   # 28 JSON Schema files for function calling validation
 ├── benchmarks/                      # 5 JSON capability benchmark fixtures
-├── tests/                           # 67 automated test suites
+├── tests/                           # 70 automated test suites
 └── tsuka.config.json                # Runtime configuration file
 ```
 
@@ -174,7 +178,7 @@ npm run build
 # Run compiled build
 npm start
 
-# Execute full automated test suite (57 test suites)
+# Execute full automated test suite (70 test suites)
 npm test
 
 # Link globally for CLI usage
