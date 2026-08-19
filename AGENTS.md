@@ -6,7 +6,7 @@
 
 * **Runtime**: Node.js (v20+ recommended), TypeScript (strict mode, ES2022 target, CommonJS module output), `tsx` for live execution.
 * **Core Design**: Deterministic ReAct loop, hot-plug dynamic tool auto-discovery, orthogonal persona system (*Role* × *Trait* = *Character/Agent*), session-scoped run blackboard via `AsyncLocalStorage`, token-budgeted memory with semantic keyword scoring, and empirical capability fingerprinting (`/benchmark`).
-* **Metrics**: 28 native tools · 24 characters/agents · 21 roles · 9 traits · 10 preconfigured teams · 20 REPL slash commands · 70 automated test suites · Dual CLI & TUI Interactive Interfaces.
+* **Metrics**: 30 native tools · 24 characters/agents · 21 roles · 9 traits · 10 preconfigured teams · 20 REPL slash commands · 72 automated test suites · Dual CLI & TUI Interactive Interfaces.
 
 ---
 
@@ -21,7 +21,8 @@
 3. **Strict Workspace Jail**: All filesystem operations (`read_file`, `write_file`, `edit_file`, `delete_file`, `list_dir`, `grep_search`, `audit_code`) must be strictly confined within `workspaceRoot` via `resolveSafePath()`. Escaping via `..` is blocked.
 4. **Environment & Credential Masking**: Automatically mask sensitive environment variables (`KEY`, `SECRET`, `TOKEN`, `PASSWORD`, `CREDENTIAL`, `AUTH`) before logging or sending prompts.
 5. **Deterministic Multi-Agent Coordination**: Inter-agent communication in `/team` and `/goal` must use dedicated protocol tools (`report_status`, `route_next`, `cast_vote`) with automated fallback to text markers and visible degradation warnings.
-6. **No Test Regressions**: All 70 test suites (`npm test`) must pass cleanly before completing any task. Automated tests must use mock stores and temporary test directories—never mutate the active user's `memory.json`.
+6. **No Test Regressions**: All 72 test suites (`npm test`) must pass cleanly before completing any task. Automated tests must use mock stores and temporary test directories—never mutate the active user's `memory.json`.
+7. **Gate di Completamento di un task**: prima di dichiarare completato qualsiasi task, i tre comandi `npm test`, `npm run build` e `npm run typecheck` devono essere verdi. La suite (`npm test`) è il contratto di regressione del comportamento; `npm run build` (tsc su `src/`) e `npm run typecheck` (tsc -p tsconfig.check.json, include anche i test) garantiscono che il repo compili in strict mode. Un task chiuso con uno dei tre rosso va riaperto, non archiviato.
 
 ---
 
@@ -44,7 +45,7 @@ TUI App (src/tui/)   ToolRegistry.executeTool() ◄── Auto-Discovery (src/to
 | **CLI & REPL** | `src/cli/` | REPL loop, slash command router, interactive menus (`prompts`), animated statusline, live ANSI streaming, and Markdown repainting. |
 | **Interactive TUI** | `src/tui/` | Zero-flicker full-screen terminal dashboard: double-buffered differential rendering, SGR 1006 mouse tracking, scrollbars, workspace file explorer, modal dialogues, and tabbed view routing. |
 | **Core Engine** | `src/core/` | Deterministic ReAct loop (`Agent`), HTTP LLM provider (`LLMProvider`), token context budgeter, blackboard (`AsyncLocalStorage`), persistent memory (`MemoryStore`), server discovery, and loop controller. |
-| **Tools** | `src/tools/` | Auto-discovery dynamic registry (`ToolRegistry`), tier gating, JSON Schema definitions (`tools_schemas/`), and 28 native TypeScript tool implementations (`src/tools/impl/`). |
+| **Tools** | `src/tools/` | Auto-discovery dynamic registry (`ToolRegistry`), tier gating, JSON Schema definitions (`tools_schemas/`), and 30 native TypeScript tool implementations (`src/tools/impl/`). |
 | **Safety** | `src/safety/` | 3-tier risk system (`SAFE`, `RESTRICTED`, `DANGEROUS`), serialized interactive permission queue (`enqueuePrompt`), workspace jail, and `node:vm` sandbox for runtime tools (`create_tool`). |
 
 ---
@@ -110,7 +111,7 @@ harness/
 │   ├── tools/
 │   │   ├── index.ts                 # Dynamic auto-discovery scanner
 │   │   ├── registry.ts              # ToolRegistry, tier gating, parameter validation
-│   │   └── impl/                    # 28 native tool implementations
+│   │   └── impl/                    # 30 native tool implementations
 │   └── safety/
 │       └── permissions.ts           # PermissionManager: async FIFO prompt queue & bypass state
 ├── characters/                      # 24 Character JSON definitions (aiName + roles + trait)
@@ -118,9 +119,9 @@ harness/
 ├── traits/                          # 9 Trait JSON definitions (tone + stylistic guidelines)
 ├── teams/                           # 10 Team JSON definitions (members + mode + orchestrator)
 ├── presets/                         # Manifests: core.json & domain packs for tsuka init
-├── tools_schemas/                   # 28 JSON Schema files for function calling validation
+├── tools_schemas/                   # 30 JSON Schema files for function calling validation
 ├── benchmarks/                      # 5 JSON capability benchmark fixtures
-├── tests/                           # 70 automated test suites
+├── tests/                           # 72 automated test suites
 └── tsuka.config.json                # Runtime configuration file
 ```
 
@@ -178,7 +179,7 @@ npm run build
 # Run compiled build
 npm start
 
-# Execute full automated test suite (70 test suites)
+# Execute full automated test suite (72 test suites)
 npm test
 
 # Link globally for CLI usage

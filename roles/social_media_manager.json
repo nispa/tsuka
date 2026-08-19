@@ -9,6 +9,8 @@
     "read_file",
     "recall_memory",
     "save_memory",
+    "update_memory",
+    "forget_memory",
     "send_message",
     "web_search",
     "write_file"

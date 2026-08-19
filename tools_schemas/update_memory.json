@@ -1,0 +1,33 @@
+{
+  "name": "update_memory",
+  "description": "Update an existing persistent memory fact in place: correct its content, refresh its summary, narrow its kind, or add tags. Identify the fact by its id (from recall_memory or the save_memory response). Use it to fix or enrich what memory holds instead of saving a conflicting duplicate.",
+  "requiredTier": "small",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string",
+        "description": "Id of the memory fact to update, as returned by save_memory or recall_memory."
+      },
+      "content": {
+        "type": "string",
+        "description": "Optional new concise content for the fact (max 500 characters). Omit to keep the current one."
+      },
+      "summary": {
+        "type": "string",
+        "description": "Optional new short label (max 72 characters, like a commit subject). Omit to keep the current one."
+      },
+      "kind": {
+        "type": "string",
+        "enum": ["facts", "run", "decision", "lesson"],
+        "description": "Optional new category guiding retention and sharing. Omit to keep the current one."
+      },
+      "tags": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Optional extra tags to add to the fact's existing tags."
+      }
+    },
+    "required": ["id"]
+  }
+}

@@ -12,6 +12,8 @@
     "read_file",
     "recall_memory",
     "save_memory",
+    "update_memory",
+    "forget_memory",
     "send_message",
     "spawn_agent",
     "web_search",

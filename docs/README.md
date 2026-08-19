@@ -22,8 +22,14 @@ Welcome to the **TSUKA** technical documentation system. This portal covers the 
 ### 4. [Security & Permissions Framework](security.md)
 * Deep dive into the **User-in-the-Loop** permission manager (`SAFE`, `RESTRICTED`, `DANGEROUS`), filesystem jail (`workspaceRoot`), dynamic tool sandboxing, and deterministic web source logging.
 
-### 5. [Educational Guide — Building an Agentic Harness](educational-guide.md) 🎓
+### 5. [Persistent Memory System](memory.md) 🧠
+* Deep dive into the **score-based eviction engine**, write-time deduplication, keyword search with morphological stemming, the four durability kinds, and the architectural rationale for a zero-dependency JSON memory layer.
+
+### 6. [Educational Guide — Building an Agentic Harness](educational-guide.md) 🎓
 * The full 10-milestone curriculum to building a modern agentic harness from scratch: ReAct loop, tool plugins, context budgeting, live ANSI streaming, and the 10 real-world engineering traps.
+
+### 7. [Capability Fingerprinting & Benchmarks](benchmark.md) 📊
+* How `/benchmark` measures instruction-following, JSON compliance and tool-calling, the file-driven test DSL, scoring and tier derivation, and the reasoning-effort sweep.
 
 ---
 

@@ -19,7 +19,7 @@ export function formatAgentSignature(c: CharacterConfig): string {
   const roleSummaries: string[] = [];
 
   // Ambient tools that don't differentiate specialization
-  const AMBIENT_TOOLS = new Set(['save_memory', 'recall_memory', 'send_message', 'list_dir', 'read_file', 'browse_url']);
+  const AMBIENT_TOOLS = new Set(['save_memory', 'recall_memory', 'update_memory', 'forget_memory', 'send_message', 'list_dir', 'read_file', 'browse_url']);
 
   for (const rName of roleNames) {
     const role = loadRole(rName);

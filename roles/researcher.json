@@ -12,6 +12,8 @@
     "request_goal",
     "request_team",
     "save_memory",
+    "update_memory",
+    "forget_memory",
     "send_message",
     "spawn_agent",
     "web_search",
@@ -23,6 +25,8 @@
     "read_file",
     "write_file",
     "save_memory",
+    "update_memory",
+    "forget_memory",
     "recall_memory"
   ],
   "reasoningEffort": "medium"

@@ -2,7 +2,7 @@
 [![Node.js](https://img.shields.io/badge/Node.js-20+-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![Ollama](https://img.shields.io/badge/Ollama-nativo-black?logo=ollama&logoColor=white)](https://ollama.com/)
 [![OpenRouter](https://img.shields.io/badge/OpenRouter-pronto-FF6B35?logo=openai&logoColor=white)](https://openrouter.ai/)
-[![Test](https://img.shields.io/badge/Test-70%20superati-brightgreen?logo=vitest&logoColor=white)](tests/)
+[![Test](https://img.shields.io/badge/Test-72%20superati-brightgreen?logo=vitest&logoColor=white)](tests/)
 [![Licenza](https://img.shields.io/badge/Licenza-MIT-blue.svg)](LICENSE)
 [![PR benvenute](https://img.shields.io/badge/PR-benvenute-brightgreen.svg)](https://github.com/nispa/tsuka/pulls)
 
@@ -33,7 +33,7 @@
 
 | Caratteristica | Descrizione |
 |---|---|
-| 🖥️ **TUI a Schermo Intero** | Dashboard a doppio模式 (`tsuka --tui`): rendering differenziale, mouse SGR 1006, ricerca live dei tool. |
+| 🖥️ **TUI a Schermo Intero** | Dashboard a doppia modalità (`tsuka --tui`): rendering differenziale, mouse SGR 1006, ricerca live dei tool. |
 | 📡 **Telemetria in Tempo Reale** | Monitoraggio live di `PREFILL`, `DECODE` (tok/s), **TTFT** e logits di confidenza — niente attese alla cieca. |
 | 👥 **Orchestrazione Multi-Agente** | Pianificazione autonoma di obiettivi (`/goal`), team (`/team`) e dibattiti a tavola rotonda (`/call`). |
 | 🔁 **Loop Verifica → Correzione** | Criteri di accettazione oggettivi guidano ritentativi automatici con protezione anti-stallo. |
@@ -107,7 +107,7 @@ Il coordinamento usa tool di protocollo deterministici (`report_status`, `route_
 
 ## 🧰 Tool, Sicurezza & Benchmark
 
-TSUKA include **28 tool nativi** (`src/tools/impl/*.ts`) con schemi JSON compatibili OpenAI. I tool coprono le categorie Filesystem, Sistema, Web/Rete, Memoria, Coordinamento, Estensione Agente, Escalation e SAST (`audit_code`).
+TSUKA include **30 tool nativi** (`src/tools/impl/*.ts`) con schemi JSON compatibili OpenAI. I tool coprono le categorie Filesystem, Sistema, Web/Rete, Memoria, Coordinamento, Estensione Agente, Escalation e SAST (`audit_code`).
 
 - **Sicurezza**: modello a 3 livelli, jail del workspace via `resolveSafePath()`, coda serializzata dei prompt, mascheramento credenziali.
 - **Benchmark**: `/benchmark` esegue 5 suite che misurano aderenza alle istruzioni, conformità JSON e precisione dei tool, alimentando il tiering dinamico (`SMALL` / `MEDIUM` / `LARGE`).
@@ -142,16 +142,16 @@ CLI REPL (src/cli/)  ◄──►  TUI (src/tui/)
         ┌───────────────┼───────────────┐
         ▼               ▼               ▼
   Provider LLM    Registry Tool   Manager Permessi
-  (OpenAI API)   (Auto-Scan)      (Sicurezza 3 Livelli)
+  (OpenAI API)   (Auto-Scan a Caldo)  (Sicurezza 3 Livelli)
 ```
 
-Le persona sono ortogonali: **Personaggio = Ruolo × Tratto**. Vedi [Architettura Dettagliata](https://github.com/nispa/tsuka/wiki/Architettura).
+I profili sono ortogonali: **Personaggio = Ruolo × Tratto**. Vedi [Architettura Dettagliata](https://github.com/nispa/tsuka/wiki/Architettura).
 
 ---
 
 ## 🧪 Test
 
-70 suite di test automatizzate con oltre 1.200 asserzioni, eseguite in modo ermetico tramite `MockLLMProvider` e store temporanei isolati:
+72 suite di test automatizzate con oltre 1.300 asserzioni, eseguite in modo ermetico tramite `MockLLMProvider` e store temporanei isolati:
 
 ```powershell
 npm test
@@ -184,7 +184,7 @@ npx tsx tests/test_goal_orchestrator.ts   # singola suite
 - [ ] Ispettore grafico delle tracce su web
 - [ ] Integrazione tool basati su LSP
 
-**Come contribuire**: aggiungi un tool (`src/tools/impl/*.ts` + `tools_schemas/*.json`) o un JSON persona (`characters/`, `roles/`, `traits/`, `teams/`). Assicurati che tutte le 70 suite di test passino (`npm test`).
+**Come contribuire**: aggiungi un tool (`src/tools/impl/*.ts` + `tools_schemas/*.json`) o un JSON di persona (`characters/`, `roles/`, `traits/`, `teams/`). Assicurati che tutte le 72 suite di test passino (`npm test`).
 
 ---
 

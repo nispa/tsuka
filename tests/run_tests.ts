@@ -94,6 +94,8 @@ const suites = [
   'test_cli_spinner.ts',
   'test_model_warmup.ts',
   'test_memory_summary.ts',
+  'test_memory_persistence.ts',
+  'test_memory_tools.ts',
   'test_files_explorer.ts',
   'test_wiki_build.ts'
 ];

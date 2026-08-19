@@ -13,6 +13,8 @@
     "request_goal",
     "request_team",
     "save_memory",
+    "update_memory",
+    "forget_memory",
     "send_message",
     "spawn_agent",
     "web_search",

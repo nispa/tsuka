@@ -89,7 +89,7 @@ export const spawnAgentTool: Tool = {
     const label = char?.aiName || roleName;
 
     const blackboard = Blackboard.current();
-    const memoryTools = ['save_memory', 'recall_memory'];
+    const memoryTools = ['save_memory', 'recall_memory', 'update_memory', 'forget_memory'];
     const blackboardTools = blackboard ? ['post_note', 'read_notes'] : [];
     const toolSet = resolveToolSet(roleObj, { alwaysActive: [...memoryTools, ...blackboardTools] });
 

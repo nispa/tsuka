@@ -1,23 +1,28 @@
 {
   "name": "save_memory",
-  "description": "Salva un fatto, una preferenza dell'utente o un'informazione importante nella memoria condivisa persistente. Il ricordo sarà visibile a tutti gli agenti e sarà preservato anche dopo la chiusura del programma. Usalo per informazioni utili a lungo termine (max 500 caratteri).",
+  "description": "Save a fact, user preference, or important piece of information to the shared persistent memory. The memory is visible to all agents and survives across sessions. Use it for long-term information (max 500 characters).",
   "requiredTier": "small",
   "parameters": {
     "type": "object",
     "properties": {
-      "summary": {
-        "type": "string",
-        "description": "Etichetta brevissima (come l'oggetto di un commit, max 72 caratteri) che sintetizza cosa stai memorizzando — è quello che verrà mostrato negli elenchi della memoria, non 'content'. Es: 'Preferenza utente: risposte in italiano', non una frase generica."
-      },
       "content": {
         "type": "string",
-        "description": "Il fatto o l'informazione da ricordare, in forma sintetica (max 500 caratteri)."
+        "description": "The fact or information to remember, in a concise form (max 500 characters)."
+      },
+      "summary": {
+        "type": "string",
+        "description": "Optional short label (max 72 characters, like a commit subject) summarizing what this memory holds. Shown in memory listings instead of 'content'. When omitted, it is derived from the content automatically. Example: 'User preference: replies in Italian', not a generic phrase."
+      },
+      "kind": {
+        "type": "string",
+        "enum": ["facts", "run", "decision", "lesson"],
+        "description": "Optional category guiding how long the memory is retained and how it is shared: 'facts' (default, general knowledge), 'run' (ephemeral run/turn notes, evicted first), 'decision' (project decisions, shared across agents and kept long), 'lesson' (lasting teachings, kept longest and shared across agents)."
       },
       "global": {
         "type": "boolean",
-        "description": "Se true, memorizza l'informazione a livello globale (visibile in tutti i progetti). Se false o omesso, la memorizza nello scope del progetto corrente."
+        "description": "If true, stores the memory at global scope (visible in every workspace). If false or omitted, stores it in the current workspace scope."
       }
     },
-    "required": ["summary", "content"]
+    "required": ["content"]
   }
 }

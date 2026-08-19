@@ -2,7 +2,7 @@
 [![Node.js](https://img.shields.io/badge/Node.js-20+-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![Ollama](https://img.shields.io/badge/Ollama-native-black?logo=ollama&logoColor=white)](https://ollama.com/)
 [![OpenRouter](https://img.shields.io/badge/OpenRouter-ready-FF6B35?logo=openai&logoColor=white)](https://openrouter.ai/)
-[![Tests](https://img.shields.io/badge/Tests-70%20passed-brightgreen?logo=vitest&logoColor=white)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-72%20passed-brightgreen?logo=vitest&logoColor=white)](tests/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/nispa/tsuka/pulls)
 
@@ -107,7 +107,7 @@ Coordination uses deterministic protocol tools (`report_status`, `route_next`, `
 
 ## 🧰 Tools, Security & Benchmarks
 
-TSUKA ships **28 native tools** (`src/tools/impl/*.ts`) with OpenAI-compatible JSON schemas. Tools fall into Filesystem, System, Web/Network, Memory, Coordination, Agent Extension, Escalation, and SAST (`audit_code`) categories.
+TSUKA ships **30 native tools** (`src/tools/impl/*.ts`) with OpenAI-compatible JSON schemas. Tools fall into Filesystem, System, Web/Network, Memory, Coordination, Agent Extension, Escalation, and SAST (`audit_code`) categories.
 
 - **Security**: 3-tier permission model, workspace jail via `resolveSafePath()`, serialized prompt queue, credential masking.
 - **Benchmarks**: `/benchmark` runs 5 suites measuring instruction-following, JSON compliance, and tool precision, driving dynamic tier gating (`SMALL` / `MEDIUM` / `LARGE`).
@@ -151,7 +151,7 @@ Personas are orthogonal: **Character = Role × Trait**. See [Architecture Deep D
 
 ## 🧪 Testing
 
-70 automated test suites with 1,200+ assertions, run hermetically via `MockLLMProvider` and isolated temp stores:
+72 automated test suites with 1,300+ assertions, run hermetically via `MockLLMProvider` and isolated temp stores:
 
 ```powershell
 npm test
@@ -184,7 +184,7 @@ npx tsx tests/test_goal_orchestrator.ts   # single suite
 - [ ] Web-based trace graph inspector
 - [ ] Extended LSP tool integration
 
-**Contributing**: add a tool (`src/tools/impl/*.ts` + `tools_schemas/*.json`) or a persona JSON (`characters/`, `roles/`, `traits/`, `teams/`). Ensure all 70 test suites pass (`npm test`).
+**Contributing**: add a tool (`src/tools/impl/*.ts` + `tools_schemas/*.json`) or a persona JSON (`characters/`, `roles/`, `traits/`, `teams/`). Ensure all 72 test suites pass (`npm test`).
 
 ---
 

@@ -6,7 +6,7 @@
 
 > Questo documento descrive l'architettura tecnica, i principi di progettazione e l'organizzazione modulare del framework **TSUKA** (v0.5.1). Per le linee guida operative di contribuzione al codice si rimanda ad [`AGENTS.md`](../AGENTS.md); per l'elenco dei task completati e pianificati, consultare [`TASKS.md`](../TASKS.md).
 >
-> 📊 **Metriche di sistema**: 27 tool · 20 comandi REPL · 24 moduli core · 21 ruoli · 9 tratti · 24 personaggi (agenti) · 10 team configurati · 65 suite di test automatici · Doppia interfaccia CLI & TUI.
+> 📊 **Metriche di sistema**: 30 tool · 20 comandi REPL · 24 moduli core · 21 ruoli · 9 tratti · 24 personaggi (agenti) · 10 team configurati · 72 suite di test automatici · Doppia interfaccia CLI & TUI.
 
 ---
 
@@ -139,7 +139,7 @@ All'interno dell'orchestratore di obiettivi ([`/goal`](multi-agent-it.md)), l'LL
 
 ## 5. Il Sistema dei Tool e il Tier Pruning
 
-Il catalogo comprende **27 tool integrati**, sviluppati secondo il principio della separazione tra contratto ed esecuzione:
+Il catalogo comprende **30 tool integrati**, sviluppati secondo il principio della separazione tra contratto ed esecuzione:
 * **Schema dichiarativo (`tools_schemas/<nome>.json`)**: definisce nome, descrizione per il modello, parametri in formato JSON Schema, livello di rischio (`riskLevel`) e tier minimo richiesto (`requiredTier`).
 * **Implementazione operativa (`src/tools/impl/<nome>.ts`)**: esporta la logica esecutiva conforme all'interfaccia TypeScript `Tool`.
 
@@ -354,7 +354,7 @@ TSUKA include una dashboard terminale grafica interattiva a componenti puri:
   * `SidebarView`: Profilo agente attivo, ruolo, tratto e statistiche token.
   * `FilesView`: File explorer del workspace con icone per estensione, scrollbar e click per incollare il file nel prompt.
   * `ChatView`: Rendering Markdown formattato, blocchi di codice evidenziati e box di reasoning `<think>`.
-  * `ToolsView`: Catalogo e cronologia dei 27 tool nativi.
+  * `ToolsView`: Catalogo e cronologia dei 30 tool nativi.
   * `InputView`: Buffer di input multi-riga con cursore e spinner di caricamento.
   * `ModalView`: Finestre modali di conferma sicurezza, selezione modelli, estensione timeout e cheatsheet comandi (`F12`). Ogni tipo di modale fornisce solo il proprio box (`BOX_BUILDERS`); centratura e composizione sullo schermo sono condivise.
 * **Tabelle di Dispatch Data-Driven**: il comportamento sta in liste, non in catene di condizioni; estendere la TUI significa aggiungere una riga.

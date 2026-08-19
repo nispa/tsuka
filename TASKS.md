@@ -89,8 +89,20 @@
 | T14.24 | 🔲 Da fare | **Traduzione Integrale in Inglese — Commenti in `tests/`**: ~9.800 righe su 65 file in `tests/` contengono ancora commenti, banner di log o messaggi di `check()` in italiano — un ordine di grandezza più grande degli schemi dei tool (T14.23). Già tradotti in questa sessione: `test_call.ts`, `mocks/mockCtx.ts`. Suddiviso in 7 lotti, vedi dettaglio sotto. |
 
 | T14.25 | 🔲 Da fare | **Traduzione dei Token di Protocollo Multi-Agente**: `APPROVO`/`COMPLETATO`/`FALLITO`/`AGENTE: @nome`/`FINE` sono letterali italiani abbinati come stringhe esatte nel codice di parsing (`strategies/*.ts`, `goal.ts`), non solo negli schemi JSON. Cambio di protocollo, non traduzione di prosa — fuori scope di T14.23/T14.24, non iniziato. Vedi dettaglio sotto. |
+| T15.1 | ✅ Completato | **Retrieval per modelli piccoli**: prefix-match sui token, stop-words e scoring a coverage ratio in `search()`. Guard: `test_memory.ts` (M1b/M1c) e `test_memory_phase3.ts` (T8.3) verdi **senza modifiche**. |
+| T15.2 | ✅ Completato | **Decadimento temporale nell'eviction**: half-life per kind in `evictionScore`/`rankByRetentionValue` (solo fatti non-pinned; il touch di `search()` rigenera il decay). Guard: Gruppi D/E di `test_memory_dedup.ts`, M1c. |
+| T15.3 | ✅ Completato | **`save_memory`: summary opzionale**: fallback su `deriveSummary`, cap 72 a valle se fornito, parametro `kind` opzionale validato; schema tradotto in inglese (era rimasto italiano). **Aggiorna l'asserzione MS15** (certificava proprio la policy che si toglie). |
+| T15.4 | ✅ Completato | **Tag automatici dal contenuto**: `addFact` deriva top-K token significativi quando `tags` non è fornito. Verificato: nessun test asserisce `tags === undefined`. |
+| T15.5 | ✅ Completato | **Quota per kind nell'eviction**: cap sul `run` (30% di `maxFacts`) applicato **solo in overflow** del totale — mai sacrifica fatti se lo store non è pieno. Guard: M1c. |
+| T15.6 | ✅ Completato | **Persistenza robusta**: scrittura atomica (tmp + rename) in `save()` e backup del file corrotto (`memory.json.corrupt-<ts>`) con warning `logSink` in `load()` — niente reset silenzioso. Nuova suite `test_memory_persistence.ts`. |
+| T15.7 | ✅ Completato | **Tool `update_memory`/`forget_memory`** (SAFE): impl + schemi inglesi, `MemoryStore.updateFact(id, patch)`; aggiunta ai ruoli che già elencano `save_memory` + `AMBIENT_TOOLS` in `goalPrompts.ts`; metriche e conteggi aggiornati (README/it, AGENTS.md, docs). Nuova suite. |
+| T15.8 | ✅ Completato | **Iniezione prompt con badge di tipo** (`[LESSON]`/`[DECISION]`/`[FACT]`/`[RUN]`) + data compatta in `formatForPrompt`/`formatRelevant`. Default `memoryMaxChars` **invariato (600)** per non toccare T8.3-CFG-*. Aggiorna docs/memory.md §7/§9. |
+| T16.1 | 🔲 Da fare | **Trappole a difficoltà graduata**: 3 nuovi fixture `benchmarks/` (`40_instruction_vincoli`, `41_json_esca`, `42_tool_catena3`) con vincoli interagenti+distrattore, campo esca JSON e catena a 3+ hop con risultato intermedio corrotto; peso > 1 sui test difficili per aprire lo score. I 7 fixture esistenti restano intatti. |
+| T16.2 | 🔲 Da fare | **`/benchmark --deep` (repliche + variazione prompt)**: campo `repeats` + varianti di wording del prompt tra le repliche; score a mediana robusta + varianza; il percorso fast resta 1 colpo/test. Risultati deep in un campo separato del profilo (non invalidano il tier fast). |
+| T16.3 | 🔲 Da fare | **Check simmetrici per step**: `tool_not_called` con `value` = nome tool distrattore (ora risolve solo "zero chiamate"); distrattori espliciti su ogni step di `30_tool_catena`/`31_tool_trappola`. |
+| T16.4 | 🔲 Da fare | **Soglie calibrate**: soglie tier (`computeTier`) configurabili da `tsuka.config.json` con default invariati; la calibrazione usa `--deep` su un modello debole noto vs. frontier in docs. |
 
-Tutti i task pianificati e di backlog sono completati con 70 suite di test verdi; T14.24/T14.25 restano da fare.
+Tutti i task pianificati e di backlog sono completati; la serie T15 (memoria, modelli <30B) è implementata e chiusa con 72 suite di test verdi. Pianificata la serie **T16 (benchmark significativi)** su architettura a due velocità: **`/benchmark` fast** (1 colpo/test, deterministico — resta il gate del tier) e **`/benchmark --deep`** (repliche con variazione del prompt, mediana+varianza, per validazione/calibrazione). Valore di ritorno — i benchmark attuali saturano in alto e non discriminano tra i modelli, ma il gating dei tool (`registry.ts`) dipende proprio da quel tier: se tutto diventa `large` il gating è codice morto. Restano da fare T14.24 (commenti tests/ in inglese), T14.25 (token di protocollo multi-agente) e la serie T16.
 
 ---
 
@@ -2469,3 +2481,296 @@ oltre che negli `enum` di `report_status.json`/`cast_vote.json`/`route_next.json
 **Accettazione:** nessuna occorrenza dei vecchi letterali italiani resta nel codice di parsing;
 `npm test` verde, in particolare `test_protocol_parsing.ts`, `test_team_modes.ts`,
 `test_goal_orchestrator.ts` che esercitano questi marker direttamente. Non iniziato.
+
+---
+---
+
+# FASE 7 — Memoria Persistente per Modelli Piccoli (Retrieval, Eviction, Tool, Prompt)
+
+Stato: in pianificazione. Serie T15, modelli target <30B (nessun embedding): migliora le capacità della
+memoria persistente senza incrementare il peso dei prompt. Ogni chiusura di task richiede `npm test`,
+`npm run build` e `npm run typecheck` verdi (direttiva AGENTS.md #7).
+
+## T15.1 — Retrieval per Modelli Piccoli: Prefix-Match, Stop-Words e Coverage Ratio
+
+**Dipende da:** — · **Sforzo:** medio · **Priorità:** alta
+
+`src/core/memory.ts` `search()` oggi suddivide la query in token e fa match per singola parola. Per i
+modelli locali <30B, che confondono varianti e sinonimi, si rafforza lo scoring mantenendo l'ordinamento
+attuale (nessun cambiamento di forma o segnaletica verso l'esterno):
+
+- Tokenizzazione query identica a `normalizeToken` (già con stemmer-essenziale e compositi utili).
+- **Prefix-match per token corti**: un token query è considerato corrisposto se è prefisso del token a
+  unicode del fatto (o viceversa per i primi N caratteri), così `mem` copre `memoria`/`memory`.
+- **Stop-words ignorate**: articoli, congiunzioni, preposizioni di senso vuoto (`il`, `di`, `per`, `that`,
+  `and`, ...) non contano né nel denominatore né nel numeratore del coverage.
+- **Coverage ratio**: `matches / totalMeaningfulTokens`, con soglia minima di hit diversa da zero per file
+  e un boost, non un taglio duro, per i fatti con coverage ≥ 0.75.
+- **Peso ricordi rilevanti**: i fatti già toccati da `touch()`/hits alti salgono, senza mai eclissare la
+  pertinenza lessicale (la somma dei due fattori sostituisce il solo conteggio parole attuale).
+
+Conseguenza su `search(): Fact[]`: seleziona sempre i **top-N con punteggio > 0**.
+
+**Guard (regressione):** `test_memory.ts` M1b (match parziale) e M1c (match esatto) e
+`test_memory_phase3.ts` T8.3 devono restare verdi **senza alcuna modifica** ai file di test.
+
+**Accettazione:** query con varianti/morfologia recuperano fatti oggi non recuperati; la precisione su
+fatti non attinenti non peggiora; M1b/M1c/T8.3 verdi verbatim; `npm test` + `npm run build` +
+`npm run typecheck` verdi.
+
+---
+
+## T15.2 — Decadimento Temporale nell'Eviction
+
+**Dipende da:** T15.1 · **Sforzo:** medio · **Priorità:** alta
+
+Le valutazioni in `src/core/memory.ts` (`evictionScore`, `rankByRetentionValue`) usano `recency * 10`
+senza tempo: un fatto di 9 ore e uno di 9 giorni sono uguali. Si introduce un **decay esponenziale con
+half-life per kind**: run ~ 2h, fatto ~ 48h, decisione ~ 7g, lezione ~ 30g. `log10(hoursSinceAccessEscapes)`
+bias pacchetti di picchi, quindi si usa `log1p(hours)` normalizzato.
+
+- Il decay si applica **solo ai fatti pinned** − i `pinned` restano sempre agli ultimi posti della coda
+  di evizione (nessuna regressione della politica di conservazione).
+- Il **touch di `search()` rigenera il decay**: un fatto riusato è di nuovo "giovane" (comportamento odierno).
+- Ordine di arresto di caso a parità di punteggio: ultimo-hit più recente vince.
+
+**Guard:** Gruppi D (eviction) ed E (dedup) di `test_memory_dedup.ts` restano verdi **verbatim**; M1c.
+
+**Accettazione:** fatti nuovi prevalgono sui vecchi a parità di altri fattori; `pinned` e fatti nuovi non
+vengono sacrificati; suite di regressione verdi senza modifiche; gate verde.
+
+---
+
+## T15.3 — `save_memory`: Summary Opzionale + Traduzione Schema
+
+**Dipende da:** — · **Sforzo:** basso · **Priorità:** alta
+
+`src/tools/impl/saveMemory.ts` oggi **richiede** `summary` (max 500, cap 72). Con `deriveSummary` già
+disponibile in memoria, il summary diventa **opzionale**: se omesso, `MemoryStore.addFact` lo deriva dal
+contenuto (conservando la protezione attuale del cap come fallback a valle). Si aggiunge il parametro
+opzionale `kind` (con i 4 valori noti: `fatto`/`run`/`decisione`/`lezione`), validato contro l'enum; se
+non fornito, `addFact` assegna il default.
+
+**Fix di coerenza diretto AGENTS.md #1**: `tools_schemas/save_memory.json` è tuttora in italiano
+(l'ultimo schema rimasto non tradotto di T14.23) — traduzione integrale in inglese di `description`,
+parametri, `enum` (`facts`/`run`/`decision`/`lesson`), più il nuovo `kind` e la nota testuale "Specify a
+kind when...". Questo file è contenuto verbatim nei prompt, non semplice documentazione.
+
+**Aggiornamento test (cambio policy documentato):** `tests/test_memory_summary.ts` MS15 asserisce che
+`save_memory` con summary vuoto rifiuta; qui la policy cambia in una direzione meno rigorosa (il summary
+è derivato dal contenuto), quindi **MS15 va aggiornato** per certificare lunghezze oltre il cap e la
+derivazione automatica quando omesso. Non è un casuale indebolimento: il rationale è documentato in
+docs/memory.md §10.
+
+**Accettazione:** `save_memory` accetta chiamate senza summary e senza kind; entrambi derivati a monte;
+MS15 aggiornato; schema `save_memory.json` interamente in inglese; gate verde.
+
+---
+
+## T15.4 — Tag Automatici dal Contenuto
+
+**Dipende da:** T15.1 · **Sforzo:** basso · **Priorità:** media
+
+`addFact` oggi memorizza `tags` solo se forniti dal chiamante. Con la stessa tokenizzazione di T15.1 si
+derivano **fino a 5 tag automatici** quando `tags` è assente: i top-K token significativi (lo stop-word
+list abbiamo già filtrato in T15.1) del contenuto, e keyword per **vietato appare —** non si mettono
+keyword per/ti posizione, si riusa il coverage esistente.
+
+**Verificato:** l'assenza di un test che asserisca `tags === undefined` rende innocuo il cambio.
+
+**Accettazione:** `addFact({content, kind})` produce fatti con tag coesi al contenuto; `search()` su
+keyword di un tag ritrova il fatto; guard M1c/T8.3 verdi; gate verde.
+
+---
+
+## T15.5 — Quota per Kind: `run` (e `fatto`) nell'Eviction
+
+**Dipende da:** T15.2 · **Sforzo:** medio · **Priorità:** media
+
+Lo store oggi evita gli overflow generici ma permette che il **run** (effimero, generato per turno dalla
+compressione in `agent.ts` e dal workflow goal) saturi lo store, scacciando i fatti durevoli. Si introduce
+una **quota vigente di applicazione solo in caso di overflow del totale**: `run` ≤ 30% di `maxFacts`,
+quando lo store deve comunque fare spazio, i `run` in eccesso vengono rimossi **sempre**, senza sacrificare
+mai fatto/pinned quando il totale è sotto il tetto.
+
+- Preferenza **età** per i `run`: il più vecchio prima.
+- Niente duro quando `maxFacts` è raggiunto solo parzialmente.
+- Le quote non si applicano mai ai `pinned`.
+
+**Guard:** M1c invariato, `test_memory_dedup.ts` D/E; eventuale interazione con la nuova persistenza
+T15.6 verificata insieme.
+
+**Accettazione:** store pieno di `run` continua a conservare almeno il 70% di fatti durevoli; store sotto
+tetto non perde nulla; quota documentata in docs/memory.md §9; gate verde.
+
+---
+
+## T15.6 — Persistenza Robusta: Scrittura Atomica + Backup su File Corrotto
+
+**Dipende da:** — · **Sforzo:** basso · **Priorità:** alta
+
+`src/core/memory.ts` oggi salva con `writeFileSync` diretto (una interruzione a metà scrittura corrode il
+file) e, se `load()` incontra JSON non valido, **resetta con un messaggio senza recupero del dump**.
+
+- `save()`: scrive su `memory.json.tmp` nella stessa directory poi `rename` (operazione atomica su stessa
+  filesystem; rename sostituisce il vecchio file) — niente più finestre di mezzo file.
+- `load()`: se il JSON è corrotto, **rinomina** il file in `memory.json.corrupt-<epoch>` e avvia lo store a
+  vuoto, **con warning via `logSink`** (visibile nella TUI e nei log), non un reset silenzioso. Se il reset
+  è comunque dovuto a T15.5 (quota), il log non deve spaventare: solo il caso corrotto fa backup.
+- `.tmp` puliti all'avvio: file orfani da crash rimossi.
+- Nuova suite `tests/test_memory_persistence.ts` (mock store, temp dir): successo di save/load, file
+  corrotto → backup rinominato + warning, tmp orfano ripulito, interleaving quota (T15.5) non rotto.
+- Registrazione in `tests/run_tests.ts`.
+
+**Accettazione:** crash a metà scrittura non corrode lo store; file corrotto produce backup recuperabile e
+warning, mai silenzio; suite nuova verde e teste registrati; gate verde.
+
+---
+
+## T15.7 — Tool `update_memory` e `forget_memory` (+ `updateFact`)
+
+**Dipende da:** T15.6 · **Sforzo:** medio · **Priorità:** media
+
+Finora la memoria si scrive solo in aggiunta (`save_memory`). Servono la correzione e la rimozione
+controllata per fatti con `id`, senza mutazioni brute sul file:
+
+- `MemoryStore.updateFact(id, patch)`: aggiorna `content`/`tags`/`kind`, aggiorna `updatedAt`, innesca
+  dedup; ritorna il fatto aggiornato o `null` se non trovato.
+- `MemoryStore.forgetFact(id)`: rimozione con conferma di esistenza.
+- `src/tools/impl/updateMemory.ts` e `forgetMemory.ts` (SAFE, pattern di `recallMemory.ts`), schemi
+  inglesi `tools_schemas/update_memory.json`/`forget_memory.json`; ritornano JSON navigabile con id→esito.
+- Registrazione nei ruoli che già elencano `save_memory` e in `AMBIENT_TOOLS` di `goalPrompts.ts`
+  (trovati con grep, non assunti).
+- Metriche aggiornate quando sono ancora il conteggio: README/it, AGENTS.md §29 → 30 tool, conteggio suite
+  70 → 71 (la nuova suite di persistenza), docs/memory.md §8.
+- Nuova suite `tests/test_memory_tools.ts` (mock store, temp dir) registrata in `run_tests.ts`.
+
+**Accettazione:** aggiornamento e rimozione funzionano a record; le risposte dei tool sono consumabili via
+regex dinamiche dell'agente; conteggi/metriche/documentazione consistenti; gate verde.
+
+---
+
+## T15.8 — Badge di Tipo e Data Compatta nei Prompt
+
+**Dipende da:** T15.4 · **Sforzo:** basso · **Priorità:** media
+
+`formatForPrompt`/`formatRelevant` oggi espongono i fatti senza tipo né freschezza leggibile. Si antepone
+un badge di tipo traducibile per l'LLM (`[LESSON]`, `[DECISION]`, `[FACT]`, `[RUN]`) e una data compatta
+(`YYYY-MM-DD`) quando il fatto non è pinned; il badge vintage per i pinned resta
+`[PINNED]` — i modelli piccoli non devono mai essere un cuscino di memoria senza segnale.
+
+- Non tocca `maxHistoryTokens` né la forma del JSON interno (nessun impatto su prune).
+- **`memoryMaxChars` default resta 600** (riga T8.3-CFG-03/04 lo asserisce; si aggiorna la sola
+  documentazione).
+
+**Accettazione:** prompt di esempio mostra badge e data; T8.3-CFG-* verdi verbatim; docs/memory.md §7/§9
+aggiornati; gate verde.
+
+---
+
+## T16.1 — Trappole a Difficoltà Graduata per Categoria
+
+**Dipende da:** — · **Sforzo:** medio · **Priorità:** alta
+
+I benchmark attuali saturano in alto: `computeTier` assegna `large` con soglie raggiungibili da un modello
+medio, quindi la suite **non discrimina** tra 7B, 70B e frontier — e se tutto diventa `large`, il gating dei
+tool in `registry.ts` (`currentTierLevel < requiredTierLevel`) smette di proteggere nulla. Il punto è che i
+test facili devono restare (soffitto di aderenza) ma servono trappole con grado crescente di difficoltà e
+**peso maggiore**, così lo score di categoria si apre.
+
+- 3 nuovi fixture in `benchmarks/` (numerati `40_`, `41_`, `42_` per stare in coda all'ordine di filename):
+  - `40_instruction_vincoli.json` — istruzioni con 4+ vincoli interagenti e un **distrattore** (parola simile
+    alla vietata ma non vietata; il modello che sbaglia il vincolo negativo scrivendola deve perdere punti).
+  - `41_json_esca.json` — JSON con un **campo esca** plausibile da NON includere nello schema e un valore che
+    richiede un calcolo (ordinamento/filtro per attributo), non l'estrazione verbatim.
+  - `42_tool_catena3.json` — catena di tool a **3+ hop** con risultato intermedio corrotto/ambiguo che forza
+    la ri-lettura o la disambiguazione prima di proseguire (lo step `toolResult` deve poter essere "rotto").
+- `weight > 1` sui test-trappola: il punteggio di categoria smette di essere una media livellata verso l'alto.
+- I 7 fixture esistenti non si toccano: i loro `weight` e le loro check restano identici.
+- Nota: inserire nuovi fixture cambia `getBenchmarkTestsHash` → i profili esistenti si **invalidano da soli**
+  (`getModelProfile` li scarta), comportamento previsto e corretto.
+- Suite `tests/test_benchmark_traps.ts` (mock store + `MockLLMProvider`): i 3 fixture nuovi validano il parse,
+  le check eseguono e — criterio chiave — un provider mock che cade nella trappola scoreggia **meno** di uno
+  che la evita (cioè il fixture discrimina davvero). Registrazione in `run_tests.ts`.
+
+**Accettazione:** lo score di categoria mostra varianza misurabile per gli stessi 3 casi tra un mock "debole"
+e uno "forte"; fixture vecchi e `test_benchmark_dsl.ts` verdi verbatim; gate verde.
+
+---
+
+## T16.2 — `/benchmark --deep`: Repliche, Variazione del Prompt e Mediana Robusta
+
+**Dipende da:** T16.1 · **Sforzo:** medio · **Priorità:** media
+
+`runBenchTest` esegue ogni test **una volta sola**: un parse fortunato vale punteggio pieno, rumore altissimo
+e score "giocabile". In più, replicare lo *stesso* prompt N volte cattura solo la varianza di generazione, non
+il fatto che un modello possa essere tarato sul wording esatto dei fixture. Per questo la replica e la
+variazione vanno in una **modalità profonda** separata, non nel percorso fast.
+
+- Nuovo flag `/benchmark --deep` (in `cli/commands/provider.ts`): il fast resta esattamente com'è — 1 colpo
+  per test, deterministico, è il gate del tier. Il deep è un one-off di validazione/calibrazione.
+- Campo `repeats` opzionale su `BenchTest` (default 1) e **varianti di prompt**: ogni test può dichiarare
+  `variants` (riformulazioni superficiali dello stesso compito: stesso task, wording/ordine degli esempi
+  diverso). Nel deep, ogni replica pesca una variante → il modello non può memorizzare la domanda.
+- Aggregazione robusta: score = **mediana** (non media) tra le repliche; `BenchTestResult` esteso con `stdDev`.
+- Risultati deep salvati in un campo separato del profilo (es. `deepResult`), **senza toccare** il tier fast:
+  il profilo fast resta quello che alimenta `getModelTier`/`computeTier`.
+- L'hash della suite (`getBenchmarkTestsHash`) resta basato **solo sul contenuto** dei file: cambiare `repeats`
+  o `variants` NON invalida i profili fast salvati.
+- `/benchmark --deep` mostra per-test: punteggio + varianza (solo quando `repeats > 1`).
+- Test in `tests/test_benchmark_traps.ts`: mediana con mock che alterna successo/fallimento, varianti applicate
+  (il mock riceve wording diversi tra le repliche), stdDev calcolato, default fast invariato.
+
+**Accettazione:** con `repeats: 3` + `variants` un mock che passa 2 su 3 restituisce la mediana giusta e le
+repliche ricevono wording diverso; il fast non cambia comportamento; varianza nel profilo deep e nel comando;
+suite verde; gate verde.
+
+---
+
+## T16.3 — Check Simmetrici per Step: Chiamato E Non Chiamato
+
+**Dipende da:** T16.1 · **Sforzo:** basso · **Priorità:** alta
+
+Oggi `tool_not_called` in `benchmarkTests.ts` è un binario grezzo: `!toolCalls || toolCalls.length === 0` —
+non distingue "ha chiamato il tool sbagliato" da "non ha chiamato nulla", e non può asserire **in uno stesso
+step** "ha chiamato il giusto E NON il distrattore". Con un solo `firstCall`sotto esame, l'astensione e la
+selezione sbagliata collassano nello stesso caso.
+
+- `benchmarkTests.ts`: `tool_not_called` con `value` = nome tool → passa se non c'è alcuna chiamata **oppure**
+  la prima chiamata NON è quel tool; senza `value` mantiene la semantica attuale (zero chiamate). Così ogni
+  step può esigere il positivo (`tool_called`) e il negativo (`tool_not_called` sul distrattore) insieme.
+- Aggiornare i fixture `30_tool_catena.json` e `31_tool_trappola.json`: aggiungere `tool_not_called` con
+  `value` sui distrattori (`USR-2209`, `USR-8817` nella catena; `get_weather` nella trappola) per ogni step
+  dove oggi c'è solo il positivo — senza cambiare ciò che già testano.
+- Qualsiasi altro uso esistente di `tool_not_called` (senza `value`) resta semanticamente identico.
+- Test in `tests/test_benchmark_dsl.ts`: nuovi casi per la semantica con `value` (chiamata giusta+distrattore
+  evitato passa; chiamata del distrattore fallisce; nessuna chiamata passa con e senza `value`).
+
+**Accettazione:** uno step può esigere "tool giusto chiamato + distrattore non chiamato"; fixture aggiornati
+senza perdere check; suite verde; gate verde.
+
+---
+
+## T16.4 — Soglie del Tier Calibrate e Riferimento Empirico
+
+**Dipende da:** T16.1, T16.2 · **Sforzo:** basso · **Priorità:** media
+
+Le soglie di `computeTier` (`src/core/modelProfile.ts`) sono numeri magici: `large` = toolCalling≥0.9 ∧
+instruction≥0.85 ∧ json≥0.85, `medium` = toolCalling≥0.6 ∧ json≥0.5. Senza un riferimento misurato non c'è
+modo di sapere se siano raggiungibili da un 3B o da un 70B — e la calibrazione è esattamente ciò che decide
+se il gating dei tool ha senso.
+
+- Soglie configurabili: `tsuka.config.json` → `benchmarkTierThresholds` (`large`/`medium`), default = valori
+  attuali. `computeTier` le legge via `ConfigManager` senza cambiare firma per i chiamanti esistenti.
+- Procedura di calibrazione documentata (nuova sezione in `docs/architecture.md` §benchmark o un
+  `docs/benchmark.md`): eseguire **`/benchmark --deep`** su un modello debole noto (es. un 3B locale) e su un
+  riferimento forte (es. un frontier), riportare in tabella le tre categorie con mediana+varianza. La tabella
+  diventa il riferimento usato per giustificare (e ritoccare) le soglie default — i numeri smettono di essere
+  magic.
+- Metrica suite: 72 → resta 72 (nessuna nuova suite; test della configurazione aggiunti alla suite esistente
+  `test_benchmark_traps.ts`). README/AGENTS.md già coerenti, nessun conteggio da toccare.
+- `/benchmark` chiarisce la fonte: "soglie config" quando sovrascritte, "default" altrimenti; il report di
+  calibrazione esplicita il comando deep usato per misurarle.
+
+**Accettazione:** soglie leggibili da config senza cambio di comportamento di default; procedura di
+calibrazione documentata su `--deep` con modello di riferimento; test verdi; gate verde.

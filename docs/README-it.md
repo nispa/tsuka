@@ -22,8 +22,14 @@ Benvenuto nel portale della documentazione tecnica di **TSUKA**. Qui troverai le
 ### 4. [Framework di Sicurezza e Permessi](security-it.md)
 * Dettagli sul gestore dei permessi **User-in-the-Loop** (`SAFE`, `RESTRICTED`, `DANGEROUS`), la sandbox di filesystem (`workspaceRoot`), l'isolamento dei tool utente (`create_tool`) e il tracciamento deterministico delle fonti web.
 
-### 5. [Guida Didattica — Costruire un harness agentico](guida-didattica.md) 🎓
+### 5. [Sistema di Memoria Persistente](memory-it.md) 🧠
+* Approfondimento del **motore di eviction basato su score**, la deduplicazione in scrittura, la ricerca keyword con stemming morfologico, i quattro tipi di durabilità e il razionale architetturale di un layer di memoria JSON a zero dipendenze.
+
+### 6. [Guida Didattica — Costruire un harness agentico](guida-didattica.md) 🎓
 * Il percorso completo in 10 tappe per costruire da zero un harness agentico moderno: ciclo ReAct, tool plugin, budgeting del contesto, streaming live ANSI e gestione dei modelli locali con le 10 trappole ingegneristiche reali.
+
+### 7. [Capability Fingerprinting & Benchmark](benchmark-it.md) 📊
+* Come `/benchmark` misura aderenza alle istruzioni, conformità JSON e tool-calling, il DSL dei test basato su file, punteggi e derivazione del tier, e lo sweep dei livelli di reasoning-effort.
 
 ---
 

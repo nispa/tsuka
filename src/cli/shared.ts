@@ -255,7 +255,7 @@ export function loadSystemPrompt(
         prompt += `\n\nAvailable tools:\n${tools.map((t) => t.function.name).join(', ')}\n`;
       }
       if (tools.some((t: any) => t.function.name === 'save_memory')) {
-        prompt += `\nNote: you have persistent shared memory. Use **save_memory** for important facts to keep across sessions and **recall_memory** to retrieve them.`;
+        prompt += `\nNote: you have persistent shared memory. Use **save_memory** to keep important facts across sessions, **recall_memory** to retrieve them, **update_memory**/**forget_memory** to correct or remove a fact by its id.`;
       }
     }
 

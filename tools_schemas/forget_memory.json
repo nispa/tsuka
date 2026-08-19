@@ -1,0 +1,15 @@
+{
+  "name": "forget_memory",
+  "description": "Permanently remove a persistent memory fact by its id (from recall_memory or the save_memory/update_memory response). Use it when a saved memory is wrong, obsolete, or superseded. This cannot be undone.",
+  "requiredTier": "small",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string",
+        "description": "Id of the memory fact to remove."
+      }
+    },
+    "required": ["id"]
+  }
+}

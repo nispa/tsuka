@@ -170,13 +170,23 @@ async function main() {
     check('MS14', s === 'An arbitrary fact with no recognizable prefix at all.', `fallback generico per contenuto non riconosciuto: ${JSON.stringify(s)}`);
   }
 
-  // ── save_memory tool: summary is required, validated, and reaches the stored fact ──
+  // ── save_memory tool: summary is optional and derived when omitted; kind is optional and
+  //    validated against the English schema enum (T15.3 — policy change from T14.20, which
+  //    required an explicit summary) ──
   {
-    const noSummary: any = await saveMemoryTool.execute({ content: 'Some fact.' } as any).catch((e: Error) => e);
-    check('MS15', noSummary instanceof Error && /summary cannot be empty/.test(noSummary.message), 'summary mancante rifiutato con errore esplicito');
+    const noSummary: any = await saveMemoryTool.execute({ content: 'Some fact.' } as any);
+    check('MS15', typeof noSummary === 'string' && noSummary.includes('id:'),
+      'summary omesso: il fatto viene salvato e il summary è derivato dal contenuto');
 
-    const tooLong: any = await saveMemoryTool.execute({ summary: 'x'.repeat(80), content: 'Some fact.' } as any).catch((e: Error) => e);
-    check('MS16', tooLong instanceof Error && /too long/.test(tooLong.message), 'summary troppo lungo (>72) rifiutato');
+    const tooLong: any = await saveMemoryTool.execute({ summary: 'x'.repeat(80), content: 'Some fact.' });
+    check('MS16', typeof tooLong === 'string' && tooLong.includes('id:'),
+      'summary oltre 72 caratteri: troncato a valle dal cap di addFact, non più rifiutato (T15.3)');
+
+    const badKind: any = await saveMemoryTool.execute({ kind: 'pizza', content: 'Some fact.' } as any).catch((e: Error) => e);
+    check('MS18', badKind instanceof Error && /Invalid kind/.test(badKind.message), 'kind non appartenente all\'enum rifiutato');
+
+    const goodKind: any = await saveMemoryTool.execute({ kind: 'lesson', content: 'Test the harness before every commit.' } as any);
+    check('MS19', typeof goodKind === 'string' && goodKind.includes('id:'), 'kind inglese valido (lesson) accettato e mappato');
 
     const result = await saveMemoryTool.execute({ summary: 'A concise label', content: 'Some longer fact content here.' });
     check('MS17', typeof result === 'string' && result.includes('id:'), `salvataggio valido riuscito: ${result}`);
