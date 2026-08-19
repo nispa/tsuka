@@ -55,7 +55,7 @@ export class ChatView {
       allLines.push(chalk.white('   • ') + chalk.hex('#38bdf8').bold('/team <name>') + chalk.gray('    - Run multi-agent team workflow'));
       allLines.push(chalk.white('   • ') + chalk.hex('#38bdf8').bold('/goal <prompt>') + chalk.gray('  - Autonomous goal decomposition'));
       allLines.push(chalk.white('   • ') + chalk.hex('#38bdf8').bold('/models') + chalk.gray('        - List & switch LLM models'));
-      allLines.push(chalk.white('   • ') + chalk.hex('#38bdf8').bold('/tools') + chalk.gray('         - Inspect 27 native tools'));
+      allLines.push(chalk.white('   • ') + chalk.hex('#38bdf8').bold('/tools') + chalk.gray('         - Inspect 30 native tools'));
       allLines.push('');
       allLines.push(chalk.hex('#94a3b8')('  Type your request below and press Enter to start...'));
       allLines.push('');

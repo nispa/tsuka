@@ -24,7 +24,7 @@ TSUKA implementa un livello di memoria persistente e condivisa che sopravvive tr
 │  │ weight:0 │  │ weight:1 │  │ weight:2 │  │ weight:3 │                │
 │  └──────────┘  └──────────┘  └──────────┘  └──────────┘                │
 │                                                                         │
-│  Dedup in scrittura (T14.15) · Ricerca keyword con stemming            │
+│  Dedup in scrittura · Ricerca keyword BM25 con stemming                 │
 │  Eviction per kind × recenza × hit · Fatti pinned esenti               │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
@@ -54,7 +54,8 @@ interface MemoryFact {
 I fatti sono persistiti in `memory/memory.json` come un array JSON piatto sotto una chiave `facts`. Il file è:
 
 - **Letto** alla costruzione del singleton e riletto ogni volta che il `mtime` cambia (hot-reload per sicurezza multi-processo).
-- **Scritto** atomicamente ad ogni `addFact`, `remove`, `clear` o `search` (quando `touch` è abilitato).
+- **Scritto atomicamente** ad ogni `addFact`, `remove`, `clear` o `search` (quando `touch` è abilitato): lo store scrive un file `.tmp` affiancato e poi lo rinomina sul percorso reale. Un rename sullo stesso filesystem è atomico, quindi un'interruzione a metà scrittura non può mai lasciare un `memory.json` scritto a metà — al peggio resta un `.tmp` orfano.
+- **Mai azzerato in silenzio se corrotto**: se il JSON non è parsabile, i byte vengono conservati sotto `memory.json.corrupt-<timestamp>` e un warning indica il backup, *poi* lo store riparte vuoto. Perdere la memoria in silenzio per un file troncato sarebbe indistinguibile dal non averne mai avuta.
 - **Delimitato** tramite l'hash del workspace root: `scopeFromWorkspaceRoot()` deriva uno slug stabile dal percorso del workspace + hash SHA1, così i fatti di progetti diversi non si mescolano mai.
 
 ---
@@ -100,7 +101,7 @@ Uno sviluppatore che lavora sul Progetto A non vuole vedere le note temporanee `
 
 ---
 
-## 4. Deduplicazione in Scrittura (T14.15)
+## 4. Deduplicazione in Scrittura
 
 **Problema**: Senza dedup, ripetere lo stesso fatto dieci volte consumerebbe dieci slot di eviction, a scapito della conoscenza reale.
 
@@ -146,38 +147,53 @@ function normalizeToken(token: string): string {
 
 Questo è stemming leggero: "running" → "runn", "decisions" → "decision", "lessons" → "lesson". Non è Porter o Snowball — è intenzionalmente minimizzato, ottimizzato per il vocabolario tipico dei prompt di ingegneria software.
 
-### Scoring della Ricerca
+### Scoring della Ricerca — BM25
 
 `search(query)` suddivide la query in keyword, normalizza ciascuna, scarta le stop-word
-funzionali, poi punteggia ogni fatto visibile (taratura T15.1 per i modelli locali):
+funzionali, poi ordina ogni fatto visibile con **BM25** — la funzione di ranking
+lessicale standard, implementata in ~20 righe e senza dipendenze:
 
 ```
-coverage        = token significativi della query corrisposti / totale token significativi
-hitsScore       = min(hits, 20) / 20
-score           = matches × 1000  +  (coverage ≥ 0.75 ? 500 : 0)  +  hitsScore
+idf(t)   = ln(1 + (N - n(t) + 0.5) / (n(t) + 0.5))      N = fatti visibili, n(t) = fatti che contengono t
+score(f) = Σ  idf(t) × ( tf(t,f) × (k1 + 1) )
+           t∈q          -----------------------------------------
+                        tf(t,f) + k1 × (1 - b + b × len(f)/avgLen)
+
+k1 = 1.2   (saturazione della frequenza di termine)
+b  = 0.75  (normalizzazione per lunghezza del documento)
 ```
+
+Dalla formula discendono tre proprietà, ed è per queste che BM25 ha sostituito il precedente
+scoring `matches × 1000 + bonus di coverage`:
+
+- **IDF — la rarità è peso.** Un token che tutti i fatti condividono non porta quasi segnale;
+  un token presente in un fatto su cento domina il ranking. È tutto il punto: una query trova
+  risposta grazie alle sue parole *discriminanti*, non a quelle più lunghe.
+- **Saturazione della frequenza (`k1`).** Ripetere una parola aiuta, ma con rendimenti
+  decrescenti. Dieci occorrenze non valgono dieci volte una — un fatto non può vincere
+  imbottendosi di keyword.
+- **Normalizzazione per lunghezza (`b`).** Un fatto breve che contiene un token batte uno
+  lungo che contiene lo stesso token: allungare il testo non viene premiato.
 
 Il **matching dei token** va oltre l'uguaglianza esatta: un token della query corrisponde
 anche quando è un **prefisso** di un token del fatto di lunghezza sufficiente (`mem` →
 `memoria`, `corsi` → `corso`). Viene usata solo la direzione in avanti — la direzione inversa
 (`TypeScript` che matcherebbe `type`) è esattamente il falso positivo OR che
-`test_memory_scope.ts` documenta come rumore, non recall.
+`test_memory_scope.ts` documenta come rumore, non recall. Il prefix match alimenta sia la
+frequenza di termine di un fatto sia la frequenza documentale dietro al suo IDF.
 
 Le **stop-word** (`the`, `di`, `per`, `che`, … in IN+IT) sono ignorate dal lato query, così
 `il server usa postgres` e `server postgres` sono query ugualmente specifiche. Le stop-word
 nel contenuto di un fatto non vengono mai rimosse — sono il suo contenuto, non rumore.
 
-Il **boost di coverage**: un fatto che soddisfa ≥ 75% dei token significativi riceve un bonus
-secondario, così un fatto che corrisponde quasi tutto si classifica sopra uno che corrisponde
-una sola parola. Hit e recency restano fattori terziari.
-
-I risultati sono restituiti dal più recente quando gli score sono uguali, favorendo i fatti
-recentemente acceduti.
+**Hit e recency restano terziari**: intervengono solo a parità di punteggio BM25. I fatti con
+score zero (nessun token della query corrisposto) vengono scartati invece di essere restituiti
+con un punteggio debole, così una query non pertinente non restituisce nulla invece che rumore.
 
 ### Auto-Tag
 
-Quando il chiamante **non** passa tag, `addFact` deriva fino a 5 tag automatici dal contenuto
-(T15.4): i primi token significativi (niente stop-word, niente radici di 1–2 caratteri),
+Quando il chiamante **non** passa tag, `addFact` deriva fino a 5 tag automatici dal contenuto:
+i primi token significativi (niente stop-word, niente radici di 1–2 caratteri),
 conservando la parola originale ma deduplicando sulla forma normalizzata. Gli auto-tag
 confluiscono nello stesso haystack `content + tags` usato in ricerca.
 
@@ -195,7 +211,7 @@ Questo crea un ciclo di feedback: i fatti frequentemente recuperati accumulano h
 ## 6. Motore di Eviction — Retention Basata su Score con Decadimento Temporale
 
 Quando `facts.length > maxFacts`, il store evicta il fatto non-pinned con il **score più
-basso**. Prima della competizione generale (T15.5) c'è un **passaggio di quota run**: le note
+basso**. Prima della competizione generale c'è un **passaggio di quota run**: le note
 `run` possono occupare al massimo il 30% di `maxFacts` durante un overflow, così un'esplosione
 di log di turno condensati non può mai affamare i tipi durevoli. La formula generale:
 
@@ -209,7 +225,7 @@ evictionScore(fact, recencyRank, totalCandidates) {
 }
 ```
 
-**Decadimento temporale (T15.2)**: il valore di retention di un fatto erode esponenzialmente
+**Decadimento temporale**: il valore di retention di un fatto erode esponenzialmente
 con un'**half-life per tipo** misurata da `lastUsed`:
 
 | Kind | Half-life | Significato |
@@ -256,7 +272,7 @@ Usato quando non è disponibile un task specifico (es. assemblaggio del prompt i
 4. Limita a `maxChars` (default: 600)
 5. Aggiunge un hint su `recall_memory` se alcuni fatti sono stati omessi
 
-**Badge (T15.8)**: lo slot `[quando]` è `PINNED` per i fatti pinned, altrimenti la data
+**Badge**: lo slot `[quando]` è `PINNED` per i fatti pinned, altrimenti la data
 compatta `YYYY-MM-DD`; lo slot `[BADGE]` è `LESSON` / `DECISION` / `FACT` / `RUN` in base al
 kind del fatto. I piccoli modelli locali sono pessimi a inferire tipo e freschezza da una
 frase nuda — il badge dà loro lo stesso segnale a colpo d'occhio, e la riga di memoria resta
@@ -270,11 +286,13 @@ apparire prima di una nota `run` con 0 hit.
 
 Usato quando è disponibile il testo del task utente (es. orchestratore `/goal`, `spawn_agent`).
 
-1. **Cerca** nella memoria usando lo scoring keyword contro `taskText`
+1. **Cerca** nella memoria con BM25 (§5) contro `taskText`
 2. Formatta i fatti corrispondenti con lo stesso template `- [quando][BADGE] (source) contenuto`
 3. Limita a `maxChars`
 
-**Trade-off**: Usa la rilevanza keyword piuttosto che il valore di retention, quindi i fatti "più importanti" (per score di eviction) potrebbero non essere i "più rilevanti" (per corrispondenza keyword). Il sistema privilegia la **rilevanza contestuale** rispetto all'**importanza generale** quando un task specifico è noto.
+**Trade-off**: Usa la rilevanza lessicale piuttosto che il valore di retention, quindi i fatti "più importanti" (per score di eviction) potrebbero non essere i "più rilevanti" (per punteggio BM25). Il sistema privilegia la **rilevanza contestuale** rispetto all'**importanza generale** quando un task specifico è noto.
+
+**L'iniezione non conta come uso**: questa ricerca gira con `touch: false`, quindi costruire un prompt non gonfia mai `hits` né aggiorna `lastUsed`. Lo fa solo una chiamata deliberata a `recall_memory`. Altrimenti ogni fatto iniettato a ogni turno risulterebbe perennemente "popolare" e il segnale d'uso dietro alla retention non significherebbe più nulla.
 
 ### Quando Viene Usato Ciascuno
 
@@ -296,7 +314,7 @@ L'utente fornisce il testo del task? ──Sì──► formatRelevant(taskText)
 | Parametro | Tipo | Obbligatorio | Descrizione |
 |---|---|---|---|
 | `content` | string | sì | Testo completo del fatto (max 500 char) |
-| `summary` | string | no | Etichetta breve (max 72 char — come un subject di commit); derivata automaticamente dal contenuto se omessa (T15.3) |
+| `summary` | string | no | Etichetta breve (max 72 char — come un subject di commit); derivata automaticamente dal contenuto se omessa |
 | `kind` | string | no | Token kind inglese: `facts` / `run` / `decision` / `lesson` (default `facts`) |
 | `global` | boolean | no | Se `true`, salva in `GLOBAL_SCOPE` |
 
@@ -304,23 +322,27 @@ L'utente fornisce il testo del task? ──Sì──► formatRelevant(taskText)
 dello store, deduplica contro gli entry esistenti, evicta se supera la capacità, persiste su
 disco.
 
-**Perché il summary ora è opzionale (T15.3)?** Prima di T14.20 il sistema derivava
-automaticamente i summary e produceva entry dall'aspetto identico; T14.20 rese `summary`
-obbligatorio per forzare etichette distinte. T15.3 allenta: la derivazione (`deriveSummary`)
-è deterministica e riconosce prima i formati propri del sistema, così un chiamante che
-salta il summary ottiene comunque un'etichetta significativa — mentre chi ne scrive una (anche
-troppo lunga) viene limitato a valle a 72 char, mai una seconda policy di rifiuto.
+**Perché il summary è opzionale?** È passato per tre fasi, e quella intermedia vale la pena
+conoscerla. All'inizio il summary non esisteva affatto: gli elenchi troncavano `content` a ~40
+caratteri e, poiché la maggior parte dei fatti condivide un prefisso lungo (`[Goal] `,
+`AGENTE: `, …), la parte che avrebbe distinto due voci era esattamente quella tagliata — ogni
+riga sembrava uguale alle altre. La prima correzione rese `summary` **obbligatorio**, costringendo
+il chiamante a scrivere un'etichetta distinta. Funzionava, ma rifiutava salvataggi per il resto
+validi per via di un campo mancante. Oggi la derivazione (`deriveSummary`) è deterministica e
+riconosce per primi i formati propri del sistema, così un chiamante che omette il summary ottiene
+comunque un'etichetta significativa invece di un troncamento. Chi ne scrive una propria viene
+semplicemente limitato a 72 caratteri a valle — mai una seconda policy di rifiuto.
 
 ### `recall_memory` (riskLevel: SAFE)
 
 | Parametro | Tipo | Obbligatorio | Descrizione |
 |---|---|---|---|
-| `query` | string | no | Parole chiave da cercare (scoring di coverage, prefix match) |
+| `query` | string | no | Parole chiave da cercare (ranking BM25, prefix match) |
 | `limit` | number | no | Max risultati (default 10, max 50) |
 
 **Comportamento**: Se `query` è fornita, esegue ricerca keyword. Altrimenti, restituisce i fatti più recenti. Incrementa `hits` e aggiorna `lastUsed` per tutti i fatti restituiti (a meno che `touch` non sia `false`).
 
-### `update_memory` (riskLevel: SAFE) — T15.7
+### `update_memory` (riskLevel: SAFE)
 
 | Parametro | Tipo | Obbligatorio | Descrizione |
 |---|---|---|---|
@@ -335,7 +357,7 @@ riesegue la regola di dedup (una modifica che rende un fatto duplicato di un alt
 collassa invece di accumularli) e persiste. Risponde con JSON `{ ok, id, summary, kind,
 content, tags }`.
 
-### `forget_memory` (riskLevel: SAFE) — T15.7
+### `forget_memory` (riskLevel: SAFE)
 
 | Parametro | Tipo | Obbligatorio | Descrizione |
 |---|---|---|---|
@@ -369,41 +391,69 @@ Configurabile via `tsuka.config.json`:
 
 ---
 
-## 10. Razionale Architetturale — Perché Non la Ricerca Vettoriale?
+## 10. Il Panorama della Memoria — Dove Si Colloca TSUKA
 
-La domanda più comune sul design della memoria di TSUKA: perché usare la ricerca keyword con un file JSON piatto invece di embedding, database vettoriali o retrieval basato su LLM?
+> Questo progetto è uno strumento didattico, e questa sezione è la lezione. La memoria degli
+> agenti non è una cosa sola: è una **scala**, e ogni livello scambia determinismo e
+> auto-sufficienza con capacità. TSUKA si ferma a un livello specifico **apposta** — lo scopo di
+> questa sezione è mostrare l'intera scala, indicare quale livello abbiamo scelto e perché, e
+> nominare i limiti che accettiamo.
 
-### La Scelta Pragmatica
+### La Scala
 
-| Fattore | JSON + Keyword | Vector DB / Embeddings |
+| Livello | Approccio | Sistemi rappresentativi | Cosa aggiunge rispetto al livello sotto | Cosa costa |
+|---|---|---|---|---|
+| 1 | Trascrizione grezza | LangChain `ConversationBufferMemory` | Richiamo verbatim | Limitato dalla context window; dimentica man mano che scorre |
+| 2 | Riepilogo a scorrimento | LangChain `ConversationSummaryMemory` | Condensa la trascrizione | Perde dettagli; il riepilogo è generato dal modello |
+| 3 | **Fatti lessicali + scoring** | **TSUKA** | Persistenza cross-sessione, dedup, eviction, time-decay | Abbina *parole*, non *significato* |
+| 4 | Retrieval vettoriale / semantico | RAG, LangChain vector retriever, LlamaIndex | Recupera per *significato* (sinonimi, parafrasi) | Modello di embedding + vector store; scoring opaco |
+| 5 | Gerarchia di memoria + self-editing | MemGPT / Letta | Il modello scrive, modifica e dimentica la propria memoria | LLM nel loop; meno deterministico |
+| 6 | Knowledge graph temporale | Zep | Entità + relazioni + tempo; decay e query temporali | Graph store; infrastruttura più pesante |
+| 7 | Grafo gestito + semantico | Mem0 | Embedding + grafo + estrazione entità, spesso SaaS | Dipendenza esterna |
+
+Ogni livello è un sovrainsieme dell'idea sottostante, e ciascuno è ciò che un sistema reale fa
+in produzione.
+
+### Cosa comprano i livelli più alti che TSUKA non ha
+
+- **Retrieval semantico** (livello 4+). "Abbiamo deciso di usare React" e "scelta del framework
+  frontend" non condividono alcun token, quindi `search()` di TSUKA non li collegherà; un
+  modello di embedding sì, perché significano la stessa cosa. Questo è il divario più grande.
+- **Ragionamento sulle relazioni** (livello 6+). "Il modulo A dipende da B" e "B è stato rimosso"
+  sono due fatti scollegati in uno store piatto; un knowledge graph attraversa l'arco e deduce
+  "A è ora rotto". TSUKA archivia fatti, non archi.
+- **Self-editing autonomo** (livello 5). Letta mantiene la propria memoria: decide cosa
+  promuovere nel system prompt e cosa archiviare. TSUKA espone `update_memory`/`forget_memory`
+  (§8) e lascia la *decisione* al modello — un primo, deliberato passo su questo livello, ma non
+  il loop completo.
+- **Query temporali** (livello 6). Zep può rispondere a "quando siamo passati da X a Y?" perché il
+  tempo è una dimensione di prima classe. TSUKA ha timestamp e decay con half-life (§6), ma
+  nessun indice sul tempo.
+
+### Perché TSUKA si ferma al livello 3
+
+| Fattore | Livello 3 (lessicale, questo repo) | Livello 4+ (vettoriale / grafo / gestito) |
 |---|---|---|
-| **Latenza** | 0ms (scansione in-memory) | 50–200ms (lookup indice + similarità) |
-| **Dipendenze** | Zero (solo `fs` di Node.js) | Richiede modello per embedding + vector store |
-| **Costo** | Zero (gira su CPU) | Costo in token per ogni chiamata di embedding |
-| **Affidabilità** | Deterministico, ispezionabile | Dipendente dal modello, scoring opaco |
-| **Debuggabilità** | `grep` sul file JSON | Richiede tooling per vector DB |
-| **Local-first** | Funziona offline, senza rete | Può richiedere servizio di embedding esterno |
+| **Dipendenze** | Zero (solo `node:fs`) | Modello di embedding + store vettoriale/grafo |
+| **Latenza e costo** | 0ms, CPU, nessun token | Chiamata di embedding + lookup indice |
+| **Determinismo** | Totalmente ispezionabile, `grep`-abile | Dipendente dal modello, opaco |
+| **Offline / local-first** | Sì, per costruzione | Spesso richiede un servizio o un modello più pesante |
+| **Modalità di guasto** | Perde sinonimi e parafrasi | Deriva semantica silenziosa, più difficile da debuggare |
 
-### Quando Questo Trade-off Cede
+Per un harness locale che esegue modelli piccoli (<30B) senza servizi esterni, il livello 3 è il
+**più alto raggiungibile senza rinunciare al determinismo**. Questo è il trade-off — e nominarlo
+è il punto: un vector store non è "migliore", è *diverso*, e compra il recall semantico al costo
+di opacità e dipendenza.
 
-L'approccio keyword ha limitazioni note:
+### Cosa il livello 3 fa comunque bene
 
-- **Sinonimia**: "deploy" e "ship" non matcheranno l'uno l'altro senza sovrapposizione di stemming. Il
-  prefix matching e il filtro delle stop-word di T15.1 restringono questo divario per i piccoli modelli
-  locali target di TSUKA, senza il costo o l'opacità degli embedding.
-- **Distanza semantica**: "dobbiamo usare React" e "decisione sul framework frontend" sono correlati ma non condividono keyword
-- **Scala**: oltre ~500 fatti, la scansione lineare diventa notabile (anche se l'eviction tiene questo sotto controllo)
+Due idee sono prese in prestito dai livelli più alti e implementate senza il loro costo:
 
-Per un harness CLI locale che targetta modelli sotto i 30B parametri, queste limitazioni sono accettabili. L'obiettivo non è costruire un knowledge graph — è ricordare che "usiamo le tab non gli spazi" e "la chiave API va in .env, mai nel codice" senza doverli reimparare ogni sessione.
-
-### Il Vantaggio del Ciclo di Feedback
-
-Il ciclo `hits` + `lastUsed` significa che il sistema si auto-organizza: i fatti che gli agenti
-effettivamente recuperano diventano più duraturi, mentre i fatti che nessuno cerca gradualmente
-svaniscono. Il decadimento con half-life di T15.2 traduce "gradualmente svaniscono" da un
-ordinamento relativo in un orologio reale: un fatto intatto da una settimana è obiettivamente
-stantio, non solo dietro ai più freschi. Questo è un segnale di importanza empirico, guidato
-dall'uso, che non richiede intelligenza esterna — solo l'atto di cercare.
+- **Il time decay** è l'intuizione centrale del livello 6 (i fatti erodono con l'età), ridotta a
+  una half-life per tipo (§6).
+- **La retention guidata dall'uso** — il ciclo `hits` + `lastUsed` — fa sì che i fatti che gli
+  agenti cercano davvero diventino più duraturi. Il sistema si auto-organizza dall'atto di
+  cercare, senza intelligenza esterna (§5, Meccanica del Touch).
 
 ---
 
@@ -423,6 +473,32 @@ La memoria è intrecciata in tutto il ciclo di vita di TSUKA:
 
 ---
 
+## 12. Un Percorso di Apprendimento Oltre Questo Design
+
+La scala del §10 è anche un programma di studi. Se vuoi portare TSUKA su di un livello alla
+volta, questa è la rotta, ordinata per valore/costo:
+
+> **Il passo 1 di questa lista è già stato fatto.** La ponderazione BM25 / TF-IDF è quella che
+> il §5 ora documenta — ancora lessicale, ancora zero dipendenze, ancora deterministica, ma con
+> ogni token pesato per quanto è *discriminante* nell'intero store. Quella che segue è la rotta
+> da qui in avanti.
+
+1. **Embedding locali, opzionali (livello 4).** Aggiungere un percorso di embedding opzionale con
+   un modello locale (es. `nomic-embed-text` via Ollama) e similarità coseno. Mantiene il sistema
+   offline; trasforma il retrieval da "spelling" a "significato".
+2. **Retrieval ibrido (il meglio di 3 + 4).** Unire i ranking lessicale e semantico con la
+   reciprocal rank fusion, la ricetta standard del RAG di produzione, così un match per sinonimo
+   e un match per keyword esatta emergono entrambi.
+3. **Knowledge graph (livello 6).** Archiviare entità e relazioni come archi, abilitando il
+   ragionamento multi-hop "cosa dipende da cosa".
+4. **Memoria self-editing (livello 5).** Una divisione stile Letta tra una "core" memory piccola
+   tenuta nel system prompt e uno store "archiviale" che il modello gestisce da sé.
+
+Ogni passo è una lezione a sé stante; l'harness esiste per insegnarle, non per raggiungere la
+cima.
+
+---
+
 ## Sintesi
 
 Il sistema di memoria di TSUKA è progettato attorno a tre principi:
@@ -431,4 +507,7 @@ Il sistema di memoria di TSUKA è progettato attorno a tre principi:
 2. **Deduplicazione in scrittura**: un fatto detto dieci volte è un fatto che è stato importante dieci volte, non dieci fatti
 3. **Retention guidata dall'uso**: l'atto di recuperare un fatto lo rende più duraturo, creando un archivio di conoscenza che si auto-organizza
 
-Questo non è un database vettoriale generico. È un layer di memoria purpose-built, zero-dipendenza e deterministico, ottimizzato per le specifiche esigenze degli agenti LLM locali: veloce, ispezionabile e resiliente tra le sessioni.
+Questo non è un database vettoriale generico. Letto con il §10 e il §12, è una sosta deliberata
+su una scala più ampia: un layer di memoria *lessicale*, *zero-dipendenza* e *deterministico* —
+il livello più alto che non sacrifica l'ispezionabilità — e una mappa dei livelli sopra di esso
+(retrieval semantico, knowledge graph, memoria self-editing) che altri sistemi già occupano.

@@ -203,18 +203,24 @@ const STOP_WORDS = new Set([
   'queste', 'quello', 'quella', 'quelli', 'quelle', 'primo', 'ultimo', 'ogni', 'alcuni', 'alcune',
 ]);
 
-/** Fact coverage ratio at or above which a fact gets a lexical-signal boost (T15.1). */
 /** Kind badge shown in formatted output — a scannable type tag for the model (T15.8). */
 const KIND_BADGE: Record<MemoryKind, string> = { fatto: 'FACT', decisione: 'DECISION', lezione: 'LESSON', run: 'RUN' };
-const COVERAGE_BOOST_THRESHOLD = 0.75;
-/** Boost added to the score when coverage passes the threshold (secondary after match count). */
-const COVERAGE_BOOST = 500;
 /** Prefix matching only applies to tokens at least this long (T15.1), avoiding noise on 1-2 char stems. */
 const MIN_PREFIX_LEN = 3;
+/** BM25 term-frequency saturation and length-normalization parameters (T17.1). */
+const BM25_K1 = 1.2;
+const BM25_B = 0.75;
 
-/** Symbol set of a fact's normalized tokens, reused across search calls. */
-function tokensOf(texts: string): Set<string> {
-  return new Set(normalizeText(texts).split(' ').filter((t) => t.length > 0));
+/**
+ * Frequency map of a fact's normalized tokens (content + tags). Counts — not just presence —
+ * feed BM25 term frequencies and document lengths (T17.1).
+ */
+function tokenFreqs(texts: string): Map<string, number> {
+  const freqs = new Map<string, number>();
+  for (const t of normalizeText(texts).split(' ').filter((t) => t.length > 0)) {
+    freqs.set(t, (freqs.get(t) ?? 0) + 1);
+  }
+  return freqs;
 }
 
 /**
@@ -230,7 +236,7 @@ function tokenMatches(queryToken: string, factToken: string): boolean {
   return factToken.startsWith(queryToken);
 }
 
-function matchesAny(queryToken: string, hayTokens: Set<string>): boolean {
+function matchesAny(queryToken: string, hayTokens: Iterable<string>): boolean {
   for (const factToken of hayTokens) {
     if (tokenMatches(queryToken, factToken)) return true;
   }
@@ -606,7 +612,9 @@ export class MemoryStore {
   }
 
   /**
-   * Performs keyword search with OR scoring across visible facts.
+   * Performs BM25 keyword search over visible facts (T17.1): a fact is scored by the
+   * discriminating power (IDF) of the query tokens it contains, with term-frequency
+   * saturation and document-length normalization. Hit count and recency stay tertiary.
    */
   search(query: string, limit: number = 10, opts?: SearchOptions): MemoryFact[] {
     const rawTokens = query.split(/\s+/).filter((k) => k.length > 0).map(normalizeToken);
@@ -619,23 +627,45 @@ export class MemoryStore {
       results = this.getRecent(limit, opts?.sources);
     } else {
       const candidates = this.filterBySource(this.visibleFacts(), opts?.sources);
-      const scored: Array<{ fact: MemoryFact; score: number; useOrder: number }> = [];
-      for (const f of candidates) {
-        const hayTokens = tokensOf(`${f.content} ${(f.tags ?? []).join(' ')}`);
-        let matches = 0;
-        for (const qt of queryTokens) {
-          if (matchesAny(qt, hayTokens)) matches++;
-        }
-        if (matches === 0) continue;
-        const coverage = matches / queryTokens.length;
-        const hitsScore = Math.min(f.hits ?? 0, 20) / 20;
-        const score =
-          matches * 1000 +
-          (coverage >= COVERAGE_BOOST_THRESHOLD ? COVERAGE_BOOST : 0) +
-          hitsScore;
-        scored.push({ fact: f, score, useOrder: this.useOrder.get(f.id) ?? -1 });
+      const docs = candidates.map((f) => {
+        const freqs = tokenFreqs(`${f.content} ${(f.tags ?? []).join(' ')}`);
+        let len = 0;
+        for (const c of freqs.values()) len += c;
+        return { fact: f, freqs, len };
+      });
+
+      const N = docs.length;
+      const avgLen = N > 0 ? docs.reduce((s, d) => s + d.len, 0) / N : 0;
+
+      // Document frequency (facts containing each query token) -> inverse document frequency.
+      const idfOf = new Map<string, number>();
+      for (const qt of queryTokens) {
+        let n = 0;
+        // .keys(): iterating the Map itself yields [token, count] pairs, and matchesAny would
+        // compare a string against an array — always false, so every token would land on n=0 and
+        // receive an identical IDF, silently disabling the very weighting BM25 exists for.
+        for (const d of docs) if (matchesAny(qt, d.freqs.keys())) n++;
+        idfOf.set(qt, Math.log(1 + (N - n + 0.5) / (n + 0.5)));
       }
-      scored.sort((a, b) => b.score - a.score || b.useOrder - a.useOrder);
+
+      const scored: Array<{ fact: MemoryFact; score: number; hitsScore: number; useOrder: number }> = [];
+      for (const d of docs) {
+        let bm25 = 0;
+        for (const qt of queryTokens) {
+          let tf = 0;
+          for (const [factToken, count] of d.freqs) {
+            if (tokenMatches(qt, factToken)) tf += count;
+          }
+          if (tf === 0) continue;
+          const idf = idfOf.get(qt) ?? 0;
+          const norm = tf + BM25_K1 * (1 - BM25_B + BM25_B * (avgLen > 0 ? d.len / avgLen : 1));
+          bm25 += idf * ((tf * (BM25_K1 + 1)) / norm);
+        }
+        if (bm25 <= 0) continue;
+        const hitsScore = Math.min(d.fact.hits ?? 0, 20) / 20;
+        scored.push({ fact: d.fact, score: bm25, hitsScore, useOrder: this.useOrder.get(d.fact.id) ?? -1 });
+      }
+      scored.sort((a, b) => b.score - a.score || b.hitsScore - a.hitsScore || b.useOrder - a.useOrder);
       results = scored.slice(0, limit).map((x) => x.fact);
     }
 

@@ -96,6 +96,7 @@ const suites = [
   'test_memory_summary.ts',
   'test_memory_persistence.ts',
   'test_memory_tools.ts',
+  'test_memory_bm25.ts',
   'test_files_explorer.ts',
   'test_wiki_build.ts'
 ];
@@ -125,7 +126,9 @@ for (const suite of suites) {
 
   if (result.status === 0) {
     passed++;
-    const match = lastLine.match(/(\d+) passati/);
+    // Both wordings: suites are being migrated to English (T14.24), so counting only the
+    // Italian one would silently degrade every migrated suite to a bare '?'.
+    const match = lastLine.match(/(\d+) (?:passati|passed)/);
     const count = match ? match[1] : '?';
     console.log(chalk.green(`  PASS  ${suite} (${count} test, ${elapsed}ms)`));
   } else {

@@ -6,7 +6,7 @@
 
 > This document describes the technical architecture, design principles, and modular structure of the **TSUKA** framework (v0.5.1). For codebase contribution guidelines, see [`AGENTS.md`](../AGENTS.md); for completed and upcoming task backlogs, see [`TASKS.md`](../TASKS.md).
 >
-> 📊 **System Metrics**: 30 tools · 20 REPL commands · 24 core modules · 21 roles · 9 traits · 24 characters (agents) · 10 preconfigured teams · 72 automated test suites · Dual CLI & TUI interfaces.
+> 📊 **System Metrics**: 30 tools · 20 REPL commands · 24 core modules · 21 roles · 9 traits · 24 characters (agents) · 10 preconfigured teams · 73 automated test suites · Dual CLI & TUI interfaces.
 
 ---
 
@@ -90,7 +90,7 @@ The codebase is organized into four independent layers with clear separation of 
 | Layer | Directory | Architectural Responsibility |
 |---|---|---|
 | **Core** | `src/core/` | Manages the ReAct cycle (`Agent`), LLM client (`LLMProvider`), persistent storage (`MemoryStore`), context budget, and run blackboard. Fully decoupled from Node TTY and the terminal. |
-| **Tools** | `src/tools/` | Hosts the dynamic auto-discovery registry (`ToolRegistry`), JSON Schema contracts, and 27 native tool implementations. Zero UI dependencies. |
+| **Tools** | `src/tools/` | Hosts the dynamic auto-discovery registry (`ToolRegistry`), JSON Schema contracts, and 30 native tool implementations. Zero UI dependencies. |
 | **Safety** | `src/safety/` | Defines risk tiers (`SAFE`, `RESTRICTED`, `DANGEROUS`), manages async permission queues, and enforces workspace path sandboxing. |
 | **CLI** | `src/cli/` | Implements the REPL loop, slash command router, animated statusline, and ANSI/Markdown stream renderer. Operates as *one* possible client to the core engine. |
 

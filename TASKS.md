@@ -101,8 +101,9 @@
 | T16.2 | 🔲 Da fare | **`/benchmark --deep` (repliche + variazione prompt)**: campo `repeats` + varianti di wording del prompt tra le repliche; score a mediana robusta + varianza; il percorso fast resta 1 colpo/test. Risultati deep in un campo separato del profilo (non invalidano il tier fast). |
 | T16.3 | 🔲 Da fare | **Check simmetrici per step**: `tool_not_called` con `value` = nome tool distrattore (ora risolve solo "zero chiamate"); distrattori espliciti su ogni step di `30_tool_catena`/`31_tool_trappola`. |
 | T16.4 | 🔲 Da fare | **Soglie calibrate**: soglie tier (`computeTier`) configurabili da `tsuka.config.json` con default invariati; la calibrazione usa `--deep` su un modello debole noto vs. frontier in docs. |
+| T17.1 | ✅ Fatto | **Retrieval BM25/TF-IDF** (livello 3 migliorato): `search()` sostituisce `matches × 1000 + coverage-boost` con BM25 (`k1=1.2`, `b=0.75`), zero dipendenze; IDF calcolata per query sui fatti visibili; conservati stemming, stop-word e `tokenMatches` (exact + prefix in avanti), quindi il guard T6.1a resta valido. **Bug trovato in revisione**: il loop della document frequency passava la `Map` invece delle sue chiavi (`matchesAny(qt, d.freqs)`), e iterare una Map produce coppie `[token, count]` — il confronto era stringa-contro-array, sempre falso. Risultato: `n` sempre 0 e **IDF identica per ogni token**, cioè la ponderazione per cui esiste BM25 era disattivata, mentre il loop di scoring destrutturava correttamente e teneva viva la TF (per questo tutte le suite restavano verdi). Era anche un errore di tipo: `npm run build` e `npm run typecheck` fallivano. Corretto con `d.freqs.keys()`. Nuova suite `tests/test_memory_bm25.ts` (8 test): R1/R2 sono i guard di regressione — verificato che falliscono sul codice rotto e passano sul fix; R3 saturazione/lunghezza, R4 stop-word, R5 prefix, R6 nessun match spurio, R7 determinismo. Docs §5/§12 e tabella `recall_memory` allineate in EN+IT (il §12 elencava ancora BM25 fra i lavori *futuri*). |
 
-Tutti i task pianificati e di backlog sono completati; la serie T15 (memoria, modelli <30B) è implementata e chiusa con 72 suite di test verdi. Pianificata la serie **T16 (benchmark significativi)** su architettura a due velocità: **`/benchmark` fast** (1 colpo/test, deterministico — resta il gate del tier) e **`/benchmark --deep`** (repliche con variazione del prompt, mediana+varianza, per validazione/calibrazione). Valore di ritorno — i benchmark attuali saturano in alto e non discriminano tra i modelli, ma il gating dei tool (`registry.ts`) dipende proprio da quel tier: se tutto diventa `large` il gating è codice morto. Restano da fare T14.24 (commenti tests/ in inglese), T14.25 (token di protocollo multi-agente) e la serie T16.
+Tutti i task pianificati e di backlog sono completati; la serie T15 (memoria, modelli <30B) è implementata e chiusa con 72 suite di test verdi. Pianificata la serie **T16 (benchmark significativi)** su architettura a due velocità: **`/benchmark` fast** (1 colpo/test, deterministico — resta il gate del tier) e **`/benchmark --deep`** (repliche con variazione del prompt, mediana+varianza, per validazione/calibrazione). Pianificato anche **T17.1** (retrieval BM25/TF-IDF), il primo livello del percorso di apprendimento documentato in `docs/memory.md` §12. Valore di ritorno — i benchmark attuali saturano in alto e non discriminano tra i modelli, ma il gating dei tool (`registry.ts`) dipende proprio da quel tier: se tutto diventa `large` il gating è codice morto. Restano da fare T14.24 (commenti tests/ in inglese), T14.25 (token di protocollo multi-agente) e le serie T16/T17.
 
 ---
 
@@ -2774,3 +2775,80 @@ se il gating dei tool ha senso.
 
 **Accettazione:** soglie leggibili da config senza cambio di comportamento di default; procedura di
 calibrazione documentata su `--deep` con modello di riferimento; test verdi; gate verde.
+
+---
+
+## T17.1 — Retrieval BM25/TF-IDF: Dal Prefix-Match al Peso Lessicale
+
+**Dipende da:** T15.1 · **Sforzo:** medio · **Priorità:** media
+
+`search()` (`src/core/memory.ts`) punteggia con `matches × 1000 + coverage-boost + hitsScore`: un
+token della query vale quanto un altro, e il matching è exact o prefix (`tokenMatches`). Questo è il
+**livello 3** della scala documentata in `docs/memory.md` §10/§12 — lessicale e deterministico, ma
+cieco all'importanza relativa dei token: "postgres" conta quanto "il". BM25/TF-IDF è il
+miglioramento a costo zero che resta sullo stesso livello: pesa ogni token per quanto è
+discriminante nell'intero store.
+
+- **Ponderazione TF-IDF**: sostituire la formula di score con BM25 —
+  `Σ IDF(token) × (tf × (k1+1)) / (tf + k1 × (1 − b + b × len/avgLen))`, con `k1=1.2`, `b=0.75`.
+  - `tf` = frequenza del token normalizzato nel fatto; `idf` = `ln(1 + (N − n + 0.5)/(n + 0.5))`
+    su N fatti visibili e n fatti che contengono il token.
+- **Cosa resta**: la normalizzazione dei token (stemming leggero) e le stop-word di T15.1, e il
+  predicato `tokenMatches` (exact o prefix in avanti) come definizione di "hit" di un termine — così
+  il guard T6.1a (`type` non matcherebbe `TypeScript`) continua a valere. Il prefix match è
+  conservato *sotto* BM25, non rimosso.
+- **Cosa se ne va**: il `COVERAGE_BOOST` (500 a coverage ≥ 0.75) diventa ridondante — BM25 già
+  somma IDF×TF per termine, quindi un fatto che copre più token sale da solo. Via anche il
+  `matches × 1000` grezzo. Hit e recency restano fattori terziari di tie-break.
+- **IDF**: calcolato per query sui fatti visibili (200 max ⇒ costo irrilevante); nessuna cache
+  necessaria, nessuna nuova dipendenza (`node:*` puro, matematica intera a virgola mobile).
+- **Guard da tenere verdi senza modifiche se possibile**: `test_memory.ts` (M1b/M1c),
+  `test_memory_phase3.ts` (T8.3-CFG), `test_memory_scope.ts` (T6.1a),
+  `test_memory_dedup.ts` (gruppi D/E). Dove BM25 cambia un **ranking** asserito (non una semantica),
+  l'aggiornamento dell'asserzione va fatto in modo deliberato e documentato nel report, non in
+  silenzio — stesso criterio di T15.3/MS15.
+- **Nuovi test** (`tests/test_memory_bm25.ts`): un token raro ("postgres") pesa più di uno comune
+  ("il"/"server"); un fatto che copre più termini della query si classifica sopra uno che ne copre
+  uno solo (senza boost esplicito); stop-word ignorate; determinismo (doppia esecuzione identica);
+  prefix match ancora attivo. Registrazione in `tests/run_tests.ts`.
+- **Documentazione**: aggiornare `docs/memory.md`/`docs/memory-it.md` §5 (scoring) per descrivere
+  BM25 al posto della formula a coverage; il §12 (percorso di apprendimento) segna il punto 1 come
+  fatto.
+
+**Accettazione:** BM25 sostituisce coverage/×1000 senza nuove dipendenze; i guard restano verdi o
+le sole asserzioni di ranking aggiornate sono documentate; la suite nuova passa e
+`test_memory_bm25.ts` è registrata; gate verde.
+
+### Esito
+
+Implementato, ma la revisione ha trovato un bug che rendeva BM25 **inerte** e che nessuna delle 7
+suite di memoria intercettava.
+
+- **Il bug** (`memory.ts`, loop della document frequency): `matchesAny(qt, d.freqs)` passava la
+  `Map` invece delle sue chiavi. Iterare una `Map` produce coppie `[token, count]`, quindi dentro
+  `tokenMatches` il confronto era stringa-contro-array (sempre falso) e `factToken.length` valeva
+  2 — la lunghezza dell'array — finendo sotto `MIN_PREFIX_LEN`. Conseguenza: `n` sempre 0 per ogni
+  token, quindi **IDF identica per tutti** (3.0910 con N=10): un token presente in ogni fatto
+  pesava quanto uno presente in un fatto solo. Restavano attive solo saturazione TF e
+  normalizzazione per lunghezza — cioè proprio la proprietà per cui si adotta BM25 era spenta.
+- **Perché nessun test lo vedeva**: il loop di *scoring* destrutturava correttamente
+  (`for (const [factToken, count] of d.freqs)`), quindi le TF funzionavano e il recall restava
+  plausibile. Le suite esistenti asseriscono tutte il recall ("torna il fatto giusto?"), mai la
+  discriminazione ("il token raro vale più di quello comune?").
+- **Era anche un errore di tipo**: `npm run build` e `npm run typecheck` fallivano su `main`
+  (TS2345), contro la regola di gate di AGENTS.md. Corretto con `d.freqs.keys()`.
+- **Guard di regressione**: R1 mette a confronto due fatti che corrispondono a **un solo** token
+  ciascuno, con stessa TF e stessa lunghezza — così TF e normalizzazione si annullano e l'IDF è
+  l'unica variabile rimasta; il candidato comune è inserito per ultimo apposta, perché con l'IDF
+  costante i punteggi vanno in pareggio esatto e il tie-break per recency lo porterebbe in testa.
+  R2 verifica che gli **stessi due fatti** si invertano di posizione quando si specchia il corpus.
+  Entrambi verificati in entrambe le direzioni: falliscono sul codice rotto, passano sul fix.
+  Un primo tentativo di guard (che asseriva "vince il fatto che copre più token della query")
+  passava anche col bug ed è stato scartato: quella proprietà è vera con o senza IDF.
+- **Divergenze dalla spec**: nessuna sostanziale. La suite è stata rinominata da
+  `test_memory_retrieval.ts` a `test_memory_bm25.ts` per rispettare il nome scritto qui, ed è
+  stato aggiunto il check di determinismo previsto (R7).
+- **Extra**: il regex del runner contava solo `"N passati"`, mostrando `?` per ogni suite già
+  tradotta in inglese (T14.24); ora accetta entrambe le forme.
+
+73/73 suite verdi, `npm run build` e `npm run typecheck` puliti.

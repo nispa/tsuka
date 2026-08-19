@@ -24,7 +24,7 @@ TSUKA implements a persistent, shared long-term memory layer that survives acros
 │  │ weight:0 │  │ weight:1 │  │ weight:2 │  │ weight:3 │                │
 │  └──────────┘  └──────────┘  └──────────┘  └──────────┘                │
 │                                                                         │
-│  Dedup on write (T14.15) · Keyword search with stemming                 │
+│  Dedup on write · BM25 keyword search with stemming                     │
 │  Eviction by kind × recency × hits · Pinned facts exempt                │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
@@ -54,7 +54,8 @@ interface MemoryFact {
 Facts are persisted in `memory/memory.json` as a flat JSON array under a `facts` key. The file is:
 
 - **Read** at singleton construction and re-read whenever the file's `mtime` changes (hot-reload for multi-process safety).
-- **Written** atomically on every `addFact`, `remove`, `clear`, or `search` (when `touch` is enabled).
+- **Written atomically** on every `addFact`, `remove`, `clear`, or `search` (when `touch` is enabled): the store writes a sibling `.tmp` file and then renames it onto the real path. A rename on the same filesystem is atomic, so an interruption mid-write can never leave a half-written `memory.json` — the worst case is an orphaned `.tmp`.
+- **Never reset silently on corruption**: if the JSON fails to parse, the bytes are preserved under `memory.json.corrupt-<timestamp>` and a warning names the backup, *then* the store starts empty. Losing memory quietly to a truncated file would be indistinguishable from having none.
 - **Scoped** by workspace root: `scopeFromWorkspaceRoot()` derives a stable slug from the workspace path + SHA1 hash, so facts from different projects never leak into each other.
 
 ---
@@ -100,7 +101,7 @@ A developer working on Project A doesn't want to see Project B's temporary `run`
 
 ---
 
-## 4. Write-Time Deduplication (T14.15)
+## 4. Write-Time Deduplication
 
 **Problem**: Without dedup, repeating the same fact ten times would consume ten eviction slots, crowding out real knowledge.
 
@@ -146,36 +147,51 @@ function normalizeToken(token: string): string {
 
 This is lightweight stemming: "running" → "runn", "decisions" → "decision", "lessons" → "lesson". It's not Porter or Snowball — it's intentionally minimal, optimized for the typical vocabulary of software engineering prompts.
 
-### Search Scoring
+### Search Scoring — BM25
 
 `search(query)` splits the query into keywords, normalizes each, drops functional stop
-words, then scores every visible fact (T15.1 tuning for local models):
+words, then ranks every visible fact with **BM25** — the standard lexical ranking
+function, implemented in ~20 lines with zero dependencies:
 
 ```
-coverage        = matched meaningful query tokens / total meaningful query tokens
-hitsScore       = min(hits, 20) / 20
-score           = matches × 1000  +  (coverage ≥ 0.75 ? 500 : 0)  +  hitsScore
+idf(t)   = ln(1 + (N - n(t) + 0.5) / (n(t) + 0.5))      N = visible facts, n(t) = facts containing t
+score(f) = Σ  idf(t) × ( tf(t,f) × (k1 + 1) )
+           t∈q          -----------------------------------------
+                        tf(t,f) + k1 × (1 - b + b × len(f)/avgLen)
+
+k1 = 1.2   (term-frequency saturation)
+b  = 0.75  (document-length normalization)
 ```
+
+Three properties come out of that formula, and they are the reason BM25 replaced the earlier
+`matches × 1000 + coverage bonus` scoring:
+
+- **IDF — rarity is weight.** A token every fact shares carries almost no signal; a token in
+  one fact out of a hundred dominates the ranking. This is the whole point: a query is
+  answered by its *discriminating* words, not by its longest ones.
+- **Term-frequency saturation (`k1`).** Repeating a word helps, with diminishing returns.
+  Ten occurrences do not score ten times one — a fact cannot win by keyword stuffing.
+- **Length normalization (`b`).** A short fact matching a token beats a long one matching the
+  same token, so padding is not rewarded.
 
 **Token matching** goes beyond exact equality: a query token also matches when it is a
 **prefix** of a fact token of sufficient length (`mem` → `memoria`, `corsi` → `corso`).
 Only the forward direction is used — the reverse (`TypeScript` matching `type`) is exactly
-the spurious OR hit `test_memory_scope.ts` documents as noise, not recall.
+the spurious OR hit `test_memory_scope.ts` documents as noise, not recall. Prefix matching
+feeds both the term frequency of a fact and the document frequency behind its IDF.
 
 **Stop words** (`the`, `di`, `per`, `che`, … in EN+IT) are ignored on the query side, so
 `il server usa postgres` and `server postgres` are equally specific queries. Stop words in a
 fact's own content are never stripped — they are its content, not noise.
 
-**Coverage boost**: a fact that satisfies ≥ 75% of the meaningful tokens gets a secondary
-bonus, so a fact matching almost everything ranks above one matching a single word. Hits and
-recency remain tertiary factors.
-
-Results are returned most-recent-first when scores are equal, which favors freshly accessed facts.
+**Hits and recency stay tertiary**: they only break ties between facts BM25 scores equally.
+Facts scoring zero (no query token matched at all) are dropped rather than returned with a
+weak score, so an unrelated query returns nothing instead of noise.
 
 ### Auto-Tags
 
-When a caller does **not** pass tags, `addFact` derives up to 5 auto-tags from the content
-(T15.4): the first significant tokens (no stop words, no 1–2 char stems), keeping the
+When a caller does **not** pass tags, `addFact` derives up to 5 auto-tags from the content:
+the first significant tokens (no stop words, no 1–2 char stems), keeping the
 original word while de-duplicating on its normalized form. Auto-tags flow into the same
 `content + tags` haystack used at search time.
 
@@ -193,7 +209,7 @@ This creates a feedback loop: frequently recalled facts accumulate hits, which b
 ## 6. Eviction Engine — Score-Based Retention with Time Decay
 
 When `facts.length > maxFacts`, the store evicts the **lowest-scoring** non-pinned fact.
-Before the general competition (T15.5), a **run-quota pass** drops excess transient facts:
+Before the general competition, a **run-quota pass** drops excess transient facts:
 `run` notes may occupy at most 30% of `maxFacts` during an overflow, so a burst of condensed
 turn logs can never starve the durable kinds. The general scoring formula:
 
@@ -207,7 +223,7 @@ evictionScore(fact, recencyRank, totalCandidates) {
 }
 ```
 
-**Time decay (T15.2)**: a fact's retention value erodes exponentially with a **half-life per
+**Time decay**: a fact's retention value erodes exponentially with a **half-life per
 kind** measured from `lastUsed`:
 
 | Kind | Half-life | Meaning |
@@ -254,7 +270,7 @@ Used when no specific task is provided (e.g., the initial prompt assembly).
 4. Caps at `maxChars` (default: 600)
 5. Appends a hint about `recall_memory` if facts were omitted
 
-**Badges (T15.8)**: the `[when]` slot is `PINNED` for pinned facts, otherwise the compact
+**Badges**: the `[when]` slot is `PINNED` for pinned facts, otherwise the compact
 `YYYY-MM-DD` date; the `[BADGE]` slot is `LESSON` / `DECISION` / `FACT` / `RUN` from the
 fact's kind. Small local models are bad at inferring type and freshness from a bare
 sentence — the badge gives them the same signal at a glance, and the memory line is still a
@@ -268,11 +284,13 @@ note with 0 hits.
 
 Used when the user's task text is available (e.g., `/goal` orchestration, `spawn_agent`).
 
-1. **Searches** memory using keyword scoring against `taskText`
+1. **Searches** memory with BM25 (§5) against `taskText`
 2. Formats matching facts with the same `- [when][BADGE] (source) content` template
 3. Caps at `maxChars`
 
-**Trade-off**: This uses keyword relevance rather than retention value, so the most "important" facts (by eviction score) might not be the most "relevant" ones (by keyword match). The system prioritizes **contextual relevance** over **general importance** when a specific task is known.
+**Trade-off**: This uses lexical relevance rather than retention value, so the most "important" facts (by eviction score) might not be the most "relevant" ones (by BM25 score). The system prioritizes **contextual relevance** over **general importance** when a specific task is known.
+
+**Injection does not count as a use**: this search runs with `touch: false`, so building a prompt never inflates `hits` or refreshes `lastUsed`. Only a deliberate `recall_memory` call does. Otherwise every fact injected into every turn would look permanently "popular" and the usage signal behind retention would mean nothing.
 
 ### When Each Is Used
 
@@ -294,30 +312,34 @@ User provides task text? ──Yes──► formatRelevant(taskText)
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `content` | string | yes | Full fact text (max 500 chars) |
-| `summary` | string | no | Short label (max 72 chars — like a commit subject); auto-derived from content when omitted (T15.3) |
+| `summary` | string | no | Short label (max 72 chars — like a commit subject); auto-derived from content when omitted |
 | `kind` | string | no | English kind token: `facts` / `run` / `decision` / `lesson` (default `facts`) |
 | `global` | boolean | no | If `true`, saves to `GLOBAL_SCOPE` |
 
 **Behavior**: Adds the fact after mapping the English `kind` token to the store's internal
 kind, deduplicates against existing entries, evicts if over capacity, persists to disk.
 
-**Why the summary is optional now (T15.3)?** Before T14.20 the system auto-derived summaries
-and produced identical-looking entries; T14.20 made `summary` mandatory to force distinct
-labels. T15.3 relaxes that: the derivation (`deriveSummary`) is deterministic and recognizes
-the system's own content formats first, so a caller that skips the summary still gets a
-meaningful label — while one that writes its own (including anything overly long) is capped
-downstream at 72 chars, never a second rejection policy.
+**Why is the summary optional?** It went through three stages, and the middle one is worth
+knowing about. Originally there was no summary at all: listings truncated `content` at ~40
+characters, and because most facts share a long prefix (`[Goal] `, `AGENTE: `, …) the part
+that would tell two entries apart was exactly the part being cut — every row looked the same.
+The first fix made `summary` **mandatory**, forcing the caller to write a distinct label.
+That worked, but it rejected otherwise valid saves over a missing field. Today the derivation
+(`deriveSummary`) is deterministic and recognizes the system's own content formats first, so
+a caller that omits the summary still gets a meaningful label instead of a truncation. A
+caller that writes its own is simply capped at 72 characters downstream — never a second
+rejection policy.
 
 ### `recall_memory` (riskLevel: SAFE)
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `query` | string | no | Keywords to search (coverage scoring, prefix match) |
+| `query` | string | no | Keywords to search (BM25 ranking, prefix match) |
 | `limit` | number | no | Max results (default 10, max 50) |
 
 **Behavior**: If `query` is provided, performs keyword search. Otherwise, returns recent facts. Increments `hits` and updates `lastUsed` for all returned facts (unless `touch: false`).
 
-### `update_memory` (riskLevel: SAFE) — T15.7
+### `update_memory` (riskLevel: SAFE)
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -331,7 +353,7 @@ downstream at 72 chars, never a second rejection policy.
 rule (an edit that makes a fact duplicate another collapses them instead of piling up), and
 persists. Responds with JSON `{ ok, id, summary, kind, content, tags }`.
 
-### `forget_memory` (riskLevel: SAFE) — T15.7
+### `forget_memory` (riskLevel: SAFE)
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -365,40 +387,66 @@ Configured via `tsuka.config.json`:
 
 ---
 
-## 10. Architectural Rationale — Why Not Vector Search?
+## 10. The Memory Landscape — Where TSUKA Sits
 
-The most common question about TSUKA's memory design: why use keyword search with a flat JSON file instead of embeddings, vector databases, or LLM-based retrieval?
+> This project is a teaching instrument, and this section is the lesson. Agent memory is not a
+> single thing: it is a **ladder**, and every rung trades away determinism and self-containment
+> for capability. TSUKA stops at a specific rung **on purpose** — the point of this section is to
+> show the whole ladder, mark which rung we chose and why, and name the limits we accept.
 
-### The Pragmatic Choice
+### The Ladder
 
-| Factor | JSON + Keywords | Vector DB / Embeddings |
+| Rung | Approach | Representative systems | What it adds over the rung below | What it costs |
+|---|---|---|---|---|
+| 1 | Raw transcript | LangChain `ConversationBufferMemory` | Verbatim recall | Bounded by the context window; forgets as it scrolls off |
+| 2 | Rolling summary | LangChain `ConversationSummaryMemory` | Condenses the transcript | Loses detail; the summary is model-generated |
+| 3 | **Lexical facts + scoring** | **TSUKA** | Cross-session persistence, dedup, eviction, time-decay | Matches *words*, not *meaning* |
+| 4 | Vector / semantic retrieval | RAG, LangChain vector retriever, LlamaIndex | Retrieves by *meaning* (synonyms, paraphrase) | Embedding model + vector store; opaque scoring |
+| 5 | Memory hierarchy + self-editing | MemGPT / Letta | The model writes, edits and forgets its own memory | LLM in the loop; less deterministic |
+| 6 | Temporal knowledge graph | Zep | Entities + relations + time; decay and timeline queries | Graph store; heavier infrastructure |
+| 7 | Managed graph + semantic | Mem0 | Embeddings + graph + entity extraction, often SaaS | External dependency |
+
+Each rung is a superset of the idea below it, and each is what a real system does in production.
+
+### What the higher rungs buy that TSUKA does not have
+
+- **Semantic retrieval** (rung 4+). "We decided to use React" and "frontend framework choice"
+  share no token, so TSUKA's `search()` will not connect them; an embedding model will, because
+  they mean the same thing. This is the single largest gap.
+- **Relationship reasoning** (rung 6+). "Module A depends on B" and "B was removed" are two
+  unrelated facts in a flat store; a knowledge graph traverses the edge and infers "A is now
+  broken". TSUKA stores facts, not edges.
+- **Autonomous self-editing** (rung 5). Letta maintains its own memory: it decides what to
+  promote to the system prompt and what to archive. TSUKA exposes `update_memory`/`forget_memory`
+  (§8) and leaves the *decision* to the model — a first, deliberate step onto this rung, but
+  not the full loop.
+- **Temporal queries** (rung 6). Zep can answer "when did we switch from X to Y?" because time is
+  a first-class dimension. TSUKA has timestamps and half-life decay (§6), but no index over time.
+
+### Why TSUKA stops at rung 3
+
+| Factor | Rung 3 (lexical, this repo) | Rung 4+ (vector / graph / managed) |
 |---|---|---|
-| **Latency** | 0ms (in-memory scan) | 50–200ms (index lookup + similarity) |
-| **Dependencies** | Zero (Node.js `fs` only) | Requires model for embedding + vector store |
-| **Cost** | Zero (runs on CPU) | Token cost per embedding call |
-| **Reliability** | Deterministic, inspectable | Model-dependent, opaque scoring |
-| **Debuggability** | `grep` the JSON file | Need vector DB tooling |
-| **Local-first** | Works offline, no network | May require external embedding service |
+| **Dependencies** | Zero (`node:fs` only) | Embedding model + vector/graph store |
+| **Latency & cost** | 0ms, CPU, no tokens | Embedding call + index lookup |
+| **Determinism** | Fully inspectable, `grep`-able | Model-dependent, opaque |
+| **Offline / local-first** | Yes, by construction | Often needs a service or a heavier model |
+| **Failure mode** | Misses synonyms and paraphrase | Silent semantic drift, harder to debug |
 
-### When This Trade-off Breaks Down
+For a local harness that runs small models (<30B) with no external services, rung 3 is the
+**highest rung reachable without giving up determinism**. That is the trade-off — and naming it
+is the point: a vector store is not "better", it is *different*, buying semantic recall at the
+cost of opacity and dependency.
 
-The keyword approach has known limitations:
+### What rung 3 still gets right
 
-- **Synonymy**: "deploy" and "ship" won't match each other without stemming overlap. T15.1's
-  prefix matching and stop-word filtering narrow this gap for the small local models TSUKA
-  targets, without the cost or opacity of embeddings.
-- **Semantic distance**: "we should use React" and "frontend framework decision" relate but share no keywords
-- **Scale**: beyond ~500 facts, linear scan becomes noticeable (though eviction keeps this in check)
+Two ideas are borrowed from the higher rungs and implemented without their cost:
 
-For a local CLI harness targeting models under 30B parameters, these limitations are acceptable. The goal is not to build a knowledge graph — it's to remember that "we use tabs not spaces" and "the API key goes in .env, never in code" without re-learning them every session.
-
-### The Feedback Loop Advantage
-
-The `hits` + `lastUsed` feedback loop means the system self-organizes: facts that agents actually recall become more durable, while facts nobody looks up gradually fade. T15.2's
-half-life decays translate "gradually fade" from a relative ordering into an actual clock: a
-fact untouched for a week is objectively stale, not just behind fresher ones. This is an
-empirical, usage-driven importance signal that doesn't require any external intelligence —
-just the act of searching.
+- **Time decay** is rung 6's core insight (facts erode by age), reduced to a per-kind half-life
+  (§6).
+- **Usage-driven retention** — the `hits` + `lastUsed` feedback loop — means facts the agents
+  actually look up become more durable. The system self-organizes from the act of searching,
+  with no external intelligence (§5, Touch Mechanics).
 
 ---
 
@@ -418,6 +466,30 @@ Memory is woven throughout the TSUKA lifecycle:
 
 ---
 
+## 12. A Learning Path Beyond This Design
+
+The ladder in §10 is also a syllabus. If you want to move TSUKA up one rung at a time, this is
+the route, ordered by value-to-cost:
+
+> **Step 1 of this list is already done.** BM25 / TF-IDF weighting is what §5 now documents —
+> still lexical, still zero-dependency, still deterministic, but a token is weighted by how
+> *discriminating* it is across the store. What follows is the route from here.
+
+1. **Local embeddings, opt-in (rung 4).** Add an optional embedding path using a local model
+   (e.g. `nomic-embed-text` via Ollama) and cosine similarity. Keeps the system offline; flips
+   retrieval from "spelling" to "meaning".
+2. **Hybrid retrieval (best of 3 + 4).** Merge lexical and semantic rankings with reciprocal
+   rank fusion, the standard production-RAG recipe, so a synonym-only match and an
+   exact-keyword match both surface.
+3. **Knowledge graph (rung 6).** Store entities and relations as edges, enabling multi-hop
+   "what depends on what" reasoning.
+4. **Self-editing memory (rung 5).** A Letta-style split into a small "core" memory kept in the
+   system prompt and an "archival" store the model manages itself.
+
+Each step is a lesson in its own right; the harness exists to teach them, not to reach the top.
+
+---
+
 ## Summary
 
 TSUKA's memory system is designed around three principles:
@@ -426,4 +498,7 @@ TSUKA's memory system is designed around three principles:
 2. **Write-time deduplication**: one fact stated ten times is one fact that mattered ten times, not ten facts
 3. **Usage-driven retention**: the act of recalling a fact makes it more durable, creating a self-organizing knowledge store
 
-This is not a general-purpose vector database. It's a purpose-built, zero-dependency, deterministic memory layer optimized for the specific needs of local LLM agents: fast, inspectable, and resilient across sessions.
+This is not a general-purpose vector database. Read with §10 and §12, it is a deliberate stop
+on a larger ladder: a *lexical*, *zero-dependency*, *deterministic* memory layer — the highest
+rung that does not sacrifice inspectability — and a map of the rungs above it (semantic
+retrieval, knowledge graphs, self-editing memory) that other systems already occupy.
