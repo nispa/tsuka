@@ -1,513 +1,256 @@
-# Sistema di Memoria Persistente 🧠
+# Guida Didattica — Il Sistema di Memoria Persistente 🧠
 
 <div align="right">
   <p>Read in <a href="memory.md">🇬🇧 English</a></p>
 </div>
 
-TSUKA implementa un livello di memoria persistente e condivisa che sopravvive tra sessioni, workspace e agenti. A differenza della cronologia di turno effimera (RAM) e della blackboard limitata a un singolo run, la memoria persistente è progettata per accumulare conoscenza progettuale nel tempo — convenzioni, decisioni architetturali e lezioni apprese — senza richiedere infrastruttura esterna.
-
-> **Sorgente**: [`src/core/memory.ts`](../src/core/memory.ts) · **Tool**: `save_memory`, `recall_memory` · **Archiviazione**: `memory/memory.json`
-
----
-
-## 1. Panoramica Architetturale
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                      MemoryStore (Singleton)                            │
-│                                                                         │
-│   filePath: memory/memory.json     scope: hash del workspace root       │
-│   maxFacts: 200 (configurabile)    reload: mtime-based hot-reload       │
-│                                                                         │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐                │
-│  │  run     │  │  fatto   │  │ decisione│  │ lezione  │   ← tipi       │
-│  │ weight:0 │  │ weight:1 │  │ weight:2 │  │ weight:3 │                │
-│  └──────────┘  └──────────┘  └──────────┘  └──────────┘                │
-│                                                                         │
-│  Dedup in scrittura · Ricerca keyword BM25 con stemming                 │
-│  Eviction per kind × recenza × hit · Fatti pinned esenti               │
-└─────────────────────────────────────────────────────────────────────────┘
-```
-
-### Struttura MemoryFact
-
-Ogni fatto memorizzato è un oggetto tipizzato con metadati ricchi:
-
-```typescript
-interface MemoryFact {
-  id: string;          // ID univoco stabile (base36 timestamp + random)
-  content: string;     // Testo completo (max 500 char, imposto da save_memory)
-  summary: string;     // Etichetta breve (max 72 char) — ciò che appare nelle liste
-  source: string;      // Nome dell'autore ('agent', 'goal_orchestrator', 'user', ecc.)
-  timestamp: string;   // Data/ora ISO 8601 di creazione
-  scope: string;       // Slug del workspace oppure 'globale'
-  kind: MemoryKind;    // 'fatto' | 'decisione' | 'lezione' | 'run'
-  tags?: string[];     // Parole chiave opzionali per boost nella ricerca
-  pinned?: boolean;    // Se true, esente dall'eviction
-  hits: number;        // Incrementato ogni volta che search() recupera questo fatto
-  lastUsed: string;    // ISO 8601 dell'ultimo recupero tramite search()
-}
-```
-
-### Archiviazione su Disco
-
-I fatti sono persistiti in `memory/memory.json` come un array JSON piatto sotto una chiave `facts`. Il file è:
-
-- **Letto** alla costruzione del singleton e riletto ogni volta che il `mtime` cambia (hot-reload per sicurezza multi-processo).
-- **Scritto atomicamente** ad ogni `addFact`, `remove`, `clear` o `search` (quando `touch` è abilitato): lo store scrive un file `.tmp` affiancato e poi lo rinomina sul percorso reale. Un rename sullo stesso filesystem è atomico, quindi un'interruzione a metà scrittura non può mai lasciare un `memory.json` scritto a metà — al peggio resta un `.tmp` orfano.
-- **Mai azzerato in silenzio se corrotto**: se il JSON non è parsabile, i byte vengono conservati sotto `memory.json.corrupt-<timestamp>` e un warning indica il backup, *poi* lo store riparte vuoto. Perdere la memoria in silenzio per un file troncato sarebbe indistinguibile dal non averne mai avuta.
-- **Delimitato** tramite l'hash del workspace root: `scopeFromWorkspaceRoot()` deriva uno slug stabile dal percorso del workspace + hash SHA1, così i fatti di progetti diversi non si mescolano mai.
+> **Premessa Didattica**: I Large Language Model sono funzioni senza stato (*stateless*): ogni richiesta riparte da zero se non viene fornito contesto. Ma come possiamo dotare un agente di memoria a lungo termine senza saturare la finestra di contesto e senza ricorrere a pesanti e complessi database vettoriali esterni?  
+> Questa guida analizza l'architettura della memoria persistente di TSUKA: i concetti chiave, le scelte ingegneristiche, il funzionamento passo dopo passo e le lezioni apprese dagli errori commessi durante lo sviluppo.
 
 ---
 
-## 2. Quattro Tipi — Durabilità Graduata
+## 1. I Tre Livelli di Coscienza di un Agente
 
-Ogni fatto ha un `kind` che determina la sua priorità di eviction. Il sistema tratta i tipi come una scala di durabilità:
+Prima di analizzare formule e codice, è fondamentale distinguere i tre livelli di stato in un harness agentico:
 
-| Tipo | Peso | Priorità Eviction | Contenuto Tipico |
-|---|---|---|---|
-| `run` | 0 | Evictato **per primo** | Note di turno condensate, log di esecuzione intermedi |
-| `fatto` | 1 | Evictato secondo | Fatti osservati, snapshot di stato, contenuti di file |
-| `decisione` | 2 | Evictato terzo | Scelte architetturali, selezioni API, preferenze tool |
-| `lezione` | 3 | Evictato **per ultimo** | Lezioni apprese, anti-pattern, convenzioni permanenti |
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 1. Cronologia del Turno (RAM)                                               │
+│    • Ambito: Turno di conversazione corrente                                │
+│    • Ciclo di vita: Effimero (azzerato al riavvio, potato durante il turno) │
+│    • Scopo: Messaggi del ciclo ReAct (richieste utente, chiamate tool, log) │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ 2. Lavagna di Esecuzione / Blackboard (AsyncLocalStorage)                   │
+│    • Ambito: Singolo workflow multi-agente (/team o /goal)                  │
+│    • Ciclo di vita: Singola esecuzione (distrutta al termine del goal)      │
+│    • Scopo: Spazio condiviso per scambiare note intermedie tra gli agenti   │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ 3. Memoria Persistente a Lungo Termine (memory/memory.json)                 │
+│    • Ambito: Condivisa tra tutte le sessioni, i workspace e gli agenti      │
+│    • Ciclo di vita: Permanente (su disco, gestita da eviction a punteggio)  │
+│    • Scopo: Decisioni architetturali, convenzioni e lezioni apprese         │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
 
-**Razionale del design**: Quando un agente dice "abbiamo deciso di usare X invece di Y", quella è una `decisione` — dovrebbe sopravvivere alle note `run` che registravano il confronto. Quando un agente impara "non fare mai Z perché rompe W", quella è una `lezione` — dovrebbe sopravvivere il più a lungo possibile, perché ri-impararla costa token e tempo.
-
-Il tipo `run` viene tipicamente assegnato automaticamente dall'orchestratore degli obiettivi e dalla compressione della cronologia, mentre gli agenti assegnano `fatto`, `decisione` o `lezione` esplicitamente tramite il tool `save_memory`.
+### 💡 L'Errore Comune di Progettazione
+Un errore tipico quando si costruisce un harness è accumulare tutta la cronologia passata nel prompt di sistema.
+* **Il problema**: I modelli linguistici piccoli e locali (<30B parametri) soffrono di **"diluizione dell'attenzione"** (*attention dilution*): quando migliaia di token di log passati inondano il prompt, il modello si confonde, dimentica le istruzioni recenti e sbaglia i parametri dei tool.
+* **La regola architetturale**: I log transitori restano nella RAM di turno; le note di lavoro tra agenti restano nella Blackboard temporanea; solo la conoscenza solida e curata viene promossa nella Memoria Persistente.
 
 ---
 
-## 3. Scoping — Isolamento del Workspace con Fallthrough Globale
+## 2. La Scala della Memoria — Perché TSUKA adotta il Livello 3
+
+La memoria nei sistemi AI non è una soluzione unica, ma una **scala di compromessi** (*trade-offs*): ogni gradino superiore offre maggiore astrazione semantica a fronte di maggiore complessità architetturale, latenza e perdita di determinismo:
 
 ```
-┌───────────────────────────────────────┐
-│  GLOBAL_SCOPE ('globale')             │  ← visibile a TUTTI i workspace
-│  (lezione, decisione condivisibili)   │
-├───────────────────────────────────────┤
-│  Scope Workspace (slug derivato SHA1) │  ← visibile solo a questo progetto
-│  ('mioprogetto-a1b2c3d4')             │
-└───────────────────────────────────────┘
+Gradino 6: Grafi di Conoscenza Temporale (Zep, Mem0) ── Infrastruttura pesante, motori a grafo
+Gradino 5: Memoria Auto-Curata Continua (Letta)      ── LLM costantemente in loop per auto-editing
+Gradino 4: Vettori & RAG Semantico                  ── Richiede modelli di embedding e vector DB
+────────────────────────────────────────────────────────────────────────────────────────────────
+Gradino 3: Ranking Lessicale + Emivita (TSUKA)      ◄── ZERO dipendenze, 100% deterministico e locale
+────────────────────────────────────────────────────────────────────────────────────────────────
+Gradino 2: Sintesi Mobile (Rolling Summary)         ── Perde dettagli puntuali, costosa in prompt
+Gradino 1: Buffer Grezzo di Chat                    ── Esaurisce immediatamente la finestra di contesto
 ```
 
-### Come Funziona lo Scoping
+### Perché la scelta del Gradino 3?
 
-- **In scrittura**: `addFact()` assegna lo scope del workspace corrente per default, oppure `GLOBAL_SCOPE` se l'agente richiede esplicitamente `global: true`.
-- **In lettura**: `visibleFacts()` restituisce solo i fatti che corrispondono allo scope corrente **oppure** a `GLOBAL_SCOPE`.
-- **Filtro per source**: `filterBySource()` restringe ulteriormente la visibilità per nome dell'autore, ma **include sempre** i tipi condivisibili (`lezione` e `decisione`) indipendentemente dalla source — perché le lezioni e le decisioni sono intrinsecamente utili a ogni agente.
-
-### Perché Questo Conta
-
-Uno sviluppatore che lavora sul Progetto A non vuole vedere le note temporanee `run` del Progetto B che intasano il suo prompt. Ma se il Progetto B ha imparato una lezione permanente ("la modalità strict di TypeScript rompe X"), ogni progetto dovrebbe beneficiarne. Il sistema scope + tipo realizza questo senza richiedere agli agenti di curare manualmente cosa è condiviso.
-
----
-
-## 4. Deduplicazione in Scrittura
-
-**Problema**: Senza dedup, ripetere lo stesso fatto dieci volte consumerebbe dieci slot di eviction, a scapito della conoscenza reale.
-
-**Soluzione**: Prima dell'inserimento, `addFact()` calcola una chiave normalizzata:
-
-```typescript
-private static factKey(content: string, scope: string): string {
-  return `${scope} ${content.trim().replace(/\s+/g, ' ').toLowerCase()}`;
-}
-```
-
-Se esiste una chiave corrispondente, il fatto entrante viene **fuso** in quello esistente:
-
-- **Tipo**: elevato se il tipo entrante è più duraturo (es. `fatto` → `decisione`)
-- **Timestamp**: vince il più recente
-- **Hits**: sommati (un fatto ripetuto dieci volte è un fatto che è stato importante dieci volte)
-- **Tag**: unione di entrambi gli insiemi
-- **Pinned**: `true` si propaga (il pinning è unidirezionale)
-- **Summary**: vince il più recente
-
-Il tool `save_memory` rifiuta esplicitamente il contenuto duplicato — un chiamante che salta il summary è esattamente il chiamante a cui bisogna dire di fermarsi e pensarne uno.
-
----
-
-## 5. Ricerca e Retrieval — Scoring Keyword con Stemming
-
-### Normalizzazione dei Token
-
-Prima del matching, ogni parola passa attraverso la normalizzazione morfologica:
-
-```typescript
-function normalizeToken(token: string): string {
-  let s = token.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  if (s.length > 3) {
-    const last = s.charAt(s.length - 1);
-    if (last === 's' || FINAL_VOWELS.has(last)) {
-      s = s.slice(0, -1);  // rimuove 's' o vocale finale
-    }
-  }
-  return s;
-}
-```
-
-Questo è stemming leggero: "running" → "runn", "decisions" → "decision", "lessons" → "lesson". Non è Porter o Snowball — è intenzionalmente minimizzato, ottimizzato per il vocabolario tipico dei prompt di ingegneria software.
-
-### Scoring della Ricerca — BM25
-
-`search(query)` suddivide la query in keyword, normalizza ciascuna, scarta le stop-word
-funzionali, poi ordina ogni fatto visibile con **BM25** — la funzione di ranking
-lessicale standard, implementata in ~20 righe e senza dipendenze:
-
-```
-idf(t)   = ln(1 + (N - n(t) + 0.5) / (n(t) + 0.5))      N = fatti visibili, n(t) = fatti che contengono t
-score(f) = Σ  idf(t) × ( tf(t,f) × (k1 + 1) )
-           t∈q          -----------------------------------------
-                        tf(t,f) + k1 × (1 - b + b × len(f)/avgLen)
-
-k1 = 1.2   (saturazione della frequenza di termine)
-b  = 0.75  (normalizzazione per lunghezza del documento)
-```
-
-Dalla formula discendono tre proprietà, ed è per queste che BM25 ha sostituito il precedente
-scoring `matches × 1000 + bonus di coverage`:
-
-- **IDF — la rarità è peso.** Un token che tutti i fatti condividono non porta quasi segnale;
-  un token presente in un fatto su cento domina il ranking. È tutto il punto: una query trova
-  risposta grazie alle sue parole *discriminanti*, non a quelle più lunghe.
-- **Saturazione della frequenza (`k1`).** Ripetere una parola aiuta, ma con rendimenti
-  decrescenti. Dieci occorrenze non valgono dieci volte una — un fatto non può vincere
-  imbottendosi di keyword.
-- **Normalizzazione per lunghezza (`b`).** Un fatto breve che contiene un token batte uno
-  lungo che contiene lo stesso token: allungare il testo non viene premiato.
-
-Il **matching dei token** va oltre l'uguaglianza esatta: un token della query corrisponde
-anche quando è un **prefisso** di un token del fatto di lunghezza sufficiente (`mem` →
-`memoria`, `corsi` → `corso`). Viene usata solo la direzione in avanti — la direzione inversa
-(`TypeScript` che matcherebbe `type`) è esattamente il falso positivo OR che
-`test_memory_scope.ts` documenta come rumore, non recall. Il prefix match alimenta sia la
-frequenza di termine di un fatto sia la frequenza documentale dietro al suo IDF.
-
-Le **stop-word** (`the`, `di`, `per`, `che`, … in IN+IT) sono ignorate dal lato query, così
-`il server usa postgres` e `server postgres` sono query ugualmente specifiche. Le stop-word
-nel contenuto di un fatto non vengono mai rimosse — sono il suo contenuto, non rumore.
-
-**Hit e recency restano terziari**: intervengono solo a parità di punteggio BM25. I fatti con
-score zero (nessun token della query corrisposto) vengono scartati invece di essere restituiti
-con un punteggio debole, così una query non pertinente non restituisce nulla invece che rumore.
-
-### Auto-Tag
-
-Quando il chiamante **non** passa tag, `addFact` deriva fino a 5 tag automatici dal contenuto:
-i primi token significativi (niente stop-word, niente radici di 1–2 caratteri),
-conservando la parola originale ma deduplicando sulla forma normalizzata. Gli auto-tag
-confluiscono nello stesso haystack `content + tags` usato in ricerca.
-
-### Meccanica del Touch
-
-Quando `touch: true` (default), ogni fatto restituito da `search()` riceve:
-- `hits += 1`
-- `lastUsed = now`
-- `useOrder` aggiornato
-
-Questo crea un ciclo di feedback: i fatti frequentemente recuperati accumulano hit, che alza il loro score di eviction, che li fa sopravvivere più a lungo. Il sistema impara cosa conta in base a ciò che gli agenti effettivamente cercano.
-
----
-
-## 6. Motore di Eviction — Retention Basata su Score con Decadimento Temporale
-
-Quando `facts.length > maxFacts`, il store evicta il fatto non-pinned con il **score più
-basso**. Prima della competizione generale c'è un **passaggio di quota run**: le note
-`run` possono occupare al massimo il 30% di `maxFacts` durante un overflow, così un'esplosione
-di log di turno condensati non può mai affamare i tipi durevoli. La formula generale:
-
-```typescript
-evictionScore(fact, recencyRank, totalCandidates) {
-  const hitsScore  = Math.min(fact.hits, 20) / 20;
-  const kindScore  = KIND_WEIGHT[fact.kind] / 3;       // normalizzato a 0..1
-  const timeScore  = retentionDecay(fact) * 10;        // decay esponenziale, vedi sotto
-  const recencyScore = recencyRank / (totalCandidates - 1) * 2;
-  return kindScore * 100 + timeScore + recencyScore + hitsScore;
-}
-```
-
-**Decadimento temporale**: il valore di retention di un fatto erode esponenzialmente
-con un'**half-life per tipo** misurata da `lastUsed`:
-
-| Kind | Half-life | Significato |
+| Dimensione | RAG Vettoriale / Embedding (Gradino 4) | Lessicale + Emivita (TSUKA - Gradino 3) |
 |---|---|---|
-| `run` | 2 ore | scoped al turno, svanisce in fretta |
-| `fatto` | 48 ore | conoscenza generale |
-| `decisione` | 7 giorni | decisioni di progetto |
-| `lezione` | 30 giorni | insegnamenti duraturi |
+| **Dipendenze Esterne** | Richiede modello di embedding + librerie native vector DB | **Zero** (TypeScript puro + `node:fs`) |
+| **Latenza & Risorse** | 50–500ms per ogni embedding, RAM GPU/CPU aggiuntiva | **0ms**, scoring istantaneo su CPU |
+| **Ispezionabilità & Debug**| Vettori di numeri opachi, ranking difficile da verificare | File JSON in chiaro (`memory/memory.json`), `grep`-pabile |
+| **Affidabilità Locale** | Può fallire se il server di embedding va in crash | Totalmente autonomo, funziona sempre offline |
+| **Compromesso Accettato** | Riconosce parafrasi ("auto" = "automobile") | Cerca radici e prefissi esatti ("costruire", "costruzione") |
 
-Ogni successo di `search()` rinfresca `lastUsed`, così un fatto riusato è di nuovo giovane. I
-fatti pinned sono esentati dal decay (e dal set dei candidati), e `lezione` (100) supera
-sempre `run` (0).
-
-**Pesi delle componenti**:
-
-| Componente | Intervallo | Peso | Scopo |
-|---|---|---|---|
-| `kindScore × 100` | 0–100 | Dominante | Assicura che `lezione` superi sempre `run` |
-| `timeScore` | 0–10 | Secondario | 9 ore e 9 giorni ora differiscono — tempo effettivo, non solo ordine relativo |
-| `recencyScore` | 0–2 | Tie-break | Tra tipi uguali e stessa freschezza, l'ordine di ultimo uso |
-| `hitsScore` | 0–1 | Terziario | I fatti frequentemente recuperati ricevono un piccolo bonus |
-
-**Cosa viene evictato**: Il fatto con il composito score più basso. In pratica:
-1. Le note `run` oltre la quota, e le `run` con pochi hit (score ~0–10)
-2. I vecchi fatti `fatto` senza hit seguono (score ~10–15)
-3. I fatti `decisione` sopravvivono più a lungo (score ~20–30)
-4. I fatti `lezione` sopravvivono più a lungo di tutti (score ~30–100+)
-
-**I fatti pinned** non vengono mai evictati — sono esclusi dal set dei candidati.
+> 🔑 **Intuizione Chiave**: Nello sviluppo software e nell'ingegneria dei prompt, le ricerche riguardano quasi sempre **nomi di file esatti, identificatori, codici di errore, tecnologie e convenzioni specifiche** piuttosto che parafrasi poetiche. L'algoritmo BM25 combinato allo stemming morfologico copre circa il 90% delle reali esigenze con zero complessità infrastrutturale.
 
 ---
 
-## 7. Iniezione nei Prompt — Pipeline Dual-Ranking
+## 3. La Gerarchia di Durabilità (I 4 Livelli di Ricordo)
 
-TSUKA usa due metodi diversi per iniettare la memoria nei prompt, a seconda del contesto.
+Non tutti i ricordi hanno lo stesso valore nel tempo. Un errore di compilazione di dieci minuti fa diventa inutile una volta risolto, ma una convenzione architetturale (*"In PowerShell usa sempre UTF-8 senza BOM"*) deve durare per mesi.
 
-### `formatForPrompt(limit, maxChars, sources)` — Default
-
-Usato quando non è disponibile un task specifico (es. assemblaggio del prompt iniziale).
-
-1. Classifica tutti i fatti visibili per **valore di retention** (stessa formula dell'eviction)
-2. Seleziona i top N fatti (default: 10)
-3. Formatta ciascuno come `- [quando][BADGE] (source) contenuto`
-4. Limita a `maxChars` (default: 600)
-5. Aggiunge un hint su `recall_memory` se alcuni fatti sono stati omessi
-
-**Badge**: lo slot `[quando]` è `PINNED` per i fatti pinned, altrimenti la data
-compatta `YYYY-MM-DD`; lo slot `[BADGE]` è `LESSON` / `DECISION` / `FACT` / `RUN` in base al
-kind del fatto. I piccoli modelli locali sono pessimi a inferire tipo e freschezza da una
-frase nuda — il badge dà loro lo stesso segnale a colpo d'occhio, e la riga di memoria resta
-una singola riga scandibile.
-
-**Perché ranking per retention?** I fatti più importanti da proteggere dall'eviction sono
-anche i più importanti da mostrare in un prompt. Un fatto `lezione` con 15 hit dovrebbe
-apparire prima di una nota `run` con 0 hit.
-
-### `formatRelevant(taskText, limit, maxChars, sources)` — Consapevole del Task
-
-Usato quando è disponibile il testo del task utente (es. orchestratore `/goal`, `spawn_agent`).
-
-1. **Cerca** nella memoria con BM25 (§5) contro `taskText`
-2. Formatta i fatti corrispondenti con lo stesso template `- [quando][BADGE] (source) contenuto`
-3. Limita a `maxChars`
-
-**Trade-off**: Usa la rilevanza lessicale piuttosto che il valore di retention, quindi i fatti "più importanti" (per score di eviction) potrebbero non essere i "più rilevanti" (per punteggio BM25). Il sistema privilegia la **rilevanza contestuale** rispetto all'**importanza generale** quando un task specifico è noto.
-
-**L'iniezione non conta come uso**: questa ricerca gira con `touch: false`, quindi costruire un prompt non gonfia mai `hits` né aggiorna `lastUsed`. Lo fa solo una chiamata deliberata a `recall_memory`. Altrimenti ogni fatto iniettato a ogni turno risulterebbe perennemente "popolare" e il segnale d'uso dietro alla retention non significherebbe più nulla.
-
-### Quando Viene Usato Ciascuno
+TSUKA classifica i ricordi in **4 livelli di durabilità decrescente**:
 
 ```
-L'utente fornisce il testo del task? ──Sì──► formatRelevant(taskText)
-         │                                      (fatti rilevanti per keyword)
-         No
-         │
-         ▼
-    formatForPrompt()                    (fatti classificati per retention)
+        ▲  ┌───────────────────────────────┐
+        │  │  LEZIONE (Lesson)             │  Peso: 3 | Emivita: 30 giorni
+        │  │  "Mai disabilitare TLS"       │  (Regole d'oro, convenzioni permanenti)
+        │  ├───────────────────────────────┤
+        │  │  DECISIONE (Decision)         │  Peso: 2 | Emivita: 7 giorni
+        │  │  "Usiamo Vitest, non Jest"    │  (Scelte di architettura e librerie)
+        │  ├───────────────────────────────┤
+DURABILITÀ │  FATTO (Fact)                 │  Peso: 1 | Emivita: 48 ore
+        │  │  "Config in src/config.ts"    │  (Stato del sistema, snapshot ambiente)
+        │  ├───────────────────────────────┤
+        │  │  RUN (Run Note)               │  Peso: 0 | Emivita: 2 ore
+        │  │  "Passo 3 fallito con timeout"│  (Log transitori, i primi ad essere rimossi)
+        ▼  └───────────────────────────────┘
+```
+
+* **Protezione Quota Run**: Quando la memoria è piena (`maxFacts = 200`), i log di tipo `run` possono occupare al massimo il 30% dello spazio disponibile durante l'eviction, impedendo che un flusso intenso di lavoro cancelli le lezioni preziose.
+
+---
+
+## 4. Anatomia del Ciclo Vitale della Memoria (Sotto il Cofano)
+
+```
+                  ┌──────────────────────────────┐
+                  │ 1. Scrittura & Deduplica     │  Normalizzazione testo, auto-tagging, unione hits
+                  └──────────────┬───────────────┘
+                                 │
+                  ┌──────────────▼───────────────┐
+                  │ 2. Ricerca & Recupero        │  Ranking BM25 + stemming morfologico
+                  └──────────────┬───────────────┘
+                                 │
+                  ┌──────────────▼───────────────┐
+                  │ 3. Invecchiamento & Eviction │  Decadimento esponenziale a emivita; touch ringiovanisce
+                  └──────────────┬───────────────┘
+                                 │
+                  ┌──────────────▼───────────────┐
+                  │ 4. Iniezione nel Prompt      │  Task-Aware (BM25) vs Generale (Retention Score)
+                  └──────────────────────────────┘
 ```
 
 ---
 
-## 8. Tool — API per gli Agenti
+### Passo 1: Scrittura, Normalizzazione e Deduplica
 
-### `save_memory` (riskLevel: SAFE)
-
-| Parametro | Tipo | Obbligatorio | Descrizione |
-|---|---|---|---|
-| `content` | string | sì | Testo completo del fatto (max 500 char) |
-| `summary` | string | no | Etichetta breve (max 72 char — come un subject di commit); derivata automaticamente dal contenuto se omessa |
-| `kind` | string | no | Token kind inglese: `facts` / `run` / `decision` / `lesson` (default `facts`) |
-| `global` | boolean | no | Se `true`, salva in `GLOBAL_SCOPE` |
-
-**Comportamento**: Aggiunge il fatto dopo aver mappato il token kind inglese sul kind interno
-dello store, deduplica contro gli entry esistenti, evicta se supera la capacità, persiste su
-disco.
-
-**Perché il summary è opzionale?** È passato per tre fasi, e quella intermedia vale la pena
-conoscerla. All'inizio il summary non esisteva affatto: gli elenchi troncavano `content` a ~40
-caratteri e, poiché la maggior parte dei fatti condivide un prefisso lungo (`[Goal] `,
-`AGENTE: `, …), la parte che avrebbe distinto due voci era esattamente quella tagliata — ogni
-riga sembrava uguale alle altre. La prima correzione rese `summary` **obbligatorio**, costringendo
-il chiamante a scrivere un'etichetta distinta. Funzionava, ma rifiutava salvataggi per il resto
-validi per via di un campo mancante. Oggi la derivazione (`deriveSummary`) è deterministica e
-riconosce per primi i formati propri del sistema, così un chiamante che omette il summary ottiene
-comunque un'etichetta significativa invece di un troncamento. Chi ne scrive una propria viene
-semplicemente limitato a 72 caratteri a valle — mai una seconda policy di rifiuto.
-
-### `recall_memory` (riskLevel: SAFE)
-
-| Parametro | Tipo | Obbligatorio | Descrizione |
-|---|---|---|---|
-| `query` | string | no | Parole chiave da cercare (ranking BM25, prefix match) |
-| `limit` | number | no | Max risultati (default 10, max 50) |
-
-**Comportamento**: Se `query` è fornita, esegue ricerca keyword. Altrimenti, restituisce i fatti più recenti. Incrementa `hits` e aggiorna `lastUsed` per tutti i fatti restituiti (a meno che `touch` non sia `false`).
-
-### `update_memory` (riskLevel: SAFE)
-
-| Parametro | Tipo | Obbligatorio | Descrizione |
-|---|---|---|---|
-| `id` | string | sì | Id del fatto da modificare (da `save_memory` / `recall_memory`) |
-| `content` | string | no | Nuovo testo del fatto (max 500 char) |
-| `summary` | string | no | Nuova etichetta breve |
-| `kind` | string | no | Token kind inglese, come in `save_memory` |
-| `tags` | string[] | no | Tag extra uniti a quelli esistenti del fatto |
-
-**Comportamento**: Modifica il fatto in place, rinfresca `timestamp`/`lastUsed`,
-riesegue la regola di dedup (una modifica che rende un fatto duplicato di un altro li
-collassa invece di accumularli) e persiste. Risponde con JSON `{ ok, id, summary, kind,
-content, tags }`.
-
-### `forget_memory` (riskLevel: SAFE)
-
-| Parametro | Tipo | Obbligatorio | Descrizione |
-|---|---|---|---|
-| `id` | string | sì | Id del fatto da rimuovere |
-
-**Comportamento**: Rimuove definitivamente il fatto e risponde con JSON
-`{ ok, removed: id }`. Lancia un errore esplicito quando l'id non esiste.
+Quando un agente chiama `save_memory`:
+1. **Sicurezza Atomica su Disco**: Scrivere direttamente su `memory.json` rischia di corrompere il file se il processo viene interrotto a metà. TSUKA scrive su un file temporaneo (`memory.json.tmp`) ed esegue una **rinomina atomica a livello di filesystem**. Se il file viene trovato corrotto, i byte vengono salvati in `memory.json.corrupt-<timestamp>` prima di ripartire puliti.
+2. **Deduplicazione Normalizzata**: Prima di salvare, il sistema genera una chiave normalizzata:
+   ```typescript
+   key = `${scope} ${content.trim().replace(/\s+/g, ' ').toLowerCase()}`
+   ```
+3. **Unione Intelligente (*Smart Merge*)**: Se il ricordo esiste già:
+   - Aggiorna il tipo di durabilità se il nuovo è superiore (es. `fatto` $\to$ `decisione`).
+   - Incrementa il contatore `hits` del ricordo esistente (un concetto registrato più volte è un concetto che ha valore).
+   - Aggiorna i timestamp e unisce i tag.
+4. **Auto-Tagging**: Se l'agente non specifica tag, il motore estrae fino a 5 parole chiave significative dal testo, ignorando le stop-words.
 
 ---
 
-## 9. Configurazione
+### Passo 2: Ricerca Intelligente con BM25 e Stemming
 
-| Impostazione | Default | Descrizione |
-|---|---|---|
-| `memoryMaxFacts` | 200 | Numero massimo di fatti prima che scatti l'eviction |
-| `memoryMaxChars` | 600 | Numero massimo di caratteri iniettati nel system prompt |
+Quando gli agenti cercano nella memoria con `recall_memory(query)`:
 
-Manopole comportamentali (non chiavi di configurazione, parte del motore):
+#### 1. Stemming Morfologico
+Le parole vengono ricondotte alla loro radice base (es. `"funzioni"` $\to$ `"funzion"`, `"running"` $\to$ `"runn"`). Questo permette a ricerche in italiano e inglese di intercettare singolari, plurali e coniugazioni.
 
-- **Decadimento temporale**: half-life per tipo (2 h / 48 h / 7 g / 30 g), vedi §6 — rileggere un fatto lo rinfresca.
-- **Quota run**: i fatti `run` possono riempire al massimo il 30% di `maxFacts` durante un overflow, §6.
+#### 2. Principi del Ranking BM25 (Best Matching 25)
+Invece di un banale controllo di sottostringa, BM25 applica tre principi matematici intuitivi:
+* **Rarità dei Termini (IDF)**: Le parole comuni contano pochissimo; i termini rari e distintivi (es. `"OAuth"`, `"PostgreSQL"`, `"deadlock"`) dominano il punteggio.
+* **Saturazione di Frequenza**: Ripetere una parola 10 volte non decuplica il punteggio. BM25 applica rendimenti decrescenti, neutralizzando lo "spam" di parole chiave.
+* **Normalizzazione della Lunghezza**: Una nota sintetica di 20 parole che contiene il termine cercato ottiene un punteggio superiore rispetto a un paragrafo di 500 parole in cui la parola compare per caso.
 
-Configurabile via `tsuka.config.json`:
+---
 
+### Passo 3: Invecchiamento Biologico & Eviction
+
+Quando la memoria supera la capienza massima (`maxFacts = 200`), il sistema elimina il ricordo non bloccato con il punteggio più basso:
+
+```
+                                  FORMULA DEL PUNTEGGIO DI EVICTION
+  
+  Score = (Peso_Durabilità × 100) + (Decadimento_Tempo × 10) + TieBreak_Recente + Bonus_Hits
+                 ▲                             ▲
+                 │                             │
+         Fattore dominante:           Erosione esponenziale
+        Lezione batte sempre           in base all'emivita
+            i log di Run                (2h, 48h, 7g, 30g)
+```
+
+#### Il Meccanismo del "Touch" (Principio Hebbiano: *"Ciò che si usa, si rafforza"*)
+* Quando un ricordo viene restituito da `recall_memory(query)`, il sistema lo **tocca** (*touch*):
+  - Incrementa `hits` di 1.
+  - Aggiorna il timestamp `lastUsed` a **ora**.
+* **Effetto**: I ricordi consultati spesso rimangono sempre "giovani" e immuni all'eviction. I ricordi mai richiamati decadono naturalmente e vengono rimossi.
+* **Ricordi Fissati (`pinned: true`)**: I fatti contrassegnati come fissati sono permanentemente esenti da decadimento ed eliminazione.
+
+---
+
+### Passo 4: Iniezione nel Prompt (Strategia a Doppio Binario)
+
+Come arrivano i ricordi all'interno del prompt dell'agente?
+
+```
+È noto l'obiettivo/task specifico dell'utente?
+   │
+   ├── SÌ ──► Iniezione Contestuale al Task (formatRelevant)
+   │          Cerca con BM25 i ricordi rilevanti per il compito attuale.
+   │          (Importante: questa ricerca NON altera gli hits, evitando falsa popolarità).
+   │
+   └── NO ──► Iniezione per Rilevanza Globale (formatForPrompt)
+              Inietta i ricordi più importanti e duraturi (Lezioni e Decisioni).
+```
+
+Ogni ricordo viene formattato con badge compatti leggibili immediatamente dai modelli leggeri:
+```text
+- [2026-08-15][LESSON] (security_auditor) Mai disabilitare la verifica dei certificati TLS negli script di produzione.
+- [2026-08-16][DECISION] (architect) Tutti i tool personalizzati devono restituire stringhe JSON strutturate.
+```
+
+---
+
+## 5. Strumenti Operativi per gli Agenti
+
+Gli agenti interagiscono con la memoria persistente tramite 4 tool nativi:
+
+### `save_memory`
+Salva un nuovo fatto, decisione o lezione nella base di conoscenza.
 ```json
 {
-  "memoryMaxFacts": 200,
-  "memoryMaxChars": 600
+  "content": "Windows PowerShell richiede codifica UTF-8 esplicita per gestire caratteri non-ASCII nei pipe.",
+  "summary": "Regola codifica UTF-8 in PowerShell",
+  "kind": "lesson"
+}
+```
+
+### `recall_memory`
+Cerca nella memoria con algoritmo BM25 e rinfresca la giovinezza del ricordo.
+```json
+{
+  "query": "PowerShell codifica pipe"
+}
+```
+
+### `update_memory`
+Aggiorna o arricchisce un ricordo già salvato.
+```json
+{
+  "id": "mem_j8x19",
+  "content": "Regola aggiornata: PowerShell 7 supporta UTF-8 nativamente; Windows PowerShell 5.1 necessita di chcp 65001.",
+  "kind": "lesson"
+}
+```
+
+### `forget_memory`
+Elimina definitivamente un ricordo obsoleto o errato specificandone l'ID.
+```json
+{
+  "id": "mem_j8x19"
 }
 ```
 
 ---
 
-## 10. Il Panorama della Memoria — Dove Si Colloca TSUKA
+## 6. Errori di Sviluppo & Lezioni Apprese
 
-> Questo progetto è uno strumento didattico, e questa sezione è la lezione. La memoria degli
-> agenti non è una cosa sola: è una **scala**, e ogni livello scambia determinismo e
-> auto-sufficienza con capacità. TSUKA si ferma a un livello specifico **apposta** — lo scopo di
-> questa sezione è mostrare l'intera scala, indicare quale livello abbiamo scelto e perché, e
-> nominare i limiti che accettiamo.
+La creazione di questo sistema ha fatto emergere diverse insidie pratiche:
 
-### La Scala
+### ⚠️ Errore 1: Salvare automaticamente ogni output nella memoria a lungo termine
+* **Cosa accadeva**: Nelle prime versioni, ogni risposta di un tool veniva salvata in `memory.json`.
+* **La conseguenza**: La memoria si riempiva rapidamente di frammenti di codice e log di errore temporanei, spazzando via le vere decisioni architetturali dopo poche ore.
+* **La soluzione**: La memoria deve essere curata. Solo le lezioni esplicite, le convenzioni e i fatti stabili appartengono alla memoria persistente.
 
-| Livello | Approccio | Sistemi rappresentativi | Cosa aggiunge rispetto al livello sotto | Cosa costa |
-|---|---|---|---|---|
-| 1 | Trascrizione grezza | LangChain `ConversationBufferMemory` | Richiamo verbatim | Limitato dalla context window; dimentica man mano che scorre |
-| 2 | Riepilogo a scorrimento | LangChain `ConversationSummaryMemory` | Condensa la trascrizione | Perde dettagli; il riepilogo è generato dal modello |
-| 3 | **Fatti lessicali + scoring** | **TSUKA** | Persistenza cross-sessione, dedup, eviction, time-decay | Abbina *parole*, non *significato* |
-| 4 | Retrieval vettoriale / semantico | RAG, LangChain vector retriever, LlamaIndex | Recupera per *significato* (sinonimi, parafrasi) | Modello di embedding + vector store; scoring opaco |
-| 5 | Gerarchia di memoria + self-editing | MemGPT / Letta | Il modello scrive, modifica e dimentica la propria memoria | LLM nel loop; meno deterministico |
-| 6 | Knowledge graph temporale | Zep | Entità + relazioni + tempo; decay e query temporali | Graph store; infrastruttura più pesante |
-| 7 | Grafo gestito + semantico | Mem0 | Embedding + grafo + estrazione entità, spesso SaaS | Dipendenza esterna |
+### ⚠️ Errore 2: Lasciare che l'iniezione nel prompt ringiovanisse i ricordi
+* **Cosa accadeva**: Ogni volta che un ricordo veniva inserito nel prompt iniziale, il suo contatore `hits` aumentava e la sua data veniva aggiornata.
+* **La conseguenza**: I primi 10 ricordi inseriti nel progetto diventavano eterni perché venivano inclusi all'avvio di ogni turno, impedendo a nuove lezioni di emergere.
+* **La soluzione**: L'iniezione nel prompt usa `touch: false`. Solo le ricerche esplicite e consapevoli degli agenti (`recall_memory`) contano come reale utilizzo.
 
-Ogni livello è un sovrainsieme dell'idea sottostante, e ciascuno è ciò che un sistema reale fa
-in produzione.
-
-### Cosa comprano i livelli più alti che TSUKA non ha
-
-- **Retrieval semantico** (livello 4+). "Abbiamo deciso di usare React" e "scelta del framework
-  frontend" non condividono alcun token, quindi `search()` di TSUKA non li collegherà; un
-  modello di embedding sì, perché significano la stessa cosa. Questo è il divario più grande.
-- **Ragionamento sulle relazioni** (livello 6+). "Il modulo A dipende da B" e "B è stato rimosso"
-  sono due fatti scollegati in uno store piatto; un knowledge graph attraversa l'arco e deduce
-  "A è ora rotto". TSUKA archivia fatti, non archi.
-- **Self-editing autonomo** (livello 5). Letta mantiene la propria memoria: decide cosa
-  promuovere nel system prompt e cosa archiviare. TSUKA espone `update_memory`/`forget_memory`
-  (§8) e lascia la *decisione* al modello — un primo, deliberato passo su questo livello, ma non
-  il loop completo.
-- **Query temporali** (livello 6). Zep può rispondere a "quando siamo passati da X a Y?" perché il
-  tempo è una dimensione di prima classe. TSUKA ha timestamp e decay con half-life (§6), ma
-  nessun indice sul tempo.
-
-### Perché TSUKA si ferma al livello 3
-
-| Fattore | Livello 3 (lessicale, questo repo) | Livello 4+ (vettoriale / grafo / gestito) |
-|---|---|---|
-| **Dipendenze** | Zero (solo `node:fs`) | Modello di embedding + store vettoriale/grafo |
-| **Latenza e costo** | 0ms, CPU, nessun token | Chiamata di embedding + lookup indice |
-| **Determinismo** | Totalmente ispezionabile, `grep`-abile | Dipendente dal modello, opaco |
-| **Offline / local-first** | Sì, per costruzione | Spesso richiede un servizio o un modello più pesante |
-| **Modalità di guasto** | Perde sinonimi e parafrasi | Deriva semantica silenziosa, più difficile da debuggare |
-
-Per un harness locale che esegue modelli piccoli (<30B) senza servizi esterni, il livello 3 è il
-**più alto raggiungibile senza rinunciare al determinismo**. Questo è il trade-off — e nominarlo
-è il punto: un vector store non è "migliore", è *diverso*, e compra il recall semantico al costo
-di opacità e dipendenza.
-
-### Cosa il livello 3 fa comunque bene
-
-Due idee sono prese in prestito dai livelli più alti e implementate senza il loro costo:
-
-- **Il time decay** è l'intuizione centrale del livello 6 (i fatti erodono con l'età), ridotta a
-  una half-life per tipo (§6).
-- **La retention guidata dall'uso** — il ciclo `hits` + `lastUsed` — fa sì che i fatti che gli
-  agenti cercano davvero diventino più duraturi. Il sistema si auto-organizza dall'atto di
-  cercare, senza intelligenza esterna (§5, Meccanica del Touch).
-
----
-
-## 11. Punti di Integrazione
-
-La memoria è intrecciata in tutto il ciclo di vita di TSUKA:
-
-| Componente | Come Usa la Memoria |
-|---|---|
-| **`agent.ts`** | Persiste la cronologia compressa del turno come fatti `run`; salva le tracce di ragionamento |
-| **`goal.ts`** | Memorizza i riepiloghi dell'orchestratore degli obiettivi come `fatto` con source `goal_orchestrator` |
-| **`spawnAgent.ts`** | Passa `memorySources` ai sub-agenti per visibilità scoped |
-| **`shared.ts` (CLI)** | Inietta la memoria nel system prompt via `formatForPrompt` / `formatRelevant` |
-| **Modal TUI** | Il modale ispettore della memoria elenca i fatti con tipo, source e data |
-| **Comando `/memory`** | Comando CLI per elencare, cercare e cancellare la memoria persistente |
-| **`save_memory`/`recall_memory`/`update_memory`/`forget_memory`** | I quattro tool che gli agenti usano per leggere e scrivere lo store |
-
----
-
-## 12. Un Percorso di Apprendimento Oltre Questo Design
-
-La scala del §10 è anche un programma di studi. Se vuoi portare TSUKA su di un livello alla
-volta, questa è la rotta, ordinata per valore/costo:
-
-> **Il passo 1 di questa lista è già stato fatto.** La ponderazione BM25 / TF-IDF è quella che
-> il §5 ora documenta — ancora lessicale, ancora zero dipendenze, ancora deterministica, ma con
-> ogni token pesato per quanto è *discriminante* nell'intero store. Quella che segue è la rotta
-> da qui in avanti.
-
-1. **Embedding locali, opzionali (livello 4).** Aggiungere un percorso di embedding opzionale con
-   un modello locale (es. `nomic-embed-text` via Ollama) e similarità coseno. Mantiene il sistema
-   offline; trasforma il retrieval da "spelling" a "significato".
-2. **Retrieval ibrido (il meglio di 3 + 4).** Unire i ranking lessicale e semantico con la
-   reciprocal rank fusion, la ricetta standard del RAG di produzione, così un match per sinonimo
-   e un match per keyword esatta emergono entrambi.
-3. **Knowledge graph (livello 6).** Archiviare entità e relazioni come archi, abilitando il
-   ragionamento multi-hop "cosa dipende da cosa".
-4. **Memoria self-editing (livello 5).** Una divisione stile Letta tra una "core" memory piccola
-   tenuta nel system prompt e uno store "archiviale" che il modello gestisce da sé.
-
-Ogni passo è una lezione a sé stante; l'harness esiste per insegnarle, non per raggiungere la
-cima.
-
----
-
-## Sintesi
-
-Il sistema di memoria di TSUKA è progettato attorno a tre principi:
-
-1. **Gerarchia di durabilità**: non tutti i fatti sono uguali — le lezioni sopravvivono alle decisioni, che sopravvivono alle osservazioni, che sopravvivono alle note di sessione
-2. **Deduplicazione in scrittura**: un fatto detto dieci volte è un fatto che è stato importante dieci volte, non dieci fatti
-3. **Retention guidata dall'uso**: l'atto di recuperare un fatto lo rende più duraturo, creando un archivio di conoscenza che si auto-organizza
-
-Questo non è un database vettoriale generico. Letto con il §10 e il §12, è una sosta deliberata
-su una scala più ampia: un layer di memoria *lessicale*, *zero-dipendenza* e *deterministico* —
-il livello più alto che non sacrifica l'ispezionabilità — e una mappa dei livelli sopra di esso
-(retrieval semantico, knowledge graph, memoria self-editing) che altri sistemi già occupano.
+### ⚠️ Errore 3: Usare la memoria come sostituto del filesystem
+* **Cosa accadeva**: Gli agenti tentavano di salvare interi file sorgente con `save_memory`.
+* **La conseguenza**: Saturazione immediata del limite di caratteri e peggioramento delle capacità di ragionamento dell'LLM.
+* **La soluzione**: Il filesystem del workspace è l'unica sorgente di verità per il codice; la memoria persistente serve esclusivamente per **meta-conoscenza, regole e convenzioni**.

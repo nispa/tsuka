@@ -1,40 +1,41 @@
-# Portale di Documentazione TSUKA 📖
+# Portale Documentale Didattico di TSUKA 📖
 
 <div align="right">
   <p>Read in <a href="README.md">🇬🇧 English</a></p>
 </div>
 
-Benvenuto nel portale della documentazione tecnica di **TSUKA**. Qui troverai le specifiche architetturali, i workflow multi-agente, le linee guida di sicurezza e i casi d'uso pratici del framework.
+Benvenuto nel portale documentale didattico di **TSUKA**. TSUKA è un harness multi-agente deterministico, pedagogico e ultra-leggero scritto in TypeScript.  
+Questo portale è strutturato per spiegare **come funzionano davvero i sistemi agentici sotto il cofano**, analizzando le scelte architetturali, i compromessi ingegneristici e gli errori pratici risolti durante lo sviluppo.
 
 ---
 
-## 🗂️ Sezioni della Documentazione
+## 🗂️ Moduli Didattici
 
-### 1. [Architettura di Sistema](architecture-it.md)
-* Approfondisci il funzionamento del **ciclo ReAct deterministico**, l'**auto-discovery dinamico dei tool** (`src/tools/impl/*.ts`), la selezione adattiva degli strumenti tramite **Capability Fingerprinting** e il disaccoppiamento I/O tramite `logSink`.
+### 1. [Sistema di Memoria Persistente](memory-it.md) 🧠
+* Comprendi i **3 livelli di coscienza dell'agente** (RAM di turno, Blackboard di workflow, Memoria persistente), la **Scala della Memoria**, la gerarchia delle **4 durabilità** (Lezioni > Decisioni > Fatti > Run) e il funzionamento dell'algoritmo BM25 combinato al decadimento temporale a zero dipendenze.
 
-### 2. [Workflow Multi-Agente e Collaborazione](multi-agent-it.md)
-* Scopri la meccanica dei dibattiti collegiali (`/call`), i workflow collaborativi su filesystem condiviso (`/team`) con 4 strategie operative e l'orchestratore dinamico di obiettivi (`/goal`) con esecuzione parallela isolata.
+### 2. [Architettura di Sistema](architecture-it.md) 🏛️
+* Scopri il **ciclo ReAct deterministico**, l'**auto-discovery a caldo dei tool** (`src/tools/impl/*.ts`), la calibrazione del budget di token e il disaccoppiamento I/O basato su eventi.
 
-### 3. [Casi d'Uso Pratici](use-cases-it.md)
-* Esempi concreti di prompt ed esecuzione per tutti i 24 personaggi/agenti, i 21 ruoli e i 10 team preconfigurati (Krea2, social media, copywriting, traduzione, analisi dati, SEO, DevOps, sicurezza e OSINT).
+### 3. [Guida Didattica — Costruire un Harness Agentico da Zero](guida-didattica.md) 🎓
+* Il percorso completo in 10 tappe per costruire un harness agentico, con l'analisi dettagliata delle 10 insidie reali riscontrate sul campo.
 
-### 4. [Framework di Sicurezza e Permessi](security-it.md)
-* Dettagli sul gestore dei permessi **User-in-the-Loop** (`SAFE`, `RESTRICTED`, `DANGEROUS`), la sandbox di filesystem (`workspaceRoot`), l'isolamento dei tool utente (`create_tool`) e il tracciamento deterministico delle fonti web.
+### 4. [Workflow Multi-Agente & Collaborazione](multi-agent-it.md) 👥
+* Analisi dei dibattiti strutturati (`/call`), dei team collaborativi (`/team`) e dell'orchestratore di obiettivi (`/goal`) con staging parallelo isolato.
 
-### 5. [Sistema di Memoria Persistente](memory-it.md) 🧠
-* Approfondimento del **motore di eviction basato su score**, la deduplicazione in scrittura, la ricerca keyword con stemming morfologico, i quattro tipi di durabilità e il razionale architetturale di un layer di memoria JSON a zero dipendenze.
+### 5. [Sicurezza & Framework dei Permessi](security-it.md) 🛡️
+* Approfondimento sulla gestione dei permessi **User-in-the-Loop** (`SAFE`, `RESTRICTED`, `DANGEROUS`), confinamento del workspace (`resolveSafePath`), sandboxing dei tool dinamici (`node:vm`) e analisi statica del codice (SAST).
 
-### 6. [Guida Didattica — Costruire un harness agentico](guida-didattica.md) 🎓
-* Il percorso completo in 10 tappe per costruire da zero un harness agentico moderno: ciclo ReAct, tool plugin, budgeting del contesto, streaming live ANSI e gestione dei modelli locali con le 10 trappole ingegneristiche reali.
+### 6. [Capability Fingerprinting & Benchmark](benchmark-it.md) 📊
+* Come `/benchmark` misura empiricamente l'accuratezza dei modelli locali nel tool-calling per calibrare dinamicamente i tool attivi.
 
-### 7. [Capability Fingerprinting & Benchmark](benchmark-it.md) 📊
-* Come `/benchmark` misura aderenza alle istruzioni, conformità JSON e tool-calling, il DSL dei test basato su file, punteggi e derivazione del tier, e lo sweep dei livelli di reasoning-effort.
+### 7. [Casi d'Uso Pratici & Ricette](use-cases-it.md) 💼
+* Esempi pratici e prompt operativi per tutti i 24 personaggi, 21 ruoli e 10 team preconfigurati.
 
 ---
 
-## 🏗️ Principi Guida di Design
+## 🏗️ Principi Didattici Fondamentali
 
-* **Configurazioni puramente dichiarative**: Ruoli, tratti, personaggi e team sono memorizzati come file JSON esterni. È possibile personalizzare o creare nuovi agenti senza modificare il codice sorgente.
-* **Overhead minimo di contesto**: L'harness monta dinamicamente solo le istruzioni e i tool autorizzati per il ruolo attivo, preservando la context window dell'LLM.
-* **Sicurezza al primo posto**: I comandi potenzialmente distruttivi (es. esecuzione di script shell) richiedono sempre l'autorizzazione esplicita dell'utente.
+* **Zero Magia, Massimo Determinismo**: L'LLM propone; il codice deterministico governa e valida.
+* **Ispezionabile & Autonomo**: File JSON in chiaro, nessun database vettoriale opaco, esecuzione 100% locale.
+* **Imparare dagli Errori**: Ogni modulo è nato per risolvere uno specifico problema pratico emerso durante i test.

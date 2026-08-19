@@ -4,7 +4,7 @@
   <p>Leggi in <a href="architecture-it.md">🇮🇹 Italiano</a></p>
 </div>
 
-> This document describes the technical architecture, design principles, and modular structure of the **TSUKA** framework (v0.5.1). For codebase contribution guidelines, see [`AGENTS.md`](../AGENTS.md); for completed and upcoming task backlogs, see [`TASKS.md`](../TASKS.md).
+> This document describes the technical architecture, design principles, and modular structure of the **TSUKA** framework (v0.5.5). For codebase contribution guidelines, see [`AGENTS.md`](../AGENTS.md); for completed and upcoming task backlogs, see [`TASKS.md`](../TASKS.md).
 >
 > 📊 **System Metrics**: 30 tools · 20 REPL commands · 24 core modules · 21 roles · 9 traits · 24 characters (agents) · 10 preconfigured teams · 74 automated test suites · Dual CLI & TUI interfaces.
 

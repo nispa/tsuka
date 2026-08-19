@@ -1,40 +1,41 @@
-# TSUKA Documentation Portal 📖
+# TSUKA Educational Documentation Portal 📖
 
 <div align="right">
   <p>Leggi in <a href="README-it.md">🇮🇹 Italiano</a></p>
 </div>
 
-Welcome to the **TSUKA** technical documentation system. This portal covers the design, architecture, multi-agent workflows, and safety features of this lightweight, dynamic agentic harness for Windows, Linux, and macOS.
+Welcome to the **TSUKA** educational documentation portal. TSUKA is a pedagogical, lightweight, and deterministic multi-agent harness built in TypeScript.  
+This portal is designed to explain **how modern agentic systems work under the hood**, exploring architectural decisions, engineering trade-offs, and lessons learned from real-world development mistakes.
 
 ---
 
-## 🗂️ Documentation Sections
+## 🗂️ Educational Modules
 
-### 1. [System Architecture](architecture.md)
-* Learn about the **deterministic ReAct cycle**, dynamic **tool auto-discovery** (`src/tools/impl/*.ts`), adaptive tool selection via **Capability Fingerprinting**, and event-driven I/O decoupling.
+### 1. [Persistent Memory System](memory.md) 🧠
+* Master the **3 tiers of agent state** (Turn RAM, Run Blackboard, Persistent Memory), the **Memory Ladder** trade-offs, the **4 durability kinds** (Lessons > Decisions > Facts > Runs), and how BM25 lexical ranking and half-life decay operate with zero external dependencies.
 
-### 2. [Multi-Agent & Collaboration Workflows](multi-agent.md)
-* Understand conference debates (`/call`), collaborative shared-filesystem teams (`/team`) across 4 strategies, and the dynamic goal orchestrator (`/goal`) with isolated parallel execution.
+### 2. [System Architecture](architecture.md) 🏛️
+* Explore the **deterministic ReAct cycle**, dynamic **tool auto-discovery** (`src/tools/impl/*.ts`), token budget calibration, and event-driven I/O decoupling.
 
-### 3. [Practical Use Cases](use-cases.md)
-* Concrete recipes and prompts across all 24 characters/agents, 21 roles, and 10 preconfigured teams (Krea2, social media, copywriting, translation, data analysis, SEO, DevOps, security, and OSINT).
+### 3. [Educational Guide — Building an Agentic Harness from Scratch](educational-guide.md) 🎓
+* The full 10-milestone curriculum covering how to build an agent harness from the ground up, highlighting the 10 critical engineering traps.
 
-### 4. [Security & Permissions Framework](security.md)
-* Deep dive into the **User-in-the-Loop** permission manager (`SAFE`, `RESTRICTED`, `DANGEROUS`), filesystem jail (`workspaceRoot`), dynamic tool sandboxing, and deterministic web source logging.
+### 4. [Multi-Agent & Collaboration Workflows](multi-agent.md) 👥
+* Understand structured debates (`/call`), collaborative teams (`/team`), and the dynamic goal orchestrator (`/goal`) with isolated parallel staging sandboxes.
 
-### 5. [Persistent Memory System](memory.md) 🧠
-* Deep dive into the **score-based eviction engine**, write-time deduplication, keyword search with morphological stemming, the four durability kinds, and the architectural rationale for a zero-dependency JSON memory layer.
+### 5. [Security & Permissions Framework](security.md) 🛡️
+* Deep dive into the **User-in-the-Loop** permission manager (`SAFE`, `RESTRICTED`, `DANGEROUS`), workspace jailing (`resolveSafePath`), dynamic tool sandboxing (`node:vm`), and static code auditing.
 
-### 6. [Educational Guide — Building an Agentic Harness](educational-guide.md) 🎓
-* The full 10-milestone curriculum to building a modern agentic harness from scratch: ReAct loop, tool plugins, context budgeting, live ANSI streaming, and the 10 real-world engineering traps.
+### 6. [Capability Fingerprinting & Benchmarks](benchmark.md) 📊
+* How `/benchmark` empirically measures small-model tool-calling accuracy, driving dynamic active tool set selection.
 
-### 7. [Capability Fingerprinting & Benchmarks](benchmark.md) 📊
-* How `/benchmark` measures instruction-following, JSON compliance and tool-calling, the file-driven test DSL, scoring and tier derivation, and the reasoning-effort sweep.
+### 7. [Practical Use Cases & Recipes](use-cases.md) 💼
+* Concrete recipes and prompts across 24 characters, 21 roles, and 10 preconfigured collaborative teams.
 
 ---
 
-## 🏗️ High-Level Design Principles
+## 🏗️ Core Pedagogical Principles
 
-* **Purely Declarative Configurations**: Roles, traits, characters, and teams are stored as external JSON files. Modify or create new agents without touching application source code.
-* **Low Startup Context Overhead**: The harness dynamically mounts only instructions and tools authorized for the active role, saving token capacity and reducing hallucinations.
-* **Safety First**: Destructive actions (such as arbitrary shell execution) always require explicit user approval.
+* **Zero Magic, Pure Determinism**: The LLM proposes; deterministic code decides and governs.
+* **Inspectable & Self-Contained**: Plain JSON configs, no opaque vector databases, full local-first execution.
+* **Learning from Errors**: Every feature exists to solve a concrete failure mode identified during testing.

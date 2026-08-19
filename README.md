@@ -13,35 +13,35 @@
 ![TSUKA logo](assets/logo.png)
 
 ### **TypeScript Unified Kit for Agents**
-*Deterministic, ultra-lightweight multi-agent CLI & full-screen TUI harness in TypeScript.*
+*Deterministic, transparent multi-agent CLI & full-screen TUI harness in TypeScript.*
 
-[🇬🇧 English](README.md) · [🇮🇹 Leggi in Italiano](README-it.md) · [📚 Wiki](https://github.com/nispa/tsuka/wiki/Home)
+[🇬🇧 English](README.md) · [🇮🇹 Leggi in Italiano](README-it.md) · [📚 Educational Wiki](docs/README.md)
 
 </div>
 
 ---
 
-**TSUKA** is a deterministic, lightweight multi-agent harness and interactive CLI/TUI written in TypeScript. It connects to local LLM engines (**Ollama**, **llama.cpp**, **Unsloth Studio**, **LM Studio**) via OpenAI-compatible endpoints (`/v1/chat/completions`) and to cloud gateways (**OpenRouter**).
+**TSUKA** is a deterministic, educational, and ultra-lightweight multi-agent harness written in pure TypeScript. It orchestrates local LLM backends (**Ollama**, **llama.cpp**, **Unsloth Studio**, **LM Studio**) and cloud gateways (**OpenRouter**) via an OpenAI-compatible interface (`/v1/chat/completions`).
 
-> 🗡️ **The name**: 柄 (*tsuka*) is the katana's hilt — the grip where every blade mounts. Your models are the blades; TSUKA is the harness that lets you wield them.
+> 🗡️ **The name**: 柄 (*tsuka*) is the katana's hilt — the solid grip where every blade mounts. Your models are the interchangeable blades; TSUKA is the harness that gives you deterministic control over their execution.
 >
-> 💡 **Why TSUKA?** Most multi-agent systems are heavy, opaque, Python/Linux-centric frameworks. TSUKA brings deterministic, inspectable orchestration to **Windows (PowerShell)**, **Linux**, and **macOS** with zero boilerplate, hot-pluggable tools, persistent memory, and a rich terminal interface.
+> 🎓 **Why TSUKA?** Most multi-agent frameworks are heavy, opaque, Python-dependent "black boxes". TSUKA is designed as a **transparent, pedagogical laboratory**: zero magic, zero external vector DB dependencies, 100% deterministic control code, and first-class native execution across **Windows (PowerShell)**, **Linux**, and **macOS**.
 
 ---
 
-## ✨ Highlights
+## ✨ Core Architectural Highlights
 
-| Feature | Description |
+| Pillar | Architectural Design & Value |
 |---|---|
-| 🖥️ **Full-Screen TUI** | Dual-mode dashboard (`tsuka --tui`): differential rendering, SGR 1006 mouse support, live tool filtering. |
-| 📡 **Real-Time Telemetry** | Live `PREFILL`, `DECODE` (tok/s), **TTFT**, and candidate logits — no blind waiting. |
-| 👥 **Multi-Agent Orchestration** | Autonomous goal planning (`/goal`), teams (`/team`), and conference debates (`/call`). |
-| 🔁 **Verify → Correct Loop** | Objective acceptance gates drive automated retries with anti-stall detection. |
-| 🧩 **Hot-Plug Auto-Discovery** | Drop a `.ts` file into `src/tools/impl/` to auto-register native tools at boot. |
-| 🛠️ **Self-Authoring Tools** | Agents can author, sandbox-test (`node:vm`), and hot-register new JavaScript tools. |
-| 📊 **Capability Fingerprinting** | `/benchmark` measures real tool-calling precision across 5 JSON test suites. |
-| 🧠 **Persistent Shared Memory** | Keyword-scored associative memory (`memory.json`) shared across agents and sessions. |
-| 🛡️ **3-Tier Permission Model** | `SAFE` / `RESTRICTED` / `DANGEROUS` classification, workspace jail, static code audit. |
+| 🎯 **Pure Determinism & Zero Magic** | The LLM only reasons and proposes tool calls; the harness strictly owns state, execution, loop ceilings (max 15 rounds), and permissions. |
+| 🪟 **True Cross-Platform Native** | First-class Windows support (PowerShell without WSL or Python required), macOS, and Linux out of the box. |
+| 🖥️ **Full-Screen Interactive TUI** | Double-buffered zero-flicker terminal dashboard (`tsuka --tui`) with SGR 1006 mouse support, tabs, and workspace file explorer. |
+| 🧠 **Zero-Dependency Persistent Memory** | BM25 keyword search, morphological stemming, write-time deduplication, and exponential half-life decay in pure TypeScript (`memory.json`). |
+| 🧩 **Dynamic Tool Auto-Discovery** | Drop any `.ts` tool into `src/tools/impl/` to hot-register it at boot with automatic JSON Schema validation. |
+| 🛠️ **Sandboxed Self-Authoring Tools** | Agents can write, sandbox-test (`node:vm`), and hot-load new tools during runtime to solve unanticipated problems. |
+| 👥 **Multi-Agent Orchestration** | Dynamic goal planning (`/goal`), parallel staging sandboxes (`PARALLELO`), preconfigured teams (`/team`), and conference debates (`/call`). |
+| 📊 **Capability Fingerprinting** | Empirical test runner (`/benchmark`) measures small-model tool-calling accuracy to dynamically tailor active tool sets. |
+| 🛡️ **3-Tier Permission Safety** | Strict workspace jail (`resolveSafePath`), serialized interactive prompts, credential masking, and defensive static code analysis. |
 
 ---
 
@@ -55,7 +55,7 @@ npm run build
 npm link                 # Exposes the global `tsuka` command
 
 tsuka init --preset core # Initialize workspace with the core agent roster
-npm run tui              # Full-screen TUI (or: tsuka --tui)
+npm run tui              # Launch full-screen TUI (or: tsuka --tui)
 # Or standard CLI REPL:
 tsuka
 ```
@@ -68,11 +68,13 @@ tsuka
 ## 🚀 Install & Setup
 
 ```powershell
-# Option A: Ollama
+# Option A: Ollama (Recommended for local 7B–14B models)
 ollama serve && ollama pull qwen2.5-coder:7b
+
 # Option B: llama.cpp
 llama-server -m models/qwen2.5-coder-7b.gguf --port 8080
-# Option C: OpenRouter
+
+# Option C: OpenRouter (Cloud)
 echo "OPENROUTER_API_KEY=your_key_here" >> .env
 ```
 
@@ -85,7 +87,7 @@ tsuka --tui            # Launch full-screen TUI anywhere
 Initialize isolated workspaces with tailored rosters:
 
 ```powershell
-tsuka init                         # Interactive wizard
+tsuka init                         # Interactive setup wizard
 tsuka init --preset core           # Core roster (14 characters, 4 teams)
 tsuka init --preset full           # Full roster (24 characters, 21 roles, 10 teams)
 tsuka init --pack osint,devops     # Add domain packs
@@ -95,24 +97,26 @@ tsuka init --pack osint,devops     # Add domain packs
 
 ## 👥 Multi-Agent Workflows
 
-- **`/goal`** — Dynamically plans, decomposes, and orchestrates a multi-agent pipeline from all characters, with `PARALLELO` blocks and supervisor verification.
-- **`/team`** — Pre-configured teams (`teams/*.json`) in `round-robin`, `pipeline`, `orchestrated`, or `hybrid` modes.
-- **`/call`** — Structured round-table debates across multiple agents.
+- **`/goal <objective>`** — Dynamically decomposes complex objectives into multi-agent pipelines with isolated parallel execution blocks and supervisor verification.
+- **`/team [name] ["task"]`** — Pre-configured teams (`teams/*.json`) across 4 execution modes (`round-robin`, `pipeline`, `orchestrated`, `hybrid`).
+- **`/call [@a, @b] ["topic"]`** — Structured round-table conference debate between multiple specialized personas.
 
-Coordination uses deterministic protocol tools (`report_status`, `route_next`, `cast_vote`) with a regex text fallback and a per-run ephemeral blackboard (`AsyncLocalStorage`).
+Coordination relies on deterministic protocol tools (`report_status`, `route_next`, `cast_vote`) backed by an isolated session scratchpad (`AsyncLocalStorage`).
 
-> 📚 Full specs: [Multi-Agent Guide](https://github.com/nispa/tsuka/wiki/Multi-Agent-Workflows)
+> 📚 Full documentation: [Multi-Agent Guide](docs/multi-agent.md)
 
 ---
 
-## 🧰 Tools, Security & Benchmarks
+## 🧰 Native Tools & Security
 
-TSUKA ships **30 native tools** (`src/tools/impl/*.ts`) with OpenAI-compatible JSON schemas. Tools fall into Filesystem, System, Web/Network, Memory, Coordination, Agent Extension, Escalation, and SAST (`audit_code`) categories.
+TSUKA ships with **30 native tools** (`src/tools/impl/*.ts`) categorized into:
+* **Filesystem**: `read_file`, `write_file`, `edit_file`, `delete_file`, `list_dir`, `grep_search` (strictly confined to workspace jail).
+* **System**: `execute_command` (cross-platform shell execution with interactive approval).
+* **Memory**: `save_memory`, `recall_memory`, `update_memory`, `forget_memory` (BM25 + half-life retention).
+* **Coordination**: `post_note`, `read_notes`, `report_status`, `route_next`, `cast_vote`.
+* **Extension & SAST**: `create_tool` (sandboxed in `node:vm`), `audit_code` (static security analyzer for CWEs).
 
-- **Security**: 3-tier permission model, workspace jail via `resolveSafePath()`, serialized prompt queue, credential masking.
-- **Benchmarks**: `/benchmark` runs 5 suites measuring instruction-following, JSON compliance, and tool precision, driving dynamic tier gating (`SMALL` / `MEDIUM` / `LARGE`).
-
-> 📚 Details: [Security Specification](https://github.com/nispa/tsuka/wiki/Security) · [Architecture Deep Dive](https://github.com/nispa/tsuka/wiki/Architecture)
+> 📚 Full documentation: [Security Specification](docs/security.md) · [Architecture Guide](docs/architecture.md)
 
 ---
 
@@ -120,74 +124,31 @@ TSUKA ships **30 native tools** (`src/tools/impl/*.ts`) with OpenAI-compatible J
 
 | Command | Description |
 |---|---|
-| `/goal <objective>` | Autonomous goal orchestrator. |
-| `/team [name] ["task"]` | Collaborative multi-agent pipeline. |
-| `/call [@a, @b] ["topic"]` | Multi-agent conference debate. |
-| `/models [id]` `/provider [p]` `/effort [e]` | Switch model, provider, or reasoning budget. |
-| `/benchmark [model\|all]` | Capability fingerprinting. |
-| `/agent [name]` `/tools [filter]` | Inspect or switch persona / tools. |
-| `/export [path]` | Export conversation & tool traces to Markdown. |
-| `/memory [clear\|id]` `/blackboard` `/runs` | Persistent memory & workflow reports. |
-| `/stop` `/continue` `/reset` `/help` `/exit` | Session control. |
+| `/goal <objective>` | Autonomous multi-agent goal orchestrator. |
+| `/team [name] ["task"]` | Collaborative multi-agent team pipeline. |
+| `/call [@a, @b] ["topic"]` | Multi-agent round-table conference debate. |
+| `/models [id]` `/provider [p]` | Switch active model or backend provider. |
+| `/benchmark [model|all]` | Capability fingerprinting for tool calling. |
+| `/agent [name]` `/tools [filter]` | Inspect or switch persona / active tools. |
+| `/export [path]` | Export conversation & tool execution trace to Markdown. |
+| `/memory [clear|id]` `/blackboard` | Persistent memory & workflow scratchpad inspector. |
+| `/stop` `/continue` `/reset` `/help` `/exit` | Session and execution lifecycle control. |
 
 ---
 
-## 🏗️ Architecture
+## 📚 Educational Wiki & Architecture
 
-```text
-CLI REPL (src/cli/)  ◄──►  TUI (src/tui/)
-            └───────────┬───────────┘
-                        ▼
-            Agent ReAct Loop (src/core/agent.ts)
-        ┌───────────────┼───────────────┐
-        ▼               ▼               ▼
-  LLM Provider    Tool Registry   Permission Manager
-  (OpenAI API)   (Hot Auto-Scan)  (3-Tier Safety)
-```
+TSUKA was built as an open, educational instrument to learn how agentic harnesses work by confronting real-world engineering challenges:
 
-Personas are orthogonal: **Character = Role × Trait**. See [Architecture Deep Dive](https://github.com/nispa/tsuka/wiki/Architecture).
+* 🧠 [**Persistent Memory System**](docs/memory.md) — The 3 state tiers, the memory ladder, BM25 scoring, and half-life eviction.
+* 🏛️ [**System Architecture**](docs/architecture.md) — ReAct loop, context budgeting, and event-driven decoupling.
+* 🎓 [**Educational Guide: Build an Harness**](docs/educational-guide.md) — 10 milestones to build an agent harness from scratch and the 10 real-world traps.
+* 👥 [**Multi-Agent Workflows**](docs/multi-agent.md) — Team coordination, protocol tools, and parallel staging.
+* 📊 [**Capability Fingerprinting**](docs/benchmark.md) — Measuring small model reliability on function calling.
+* 🛡️ [**Security & Permissions**](docs/security.md) — Workspace jailing, risk tiers, and sandboxing.
 
 ---
 
-## 🧪 Testing
+## 📜 License
 
-74 automated test suites with 1,300+ assertions, run hermetically via `MockLLMProvider` and isolated temp stores:
-
-```powershell
-npm test
-npx tsx tests/test_goal_orchestrator.ts   # single suite
-```
-
----
-
-## 📚 Documentation & Wiki
-
-| Guide | Description |
-|---|---|
-| [Documentation Portal](https://github.com/nispa/tsuka/wiki/Home) | Central overview. |
-| [Architecture Deep Dive](https://github.com/nispa/tsuka/wiki/Architecture) | Prompt assembly, ReAct loops, token budgeting. |
-| [Multi-Agent Guide](https://github.com/nispa/tsuka/wiki/Multi-Agent-Workflows) | `/goal`, `/team`, `/call` specs. |
-| [Security Specification](https://github.com/nispa/tsuka/wiki/Security) | Permission tiers, jail, AST auditing. |
-| [Use Cases & Recipes](https://github.com/nispa/tsuka/wiki/Use-Cases) | Practical recipes. |
-| [Educational Guide](https://github.com/nispa/tsuka/wiki/Educational-Guide) | Build an agent harness from scratch. |
-
-> The [GitHub Wiki](https://github.com/nispa/tsuka/wiki) is compiled from these files via `npm run wiki:build`.
-
----
-
-## 🗺️ Roadmap & Contributing
-
-- [x] Full-screen zero-flicker TUI (v0.5.1)
-- [x] Live prefill/decode telemetry
-- [x] Empirical capability fingerprinting
-- [ ] Streaming for sandboxed custom tools
-- [ ] Web-based trace graph inspector
-- [ ] Extended LSP tool integration
-
-**Contributing**: add a tool (`src/tools/impl/*.ts` + `tools_schemas/*.json`) or a persona JSON (`characters/`, `roles/`, `traits/`, `teams/`). Ensure all 74 test suites pass (`npm test`).
-
----
-
-## 📄 License
-
-MIT — free for educational, personal, and commercial use.
+MIT © [TSUKA Contributors](LICENSE)
