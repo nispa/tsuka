@@ -84,9 +84,13 @@
 
 | T14.22 | ✅ Fatto | **Un Tool Auto-Creato Poteva Dichiararsi SAFE e Fare Qualunque Cosa**: `create_tool` accettava il `riskLevel` dichiarato dall'agente stesso (default `SAFE`) e `checkPermission` ritorna `true` senza alcun prompt per tutto ciò che è SAFE — nessun controllo verificava mai che il codice generato corrispondesse al livello dichiarato. In più il modulo generato faceva `require('fs')` sul modulo Node reale: a differenza dei tool nativi (che passano tutti da `resolveSafePath`), un tool auto-creato aveva accesso pieno al filesystem, fuori dalla workspace jail. Un `fs.rmSync(args.path, {recursive:true, force:true})` dichiarato SAFE sarebbe stato scritto su disco, hot-registrato e poi eseguibile senza mai chiedere nulla all'utente. Tre correzioni: (1) `riskLevel` non è più un parametro — un tool generato è **sempre** RESTRICTED, l'utente approva ogni chiamata, perché l'autodichiarazione di chi ha scritto il codice non è una prova; (2) nuovo `src/tools/impl/jailedFs.ts`, wrapper di `fs` che passa ogni percorso da `resolveSafePath`, iniettato al posto del modulo reale sia nel file generato sia nella VM di validazione (il file su disco viene ricaricato con un `require()` normale a ogni avvio successivo — la sandbox VM valida la *forma* del codice una volta sola, non è un jail di esecuzione permanente); (3) blocklist estesa da 6 a 9 pattern: `constructor.constructor` (escape noto verso il Function constructor via prototype chain, che non contiene mai il testo `new Function`), `import()` dinamico (aggirava `require()`), e le API `process` distruttive (`kill`/`abort`/`binding`/`dlopen`). +8 casi in `tests/test_self_authoring.ts` (X4.6–X4.10, 17 totali). |
 
-| T14.23 | 🔄 In corso | **Traduzione Integrale in Inglese**: chiusa la regola AGENTS.md #1 su schema dei tool e system prompt (vedi commit `fc4cce8`); tradotti 25 dei 28 `tools_schemas/*.json` (i restanti 3 erano già in inglese). I letterali enum del protocollo di coordinamento (`APPROVO`/`RIFIUTO`/`COMPLETATO`/`FALLITO`/`AGENTE:`/`FINE`/...) lasciati **deliberatamente** in italiano: sono token abbinati come stringhe letterali dal codice di parsing in `team.ts`/`goal.ts`/`strategies/*.ts` (`status === 'COMPLETATO'`, `vote === 'APPROVO'`, ecc.) — tradurli è un cambio di protocollo che tocca quel codice, non solo prosa, e resta fuori da questo task. Trovato in corsa un bug reale in `src/core/loop.ts`: `checkAcceptance` cercava un marker italiano che `executeCommandTool` non produce in nessuna lingua — un comando di verifica fallito non veniva mai rilevato; corretto e testato (`tests/test_loop.ts`). Corretti anche due riferimenti a intestazioni README ormai stale in `scripts/buildWiki.ts` dopo la compattazione del README (modifica dell'utente, concorrente a questo task) e rimosse le due pagine wiki TUI-Dashboard/Dashboard-TUI, la cui sezione sorgente è stata assorbita in una tabella e non esiste più come prosa estraibile. **Resta da fare**: ~9.800 righe su 67 file in `tests/` contengono commenti o testo in italiano — un ordine di grandezza più grande dello schema dei tool, e da trattare con più cautela (bisogna distinguere un commento da tradurre da un dato di fixture che è italiano di proposito, es. testare che un testo italiano venga gestito correttamente). |
+| T14.23 | ✅ Fatto | **Traduzione Integrale in Inglese — Schemi dei Tool & Regola**: chiusa la regola AGENTS.md #1 su schema dei tool e system prompt (vedi commit `fc4cce8`); tradotti 25 dei 28 `tools_schemas/*.json` (i restanti 3 erano già in inglese). I letterali enum del protocollo di coordinamento (`APPROVO`/`RIFIUTO`/`COMPLETATO`/`FALLITO`/`AGENTE:`/`FINE`/...) lasciati **deliberatamente** in italiano: sono token abbinati come stringhe letterali dal codice di parsing in `team.ts`/`goal.ts`/`strategies/*.ts` (`status === 'COMPLETATO'`, `vote === 'APPROVO'`, ecc.) — tradurli è un cambio di protocollo che tocca quel codice, non solo prosa, e resta fuori da questo task (vedi T14.25). Trovato in corsa un bug reale in `src/core/loop.ts`: `checkAcceptance` cercava un marker italiano che `executeCommandTool` non produce in nessuna lingua — un comando di verifica fallito non veniva mai rilevato; corretto e testato (`tests/test_loop.ts`). Corretti anche due riferimenti a intestazioni README ormai stale in `scripts/buildWiki.ts` dopo la compattazione del README (modifica dell'utente, concorrente a questo task) e rimosse le due pagine wiki TUI-Dashboard/Dashboard-TUI, la cui sezione sorgente è stata assorbita in una tabella e non esiste più come prosa estraibile. |
 
-Tutti i task pianificati e di backlog sono completati con 70 suite di test verdi.
+| T14.24 | 🔲 Da fare | **Traduzione Integrale in Inglese — Commenti in `tests/`**: ~9.800 righe su 65 file in `tests/` contengono ancora commenti, banner di log o messaggi di `check()` in italiano — un ordine di grandezza più grande degli schemi dei tool (T14.23). Già tradotti in questa sessione: `test_call.ts`, `mocks/mockCtx.ts`. Suddiviso in 7 lotti, vedi dettaglio sotto. |
+
+| T14.25 | 🔲 Da fare | **Traduzione dei Token di Protocollo Multi-Agente**: `APPROVO`/`COMPLETATO`/`FALLITO`/`AGENTE: @nome`/`FINE` sono letterali italiani abbinati come stringhe esatte nel codice di parsing (`strategies/*.ts`, `goal.ts`), non solo negli schemi JSON. Cambio di protocollo, non traduzione di prosa — fuori scope di T14.23/T14.24, non iniziato. Vedi dettaglio sotto. |
+
+Tutti i task pianificati e di backlog sono completati con 70 suite di test verdi; T14.24/T14.25 restano da fare.
 
 ---
 
@@ -2337,3 +2341,131 @@ workspace fallisce col messaggio della jail invece di riuscire; `constructor.con
 `tests/test_self_authoring.ts` (X4.6/X4.6b: livello forzato e riportato correttamente all'agente;
 X4.7a-c: il tool si crea, l'accesso fuori workspace fallisce a runtime, il file generato richiede
 davvero il wrapper e non `'fs'`; X4.8-X4.10: i tre nuovi pattern), 17 totali nel file.
+
+---
+
+## T14.23 — Traduzione Integrale in Inglese: Schemi dei Tool & Regola
+
+**Dipende da:** nessuno · **Sforzo:** medio · **Priorità:** media
+
+Domanda dell'utente durante T14.22: "le istruzioni dei tools non sarebbe meglio se fossero sempre
+in inglese?" Censimento: 27 dei 28 `tools_schemas/*.json` erano in italiano (solo `audit_code.json`
+già in inglese), nonostante AGENTS.md direttiva 1 dicesse già "must always be written in English"
+— la scappatoia era "user-facing CLI prompts and docs may be bilingual", abbastanza vaga da far
+passare per "docs" quello che in realtà è contenuto di prompt (`description`/`parameters` viaggiano
+verbatim nell'array `tools` di ogni richiesta al modello).
+
+- **AGENTS.md direttiva 1 riscritta**: chiude esplicitamente la scappatoia — schema dei tool
+  inclusi, `tests/` incluso, nessuna eccezione se non i documenti di pianificazione per l'utente
+  (`TASKS.md`, `PLANNING-QUALITA.md`, mai inviati a un modello). Separata la lingua di scrittura
+  (sempre inglese) dalla lingua di risposta (quella dell'utente) — la seconda non era mai codificata
+  nel system prompt reale: aggiunta una riga esplicita in `loadSystemPrompt` (`src/cli/shared.ts`).
+- **25 schemi tradotti** (`browse_url.json` → `write_file.json`, alfabetico, esclusi i 3 già in
+  inglese/tradotti in T14.20-22). I letterali enum del protocollo di coordinamento (`APPROVO`/
+  `MODIFICARE`/`RIFIUTO`, `COMPLETATO`/`DA_CONTINUARE`/`FALLITO`, `AGENTE: @nome`/`FINE`) lasciati
+  **deliberatamente** in italiano — sono token abbinati come stringhe letterali dal codice di
+  parsing (`strategies/*.ts`, `goal.ts`: `status === 'COMPLETATO'`, `vote === 'APPROVO'`), non
+  prosa; tradurli è un cambio di protocollo, non uno schema — vedi T14.25.
+- **Bug trovato in corsa** (`src/core/loop.ts`): `checkAcceptance` cercava il marker
+  `'[Il processo è terminato con codice di errore:'` per rilevare un comando di verifica fallito —
+  `executeCommandTool` non lo produce in **nessuna lingua** (emette `[Process exited with code: N]`
+  solo quando N≠0, mai un marker di successo). Il controllo non scattava mai: un comando di
+  accettazione fallito passava sempre come riuscito. Corretto sui marker reali; verificato a
+  ritroso ripristinando la stringa vecchia per confermare che il nuovo test la intercetta.
+- **`scripts/buildWiki.ts` disallineato** da una compattazione del README (modifica concorrente
+  dell'utente, non di questo task): due intestazioni sezione stale corrette in place; le pagine
+  wiki `TUI-Dashboard`/`Dashboard-TUI` rimosse perché la loro sezione sorgente è stata assorbita in
+  una riga di tabella e non esiste più come prosa estraibile — generare una pagina da una sezione
+  assente sarebbe peggio che non generarla.
+
+**Accettazione:** nessuno schema in `tools_schemas/` (eccetto i letterali di protocollo) contiene
+italiano; `loadSystemPrompt` istruisce esplicitamente a rispondere nella lingua dell'utente; un
+comando di verifica fallito viene rilevato da `checkAcceptance`. 70/70 suite verdi, typecheck e
+build puliti.
+
+---
+
+## T14.24 — Traduzione Integrale in Inglese: Commenti in `tests/`
+
+**Dipende da:** T14.23 · **Sforzo:** alto · **Priorità:** bassa
+
+Stessa regola di T14.23 (AGENTS.md direttiva 1), applicata a `tests/`: ~9.800 righe su 65 file
+contengono ancora commenti, banner `console.log`, id/messaggio di `check()` o messaggi di `Error`
+in italiano. Un ordine di grandezza più grande degli schemi dei tool — non un find-replace, va
+fatto a lotti con verifica intermedia.
+
+- Tradurre in ogni file: commenti a blocco/inline, banner `console.log` di apertura/chiusura,
+  `id`/messaggio di ogni chiamata a `check()`, messaggi di `Error` sollevati per diagnosticare un
+  fallimento del test stesso.
+- **Non tradurre mai** un dato di fixture italiano usato *di proposito* per testare un
+  comportamento legato alla lingua — es. `test_markdown_render.ts` MD1/MD2 verificano la decodifica
+  di apostrofi e accenti italiani (`"Un po' di testo con l'apostrofo"`): tradurlo toglierebbe
+  proprio i caratteri che il test deve esercitare.
+- Dove un test verifica contenuto HTML/testo di esempio non legato alla lingua (es. il markup di
+  prova in `test_browser_evolution.ts`, con parole italiane solo per comodità dell'autore), va bene
+  tradurre fixture *e* le asserzioni corrispondenti insieme, nello stesso file — non lasciarle
+  spaiate.
+- Nessun file di `src/` coinvolto: il censimento di T14.23 ha trovato una sola riga fuori da
+  `tests/` (`src/core/loop.ts`), già corretta lì.
+- Già tradotti in questa sessione (non richiedono altro lavoro): `tests/test_call.ts`,
+  `tests/mocks/mockCtx.ts`.
+
+Lotti (eseguire e verificare `npm test` verde uno alla volta — un lotto può far scoprire
+un'asserzione altrove che verifica una sottostringa italiana specifica di uno di questi file, come
+già successo in T14.23 con `test_spawn_agent_reasoning_effort.ts`/`meccanic` dopo la traduzione di
+`spawn_agent.json`):
+
+1. File di supporto, piccoli: `fixtures/roster.ts`, `manual/README.md`, `manual/test_browser.ts`,
+   `manual/test_ollama.ts`, `manual/test_search.ts`, `manual/test_search_debug.ts`,
+   `manual/test_sysadmin_live.ts`, `mocks/mockProvider.ts`, `run_tests.ts`, `test_benchmark_dsl.ts`
+2. `test_blackboard.ts`, `test_browser_evolution.ts`, `test_completer.ts`, `test_config_limits.ts`,
+   `test_context_budget.ts`, `test_context_detection.ts`, `test_continue_command.ts`,
+   `test_download_file.ts`, `test_effort_command.ts`, `test_effort_propagation.ts`
+3. `test_escalation_tools.ts`, `test_fingerprinting.ts`, `test_generation_timeout.ts`,
+   `test_goal_orchestrator.ts`, `test_init.ts`, `test_interrupt.ts`, `test_loop.ts` (parziale — già
+   toccato da T14.23, resta la parte pre-esistente), `test_malformed_toolcall_retry.ts`,
+   `test_markdown_render.ts` (occhio a MD1/MD2, vedi sopra), `test_memory.ts`
+4. `test_memory_phase3.ts`, `test_memory_scope.ts`, `test_memory_summary.ts` (già in gran parte
+   inglese da T14.20/21, resta il residuo), `test_mention_completion.ts`, `test_mock_provider.ts`,
+   `test_model_warmup.ts` (idem, da T14.19), `test_multi_skill.ts`, `test_parallel_workspace.ts`,
+   `test_permission_queue.ts`, `test_phase1_fixes.ts`
+5. `test_phase2_fixes.ts`, `test_phase3_fixes.ts`, `test_platform.ts`, `test_presets.ts`,
+   `test_prompt_overhead.ts`, `test_protocol_parsing.ts`, `test_reasoning_budget.ts`,
+   `test_reasoning_effort.ts`, `test_reasoning_memory.ts`, `test_roles.ts`
+6. `test_sampling_params.ts`, `test_security_agent.ts`, `test_self_authoring.ts` (parziale — già
+   toccato da T14.22, resta la parte pre-esistente), `test_spawn_agent_context.ts`,
+   `test_spawn_agent_reasoning_effort.ts` (idem, T14.19), `test_team.ts`, `test_team_loop.ts`,
+   `test_team_modes.ts`, `test_think_parser.ts`, `test_tier_pruning.ts`
+7. Ultimo lotto, piccolo: `test_token_calibration.ts`, `test_toolcall_sanitization.ts`,
+   `test_traits.ts`, `test_workspace_jail.ts`, `test_write_file_append.ts`
+
+**Accettazione:** nessun file in `tests/` contiene più commenti, banner o messaggi diagnostici in
+italiano, eccetto i dati di fixture che testano deliberatamente un comportamento linguistico
+(elencati sopra). `npm test` verde dopo ogni lotto, non solo alla fine.
+
+---
+
+## T14.25 — Traduzione dei Token di Protocollo Multi-Agente
+
+**Dipende da:** T14.23 · **Sforzo:** medio · **Priorità:** bassa
+
+`APPROVO`/`MODIFICARE`/`RIFIUTO` (voto), `COMPLETATO`/`DA_CONTINUARE`/`FALLITO` (stato),
+`AGENTE: @nome`/`FINE` (instradamento) sono letterali italiani lasciati intenzionalmente intatti in
+T14.23 perché non sono prosa: sono token di protocollo abbinati come stringhe esatte in più punti
+del codice di parsing (`src/cli/commands/strategies/{common,hybrid,orchestrated,roundRobin,
+pipeline}.ts`, `src/cli/commands/goal.ts`/`goalParsing.ts` — regex di fallback testuale, T1.3),
+oltre che negli `enum` di `report_status.json`/`cast_vote.json`/`route_next.json`.
+
+- Grep esaustivo di ogni occorrenza letterale di ciascun token **prima** di toccare qualunque file:
+  un confronto testuale spaiato (uno tradotto, l'altro no) non dà errore — smette semplicemente di
+  scattare mai, in silenzio. Esattamente il tipo di bug trovato in T14.23 su `loop.ts`.
+- Aggiornare in un solo cambio coerente: gli `enum` nei tre schemi JSON, ogni `===`/regex di
+  confronto nei file di parsing sopra elencati, e la documentazione che descrive il protocollo
+  (`docs/architecture.md`, `AGENTS.md` direttiva 5, `docs/multi-agent.md` se esiste).
+- Considerare se mantenere un fallback di compatibilità sui vecchi marker testuali italiani per le
+  sessioni/log salvati prima del cambio, o se è accettabile una rottura netta (nessun dato persistente
+  dipende da questi marker oltre alla durata di un singolo turno di team/goal, da verificare).
+
+**Accettazione:** nessuna occorrenza dei vecchi letterali italiani resta nel codice di parsing;
+`npm test` verde, in particolare `test_protocol_parsing.ts`, `test_team_modes.ts`,
+`test_goal_orchestrator.ts` che esercitano questi marker direttamente. Non iniziato.

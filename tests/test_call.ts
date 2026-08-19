@@ -1,6 +1,6 @@
 /**
- * Test per la preparazione e logica di conferenza multi-agente /call.
- * Esecuzione: npx tsx tests/test_call.ts
+ * Test for the /call multi-agent conference preparation and logic.
+ * Run: npx tsx tests/test_call.ts
  */
 import { resolveCharacter, loadRole, loadTrait, loadSystemPrompt } from '../src/cli/shared';
 
@@ -18,17 +18,17 @@ function check(id: string, condition: boolean, detail: string) {
 }
 
 async function run() {
-  console.log('=== Test Conferenza Multi-Agente (/call) ===\n');
+  console.log('=== Test Multi-Agent Conference (/call) ===\n');
 
-  // Risoluzione personaggi per mestiere
+  // Resolve characters by craft
   const researcher = resolveCharacter('researcher');
   const dev = resolveCharacter('developer');
   const auditor = resolveCharacter('security_auditor');
 
-  check('CALL.1', !!researcher && !!dev && !!auditor, 'Risoluzione corretta dei ruoli base nel catalogo');
+  check('CALL.1', !!researcher && !!dev && !!auditor, 'base roles resolved correctly from the catalog');
 
   if (researcher && dev && auditor) {
-    const topic = 'Analisi architettura del sistema';
+    const topic = 'System architecture analysis';
     const participants = [researcher, dev, auditor];
 
     for (const p of participants) {
@@ -36,15 +36,15 @@ async function run() {
       const trait = loadTrait(p.trait);
       const sysPrompt = loadSystemPrompt(role, trait, 'test-model', undefined, p, topic);
 
-      check(`CALL.2.${p.aiName}`, sysPrompt.includes(p.aiName) && sysPrompt.includes(role.systemPrompt), `System prompt corretto per ${p.aiName}`);
+      check(`CALL.2.${p.aiName}`, sysPrompt.includes(p.aiName) && sysPrompt.includes(role.systemPrompt), `system prompt correct for ${p.aiName}`);
     }
   }
 
-  console.log(`\n=== Risultato: ${passed} passati, ${failed} falliti ===`);
+  console.log(`\n=== Result: ${passed} passed, ${failed} failed ===`);
   process.exit(failed > 0 ? 1 : 0);
 }
 
 run().catch((err) => {
-  console.error('Errore fatale:', err);
+  console.error('Fatal error:', err);
   process.exit(1);
 });
