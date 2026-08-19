@@ -3,7 +3,22 @@ import { ConfigManager } from '../../core/config';
 import { ILLMProvider } from '../../core/provider';
 import { MemoryStore, MemoryFact } from '../../core/memory';
 import { getEffortPin, setEffortPin } from '../../core/effortControl';
+import { probeProvider } from '../../core/discovery';
+import { warmUpIfNeeded } from '../../cli/commands/provider';
 import commandsData from '../commands/menu.json';
+
+/**
+ * `toLocaleTimeString()` alone (the previous hint) drops the date entirely — every fact saved on
+ * a different day at a similar time of day looked identical, and there was no way to tell how
+ * old anything was. Absolute and locale-independent on purpose: no ambiguity between entries
+ * saved days vs. months apart, unlike a relative "2h ago" that keeps changing meaning as it ages.
+ */
+function formatFactDate(iso: string): string {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 
 export class SystemModals {
   static openMemoryModal(store: TuiStore): void {
@@ -12,11 +27,14 @@ export class SystemModals {
 
     const options = facts.map((f: MemoryFact) => {
       const pinIcon = f.pinned ? '📌 ' : '';
-      const snippet = f.content.length > 45 ? f.content.slice(0, 42) + '…' : f.content;
+      // T14.20: the label is now the fact's short summary, not a raw truncation of `content` —
+      // most facts share a long common prefix (`[Goal] `, `AGENTE: `, …), so a 40-char slice of
+      // content made every entry in the list look the same. Full content is still one keypress
+      // away via "View Full Text".
       return {
-        label: `${pinIcon}[${f.source}] ${snippet}`,
+        label: `${pinIcon}[${f.source}] ${f.summary}`,
         value: f.id,
-        hint: `Date: ${new Date(f.timestamp).toLocaleTimeString()}`,
+        hint: `${formatFactDate(f.timestamp)} · ${f.kind}${f.hits > 1 ? ` · ×${f.hits}` : ''}`,
       };
     });
 
@@ -49,7 +67,7 @@ export class SystemModals {
 
     store.showModal({
       type: 'slash_menu',
-      title: `Memory #${fact.id.slice(0, 8)}`,
+      title: `Memory #${fact.id.slice(0, 8)}: ${fact.summary}`,
       selectedIndex: 0,
       options: [
         { label: '📥 Recall (Insert into prompt)', value: 'insert', hint: 'Copies text into input prompt' },
@@ -67,7 +85,7 @@ export class SystemModals {
         } else if (action === 'view') {
           store.showModal({
             type: 'slash_menu',
-            title: `Memory #${fact.id.slice(0, 8)}: Content`,
+            title: `Memory #${fact.id.slice(0, 8)}: ${fact.summary}`,
             selectedIndex: 0,
             options: [
               { label: '↩️ Close View', value: 'close', hint: fact.content },
@@ -96,14 +114,25 @@ export class SystemModals {
     onProbeCtx: () => Promise<void>
   ): Promise<void> {
     try {
-      const models = await provider.listModels();
+      // probeProvider (not the plain provider.listModels()) also reports what the server has
+      // loaded in RAM right now — needed both for the "● loaded" badge and, on selection, to
+      // know whether a warm-up request is actually needed (see T14.19).
+      const providerName = configManager.getActiveProviderName();
+      const activeConfig = configManager.getActiveProviderConfig();
+      const apiKey = configManager.getApiKey();
+      const scan = await probeProvider(providerName, activeConfig, apiKey);
+      const models = scan ? scan.models : await provider.listModels();
+      const loadedModel = scan?.loadedModel ?? null;
       const current = provider.getCurrentModel();
 
-      const options = models.map((m) => ({
-        label: `${m === current ? '● ' : '  '}${m}`,
-        value: m,
-        hint: m === current ? 'Active' : 'Available',
-      }));
+      const options = models.map((m) => {
+        const tags = [m === loadedModel ? '● loaded' : '', m === current ? '(active)' : ''].filter(Boolean).join(' ');
+        return {
+          label: `${m === current ? '● ' : '  '}${m}`,
+          value: m,
+          hint: tags || 'Available',
+        };
+      });
 
       store.showModal({
         type: 'slash_menu',
@@ -118,6 +147,12 @@ export class SystemModals {
           store.closeModal();
           store.notify(`Model switched to: ${chosen}`, 'success');
           onProbeCtx().catch(() => {});
+          // T14.19: never steals the "generating" flag from a real turn already in flight.
+          const wasIdle = !store.getState().isGenerating;
+          if (wasIdle) store.setState({ isGenerating: true, generationStatus: { phase: 'reasoning', agentName: 'Model Warm-Up' } });
+          warmUpIfNeeded(activeConfig.baseUrl, apiKey, chosen, loadedModel)
+            .catch(() => {})
+            .finally(() => { if (wasIdle) store.setState({ isGenerating: false, generationStatus: { phase: 'idle' } }); });
         },
       });
     } catch (err: any) {

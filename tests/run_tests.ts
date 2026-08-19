@@ -92,6 +92,8 @@ const suites = [
   'test_inference_telemetry.ts',
   'test_tui_data_driven.ts',
   'test_cli_spinner.ts',
+  'test_model_warmup.ts',
+  'test_memory_summary.ts',
   'test_files_explorer.ts',
   'test_wiki_build.ts'
 ];

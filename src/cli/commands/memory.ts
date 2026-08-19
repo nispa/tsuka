@@ -18,8 +18,7 @@ function plainList(store: MemoryStore): void {
   } else {
     for (const f of facts) {
       const date = f.timestamp.replace('T', ' ').slice(0, 16);
-      const content = f.content.length > 90 ? f.content.slice(0, 90) + '…' : f.content;
-      console.log(`  ${chalk.gray(f.id)}  ${chalk.cyan(date)}  ${chalk.yellow(`(${f.source})`)} ${content}`);
+      console.log(`  ${chalk.gray(f.id)}  ${chalk.cyan(date)}  ${chalk.yellow(`(${f.source})`)} ${f.summary}`);
     }
   }
   console.log();
@@ -29,7 +28,7 @@ function showFact(fact: MemoryFact): void {
   const date = fact.timestamp.replace('T', ' ').slice(0, 16);
   const width = Math.min(process.stdout.columns || 80, 100) - 8;
   const lines = CLITheme.wrap(fact.content, width).map((l) => chalk.white(l));
-  CLITheme.box(`Fact ${fact.id} — ${date} (${fact.source})`, lines, chalk.magenta);
+  CLITheme.box(`${fact.summary} — ${date} (${fact.source})`, lines, chalk.magenta);
 }
 
 export async function handleMemory(ctx: CommandCtx, arg: string): Promise<void> {
@@ -87,11 +86,10 @@ export async function handleMemory(ctx: CommandCtx, arg: string): Promise<void> 
     console.log();
     const items: Array<{ title: string; value: string; description?: string }> = facts.map((f) => {
       const date = f.timestamp.replace('T', ' ').slice(0, 16);
-      const preview = f.content.length > 60 ? f.content.slice(0, 60) + '…' : f.content;
       return {
-        title: `${chalk.cyan(date)} ${chalk.yellow(`(${f.source})`)} ${preview}`,
+        title: `${chalk.cyan(date)} ${chalk.yellow(`(${f.source})`)} ${f.summary}`,
         value: f.id,
-        description: f.content.length > 60 ? f.content.slice(0, 200) : undefined,
+        description: f.content.length > f.summary.length ? f.content.slice(0, 200) : undefined,
       };
     });
     items.push({ title: chalk.gray('── Close menu'), value: '__exit__' });

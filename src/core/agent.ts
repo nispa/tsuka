@@ -351,7 +351,7 @@ export class Agent implements ToolSetController {
       MemoryStore.getInstance().addFact(
         `[Compressed history] ${summary.replace(/\s+/g, ' ').slice(0, 500)}`,
         'system',
-        { kind: 'run' }
+        { kind: 'run', summary: 'History auto-compressed' }
       );
     }
 
@@ -397,7 +397,10 @@ export class Agent implements ToolSetController {
       const pointer =
         `Reasoning trace ${status} (${trimmed.length} chars) on "${shortTask}" saved in ` +
         `memory/thinking/${filename} — read with read_file before re-evaluating the task from scratch.`;
-      MemoryStore.getInstance().addFact(pointer.slice(0, 500), this.agentLabel || 'agent', { kind: 'run' });
+      MemoryStore.getInstance().addFact(pointer.slice(0, 500), this.agentLabel || 'agent', {
+        kind: 'run',
+        summary: `Reasoning trace ${status}: "${shortTask}"`,
+      });
     } catch (error: any) {
       logSink.error(chalk.gray(`[Unable to save reasoning trace: ${error.message}]`));
     }

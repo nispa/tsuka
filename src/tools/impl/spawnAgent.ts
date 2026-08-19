@@ -200,7 +200,9 @@ export const spawnAgentTool: Tool = {
       try {
         const memStore = MemoryStore.getInstance();
         const summarySnippet = fullReport.length > 250 ? fullReport.slice(0, 245) + '…' : fullReport;
-        memStore.addFact(`[Subagent @${label}] Task: "${task.slice(0, 120)}" -> Report: ${relPath}. Summary: ${summarySnippet}`, 'agent');
+        memStore.addFact(`[Subagent @${label}] Task: "${task.slice(0, 120)}" -> Report: ${relPath}. Summary: ${summarySnippet}`, 'agent', {
+          summary: `Subagent @${label}: ${task.slice(0, 50)}`,
+        });
       } catch {}
     }
 

@@ -334,10 +334,10 @@ function test(name: string, fn: () => void | Promise<void>) {
   // ── 9. Global vs Workspace Scoped Memory ──
   await test('save_memory: supports global vs workspace scoping', async () => {
     const memStore = MemoryStore.getInstance();
-    const globalRes = await saveMemoryTool.execute({ content: 'Global rule: use TypeScript strict mode.', global: true });
+    const globalRes = await saveMemoryTool.execute({ summary: 'Use TypeScript strict mode', content: 'Global rule: use TypeScript strict mode.', global: true });
     assert.ok(globalRes.includes('scope: global'), 'Global memory save should report global scope');
 
-    const wsRes = await saveMemoryTool.execute({ content: 'Project fact: port is 8080.', global: false });
+    const wsRes = await saveMemoryTool.execute({ summary: 'Project port is 8080', content: 'Project fact: port is 8080.', global: false });
     assert.ok(wsRes.includes('scope: workspace'), 'Local memory save should report workspace scope');
   });
 

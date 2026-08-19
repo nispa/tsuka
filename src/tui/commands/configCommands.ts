@@ -10,6 +10,7 @@
 import { MemoryStore } from '../../core/memory';
 import { setEffortPin } from '../../core/effortControl';
 import { ConfigManager } from '../../core/config';
+import { syncModelOnServer } from '../../cli/commands/provider';
 import { PersonaModals, SystemModals, LayoutModals } from '../modals';
 import { TuiCommandContext, TuiCommandSpec } from './types';
 
@@ -118,6 +119,14 @@ export const CONFIG_COMMANDS: TuiCommandSpec[] = [
       applyAndSync(c);
       c.store.notify(`Active model switched to: ${c.arg}`, 'success');
       c.probeContextWindow().catch(() => {});
+      // Points TSUKA at the new model; doesn't by itself ask the server to load it — T14.19
+      // sends that request too, with header progress if nothing else is already running
+      // (never steals the "generating" flag from a real, unrelated turn already in flight).
+      const wasIdle = !c.store.getState().isGenerating;
+      if (wasIdle) c.store.setState({ isGenerating: true, generationStatus: { phase: 'reasoning', agentName: 'Model Warm-Up' } });
+      syncModelOnServer(c.configManager, c.arg)
+        .catch(() => {})
+        .finally(() => { if (wasIdle) c.store.setState({ isGenerating: false, generationStatus: { phase: 'idle' } }); });
     },
   },
 

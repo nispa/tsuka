@@ -76,7 +76,15 @@
 
 | T14.18 | ✅ Fatto | **Fedeltà del Renderer Markdown (CLI + TUI)**: `renderMarkdownToLines` (`src/cli/markdown.ts`, condiviso da CLI e TUI) convertiva l'HTML di `marked` in testo scartando ogni tag — grassetto, corsivo, codice inline e link perdevano ogni distinzione visiva, e i link perdevano proprio l'URL; le tabelle non avevano un `case` dedicato e cadevano nel `default`, che stampava ogni cella su una riga separata; le liste ordinate mostravano sempre `•`, mai la numerazione. Nuovo `inlineHtmlToAnsi` (stack di stili generico: un tag non mappato è un no-op, non serve un caso per ciascuno) applica ANSI reale a grassetto/corsivo/barrato/codice inline e mantiene l'URL dei link come `(url)` in coda; nuovo `case 'table'` allinea le colonne rispettando `:--`/`--:`/`:-:`, restringendole proporzionalmente se non entrano nella larghezza disponibile; le liste ordinate numerano davvero. Trovati e corretti in corsa anche checklist (`- [ ]`/`- [x]`, checkbox assente prima) e immagini (`![alt](src)`, sparivano senza traccia). +9 casi in `tests/test_markdown_render.ts` (MD6–MD9). |
 
-Tutti i task pianificati e di backlog sono completati con 68 suite di test verdi.
+| T14.19 | ✅ Fatto | **Cambio Modello nella TUI Non Chiedeva Mai il Caricamento al Server**: `/models` in TUI (sia il picker `SystemModals.openModelModal` sia `/models <nome>` diretto in `configCommands.ts`) aggiornava solo il puntatore interno di TSUKA (`provider.setCurrentModel` + config) — a differenza della CLI, non chiamava mai `warmUpModel` (la vera richiesta che forza il server a caricare il modello), quindi lo swap restava differito in silenzio al primo messaggio di chat vero, che si mangiava tutta la latenza di caricamento senza preavviso. La conferma interattiva della CLI (`prompts()`) non può renderizzarsi nella TUI, quindi non è "chiedere in modo sicuro" ma "saltare del tutto". Estratte `warmUpIfNeeded`/`syncModelOnServer` (`cli/commands/provider.ts`) dalla vecchia `maybeWarmUp`: warm-up automatico senza conferma nei percorsi TUI, con progresso live nell'header (riuso T14.17: `isGenerating`/`progressSink`, mai rubati a un turno reale già in corso — guardia `wasIdle`). `pickModel` in CLI resta invariato (chiede prima). Suite `tests/test_model_warmup.ts` (9 test, isolata via `TSUKA_HOME` temporaneo perché `syncModelOnServer` costruisce un `ConfigManager` reale). |
+
+| T14.20 | ✅ Fatto | **Elenco Memoria Illeggibile (Contenuto Tutto Uguale, Data Non Leggibile)**: il picker `/memory` della TUI etichettava ogni fatto con ~40 caratteri grezzi di `content` — la maggior parte dei fatti condivide un prefisso lungo (`[Goal] `, `AGENTE: `, …), quindi la parte che li distinguerebbe davvero è proprio quella tagliata via — e una data che era in realtà solo un orario (`toLocaleTimeString()`, niente giorno/mese/anno): due fatti salvati in giorni diversi alla stessa ora sembravano identici. Nuovo campo `summary` su `MemoryFact` (`core/memory.ts`), sempre popolato — esplicito se fornito, altrimenti derivato dalla prima riga di `content` (stesso tetto di 72 caratteri di un oggetto di commit); i vecchi fatti su disco senza il campo vengono sanati al `load()` (stesso schema di guarigione di T14.15); su una ripetizione vince la sintesi più recente, coerente col resto di `mergeDuplicate`. Il tool `save_memory` ora **richiede** `summary` (l'agente deve sintetizzare in poche parole cosa sta memorizzando, non solo scrivere il contenuto) — rifiutato se assente o oltre 72 caratteri. I 4 punti dove è il sistema stesso a scrivere in memoria (`goal.ts`, `agent.ts` ×2, `spawnAgent.ts`) ora passano una sintesi esplicita invece di affidarsi alla derivazione. Elenco TUI (`systemModals.ts`) e CLI (`cli/commands/memory.ts`) mostrano `summary` al posto dello slice di `content`, con una data assoluta `YYYY-MM-DD HH:MM` (nuovo `formatFactDate`) al posto del solo orario — la CLI aveva già la data giusta, solo la TUI ne mostrava metà. Suite `tests/test_memory_summary.ts` (15 test: sintesi esplicita/derivata, troncamento a 72 caratteri in entrambi i casi, merge su ripetizione, guarigione di un fatto legacy senza il campo, validazione del tool). |
+
+| T14.21 | ✅ Fatto | **La Guarigione di T14.20 Riproduceva lo Stesso Bug su un Fatto Reale**: verificato subito contro un fatto vero — una traccia di reasoning salvata prima di T14.20 mostrava ancora `Reasoning trace complete (2381 chars) on "non mi pare d...` invece di una sintesi leggibile. Causa: la derivazione di fallback (prima riga, troncata a 72 caratteri) è generica, ma i 4 punti dove è il sistema stesso a scrivere in memoria (`goal.ts`, `agent.ts` ×2, `spawnAgent.ts`) producono un unico pointer su una riga sola, con la parte che distingue un fatto dall'altro (quale goal, quale task) sempre oltre il carattere 72 — esattamente il bug originale, solo con un taglio leggermente più largo. Questi formati sono stringhe fisse scritte dal nostro stesso codice, quindi `deriveSummary` (`core/memory.ts`) ora le riconosce per prime con un elenco di pattern noti (`[Goal] X:`, `[Compressed history]`, `Reasoning trace ... on "..."`, `[Subagent @X] Task: "..."`) e produce la stessa sintesi che quel fatto avrebbe avuto se `summary` fosse esistito fin dall'inizio; solo un contenuto libero non riconosciuto (tipico di un `save_memory` salvato prima che `summary` diventasse obbligatorio) ricade nel troncamento generico. +5 casi in `tests/test_memory_summary.ts` (MS10–MS14, uno per pattern noto più il fallback), 15 totali. |
+
+| T14.22 | ✅ Fatto | **Un Tool Auto-Creato Poteva Dichiararsi SAFE e Fare Qualunque Cosa**: `create_tool` accettava il `riskLevel` dichiarato dall'agente stesso (default `SAFE`) e `checkPermission` ritorna `true` senza alcun prompt per tutto ciò che è SAFE — nessun controllo verificava mai che il codice generato corrispondesse al livello dichiarato. In più il modulo generato faceva `require('fs')` sul modulo Node reale: a differenza dei tool nativi (che passano tutti da `resolveSafePath`), un tool auto-creato aveva accesso pieno al filesystem, fuori dalla workspace jail. Un `fs.rmSync(args.path, {recursive:true, force:true})` dichiarato SAFE sarebbe stato scritto su disco, hot-registrato e poi eseguibile senza mai chiedere nulla all'utente. Tre correzioni: (1) `riskLevel` non è più un parametro — un tool generato è **sempre** RESTRICTED, l'utente approva ogni chiamata, perché l'autodichiarazione di chi ha scritto il codice non è una prova; (2) nuovo `src/tools/impl/jailedFs.ts`, wrapper di `fs` che passa ogni percorso da `resolveSafePath`, iniettato al posto del modulo reale sia nel file generato sia nella VM di validazione (il file su disco viene ricaricato con un `require()` normale a ogni avvio successivo — la sandbox VM valida la *forma* del codice una volta sola, non è un jail di esecuzione permanente); (3) blocklist estesa da 6 a 9 pattern: `constructor.constructor` (escape noto verso il Function constructor via prototype chain, che non contiene mai il testo `new Function`), `import()` dinamico (aggirava `require()`), e le API `process` distruttive (`kill`/`abort`/`binding`/`dlopen`). +8 casi in `tests/test_self_authoring.ts` (X4.6–X4.10, 17 totali). |
+
+Tutti i task pianificati e di backlog sono completati con 70 suite di test verdi.
 
 ---
 
@@ -2150,3 +2158,180 @@ URL preservato; una tabella markdown renderizzata come tabella (colonne allineat
 elenco di celle sparse; liste ordinate numerate. Suite `tests/test_markdown_render.ts` estesa
 (MD6–MD9, 9 nuovi casi su 15 totali): stile ANSI di grassetto/corsivo, testo e URL del link
 preservati, tabella su righe allineate con separatore, numerazione anche non da 1, checkbox resi.
+
+---
+
+## T14.19 — Cambio Modello nella TUI Non Chiedeva Mai il Caricamento al Server
+
+**Dipende da:** T14.17 · **Sforzo:** basso · **Priorità:** alta
+
+Segnalato dall'utente: cambiando modello da `/models` nella TUI, Unsloth Studio riceve davvero la
+richiesta di caricarlo?
+
+- **La risposta era no**: `/models` in TUI ha una propria implementazione (`configCommands.ts` per
+  l'arg diretto, `SystemModals.openModelModal` per il picker) — nessuna delle due chiamava mai
+  `maybeWarmUp`/`warmUpModel`. Il codice di warm-up esiste solo in `cli/commands/provider.ts`,
+  dietro un `if (process.env.TSUKA_TUI || (ctx as any).isTui || !process.stdin.isTTY) return;`
+  pensato per una conferma interattiva (`prompts()`) che non può disegnarsi nella TUI — quindi
+  quel ramo salta sempre sotto la TUI, e la selezione del modello in TUI non passava affatto da lì.
+- **Conseguenza pratica**: `/models` cambiava solo il puntatore interno di TSUKA
+  (`provider.setCurrentModel` + config); il modello restava quello vecchio in RAM finché non
+  arrivava il primo messaggio di chat vero, che si mangiava in silenzio l'intera latenza di
+  caricamento, senza nessun "loading model..." a spiegare perché.
+- **Fix**: estratte `warmUpIfNeeded` (invia la richiesta reale se un modello diverso risulta
+  caricato) e `syncModelOnServer` (fa anche lo scan `probeProvider` per scoprire cosa è caricato,
+  per i chiamanti che non lo sanno già) da `maybeWarmUp` in `cli/commands/provider.ts`. La CLI
+  interattiva resta invariata (chiede conferma, poi chiama `warmUpIfNeeded`); i percorsi TUI
+  (`configCommands.ts`, `systemModals.ts`) le chiamano direttamente, senza chiedere — non c'è
+  nulla su cui chiedere, e l'alternativa non è "chiedere in sicurezza", è "non fare nulla in
+  silenzio". `openModelModal` ora usa `probeProvider` invece del solo `listModels()`, quindi mostra
+  anche il badge "● loaded" come già faceva il picker della CLI.
+- **Progresso visibile, non un secondo freeze**: entrambi i punti TUI avvolgono la chiamata con
+  `isGenerating`/`generationStatus` (riuso diretto di T14.17 — spinner TUI-safe, `progressSink`,
+  riga di dettaglio nell'header), ma solo se lo store è già inattivo (`wasIdle`): un warm-up in
+  background non deve mai rubare o azzerare il flag "sta generando" di un turno di chat reale che
+  fosse già in corso.
+
+**Accettazione:** cambiare modello da `/models` (arg diretto o picker) nella TUI invia davvero la
+richiesta di caricamento al server quando risulta caricato un modello diverso; l'header mostra il
+progresso mentre il warm-up è in corso; nessuna richiesta per provider remoti o quando il modello
+richiesto è già quello in RAM. Suite `tests/test_model_warmup.ts` (9 test, isolata via `TSUKA_HOME`
+temporaneo perché `syncModelOnServer` costruisce un `ConfigManager` reale che altrimenti
+scriverebbe sul `tsuka.config.json` vero dell'utente).
+
+---
+
+## T14.20 — Elenco Memoria Illeggibile (Contenuto Tutto Uguale, Data Non Leggibile)
+
+**Dipende da:** T14.15 · **Sforzo:** medio · **Priorità:** media
+
+Segnalato dall'utente: il modal `/memory` è quasi inutile — mostra un elenco di dati tutti uguali,
+la data non si riesce a leggere, non si capisce cosa c'è in memoria senza aprire ogni voce.
+
+- **Due cause distinte**, entrambe nella TUI (`SystemModals.openMemoryModal`):
+  - **Etichetta = slice grezzo di `content`** (~40 caratteri): la maggior parte dei fatti condivide
+    un prefisso lungo e ripetuto (`[Goal] `, `AGENTE: `, un nome agente) — la parte che
+    distinguerebbe una voce dall'altra è quasi sempre oltre il quarantesimo carattere, tagliata via
+    proprio dove servirebbe.
+  - **`hint: Date: ${new Date(f.timestamp).toLocaleTimeString()}`**: `toLocaleTimeString()` mostra
+    *solo l'ora*, mai giorno/mese/anno. Due fatti salvati in giorni diversi alla stessa ora
+    apparivano identici. La CLI (`cli/commands/memory.ts`) aveva già la data giusta
+    (`timestamp.replace('T',' ').slice(0,16)`) — il bug era solo nella TUI.
+- **Nuovo campo `summary` su `MemoryFact`** (`core/memory.ts`): un'etichetta breve — l'oggetto di un
+  commit, non il diff — distinta da `content` (il dettaglio pieno, invariato). Sempre popolato:
+  esplicito se un chiamante lo passa (`AddFactOptions.summary`), altrimenti derivato dalla prima
+  riga di `content`, con lo stesso tetto di 72 caratteri in entrambi i casi. I fatti già su disco
+  senza il campo vengono sanati in `normalizeFact()` al `load()` — stessa guarigione "self-healing"
+  già usata da T14.15 per la deduplica, non serve una migrazione manuale. Su una ripetizione
+  (`mergeDuplicate`), vince la sintesi più recente, come già timestamp/lastUsed.
+- **Il tool `save_memory` ora richiede `summary`** (schema + `saveMemoryTool`, rifiutato se assente
+  o oltre 72 caratteri): è il punto centrale della richiesta dell'utente — l'agente deve sintetizzare
+  esplicitamente in poche parole cosa sta memorizzando, non solo scrivere il contenuto e sperare che
+  la UI lo tronchi in modo leggibile. Un chiamante che salta il parametro è esattamente il chiamante
+  a cui serve essere fermato, non un fallback silenzioso.
+- **I 4 punti dove è il sistema stesso a scrivere in memoria** (non un agente via tool call):
+  `condenseAgentOutput` in `goal.ts`, la cronologia compressa e le tracce di reasoning in `agent.ts`,
+  il report dei sub-agenti in `spawnAgent.ts` — sono proprio la fonte dei "168 fatti `run`" di
+  T14.15. Ora passano tutti una sintesi esplicita invece di affidarsi alla derivazione automatica.
+- **Elenco aggiornato in TUI e CLI**: `systemModals.ts` mostra `summary` al posto dello slice di
+  `content`, più un nuovo `formatFactDate` (`YYYY-MM-DD HH:MM`, assoluto e indipendente dalla
+  locale — niente "2h fa" che cambia significato invecchiando) al posto del solo orario;
+  `cli/commands/memory.ts` (lista, menu interattivo, box del dettaglio) migrato allo stesso campo
+  per coerenza CLI/TUI, mantenendo la data che aveva già.
+
+**Accettazione:** una voce dell'elenco memoria si distingue dalle altre a colpo d'occhio, senza
+doverla aprire; la data mostra giorno/mese/anno, non solo l'ora; `save_memory` senza `summary` (o
+con uno oltre 72 caratteri) viene rifiutato con un errore che spiega perché; un fatto scritto prima
+di questa modifica continua a mostrare un'etichetta sensata. Suite `tests/test_memory_summary.ts`
+(sintesi esplicita conservata, sintesi derivata dalla prima riga, troncamento a 72 caratteri in
+entrambi i casi, la sintesi più recente vince su una ripetizione, un fatto legacy senza il campo
+viene sanato al load, validazione del tool su summary assente/troppo lungo/valido — più i casi di
+T14.21 qui sotto, 15 in totale).
+
+---
+
+## T14.21 — La Guarigione di T14.20 Riproduceva lo Stesso Bug su un Fatto Reale
+
+**Dipende da:** T14.20 · **Sforzo:** basso · **Priorità:** media
+
+Trovato nel giro di minuti provando T14.20 su una memoria vera: nell'elenco compariva ancora
+`[agent] Reasoning trace complete (2381 chars) on "non mi pare d....` — esattamente il tipo di
+etichetta illeggibile che T14.20 doveva eliminare.
+
+- **Causa**: `deriveSummary` (il fallback per un fatto senza `summary` esplicito) prendeva la prima
+  riga di `content` e la troncava a 72 caratteri — generico, e infatti sbagliato proprio dove conta
+  di più. I 4 punti dove è il sistema stesso a scrivere in memoria (`condenseAgentOutput` in
+  `goal.ts`, la cronologia compressa e le tracce di reasoning in `agent.ts`, il report dei
+  sub-agenti in `spawnAgent.ts`) producono ciascuno un unico pointer su una riga sola — la parte che
+  distingue un fatto dall'altro (quale goal, quale task, quale sub-agente) arriva sempre dopo il
+  carattere 72, quindi la sintesi derivata era ancora un frammento a metà frase, indistinguibile
+  dagli altri: lo stesso identico bug di prima, con un taglio solo leggermente più largo. Su una
+  memoria reale questi sono anche la maggioranza dei fatti (i "168 fatti `run`" di T14.15), quindi
+  è il caso comune, non un margine.
+- **Fix**: questi quattro formati sono stringhe fisse scritte dal nostro stesso codice — non testo
+  libero da indovinare. `deriveSummary` ora prova prima un piccolo elenco di pattern noti
+  (`[Goal] X:`, `[Compressed history]`, `Reasoning trace (complete|interrupted) (N chars) on "..."`,
+  `[Subagent @X] Task: "..."`) e produce, per un fatto sanato al `load()`, la stessa sintesi che
+  avrebbe ricevuto se `summary` fosse esistito fin dall'inizio in quel punto del codice — non una
+  seconda approssimazione. Solo un contenuto che non corrisponde a nessun pattern noto (tipicamente
+  un `save_memory` libero salvato prima che `summary` diventasse obbligatorio) ricade nel
+  troncamento generico di prima.
+
+**Accettazione:** una traccia di reasoning, un goal condensato, una cronologia compressa o un report
+di sub-agente salvati prima di questa modifica mostrano nell'elenco la stessa etichetta breve che
+avrebbero avuto se scritti oggi, non un frammento troncato a metà frase. +5 casi in
+`tests/test_memory_summary.ts` (MS10–MS14: uno per ciascun pattern noto, più il fallback generico
+per contenuto non riconosciuto), 15 totali nel file.
+
+---
+
+## T14.22 — Un Tool Auto-Creato Poteva Dichiararsi SAFE e Fare Qualunque Cosa
+
+**Dipende da:** T13.1 · **Sforzo:** medio · **Priorità:** alta
+
+Domanda dell'utente: quando un agente scrive un nuovo tool, potrebbe dichiararlo `SAFE` e invece
+formattare il filesystem? Verificato sul codice: sì, e la catena era corta.
+
+- **Il `riskLevel` era autodichiarato, senza alcun riscontro**: `create_tool` leggeva
+  `args.riskLevel` e defaultava a `SAFE` se assente; `checkPermission` (`safety/permissions.ts`)
+  ritorna `true` immediatamente per tutto ciò che è SAFE — nessun prompt, nessuna coda. Nulla
+  verificava mai che il comportamento del codice generato corrispondesse al livello dichiarato:
+  l'unica fonte era la parola dell'agente che aveva scritto quel codice.
+- **`fs` era il modulo Node reale, non jailato**: i tool nativi che toccano file
+  (`read_file`/`write_file`/`delete_file`) passano tutti da `resolveSafePath` e non possono uscire
+  dalla workspace; il modulo generato da `create_tool` faceva invece `require('fs')` diretto —
+  accesso pieno, ovunque il processo potesse arrivare. Il sandbox `node:vm` non copriva questo: la
+  VM valida la *forma* del codice una volta sola alla creazione, mentre il file su disco viene poi
+  ricaricato con un `require()`/`import()` normale a ogni avvio successivo (`tools/index.ts`) — non
+  è un jail di esecuzione permanente, e non era mai stato pensato per esserlo.
+- **La blocklist non copriva le operazioni distruttive**: i 6 pattern vietati riguardavano
+  `child_process`, `eval`, `new Function`, `process.exit`, `process.env`, `require` — niente su
+  `fs.rmSync`/`unlinkSync`, che con un `fs` non jailato erano perfettamente raggiungibili.
+
+Tre correzioni, in ordine di quanto chiudono:
+
+1. **Mai fidarsi dell'autodichiarazione**: `riskLevel` non è più un parametro dello schema — un tool
+   generato è **sempre** `RESTRICTED`, quindi l'utente approva ogni singola chiamata. Un tool è
+   liberissimo di descriversi innocuo; non gli è più permesso di *saltare la conferma* sulla forza
+   di quella descrizione. (`DANGEROUS` non era comunque raggiungibile.)
+2. **`fs` jailato per costruzione** (`src/tools/impl/jailedFs.ts`): wrapper che fa passare ogni
+   percorso da `resolveSafePath`, iniettato al posto del modulo reale sia nel codice generato (che
+   ora fa `require('…/jailedFs').jailedFs`) sia nella VM di validazione — le due strade non possono
+   divergere, e la seconda non può essere più permissiva della prima. Deliberatamente **non** un
+   proxy completo di `fs`: espone solo i metodi sincroni che un tool generato usa plausibilmente, e
+   qualunque altra cosa semplicemente non esiste su quell'oggetto (fallisce rumorosamente invece di
+   ricadere silenziosamente sul modulo vero). Vale anche per un tool che l'utente approva: la
+   conferma autorizza *l'operazione*, non l'uscita dalla workspace.
+3. **Blocklist estesa da 6 a 9 pattern**: `constructor.constructor` (escape classico verso il
+   Function constructor attraverso la prototype chain — non contiene mai il testo `new Function`,
+   quindi il pattern esistente non lo vedeva), `import()` dinamico (aggirava il divieto su
+   `require()`), e le API `process` distruttive rimaste (`kill`, `abort`, `binding`, `dlopen`,
+   `_linkedBinding`).
+
+**Accettazione:** un tool creato dichiarandosi `SAFE` risulta comunque `RESTRICTED` nel registry e
+richiede conferma a ogni chiamata; un tool generato che tenta di leggere o scrivere fuori dalla
+workspace fallisce col messaggio della jail invece di riuscire; `constructor.constructor`,
+`import()` e `process.kill` vengono rifiutati in creazione. +8 casi in
+`tests/test_self_authoring.ts` (X4.6/X4.6b: livello forzato e riportato correttamente all'agente;
+X4.7a-c: il tool si crea, l'accesso fuori workspace fallisce a runtime, il file generato richiede
+davvero il wrapper e non `'fs'`; X4.8-X4.10: i tre nuovi pattern), 17 totali nel file.

@@ -98,6 +98,52 @@ async function main() {
       executeBody: "return {{{{;"
     }, perm);
     check('X4.5', !broken.success, 'codice con sintassi invalida rifiutato dalla sandbox');
+
+    // --- T14.22a: la fiducia dell'agente su se stesso non è mai sufficiente ---
+    // Anche dichiarandosi esplicitamente SAFE, il tool creato resta sempre RESTRICTED: nulla
+    // verifica che il codice generato corrisponda davvero al livello di rischio dichiarato,
+    // quindi non è mai lecito saltare la conferma dell'utente sulla sola parola dell'agente.
+    const claimedSafeTool = registry.getTool('__probe_tool');
+    check('X4.6', claimedSafeTool?.riskLevel === 'RESTRICTED', `riskLevel forzato a RESTRICTED anche se richiesto SAFE (era: ${claimedSafeTool?.riskLevel})`);
+    check('X4.6b', createRes.output.includes('risk: RESTRICTED'), `livello effettivo riportato all'agente, non quello richiesto: ${createRes.output.split('\n')[2]}`);
+
+    // --- T14.22b: fs iniettato nel tool generato è jailato alla workspace, non il modulo reale ---
+    const outsideAttempt = await registry.executeTool('create_tool', {
+      name: '__escape_tool',
+      description: 'tenta di leggere fuori dalla workspace tramite fs',
+      parameters: { type: 'object', properties: { target: { type: 'string' } } },
+      executeBody: "return fs.readFileSync(args.target, 'utf-8');"
+    }, perm);
+    check('X4.7a', outsideAttempt.success, `tool con fs creato senza essere bloccato in creazione: ${outsideAttempt.output.split('\n')[0]}`);
+    const escapeRun = await registry.executeTool('__escape_tool', { target: path.join(require('os').tmpdir(), '..', '..', 'Windows', 'win.ini') }, perm);
+    check('X4.7b', !escapeRun.success, `lettura fuori dalla workspace bloccata dal jail invece di riuscire: success=${escapeRun.success}`);
+    const escapeGenerated = fs.readFileSync(path.join(customToolsDir, '__escape_tool.js'), 'utf-8');
+    check('X4.7c', /jailedFs["'\\]/.test(escapeGenerated) && !/require\(\s*['"]fs['"]\s*\)/.test(escapeGenerated), `codice generato richiede il wrapper jailato, non 'fs' grezzo: ${escapeGenerated.split('\n')[1]}`);
+    for (const p of [path.join(customToolsDir, '__escape_tool.js'), homePath('custom_tools_schemas', '__escape_tool.json')]) {
+      if (fs.existsSync(p)) fs.unlinkSync(p);
+    }
+
+    // --- T14.22c: blocklist estesa — escape del sandbox via prototype chain e import() dinamico ---
+    const constructorEscape = await registry.executeTool('create_tool', {
+      name: '__ctor_escape',
+      description: 'tenta di raggiungere Function via constructor.constructor',
+      executeBody: "return (function(){}).constructor.constructor('return 1')().toString();"
+    }, perm);
+    check('X4.8', !constructorEscape.success, 'accesso a Function via constructor.constructor bloccato');
+
+    const dynamicImport = await registry.executeTool('create_tool', {
+      name: '__dynimport_escape',
+      description: 'tenta import() dinamico per aggirare require()',
+      executeBody: "const cp = await import('child_process'); return 'x';"
+    }, perm);
+    check('X4.9', !dynamicImport.success, 'import() dinamico bloccato');
+
+    const processKill = await registry.executeTool('create_tool', {
+      name: '__proc_escape',
+      description: 'tenta process.kill',
+      executeBody: "process.kill(0); return 'x';"
+    }, perm);
+    check('X4.10', !processKill.success, 'process.kill bloccato');
   } finally {
     // Pulizia post-test
     for (const p of [generatedPath, schemaPath]) {

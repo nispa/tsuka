@@ -5,6 +5,10 @@
   "parameters": {
     "type": "object",
     "properties": {
+      "summary": {
+        "type": "string",
+        "description": "Etichetta brevissima (come l'oggetto di un commit, max 72 caratteri) che sintetizza cosa stai memorizzando — è quello che verrà mostrato negli elenchi della memoria, non 'content'. Es: 'Preferenza utente: risposte in italiano', non una frase generica."
+      },
       "content": {
         "type": "string",
         "description": "Il fatto o l'informazione da ricordare, in forma sintetica (max 500 caratteri)."
@@ -14,6 +18,6 @@
         "description": "Se true, memorizza l'informazione a livello globale (visibile in tutti i progetti). Se false o omesso, la memorizza nello scope del progetto corrente."
       }
     },
-    "required": ["content"]
+    "required": ["summary", "content"]
   }
 }

@@ -44,7 +44,10 @@ function condenseAgentOutput(
     const msg = teamMessages[i];
     if (msg.role === 'assistant' && typeof msg.content === 'string') {
       const full = msg.content;
-      MemoryStore.getInstance().addFact(`[Goal] ${displayName}: ${full.replace(/\s+/g, ' ').slice(0, 300).trim()}`, 'goal_orchestrator', { kind: 'run' });
+      MemoryStore.getInstance().addFact(`[Goal] ${displayName}: ${full.replace(/\s+/g, ' ').slice(0, 300).trim()}`, 'goal_orchestrator', {
+        kind: 'run',
+        summary: `Goal — ${displayName}'s output condensed`,
+      });
       if (full.length > maxKeepChars) {
         const kept = full.slice(0, maxKeepChars).trim();
         msg.content = `${kept}\n\n[... output shortened. Complete details: recall_memory "Goal ${displayName}"]`;

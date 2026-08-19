@@ -56,7 +56,7 @@ async function main() {
   const names = registry.listForLLM('gpt-4o').map((t) => t.function.name);
   check('M2a', names.includes('save_memory') && names.includes('recall_memory'), 'tool di memoria rilevati via auto-discovery');
 
-  const saveRes = await registry.executeTool('save_memory', { content: 'Test integrazione memoria' }, perm);
+  const saveRes = await registry.executeTool('save_memory', { summary: 'Test integrazione memoria', content: 'Test integrazione memoria' }, perm);
   const recallRes = await registry.executeTool('recall_memory', { query: 'integrazione' }, perm);
   check('M2b', saveRes.success && recallRes.success && recallRes.output.includes('Test integrazione memoria'), 'save_memory + recall_memory end-to-end');
 

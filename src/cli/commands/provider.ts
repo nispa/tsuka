@@ -1,4 +1,5 @@
 import { CommandCtx } from './types';
+import { ConfigManager } from '../../core/config';
 import { runBenchmark, ModelProfile } from '../../core/modelProfile';
 import { probeProvider, warmUpModel, isLocalUrl, detectContextWindow } from '../../core/discovery';
 import { CLITheme, InteractiveMenu } from '../ui';
@@ -6,10 +7,52 @@ import { notifyIfUnprofiled } from '../shared';
 import chalk from 'chalk';
 import prompts from 'prompts';
 
+/**
+ * Sends the real warm-up request (a 1-token completion, forcing the server to load the model)
+ * with a spinner reporting progress — TUI-safe since T14.17 (no raw stdout, no confirmation
+ * prompt to render). Callers decide *whether* to ask first; this just does the loading once
+ * that's settled. A no-op for anything but a local server with a genuinely different model
+ * already in RAM.
+ */
+export async function warmUpIfNeeded(
+  baseUrl: string,
+  apiKey: string,
+  selectedModel: string,
+  loadedModel: string | null
+): Promise<void> {
+  if (!isLocalUrl(baseUrl) || !loadedModel || loadedModel === selectedModel) return;
+
+  const spinner = CLITheme.createSpinner(`Loading '${selectedModel}' on server...`);
+  spinner.start();
+  const ok = await warmUpModel(baseUrl, apiKey, selectedModel);
+  if (ok) {
+    spinner.succeed(chalk.green(`Model '${selectedModel}' loaded and ready.`));
+  } else {
+    spinner.fail(chalk.red('Warm up request failed (timeout or server error).'));
+    CLITheme.warning('Server will attempt loading upon first chat request.');
+  }
+}
+
+/**
+ * Full "make sure this model is actually loaded" sequence for a caller with no prompt to render
+ * (the TUI's own `/models`, or a non-interactive `/models <name>`): probes what the server has
+ * loaded right now, then warms up the target if it differs — unasked, since T14.19 found the
+ * alternative isn't "ask safely", it's "silently defer the load to the user's next chat
+ * message" (the TUI's model-switch paths never called any warm-up at all).
+ */
+export async function syncModelOnServer(configManager: ConfigManager, targetModel: string): Promise<void> {
+  const providerName = configManager.getActiveProviderName();
+  const activeConfig = configManager.getActiveProviderConfig();
+  const apiKey = configManager.getApiKey();
+  const scan = await probeProvider(providerName, activeConfig, apiKey);
+  if (!scan) return;
+  await warmUpIfNeeded(activeConfig.baseUrl, apiKey, targetModel, scan.loadedModel);
+}
+
 async function maybeWarmUp(ctx: CommandCtx, selectedModel: string, loadedModel: string | null): Promise<void> {
   const baseUrl = ctx.provider.getBaseUrl();
   if (!isLocalUrl(baseUrl) || !loadedModel || loadedModel === selectedModel) return;
-  if (process.env.TSUKA_TUI || (ctx as any).isTui || !process.stdin.isTTY) return;
+  if (process.env.TSUKA_TUI || (ctx as any).isTui || !process.stdin.isTTY) return; // TUI/non-interactive: caller uses syncModelOnServer/warmUpIfNeeded directly, unasked
 
   console.log();
   const confirm = await prompts({
@@ -23,15 +66,7 @@ async function maybeWarmUp(ctx: CommandCtx, selectedModel: string, loadedModel: 
     return;
   }
 
-  const spinner = CLITheme.createSpinner(`Loading '${selectedModel}' on server...`);
-  spinner.start();
-  const ok = await warmUpModel(baseUrl, ctx.configManager.getApiKey(), selectedModel);
-  if (ok) {
-    spinner.succeed(chalk.green(`Model '${selectedModel}' loaded and ready.`));
-  } else {
-    spinner.fail(chalk.red('Warm up request failed (timeout or server error).'));
-    CLITheme.warning('Server will attempt loading upon first chat request.');
-  }
+  await warmUpIfNeeded(baseUrl, ctx.configManager.getApiKey(), selectedModel, loadedModel);
 }
 
 export async function handleProvider(ctx: CommandCtx, arg: string): Promise<void> {
