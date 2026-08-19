@@ -191,7 +191,13 @@ FINE
     const fullCatalog = allChars.map(formatAgentSignature).join('\n');
     const estimatedTokens = Math.ceil(fullCatalog.length / 3.5);
     const avgTokPerChar = Math.round(estimatedTokens / allChars.length);
-    check('G5d', allChars.length >= 18 && avgTokPerChar <= 60 && estimatedTokens < 1600, `catalogo reale completo di ${allChars.length} agenti consuma ~${estimatedTokens} tok (~${avgTokPerChar} tok/agente, budget medio < 60)`);
+    // Il tetto assoluto (1600) è la vera garanzia: è quello che protegge il prompt
+    // dell'orchestratore, inviato a ogni /goal. La media per agente è un proxy, ed è stata
+    // alzata da 60 a 64 quando `execute_command` è entrato in developer (T18.1): quel tool è
+    // discriminante — dice all'orchestratore chi può davvero lanciare test e build — quindi
+    // vale il token che costa. Soglia alzata deliberatamente, non per far passare la suite:
+    // il budget assoluto ha ancora ~145 token di margine.
+    check('G5d', allChars.length >= 18 && avgTokPerChar <= 64 && estimatedTokens < 1600, `catalogo reale completo di ${allChars.length} agenti consuma ~${estimatedTokens} tok (~${avgTokPerChar} tok/agente, budget medio < 64, tetto assoluto < 1600)`);
   }
 
   console.log(`\n=== Risultato: ${passed} passati, ${failed} falliti ===`);

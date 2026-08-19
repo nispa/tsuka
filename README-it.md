@@ -2,7 +2,7 @@
 [![Node.js](https://img.shields.io/badge/Node.js-20+-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![Ollama](https://img.shields.io/badge/Ollama-nativo-black?logo=ollama&logoColor=white)](https://ollama.com/)
 [![OpenRouter](https://img.shields.io/badge/OpenRouter-pronto-FF6B35?logo=openai&logoColor=white)](https://openrouter.ai/)
-[![Test](https://img.shields.io/badge/Test-73%20superati-brightgreen?logo=vitest&logoColor=white)](tests/)
+[![Test](https://img.shields.io/badge/Test-74%20superati-brightgreen?logo=vitest&logoColor=white)](tests/)
 [![Licenza](https://img.shields.io/badge/Licenza-MIT-blue.svg)](LICENSE)
 [![PR benvenute](https://img.shields.io/badge/PR-benvenute-brightgreen.svg)](https://github.com/nispa/tsuka/pulls)
 
@@ -151,7 +151,7 @@ I profili sono ortogonali: **Personaggio = Ruolo × Tratto**. Vedi [Architettura
 
 ## 🧪 Test
 
-73 suite di test automatizzate con oltre 1.300 asserzioni, eseguite in modo ermetico tramite `MockLLMProvider` e store temporanei isolati:
+74 suite di test automatizzate con oltre 1.300 asserzioni, eseguite in modo ermetico tramite `MockLLMProvider` e store temporanei isolati:
 
 ```powershell
 npm test
@@ -184,7 +184,7 @@ npx tsx tests/test_goal_orchestrator.ts   # singola suite
 - [ ] Ispettore grafico delle tracce su web
 - [ ] Integrazione tool basati su LSP
 
-**Come contribuire**: aggiungi un tool (`src/tools/impl/*.ts` + `tools_schemas/*.json`) o un JSON di persona (`characters/`, `roles/`, `traits/`, `teams/`). Assicurati che tutte le 73 suite di test passino (`npm test`).
+**Come contribuire**: aggiungi un tool (`src/tools/impl/*.ts` + `tools_schemas/*.json`) o un JSON di persona (`characters/`, `roles/`, `traits/`, `teams/`). Assicurati che tutte le 74 suite di test passino (`npm test`).
 
 ---
 

@@ -103,6 +103,7 @@
 | T16.4 | 🔲 Da fare | **Soglie calibrate**: soglie tier (`computeTier`) configurabili da `tsuka.config.json` con default invariati; la calibrazione usa `--deep` su un modello debole noto vs. frontier in docs. |
 | T17.1 | ✅ Fatto | **Retrieval BM25/TF-IDF** (livello 3 migliorato): `search()` sostituisce `matches × 1000 + coverage-boost` con BM25 (`k1=1.2`, `b=0.75`), zero dipendenze; IDF calcolata per query sui fatti visibili; conservati stemming, stop-word e `tokenMatches` (exact + prefix in avanti), quindi il guard T6.1a resta valido. **Bug trovato in revisione**: il loop della document frequency passava la `Map` invece delle sue chiavi (`matchesAny(qt, d.freqs)`), e iterare una Map produce coppie `[token, count]` — il confronto era stringa-contro-array, sempre falso. Risultato: `n` sempre 0 e **IDF identica per ogni token**, cioè la ponderazione per cui esiste BM25 era disattivata, mentre il loop di scoring destrutturava correttamente e teneva viva la TF (per questo tutte le suite restavano verdi). Era anche un errore di tipo: `npm run build` e `npm run typecheck` fallivano. Corretto con `d.freqs.keys()`. Nuova suite `tests/test_memory_bm25.ts` (8 test): R1/R2 sono i guard di regressione — verificato che falliscono sul codice rotto e passano sul fix; R3 saturazione/lunghezza, R4 stop-word, R5 prefix, R6 nessun match spurio, R7 determinismo. Docs §5/§12 e tabella `recall_memory` allineate in EN+IT (il §12 elencava ancora BM25 fra i lavori *futuri*). |
 
+| T18.1 | ✅ Fatto | **Esecuzione Graduata: Classificare il Comando, non il Tool**: `execute_command` era DANGEROUS come capacità, quindi ogni invocazione costava una conferma interattiva piena — e la conseguenza pratica era che nessun ruolo autonomo poteva averlo: `developer` non lo aveva affatto in `allowedTools` (1 ruolo su 21, solo `sysadmin`), cioè scriveva codice senza poter lanciare né test né build. Nuovo `src/safety/commandRisk.ts`: la capacità resta DANGEROUS, la *singola chiamata* viene graduata (`git status` → SAFE, `npm test` → RESTRICTED, ignoto → DANGEROUS). RESTRICTED ha già "approva per la sessione", quindi il ciclo di debug costa una conferma invece di una per iterazione. Nuovo hook opzionale `Tool.classifyRisk(args)` nel registry, con fallback al `riskLevel` statico se assente, malformato o se lancia. Corretto anche un buco preesistente: `spawn` non impostava `cwd`, quindi la shell ereditava la directory del processo harness mentre i tool file erano confinati da `resolveSafePath` — ora parte da `getWorkspaceRoot()`. `developer` ha ora `execute_command` (differito, non in `coreTools`). Suite `tests/test_command_risk.ts` (25 test, di cui 8 di bypass). |
 Tutti i task pianificati e di backlog sono completati; la serie T15 (memoria, modelli <30B) è implementata e chiusa con 72 suite di test verdi. Pianificata la serie **T16 (benchmark significativi)** su architettura a due velocità: **`/benchmark` fast** (1 colpo/test, deterministico — resta il gate del tier) e **`/benchmark --deep`** (repliche con variazione del prompt, mediana+varianza, per validazione/calibrazione). Pianificato anche **T17.1** (retrieval BM25/TF-IDF), il primo livello del percorso di apprendimento documentato in `docs/memory.md` §12. Valore di ritorno — i benchmark attuali saturano in alto e non discriminano tra i modelli, ma il gating dei tool (`registry.ts`) dipende proprio da quel tier: se tutto diventa `large` il gating è codice morto. Restano da fare T14.24 (commenti tests/ in inglese), T14.25 (token di protocollo multi-agente) e le serie T16/T17.
 
 ---
@@ -2852,3 +2853,75 @@ suite di memoria intercettava.
   tradotta in inglese (T14.24); ora accetta entrambe le forme.
 
 73/73 suite verdi, `npm run build` e `npm run typecheck` puliti.
+
+---
+
+## T18.1 — Esecuzione Graduata: Classificare il Comando, non il Tool
+
+**Dipende da:** T14.22 · **Sforzo:** medio · **Priorità:** alta
+
+Domanda dell'utente: un personaggio sviluppatore non riesce a debuggare, perché non può eseguire
+il codice che genera. Verificato, ed è più netto della premessa: non è un problema di permessi
+negati, è che **`execute_command` non è in `allowedTools` di `developer`** — il tool non viene
+proprio offerto al modello. Un solo ruolo su 21 (`sysadmin`) lo possiede.
+
+Il quadro trovato:
+
+- `execute_command` è `DANGEROUS`, e a differenza di `RESTRICTED` **non ha un "always"**:
+  `allowAllWrite` copre solo le scritture, quindi ogni singolo comando richiede un y/n nuovo.
+- Nessuna allowlist: `git status` e `rm -rf /` passano dallo stesso identico prompt.
+- `spawnOptions` non impostava `cwd`: la shell ereditava la directory del processo harness. La
+  workspace jail protegge i tool file (`resolveSafePath`), **non** la shell.
+
+Messe insieme, queste tre cose significano che **l'unico meccanismo di sicurezza sull'esecuzione
+era che un umano dicesse sì ogni volta**. Da cui il vincolo di progetto: non si può auto-approvare
+per rendere autonomo il developer, perché si toglierebbe l'unico controllo esistente. Vanno prima
+aggiunti controlli reali, poi si allenta il prompting.
+
+- **L'unità di fiducia è il comando, non il tool** (`src/safety/commandRisk.ts`). La capacità resta
+  DANGEROUS; la singola invocazione viene graduata:
+  - `SAFE` — sola ispezione, non scrive nulla fuori dal proprio stdout (`git status/diff/log`,
+    `ls`, `cat`, `--version`, `tsc --noEmit`).
+  - `RESTRICTED` — effetti confinati al progetto (`npm test`, `npm run build`, `npm install`,
+    `git add/commit`, `node script.js`). Sta qui *apposta*: RESTRICTED ha già "approva per il resto
+    della sessione", quindi un agente che itera sul proprio codice paga una conferma sola invece
+    di una per iterazione. È tutto il senso della divisione in tier.
+  - `DANGEROUS` — tutto il resto.
+- **Tre regole rendono l'allowlist un controllo e non una superficie di bypass**:
+  1. *Deny by default*: ciò che non è riconosciuto positivamente è DANGEROUS. Le liste concedono,
+     non negano.
+  2. *Mai match su prefisso*: `npm test; rm -rf /` comincia con un comando consentito. I pattern
+     sono ancorati al comando intero.
+  3. *Mai interpretare gli operatori di shell*: un comando con `;` `|` `&&` `>` backtick `$(…)`
+     viene escalato senza tentare di analizzarlo. Decidere se una riga composta è sicura significa
+     reimplementare la shell, e ogni tentativo prima o poi perde contro il quoting.
+- **Hook `Tool.classifyRisk(args)`** nel registry, opzionale: se assente si usa il `riskLevel`
+  statico. Un classificatore che lancia o restituisce un valore non valido ricade sullo statico,
+  mai su qualcosa di più permissivo. Non è una superficie di attacco nuova per i tool auto-creati:
+  il template di `create_tool` genera solo `name`/`riskLevel`/`execute`, non può iniettarlo.
+- **`cwd` sulla shell**: `spawn` parte da `getWorkspaceRoot()`. È contenimento, non una jail — `cd ..`
+  esce comunque — ed è esattamente il motivo per cui il classificatore escala tutto ciò che non
+  riconosce.
+- **`developer` ottiene `execute_command`**, differito (non in `coreTools`), quindi lo schema non
+  pesa sul prompt finché non serve.
+
+**Accettazione:** un `developer` può lanciare test e build pagando una conferma per sessione, non
+per comando; un comando composto o ignoto continua a chiedere sempre. Suite
+`tests/test_command_risk.ts` (25 test): 13 di classificazione, **8 di bypass** (`;`, `&&`, pipe,
+redirezione, backtick, `$(…)`, newline, flag distruttiva su un comando altrimenti SAFE), 4 su input
+degenere (vuoto, `undefined`, non-stringa) che non devono mai cadere su una risposta permissiva.
+
+**Modifica deliberata a un test esistente:** `test_goal_orchestrator.ts` G5d fissa un budget token
+sul catalogo agenti inviato all'orchestratore. Aggiungere `execute_command` a `developer` ha portato
+la media da 60 a 61 token/agente. Soglia del *proxy* alzata a 64 e documentata inline; il tetto
+assoluto (< 1600, la vera garanzia) resta invariato e ha ancora ~145 token di margine. `execute_command`
+è un tool discriminante — dice all'orchestratore chi può davvero lanciare test — quindi vale il token
+che costa.
+
+### Non fatto (passo successivo naturale)
+
+Un **tetto per ruolo** (`executionPolicy: none | readonly | workspace | full`): oggi `allowedTools`
+è binario, quindi un ruolo che ha `execute_command` può arrivare a DANGEROUS *previa conferma*. In un
+`/goal` autonomo il rischio è che l'utente approvi per sbloccare il workflow. Un tetto per ruolo
+negherebbe in partenza, senza nemmeno chiedere. Richiede di far arrivare il ruolo fino al registry
+(che oggi non lo conosce): plumbing non banale, task a sé.

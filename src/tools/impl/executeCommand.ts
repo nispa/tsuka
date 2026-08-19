@@ -5,12 +5,16 @@ import { getShellConfig } from '../../core/platform';
 import { capForContext } from '../../core/contextBudget';
 import { logSink } from '../../core/logSink';
 import { ConfigManager } from '../../core/config';
+import { classifyCommandRisk } from '../../safety/commandRisk';
 
 const MAX_OUTPUT_BYTES = 50 * 1024; // 50 KB
 
 export const executeCommandTool: Tool = {
   name: 'execute_command',
   riskLevel: 'DANGEROUS',
+  // T18.1: the capability stays DANGEROUS; the individual call is graded by what it actually
+  // runs, so a read-only inspection does not cost the same confirmation as an arbitrary script.
+  classifyRisk: (args: { command?: string }) => classifyCommandRisk(args?.command),
   execute: async (args: { command: string; timeout_ms?: number }) => {
     return new Promise<string>((resolve) => {
       const shellConfig = getShellConfig();
@@ -22,10 +26,15 @@ export const executeCommandTool: Tool = {
 
       logSink.log(chalk.gray(`\n[Executing: ${args.command} (timeout: ${requestedTimeout / 1000}s)]`));
 
+      // T18.1: run inside the workspace root rather than inheriting the harness process's cwd.
+      // The file tools have always been confined by `resolveSafePath`, but the shell was not, so
+      // a relative path in a command resolved against wherever TSUKA happened to be started.
+      // This is containment, not a jail: `cd ..` still leaves, which is precisely why the
+      // classifier above escalates anything it does not positively recognize.
       const child = spawn(
         shellConfig.shell,
         shellConfig.buildArgs(args.command),
-        shellConfig.spawnOptions
+        { ...shellConfig.spawnOptions, cwd: configManager.getWorkspaceRoot() }
       );
 
       let combinedOutput = '';

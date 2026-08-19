@@ -44,7 +44,15 @@ export interface ToolExecutionContext {
 
 export interface Tool {
   name: string;
+  /** Static worst-case risk of the tool as a capability. Always the fallback. */
   riskLevel: RiskLevel;
+  /**
+   * Optional per-invocation refinement (T18.1). `execute_command` is DANGEROUS as a capability,
+   * but `git status` and `curl … | sh` are not the same request; a tool that can tell them apart
+   * implements this so the permission tier follows the actual arguments. Implementations must
+   * deny by default: anything they do not positively recognize stays at `riskLevel`.
+   */
+  classifyRisk?: (args: any) => RiskLevel;
   execute: (args: any, context?: ToolExecutionContext) => Promise<string>;
 }
 
@@ -333,7 +341,23 @@ export class ToolRegistry {
 
     const details = formatPermissionDetails(name, effectiveArgs);
 
-    const isApproved = await permissionManager.checkPermission(name, details, tool.riskLevel, requesterLabel);
+    // T18.1: a tool may refine its own risk for this specific call. The refinement is trusted
+    // only to the extent the tool is: it ships with the tool's own source, so it is exactly as
+    // reviewable as `riskLevel` itself. A throwing or malformed classifier falls back to the
+    // static level rather than to something permissive.
+    let effectiveRisk = tool.riskLevel;
+    if (tool.classifyRisk) {
+      try {
+        const refined = tool.classifyRisk(effectiveArgs);
+        if (refined === 'SAFE' || refined === 'RESTRICTED' || refined === 'DANGEROUS') {
+          effectiveRisk = refined;
+        }
+      } catch {
+        effectiveRisk = tool.riskLevel;
+      }
+    }
+
+    const isApproved = await permissionManager.checkPermission(name, details, effectiveRisk, requesterLabel);
     if (!isApproved) {
       return {
         success: false,
