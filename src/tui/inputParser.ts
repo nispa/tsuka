@@ -57,7 +57,29 @@ const ESCAPE_SEQUENCES: EscapeBinding[] = (keybindingsData as EscapeBinding[]).s
   (a, b) => b.prefix.length - a.prefix.length
 );
 
+/**
+ * Bracketed paste markers (DECSET 2004). Between them the terminal sends the clipboard
+ * verbatim, newlines included: without this mode a pasted block arrives as a run of
+ * Enter presses and the prompt submits the first line and queues the rest (T18.7).
+ */
+const PASTE_START = '\x1b[200~';
+const PASTE_END = '\x1b[201~';
+
+/** CR and CRLF inside a paste are literal newlines of the prompt, never submissions. */
+function pasteEvent(text: string): KeyPressEvent {
+  const normalized = text.replace(/\r\n?/g, '\n');
+  return { name: 'paste', sequence: normalized, char: normalized, ctrl: false, meta: false, shift: false };
+}
+
 export class InputParser {
+  /** Text of a paste still waiting for its closing marker in a later stdin chunk. */
+  private static pendingPaste: string | null = null;
+
+  /** Testing helper: drops a half-received paste. */
+  static __resetPasteStateForTest(): void {
+    this.pendingPaste = null;
+  }
+
   /**
    * Translates single-byte control character codes into a KeyPressEvent via switch statement.
    */
@@ -107,7 +129,31 @@ export class InputParser {
     const mouseEvents: TuiMouseEvent[] = [];
     let i = 0;
 
+    // A paste can be split across stdin chunks: hold the text until its closing marker.
+    if (this.pendingPaste !== null) {
+      const end = str.indexOf(PASTE_END);
+      if (end < 0) {
+        this.pendingPaste += str;
+        return { keys, mouseEvents };
+      }
+      keys.push(pasteEvent(this.pendingPaste + str.slice(0, end)));
+      this.pendingPaste = null;
+      str = str.slice(end + PASTE_END.length);
+    }
+
     while (i < str.length) {
+      // 0. Bracketed paste: clipboard text arrives verbatim, and is never keys.
+      if (str.startsWith(PASTE_START, i)) {
+        const end = str.indexOf(PASTE_END, i + PASTE_START.length);
+        if (end < 0) {
+          this.pendingPaste = str.slice(i + PASTE_START.length);
+          break;
+        }
+        keys.push(pasteEvent(str.slice(i + PASTE_START.length, end)));
+        i = end + PASTE_END.length;
+        continue;
+      }
+
       // 1. SGR Extended Mouse Sequences: \x1b[<button;col;row(M|m)
       const mouseMatch = str.slice(i).match(/^\x1b\[<(\d+);(\d+);(\d+)([Mm])/);
       if (mouseMatch) {

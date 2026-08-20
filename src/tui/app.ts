@@ -5,7 +5,7 @@
 
 import { TuiScreen, KeyPressEvent, TuiMouseEvent } from './screen';
 import { TuiTabSpec, tabAtColumn, resolveTabShortcut } from './navigation';
-import { listDirectory, enterDirectory, parentDirectory, entryPath, PARENT_ENTRY } from './fileExplorer';
+import { enterDirectory, parentDirectory, entryPath, PARENT_ENTRY } from './fileExplorer';
 import { TuiFileItem } from './types';
 import { TuiStore } from './store';
 import { TuiBridge } from './bridge';
@@ -449,6 +449,16 @@ export class TuiApp {
       return;
     }
 
+    // A paste is text, not a run of key presses: it lands in the prompt whatever pane
+    // has focus, newlines included (T18.7).
+    if (key.name === 'paste') {
+      if (key.char) {
+        this.store.setFocus('input');
+        this.store.insertInputText(key.char);
+      }
+      return;
+    }
+
     if (key.name === 'tab') {
       this.store.cycleFocus();
       return;
@@ -538,8 +548,7 @@ export class TuiApp {
 
   /** Files currently listed in the explorer panel. */
   private currentFiles(): TuiFileItem[] {
-    const state = this.store.getState();
-    return state.workspaceFiles.length > 0 ? state.workspaceFiles : listDirectory(state.filesCwd || '');
+    return FilesView.visibleFiles(this.store.getState());
   }
 
   /**
@@ -696,9 +705,9 @@ export class TuiApp {
         } else {
           this.store.setFocus('files');
           const files = this.currentFiles();
-          const clickedRow = mouse.row - headerHeight - profileHeight - 1;
-          const targetIndex = state.filesScrollOffset + clickedRow;
-          if (targetIndex >= 0 && targetIndex < files.length) {
+          const clickedRow = TuiScreen.paneContentRow(mouse.row, headerHeight, profileHeight);
+          const targetIndex = FilesView.indexAtRow(state, filesHeight, clickedRow);
+          if (targetIndex !== undefined) {
             const isAlreadySelected = state.selectedFileIndex === targetIndex;
             this.store.setState({ selectedFileIndex: targetIndex });
             const file = files[targetIndex];
@@ -727,8 +736,11 @@ export class TuiApp {
           this.store.setState({ chatScrollOffset: Math.max(0, targetOffset) });
         } else if (mouse.action === 'down' && this.activeTab === 'chat') {
           const chatWidth = effectiveWidth - sidebarWidth;
-          const clickedRow = Math.max(0, mouse.row - headerHeight - 1);
-          const thinkTarget = ChatView.getThinkingHeaderAtRow(state, chatWidth, mainHeight, clickedRow);
+          const clickedRow = TuiScreen.paneContentRow(mouse.row, headerHeight);
+          // A click on the pane border resolves to no content row at all.
+          const thinkTarget = clickedRow >= 0
+            ? ChatView.getThinkingHeaderAtRow(state, chatWidth, mainHeight, clickedRow)
+            : undefined;
           if (thinkTarget) {
             const isExpanded = this.store.toggleMessageThinking(thinkTarget.id);
             this.store.notify(`Reasoning (${thinkTarget.authorName || 'Tsuka'}): ${isExpanded ? 'Expanded' : 'Collapsed'}`, 'info');

@@ -37,7 +37,7 @@ export class TuiScreen {
     this.isRunning = true;
 
     // Enter alternate buffer, hide cursor, clear screen, enable SGR extended mouse tracking
-    process.stdout.write('\x1b[?1049h\x1b[?25l\x1b[2J\x1b[H\x1b[?1000h\x1b[?1002h\x1b[?1006h');
+    process.stdout.write('\x1b[?1049h\x1b[?25l\x1b[2J\x1b[H\x1b[?1000h\x1b[?1002h\x1b[?1006h\x1b[?2004h');
 
     // Setup raw mode for key handling
     if (process.stdin.isTTY) {
@@ -72,7 +72,7 @@ export class TuiScreen {
     }
 
     // Disable mouse tracking, show cursor, exit alternate screen buffer
-    process.stdout.write('\x1b[?1006l\x1b[?1002l\x1b[?1000l\x1b[?25h\x1b[?1049l');
+    process.stdout.write('\x1b[?2004l\x1b[?1006l\x1b[?1002l\x1b[?1000l\x1b[?25h\x1b[?1049l');
   }
 
   onKey(handler: KeyPressHandler): () => void {
@@ -169,6 +169,16 @@ export class TuiScreen {
 
   static truncateOrPad(text: string, width: number, padChar: string = ' '): string {
     return BoxDrawing.truncateOrPad(text, width, padChar);
+  }
+
+  /**
+   * Content row a click lands on inside a boxed pane, from a 1-based terminal row.
+   * Panes are drawn under the header, and each one opens with a top border before its
+   * first line: forgetting that border is what made a click land on the row below the
+   * one under the cursor (T18.7).
+   */
+  static paneContentRow(screenRow: number, headerHeight: number, paneBodyOffset = 0): number {
+    return screenRow - headerHeight - paneBodyOffset - 2;
   }
 
   static drawBox(

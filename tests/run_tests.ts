@@ -88,6 +88,7 @@ const suites = [
   'test_tui.ts',
   'test_tui_subagent_queue_copy.ts',
   'test_tui_thinking_view.ts',
+  'test_tui_paste.ts',
   'test_tui_fileviewer_export.ts',
   'test_multiline_tools_filter.ts',
   'test_inference_telemetry.ts',

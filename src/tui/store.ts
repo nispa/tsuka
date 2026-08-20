@@ -108,6 +108,15 @@ export class TuiStore {
     this.setInputText(newText, inputCursor + char.length);
   }
 
+  /**
+   * Inserts a run of text at the cursor. Newlines survive: a pasted block is one prompt,
+   * not one submission per line (T18.7).
+   */
+  insertInputText(text: string): void {
+    if (!text) return;
+    this.insertInputChar(text);
+  }
+
   deleteInputCharBefore(): void {
     const { inputText, inputCursor } = this.state;
     if (inputCursor <= 0) return;

@@ -91,3 +91,54 @@ describe('Files Explorer directory navigation (T14.12)', () => {
   }));
 
 });
+
+describe('Files Explorer click targeting (T18.7)', () => {
+
+  it('maps a click to the row drawn under the cursor, border included', () => inWorkspace(() => {
+    const store = new TuiStore();
+    const height = 10;
+    const state = store.getState();
+
+    // The panel is a box: line 0 is the top border, so its first entry is content row 0.
+    const frame = FilesView.render(state, 30, height).map((l) => TuiScreen.stripAnsi(l));
+    const files = FilesView.visibleFiles(state);
+    const firstEntryFrameIdx = frame.findIndex((l) => l.includes(files[0].name));
+    assert.strictEqual(firstEntryFrameIdx, 1, 'the first entry sits right below the top border');
+
+    for (let contentRow = 0; contentRow < files.length; contentRow++) {
+      const index = FilesView.indexAtRow(state, height, contentRow);
+      assert.strictEqual(index, contentRow, `content row ${contentRow} selects entry ${contentRow}`);
+      const drawn = frame[contentRow + 1];
+      assert.ok(drawn.includes(files[contentRow].name), `row ${contentRow} draws ${files[contentRow].name}`);
+    }
+  }));
+
+  it('rejects rows that hold no entry', () => inWorkspace(() => {
+    const store = new TuiStore();
+    const state = store.getState();
+    assert.strictEqual(FilesView.indexAtRow(state, 10, -1), undefined, 'the top border is not an entry');
+    assert.strictEqual(FilesView.indexAtRow(state, 10, 50), undefined, 'a row past the panel is not an entry');
+    assert.strictEqual(FilesView.indexAtRow(state, 10, 6), undefined, 'an empty row below the listing selects nothing');
+  }));
+
+  it('follows the drawn scroll window, not the raw offset', () => inWorkspace(() => {
+    const store = new TuiStore();
+    // Offset far past the end: render() clamps it, so hit-testing must clamp it too.
+    store.setState({ filesScrollOffset: 99 });
+    const state = store.getState();
+    const files = FilesView.visibleFiles(state);
+    const height = files.length + 2; // whole listing visible: the clamp brings the window back to 0
+    assert.strictEqual(FilesView.indexAtRow(state, height, 0), 0, 'the first drawn row is still the first entry');
+  }));
+
+  it('converts a terminal row into a pane content row', () => {
+    // Header is 3 lines; every pane opens with a top border before its first line.
+    assert.strictEqual(TuiScreen.paneContentRow(5, 3), 0, 'first content row of a full-height pane');
+    assert.strictEqual(TuiScreen.paneContentRow(4, 3), -1, 'the pane top border is no content row');
+    assert.strictEqual(TuiScreen.paneContentRow(6, 3), 1, 'the next terminal row is the next content row');
+    // A pane stacked under a 12-line one starts that much lower.
+    assert.strictEqual(TuiScreen.paneContentRow(17, 3, 12), 0, 'first content row of the stacked pane');
+    assert.strictEqual(TuiScreen.paneContentRow(18, 3, 12), 1, 'second content row of the stacked pane');
+  });
+
+});

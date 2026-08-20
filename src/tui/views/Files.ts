@@ -71,8 +71,27 @@ export class FilesView {
     return listDirectory(relCwd);
   }
 
+  /** Entries the panel is showing: the cached listing, or a fresh scan of the browsed folder. */
+  static visibleFiles(state: TuiState): TuiFileItem[] {
+    return state.workspaceFiles.length > 0 ? state.workspaceFiles : listDirectory(state.filesCwd || '');
+  }
+
+  /**
+   * Index of the entry drawn on a given content row, or undefined when the row holds no
+   * entry. Shares the scroll clamp with render(): the click handler used to add the raw
+   * filesScrollOffset, which drifts from the drawn window as soon as the offset is clamped.
+   */
+  static indexAtRow(state: TuiState, height: number, contentRow: number): number | undefined {
+    const files = FilesView.visibleFiles(state);
+    const innerHeight = Math.max(0, height - 2);
+    if (contentRow < 0 || contentRow >= innerHeight) return undefined;
+    const scrollOffset = Math.min(state.filesScrollOffset, Math.max(0, files.length - innerHeight));
+    const index = scrollOffset + contentRow;
+    return index < files.length ? index : undefined;
+  }
+
   static render(state: TuiState, width: number, height: number): string[] {
-    const files = state.workspaceFiles.length > 0 ? state.workspaceFiles : listDirectory(state.filesCwd || '');
+    const files = FilesView.visibleFiles(state);
     const rawLines: string[] = [];
 
     const innerWidth = Math.max(10, width - 2);

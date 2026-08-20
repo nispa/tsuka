@@ -3099,3 +3099,50 @@ subagent **nello stesso millisecondo** — la condizione che faceva sparire il p
 roster di due elementi con id distinti, token separati (120 e 300), esito conservato, misuratore
 in volo ancora a 300 e widget che mostra insieme il box di quello in corso e la riga di quello
 rientrato.
+
+## T18.7 — Click Spostato di una Riga e Incolla Multi-riga Spezzato in Turni
+
+**Dipende da:** T18.4 · **Sforzo:** basso · **Priorità:** alta
+
+Due segnalazioni nella stessa sessione, entrambe sul confine fra terminale e stato.
+
+### Il click selezionava la riga sotto
+
+Nel Files Explorer (e nella chat) la conversione da riga del terminale a riga di contenuto era:
+`mouse.row - headerHeight - profileHeight - 1`. Le righe del mouse sono **1-based**, l'header
+occupa 3 righe, ma ogni pannello **disegna un bordo superiore prima della prima riga di
+contenuto**: era quel bordo a mancare nel conto. Risultato: la riga calcolata era una più in
+basso di quella sotto il cursore. Non era un difetto del solo explorer — la stessa sottrazione
+sbagliata era anche nel ramo della chat, che è il motivo per cui il comportamento sembrava
+generale.
+
+- **`TuiScreen.paneContentRow(screenRow, headerHeight, paneBodyOffset)`**: l'inverso di
+  `drawBox`, e sta accanto a `drawBox` apposta — chi aggiunge il bordo e chi lo toglie devono
+  stare sotto gli occhi insieme. Entrambi i rami del click ci passano.
+- **`FilesView.indexAtRow(state, height, contentRow)`**: il pannello risponde su quale voce
+  disegna a una certa riga. Il click sommava `state.filesScrollOffset` grezzo, mentre `render`
+  lo **clampa** al fondo della lista: con la lista scrollata a fine cartella i due numeri
+  divergevano di nuovo. Ora l'offset lo clampa una funzione sola.
+- **`FilesView.visibleFiles(state)`**: unica sorgente della lista, prima duplicata in
+  `FilesView.render` e in `app.currentFiles()`.
+
+### L'incolla multi-riga eseguiva la prima riga
+
+La TUI non attivava il **bracketed paste** (DECSET 2004). Senza, il terminale consegna il testo
+incollato come byte normali: ogni a capo è un CR, ogni CR è Invio, quindi il prompt inviava la
+prima riga e accodava le altre come turni separati — esattamente il sintomo descritto.
+
+- **`\x1b[?2004h` all'avvio, `\x1b[?2004l` all'uscita** (`screen.ts`).
+- **`InputParser`** riconosce `\x1b[200~ … \x1b[201~` ed emette **un solo evento** `paste` col
+  testo letterale, CR e CRLF normalizzati a `\n`. Un incolla lungo arriva spezzato su più chunk
+  di stdin: il testo parziale resta in `pendingPaste` finché non arriva il marcatore di chiusura.
+- **`app.handleKeyPress`** tratta `paste` come testo e non come tasti: porta il fuoco sul prompt
+  e inserisce, qualunque pannello fosse attivo. `store.insertInputText` conserva gli a capo — il
+  buffer del prompt è già multi-riga (Shift+Invio), mancava solo la strada per riempirlo.
+
+**Accettazione:** `tests/test_files_explorer.ts` sale a 12 test: il caso chiave ricava la riga
+attesa **dal frame renderizzato** (la prima voce sta subito sotto il bordo) e verifica voce per
+voce, più i casi di bordo, riga vuota e offset da clampare. `tests/test_tui_paste.ts` (6 test,
+nuova suite) copre incolla multi-riga come evento singolo, normalizzazione CRLF, incolla spezzato
+su due chunk, tasti prima e dopo i marcatori, CR isolato che resta Invio, e inserimento nel buffer
+col cursore che finisce in fondo al blocco.
