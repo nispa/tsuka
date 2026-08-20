@@ -2968,3 +2968,30 @@ Nella tabella c'è **solo Qwen3.8**: i valori delle altre famiglie in `models_pr
 (Qwen3.5, Qwen3.6, gemma-4) non sono stati inventati per analogia. Finché non se ne cita la card,
 si configurano da `samplingProfiles` — che è esattamente il motivo per cui il livello di config
 esiste.
+
+## T18.3 — Crash del Renderer Markdown su Codice Inline nelle Tabelle
+
+**Dipende da:** T14.16 · **Sforzo:** basso · **Priorità:** alta
+
+`Error: Token with "codespan" type was not found` sollevato da `marked` dentro
+`renderMarkdownToLines`, con lo stack che risale fino a `TuiApp.renderFrame`: non un messaggio
+malformato, **un intero frame della TUI che non viene disegnato**.
+
+Causa: il case `table` renderizzava le celle con `marked.parser(c.tokens)`. Le celle però
+contengono token **inline** (`text`, `codespan`, `strong`, `link`), mentre `marked.parser` è il
+parser di *blocco* e conosce solo i tipi di blocco. Finché una cella conteneva solo `text` funzionava
+per caso — `Parser.parse` gestisce `text` — ma bastava un codice inline in una cella per far
+lanciare il parser. Una tabella con nomi di parametri, cioè esattamente il caso d'uso più frequente
+in questo progetto, era una mina.
+
+- **`Parser.parseInline(tokens)`** per intestazione e corpo (`inlineTokensToAnsi` in
+  `src/cli/markdown.ts`): è l'API giusta per una sequenza di token inline. Lo stile resta quello
+  del resto del renderer, quindi il codice inline in cella si vede con i backtick come nei paragrafi.
+- **Il ramo `default` non può più far cadere il frame**: se `marked.parser` lancia su un token
+  inaspettato si ricade su `parseInline`. Meglio una riga resa in modo povero che una schermata vuota.
+
+**Accettazione:** `tests/test_markdown_render.ts` (MD10a/b/c) copre codespan, grassetto e link
+nelle celle e nell'intestazione. Prima del fix MD10a falliva con il crash.
+
+**Nota operativa:** lo stack arrivava da `dist/`, quindi la correzione si vede nella TUI solo dopo
+`npm run build`.

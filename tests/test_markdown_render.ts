@@ -84,6 +84,18 @@ function main() {
   out = renderPlain('- [ ] todo\n- [x] done');
   check('MD9', out.includes('☐ todo') && out.includes('☑ done'), `checkbox resi: ${JSON.stringify(out.trim())}`);
 
+  // T18.2: una cella di tabella porta token *inline*: passarli a marked.parser (parser di blocco)
+  // faceva esplodere l'intero frame della TUI con 'Token with "codespan" type was not found'.
+  try {
+    out = renderPlain('| par | valore |\n| --- | --- |\n| `top_k` | 20 |\n| **bold** | [link](https://example.com) |');
+    check('MD10a', /`top_k`/.test(out), `codespan in cella reso invece di far crashare il renderer: ${JSON.stringify(out.trim())}`);
+    check('MD10b', out.includes('bold') && out.includes('https://example.com'), 'grassetto e link nelle celle restano leggibili');
+    const headerPlain = renderPlain('| `k` | v |\n| --- | --- |\n| a | b |');
+    check('MD10c', headerPlain.includes('`k`'), 'codespan reso anche nella riga di intestazione');
+  } catch (e: any) {
+    check('MD10a', false, `crash su codespan in tabella: ${e.message}`);
+  }
+
   console.log(`\n=== Risultato: ${passed} passati, ${failed} falliti ===`);
   process.exit(failed > 0 ? 1 : 0);
 }

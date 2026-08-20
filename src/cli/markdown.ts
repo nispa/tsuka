@@ -1,5 +1,5 @@
 import chalk from 'chalk';
-import { marked } from 'marked';
+import { marked, Parser } from 'marked';
 import hljs from 'highlight.js';
 import wrapAnsi from 'wrap-ansi';
 
@@ -209,6 +209,16 @@ function padCell(text: string, width: number, align: 'left' | 'center' | 'right'
   return text + ' '.repeat(gap);
 }
 
+/**
+ * Renders a run of *inline* tokens (table cells, and anything else the lexer nests inside
+ * a block token). marked.parser only knows block types and throws on inline ones: a single
+ * inline code span in a table cell used to take down the whole frame with
+ * 'Token with "codespan" type was not found'.
+ */
+function inlineTokensToAnsi(tokens: any[]): string {
+  return inlineHtmlToAnsi(Parser.parseInline(tokens as any)).trim();
+}
+
 /** Renders markdown into wrapped terminal lines for boxed panel output. */
 export function renderMarkdownToLines(md: string, innerWidth: number): string[] {
   const tokens = marked.lexer(md);
@@ -256,8 +266,8 @@ export function renderMarkdownToLines(md: string, innerWidth: number): string[] 
       case 'table': {
         const table = t as any;
         const align = (table.align || []) as Array<'left' | 'center' | 'right' | null>;
-        const headerCells = table.header.map((c: any) => inlineHtmlToAnsi(marked.parser(c.tokens)).trim());
-        const bodyRows = table.rows.map((row: any) => row.map((c: any) => inlineHtmlToAnsi(marked.parser(c.tokens)).trim()));
+        const headerCells = table.header.map((c: any) => inlineTokensToAnsi(c.tokens));
+        const bodyRows = table.rows.map((row: any) => row.map((c: any) => inlineTokensToAnsi(c.tokens)));
         const colWidths = tableColumnWidths(headerCells, bodyRows, innerWidth);
 
         const fit = (cell: string, width: number) => wrapAnsi(cell, width, { hard: true, trim: false }).split(/\r?\n/)[0];
@@ -300,7 +310,14 @@ export function renderMarkdownToLines(md: string, innerWidth: number): string[] 
         break;
       }
       default: {
-        const html = marked.parser([t] as any);
+        // An inline token reaching top level would make the block parser throw: better a
+        // plainly rendered line than a crashed frame.
+        let html: string;
+        try {
+          html = marked.parser([t] as any);
+        } catch {
+          html = Parser.parseInline([t] as any);
+        }
         if (html && html.trim()) {
           pushWrapped(inlineHtmlToAnsi(html).trim(), chalk.white);
           lines.push('');
