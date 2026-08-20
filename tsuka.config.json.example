@@ -40,5 +40,25 @@
   "browseFetchTimeoutMs": 30000,
   "downloadFetchTimeoutMs": 60000,
   "defaultUi": "tui",
-  "inferenceLogprobs": false
+  "inferenceLogprobs": false,
+  "samplingProfiles": {
+    "qwen3.8": {
+      "thinking": {
+        "temperature": 1,
+        "top_p": 0.95,
+        "top_k": 20,
+        "min_p": 0,
+        "presence_penalty": 0,
+        "repetition_penalty": 1
+      },
+      "instruct": {
+        "temperature": 0.7,
+        "top_p": 0.8,
+        "top_k": 20,
+        "min_p": 0,
+        "presence_penalty": 1.5,
+        "repetition_penalty": 1
+      }
+    }
+  }
 }

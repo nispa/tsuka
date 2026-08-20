@@ -2925,3 +2925,46 @@ Un **tetto per ruolo** (`executionPolicy: none | readonly | workspace | full`): 
 `/goal` autonomo il rischio è che l'utente approvi per sbloccare il workflow. Un tetto per ruolo
 negherebbe in partenza, senza nemmeno chiedere. Richiede di far arrivare il ruolo fino al registry
 (che oggi non lo conosce): plumbing non banale, task a sé.
+
+## T18.2 — Parametri di Campionamento per Famiglia di Modello (Qwen3.8) da File JSON
+
+**Dipende da:** T8.17 · **Sforzo:** basso · **Priorità:** media
+
+Le model card pubblicano i parametri di campionamento consigliati, e per Qwen3.8 sono **due set
+distinti**: uno per la modalità thinking (`temperature 1.0`, `top_p 0.95`, `top_k 20`, `min_p 0.0`,
+`presence_penalty 0.0`, `repetition_penalty 1.0`) e uno per la modalità instruct (`temperature 0.7`,
+`top_p 0.80`, `presence_penalty 1.5`, resto invariato). L'harness inviava solo i preset di
+creatività (T8.17) e, in loro assenza, **nessun parametro**: il backend applicava i propri default
+(llama.cpp parte da `temperature 0.8`), diversi da quelli per cui il modello è stato tarato.
+
+- **Tabella per famiglia** (`MODEL_SAMPLING_PROFILES` in `src/core/provider.ts`): una riga per
+  famiglia, con i due set. Aggiungere un modello significa aggiungere una riga, non un ramo `if`.
+  Il match è una regex sull'id del modello, quindi copre prefisso del provider e suffisso di
+  quantizzazione (`unsloth/Qwen3.8-27B-GGUF`).
+- **Modalità dedotta dallo sforzo**: `reasoningEffort === 'none'` → set instruct; qualunque altro
+  valore, **sforzo assente incluso**, → set thinking, perché Qwen ragiona di default.
+- **Override da file JSON** (`samplingProfiles` in `tsuka.config.json`): chiave = sottostringa
+  case-insensitive sull'id del modello, oppure `/regex/` se racchiusa fra slash; valore =
+  `{ thinking: {...}, instruct: {...} }` o un blocco piatto valido per entrambe le modalità. Fra più
+  chiavi che matchano vince la più lunga, così una quantizzazione specifica batte la famiglia.
+  Chiavi sconosciute e valori non numerici vengono scartati con un avviso, non fanno saltare il file.
+- **Precedenza**: valore esplicito nella chiamata → preset di creatività → JSON di configurazione →
+  tabella interna. Il config *tara* i default di fabbrica, non li sostituisce in blocco: i parametri
+  che non ridefinisce restano quelli della tabella.
+- **Parametri fuori schema OpenAI**: `top_k`, `min_p` e `repetition_penalty` non esistono nell'API
+  OpenAI; llama.cpp e vLLM li leggono comunque dal body. `repetition_penalty` viaggia in coppia con
+  l'alias `repeat_penalty` (il nome usato da llama.cpp). Se un backend rifiuta la richiesta per uno
+  di questi nomi, il provider li rimuove **per il resto della sessione** e riprova senza consumare
+  budget di retry — stesso schema già usato per `logprobs` (T14.9) e `reasoning_effort`.
+
+**Accettazione:** `tests/test_sampling_params.ts` sale a 35 test — thinking vs instruct, modello
+fuori tabella che non riceve nulla, precedenza esplicito/preset/famiglia, override dal config
+(anche per un modello assente dalla tabella) e inoltro reale di `top_k`/`min_p` nel body della
+richiesta HTTP.
+
+### Non fatto
+
+Nella tabella c'è **solo Qwen3.8**: i valori delle altre famiglie in `models_profile.json`
+(Qwen3.5, Qwen3.6, gemma-4) non sono stati inventati per analogia. Finché non se ne cita la card,
+si configurano da `samplingProfiles` — che è esattamente il motivo per cui il livello di config
+esiste.

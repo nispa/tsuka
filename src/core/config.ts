@@ -8,6 +8,31 @@ export interface ProviderConfig {
   model: string;
 }
 
+/**
+ * Sampling parameters for one mode, in wire format (the same names the backend reads).
+ * Every field is optional: only the ones present are sent.
+ */
+export interface SamplingProfileParams {
+  temperature?: number;
+  top_p?: number;
+  top_k?: number;
+  min_p?: number;
+  presence_penalty?: number;
+  frequency_penalty?: number;
+  repetition_penalty?: number;
+}
+
+/**
+ * Sampling profile of a model family, split by mode (T8.17). A profile can also be
+ * written flat, without the thinking/instruct split: in that case it applies to both.
+ */
+export interface SamplingProfileConfig {
+  /** Applied when the model reasons (effort other than 'none'). */
+  thinking?: SamplingProfileParams;
+  /** Applied when the effort is 'none', i.e. no reasoning block. */
+  instruct?: SamplingProfileParams;
+}
+
 export interface WebSearchConfig {
   provider: 'duckduckgo' | 'tavily' | 'google';
 }
@@ -68,6 +93,57 @@ export interface AppConfig {
    * OpenAI-compatible backend accepts the parameter (T14.9).
    */
   inferenceLogprobs?: boolean;
+  /**
+   * Sampling parameters per model family (T8.17). The key matches the model id
+   * (case-insensitive substring, or /regex/ when wrapped in slashes); the value carries
+   * the parameters for thinking mode and for instruct mode.
+   */
+  samplingProfiles?: Record<string, SamplingProfileConfig | SamplingProfileParams>;
+}
+
+/** Parameter names accepted inside a sampling profile: anything else is ignored. */
+export const SAMPLING_PARAM_KEYS = [
+  'temperature',
+  'top_p',
+  'top_k',
+  'min_p',
+  'presence_penalty',
+  'frequency_penalty',
+  'repetition_penalty'
+] as const;
+
+/**
+ * Matches a samplingProfiles key against a model id: `/regex/flags` when the key is
+ * wrapped in slashes, case-insensitive substring otherwise.
+ */
+function matchesModelId(key: string, model: string): boolean {
+  const regexForm = key.match(/^\/(.*)\/([a-z]*)$/);
+  if (regexForm) {
+    try {
+      return new RegExp(regexForm[1], regexForm[2] || 'i').test(model);
+    } catch {
+      return false;
+    }
+  }
+  return model.toLowerCase().includes(key.toLowerCase());
+}
+
+/** Keeps only known keys holding a finite number, reporting whatever it discards. */
+function sanitizeSamplingParams(raw: unknown, source: string): SamplingProfileParams | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const out: Record<string, number> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!(SAMPLING_PARAM_KEYS as readonly string[]).includes(key)) {
+      logSink.log(`[Config] samplingProfiles['${source}']: unknown parameter '${key}', ignored.`);
+      continue;
+    }
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      logSink.log(`[Config] samplingProfiles['${source}'].${key}: not a number, ignored.`);
+      continue;
+    }
+    out[key] = value;
+  }
+  return Object.keys(out).length > 0 ? (out as SamplingProfileParams) : undefined;
 }
 
 export const CONFIG_PATH = homePath('tsuka.config.json');
@@ -403,6 +479,28 @@ export class ConfigManager {
       return value as any;
     }
     return undefined;
+  }
+
+  /**
+   * Sampling parameters configured for `model` in the mode in use (T8.17), or undefined
+   * when no key of samplingProfiles matches. Among several matches the longest key wins,
+   * so a specific quantization can override its family.
+   */
+  getSamplingProfile(model: string, mode: 'thinking' | 'instruct'): SamplingProfileParams | undefined {
+    const profiles = this.config.samplingProfiles;
+    if (!profiles || typeof profiles !== 'object' || !model) return undefined;
+
+    const key = Object.keys(profiles)
+      .filter((candidate) => matchesModelId(candidate, model))
+      .sort((a, b) => b.length - a.length)[0];
+    if (!key) return undefined;
+
+    const entry = profiles[key] as SamplingProfileConfig & SamplingProfileParams;
+    if (!entry || typeof entry !== 'object') return undefined;
+    // Flat profile (no thinking/instruct split): the same values serve both modes.
+    const hasModes = entry.thinking !== undefined || entry.instruct !== undefined;
+    const raw = hasModes ? entry[mode] : entry;
+    return sanitizeSamplingParams(raw, key);
   }
 
   /**
