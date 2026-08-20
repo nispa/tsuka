@@ -2995,3 +2995,46 @@ nelle celle e nell'intestazione. Prima del fix MD10a falliva con il crash.
 
 **Nota operativa:** lo stack arrivava da `dist/`, quindi la correzione si vede nella TUI solo dopo
 `npm run build`.
+
+## T18.4 — Pensiero Live Leggibile e Click che Colpisce la Riga Disegnata
+
+**Dipende da:** T14.16 · **Sforzo:** medio · **Priorità:** alta
+
+Due difetti nello stesso punto, segnalati insieme: mentre il modello ragiona il pensiero era
+compresso in **una riga sola** (la coda del testo fra virgolette), quindi la parte più
+interessante mentre si aspetta non si poteva leggere senza cliccare; e cliccando un pensiero
+vecchio **durante l'elaborazione non succedeva nulla**.
+
+La seconda non era un problema di input: `handleMouseEvent` non ha nessun guardia su
+`isGenerating`, l'evento arrivava. Il problema era la geometria. `ChatView.render` costruiva le
+righe in un modo, e i due hit-tester (`getMessageAtRow`, `getThinkingHeaderAtRow`) la
+**ricalcolavano per conto proprio** con tre divergenze:
+
+1. `render` spinge una riga vuota di spaziatura **anche dopo l'ultimo messaggio**, gli hit-tester
+   la toglievano (`lineCursor - 1`) → una riga di sfasamento appena la conversazione supera
+   l'altezza del pannello.
+2. `render` aggiunge la card di attività (⚡ THINKING / 🔧 TOOL EXECUTION) **più una riga vuota**
+   quando `isGenerating`, gli hit-tester non la conoscevano → altre due righe di sfasamento
+   esattamente durante l'elaborazione, cioè il caso segnalato.
+3. L'estensione del blocco di pensiero espanso era stimata contando le righe **non wrappate** del
+   testo, mentre il renderer le manda a capo → il fondo di un pensiero aperto non era cliccabile.
+
+Con lo scroll a zero (conversazione corta) le formule coincidevano, ed è il motivo per cui il
+click "a volte" funzionava.
+
+- **Un solo layout** (`ChatView.layout`): costruisce le righe una volta e registra, per ogni
+  messaggio, il range assoluto e il sotto-range del blocco di pensiero. `render` ne prende la
+  fetta visibile, gli hit-tester ci cercano dentro la riga cliccata. Le tre divergenze non sono
+  state corrette una per una: non esistono più due aritmetiche da tenere allineate.
+- **Il pensiero live nasce aperto** (`isThinkingExpanded`): scelta esplicita dell'utente > pensiero
+  in corso (aperto) > toggle globale Ctrl+T. Appena arriva la risposta il pensiero torna a
+  seguire il toggle globale, quindi la cronologia resta compatta come prima.
+- **Coda invece di tutto** (`STREAMING_THOUGHT_TAIL_LINES = 12`): un pensiero lungo scorre
+  mostrando le ultime righe, così non spinge fuori schermo il resto della conversazione.
+- **Un solo renderer del blocco** (`renderThoughtBlock`): i due rami quasi identici — pensiero in
+  corso e pensiero concluso — differivano solo per titolo e finestra di righe.
+
+**Accettazione:** `tests/test_tui_thinking_view.ts` (14 test). I casi di click ricavano la riga
+attesa **dal frame renderizzato**, non da un numero fisso: è l'unico modo perché un renderer e un
+hit-tester che divergono di nuovo facciano fallire la suite. Sulla versione precedente falliscono
+TV1a/TV1b (pensiero live illeggibile), TV6 (feed scrollato) e TV7b (click durante l'elaborazione).
