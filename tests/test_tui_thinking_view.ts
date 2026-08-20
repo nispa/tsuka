@@ -15,6 +15,9 @@
  */
 import chalk from 'chalk';
 import { ChatView } from '../src/tui/views/Chat';
+import { ModalView } from '../src/tui/views/Modal';
+import { resolveTabShortcut } from '../src/tui/navigation';
+import { KeyPressEvent } from '../src/tui/inputParser';
 import { TuiStore } from '../src/tui/store';
 import { TuiState } from '../src/tui/types';
 
@@ -179,6 +182,27 @@ function main() {
     const row = clickRowOf(state, 'Answer line one');
     const target = ChatView.getThinkingHeaderAtRow(state, WIDTH, HEIGHT, row);
     check('TV8', target === undefined, `click on response text is not a thought toggle (row ${row})`);
+  }
+
+  // TV9: Ctrl+T must not be swallowed by tab navigation. It used to be resolved as a
+  // legacy alias for F2, so it opened the Tools inspector and the reasoning toggle
+  // sitting further down in handleKeyPress was unreachable dead code.
+  {
+    const press = (name: string, ctrl = false): KeyPressEvent => ({ name, sequence: name, ctrl, meta: false, shift: false });
+    check('TV9a', resolveTabShortcut(press('t', true), 'chat', false) === undefined, 'Ctrl+T is not a tab shortcut');
+    check('TV9b', resolveTabShortcut(press('f2'), 'chat', false)?.id === 'tools', 'F2 still reaches the Tools inspector');
+    check('TV9c', resolveTabShortcut(press('f12'), 'chat', false)?.id === 'help', 'F12 still opens the cheatsheet');
+    check('TV9d', resolveTabShortcut(press('?'), 'chat', false)?.id === 'help', "'?' opens the cheatsheet outside the prompt");
+    check('TV9e', resolveTabShortcut(press('?'), 'input', false) === undefined, "'?' stays a typed character in the prompt (T14.10)");
+  }
+
+  // TV10: the cheatsheet documents the binding that actually runs.
+  {
+    const modal = { type: 'help' as const, title: 'Cheatsheet', selectedIndex: 0 };
+    const screen = Array.from({ length: 25 }, () => ' '.repeat(90));
+    const overlay = ModalView.renderOverlay(modal, screen, 90, 25).map(plain);
+    check('TV10a', overlay.some((l) => l.includes('Ctrl+T') && l.includes('Expand / collapse reasoning traces')), 'Ctrl+T documented as the reasoning toggle');
+    check('TV10b', !overlay.some((l) => l.includes('F2') && l.includes('Ctrl+T')), 'Ctrl+T no longer advertised as a Tools alias');
   }
 
   console.log(`\n=== Result: ${passed} passed, ${failed} failed ===`);

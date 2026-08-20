@@ -4,8 +4,7 @@
  */
 
 import { TuiScreen, KeyPressEvent, TuiMouseEvent } from './screen';
-import { isHelpShortcut } from './inputParser';
-import { TuiTabSpec, tabByKey, tabAtColumn } from './navigation';
+import { TuiTabSpec, tabAtColumn, resolveTabShortcut } from './navigation';
 import { listDirectory, enterDirectory, parentDirectory, entryPath, PARENT_ENTRY } from './fileExplorer';
 import { TuiFileItem } from './types';
 import { TuiStore } from './store';
@@ -425,12 +424,10 @@ export class TuiApp {
       process.exit(0);
     }
 
-    // Navigation: F1..F7 and F12 come from the tab table, Ctrl+T is the legacy
-    // shortcut for the Tools tab. Help lives on F12; '?' is a shortcut only where
-    // it cannot be a typed character (T14.10).
-    const tab = tabByKey(key.name)
-      || (key.ctrl && key.name === 't' ? tabByKey('f2') : undefined)
-      || (isHelpShortcut(key, state.focus, !!state.activeModal) ? tabByKey('f12') : undefined);
+    // Navigation: F1..F7 and F12 come from the tab table, plus '?' where it cannot be a
+    // typed character (T14.10). Ctrl+T is deliberately not a tab alias: it belongs to the
+    // reasoning toggle below, which is the binding the chat advertises (T18.5).
+    const tab = resolveTabShortcut(key, state.focus, !!state.activeModal);
     if (tab) {
       this.activateTab(tab, true);
       return;

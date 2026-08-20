@@ -8,6 +8,7 @@
  */
 
 import { BoxDrawing } from './boxDrawing';
+import { isHelpShortcut, KeyPressEvent } from './inputParser';
 
 export interface TuiTabSpec {
   id: string;
@@ -37,6 +38,22 @@ export const TUI_TABS: TuiTabSpec[] = [
 
 export function tabByKey(keyName: string): TuiTabSpec | undefined {
   return TUI_TABS.find((t) => t.key === keyName);
+}
+
+/**
+ * Tab a key press activates, or undefined when the key belongs to something else.
+ * The only place that answers this question: a shortcut listed here is a tab shortcut
+ * and nothing else can claim it, which is how Ctrl+T ended up opening the Tools tab
+ * instead of expanding the reasoning trace it is advertised for (T18.5).
+ */
+export function resolveTabShortcut(
+  key: KeyPressEvent,
+  focus: string,
+  hasModal: boolean
+): TuiTabSpec | undefined {
+  // A modifier chord is never a tab shortcut: tabs live on function keys.
+  if (key.ctrl || key.meta) return undefined;
+  return tabByKey(key.name) || (isHelpShortcut(key, focus, hasModal) ? tabByKey('f12') : undefined);
 }
 
 export function labelForWidth(spec: TuiTabSpec, width: number): string {

@@ -101,6 +101,7 @@ const GENERAL_SHORTCUTS: Array<[string, string]> = [
   ['↑ / ↓', 'Scroll / History / Select'],
   ['→ / ←', 'Files: enter folder / go back up'],
   ['Enter', 'Files: open folder or preview file'],
+  ['Ctrl+T', 'Expand / collapse reasoning traces'],
   ['Esc', 'Dismiss popup / Interrupt generation'],
   ['Ctrl+C', 'Exit TSUKA'],
 ];
@@ -113,10 +114,7 @@ function buildHelpBox(modal: TuiModalState, screen: ScreenSize): ModalBox {
     chalk.bold.hex('#e879f9')('TSUKA Keyboard & Navigation Cheatsheet'),
     '',
     // Derived from the tab table: a renamed or added tab documents itself here.
-    ...TUI_TABS.map((tab) => shortcut(
-      tab.key.toUpperCase() + (tab.id === 'tools' ? ' / Ctrl+T' : ''),
-      tab.description
-    )),
+    ...TUI_TABS.map((tab) => shortcut(tab.key.toUpperCase(), tab.description)),
     ...GENERAL_SHORTCUTS.map(([key, description]) => shortcut(key, description)),
     '',
     chalk.gray('Press Enter or Esc to close'),

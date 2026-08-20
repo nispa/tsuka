@@ -3038,3 +3038,29 @@ click "a volte" funzionava.
 attesa **dal frame renderizzato**, non da un numero fisso: è l'unico modo perché un renderer e un
 hit-tester che divergono di nuovo facciano fallire la suite. Sulla versione precedente falliscono
 TV1a/TV1b (pensiero live illeggibile), TV6 (feed scrollato) e TV7b (click durante l'elaborazione).
+
+## T18.5 — Ctrl+T Apriva i Tools invece di Espandere il Ragionamento
+
+**Dipende da:** T18.4 · **Sforzo:** basso · **Priorità:** media
+
+Due funzioni rivendicavano lo stesso tasto. In `handleKeyPress` la risoluzione della navigazione
+conteneva un alias esplicito — `key.ctrl && key.name === 't' ? tabByKey('f2') : undefined` — e
+girava **prima** del toggle del ragionamento. Quindi Ctrl+T apriva il pannello Tools, e il blocco
+sotto (`toggleThinkingExpansion`) era codice morto irraggiungibile: nessuno se n'era accorto perché
+la funzione c'era, i test la chiamavano direttamente e la cheatsheet documentava *entrambe* le
+letture (`F2 / Ctrl+T` fra i tab, `Ctrl+T` nel blocco pensiero della chat).
+
+- **Il tasto va al ragionamento**, che è ciò che la chat annuncia su ogni pensiero
+  (`▸ [Click / Ctrl+T]`) e ciò che dice `/thinking`. I Tools restano su F2, etichettato in ogni
+  larghezza di terminale: l'alias non aggiungeva niente.
+- **`resolveTabShortcut(key, focus, hasModal)`** in `navigation.ts`: un solo posto risponde a "questo
+  tasto cambia scheda?". Un accordo con modificatore (`ctrl`/`meta`) non è mai una scorciatoia di
+  scheda — le schede vivono sui tasti funzione — quindi il caso non può ripresentarsi aggiungendo
+  un altro alias di comodo.
+- **Cheatsheet allineata**: `F2` senza alias fra le righe dei tab, e `Ctrl+T — Expand / collapse
+  reasoning traces` fra le scorciatoie generali. La cheatsheet ora documenta il binding che gira.
+
+**Accettazione:** `tests/test_tui_thinking_view.ts` sale a 21 test. TV9 fissa la risoluzione dei
+tasti (Ctrl+T non è una scheda, F2 e F12 lo restano, `?` apre l'aiuto solo fuori dal prompt), TV10
+legge la cheatsheet renderizzata e verifica che documenti il toggle del ragionamento e non più
+l'alias Tools.
