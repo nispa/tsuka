@@ -12,6 +12,8 @@ import { setLogSink } from '../core/logSink';
 import { ChatStats, InferenceTelemetryEvent, setInferenceTelemetrySink } from '../core/provider';
 
 export class TuiBridge {
+  /** Monotonic counter that keeps spawned subagent ids unique within a session. */
+  private subagentSeq = 0;
   private store: TuiStore;
   private permissionManager: PermissionManager;
   private currentAssistantMsgId?: string;
@@ -231,9 +233,9 @@ export class TuiBridge {
           totalSessionTokens: newTotalSession,
           percentage,
         });
-        this.store.updateSpawnedAgent({
-          usedTokens: currentSubTokens,
-        });
+        // Per-agent, not the shared gauge: subagentUsedTokens is reset when a subagent
+        // returns, so reading it back would hand the next one the previous one's total.
+        this.store.addSpawnedAgentTokens(addedTokens);
       } else {
         // Main agent tokens
         const subTokens = currentState.stats.subagentUsedTokens || 0;
@@ -258,7 +260,9 @@ export class TuiBridge {
     const handlers: { [K in AgentEvent['type']]: (ev: Extract<AgentEvent, { type: K }>) => void } = {
       subagent_start: (ev) => {
         this.store.setSpawnedAgent({
-          id: `sub_${Date.now()}`,
+          // Timestamp plus sequence: two spawns landing in the same millisecond used to
+          // share an id, and the second one evicted the first from the roster.
+          id: `sub_${Date.now()}_${++this.subagentSeq}`,
           name: ev.name,
           role: ev.role,
           task: ev.task,

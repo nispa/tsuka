@@ -492,6 +492,41 @@ function test(name: string, fn: () => void | Promise<void>) {
     assert.strictEqual(store.getState().isGenerating, false, 'isGenerating should be reset to false');
     assert.ok(store.getState().messages.some((m) => m.content.includes('stopped')), '/stop should log cancellation to chat');
   });
+  // ── 14. Subagent roster: the running one plus what the previous ones cost ──
+  await test('PersonaWidget & TuiBridge: the subagent roster survives the next spawn, tokens included', () => {
+    const store = new TuiStore();
+    const bridge = new TuiBridge(store, new PermissionManager());
+    const onEvent = bridge.createEventHandler();
+    const onStats = bridge.createStatsHandler();
+    const stats = (n: number) => ({ durationMs: 10, tokenCount: n, tokensPerSecond: 1, promptTokens: 0, totalTokens: n }) as any;
+
+    onEvent({ type: 'subagent_start', name: 'alpha', role: 'developer', task: 'first task' });
+    onStats(stats(120), 'alpha');
+    onEvent({ type: 'subagent_end', name: 'alpha', success: true });
+
+    // Same millisecond as the first spawn: the id used to collide and evict alpha.
+    onEvent({ type: 'subagent_start', name: 'beta', role: 'writer', task: 'second task' });
+    onStats(stats(300), 'beta');
+
+    const state = store.getState();
+    const history = state.spawnedAgentsHistory;
+    assert.strictEqual(history.length, 2, 'both subagents stay in the roster');
+    assert.strictEqual(new Set(history.map((a) => a.id)).size, 2, 'spawned ids are unique');
+
+    const alpha = history.find((a) => a.name === 'alpha');
+    const beta = history.find((a) => a.name === 'beta');
+    assert.strictEqual(alpha?.usedTokens, 120, 'the returned subagent keeps its own token count');
+    assert.strictEqual(alpha?.status, 'completed', 'the returned subagent keeps its outcome');
+    assert.strictEqual(beta?.usedTokens, 300, 'the running subagent counts its own tokens, not the shared gauge');
+    assert.strictEqual(state.stats.subagentUsedTokens, 300, 'the in-flight gauge still tracks the running subagent only');
+
+    const persona = PersonaWidget.render(state, 40).map((l) => l.replace(/[[0-9;]*m/g, ''));
+    assert.ok(persona.some((l) => l.includes('SPAWNED SUBAGENT')), 'the running subagent keeps its detail box');
+    assert.ok(persona.some((l) => l.includes('beta')), 'the running subagent is named');
+    assert.ok(persona.some((l) => l.includes('@alpha') && l.includes('120')), 'the previous subagent is listed with its tokens');
+    assert.ok(persona.some((l) => l.includes('SUBAGENTS (2') && l.includes('420')), 'the header totals the roster');
+  });
+
 
   console.log(`\n=== All ${testCount} tests in test_tui_subagent_queue_copy.ts passed cleanly! ===`);
   process.exit(0);

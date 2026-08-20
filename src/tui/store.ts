@@ -299,6 +299,15 @@ export class TuiStore {
     });
   }
 
+  /**
+   * Adds tokens to the running subagent. Kept per agent so the roster still shows what
+   * each one cost after it returned (T18.6).
+   */
+  addSpawnedAgentTokens(added: number): void {
+    if (!this.state.activeSpawnedAgent || !Number.isFinite(added) || added <= 0) return;
+    this.updateSpawnedAgent({ usedTokens: (this.state.activeSpawnedAgent.usedTokens || 0) + added });
+  }
+
   // ── Modals & Permissions ──
 
   showModal(modal: TuiModalState): void {

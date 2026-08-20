@@ -3064,3 +3064,38 @@ letture (`F2 / Ctrl+T` fra i tab, `Ctrl+T` nel blocco pensiero della chat).
 tasti (Ctrl+T non è una scheda, F2 e F12 lo restano, `?` apre l'aiuto solo fuori dal prompt), TV10
 legge la cheatsheet renderizzata e verifica che documenti il toggle del ragionamento e non più
 l'alias Tools.
+
+## T18.6 — Roster dei Subagent: lo Spawn Successivo Cancellava il Precedente
+
+**Dipende da:** T14.16 · **Sforzo:** basso · **Priorità:** media
+
+Segnalazione: spawnando un agente, aspettando che torni e spawnandone un altro, del primo non
+restava niente — né i token consumati né i dettagli. Tre cause distinte, tutte nella stessa zona.
+
+1. **Il widget nascondeva la storia.** `PersonaWidget` aveva un `else if`: box dettagliato **oppure**
+   elenco dei subagent passati, mai insieme. Con un subagent in corso l'elenco spariva, e siccome
+   un subagent nuovo è quasi sempre "in corso" quando lo si guarda, i precedenti erano invisibili.
+2. **Gli id potevano collidere.** `id: sub_${Date.now()}` — due spawn nello stesso millisecondo
+   condividevano l'id, e `setSpawnedAgent` filtra la storia per id prima di inserire: il secondo
+   **espelleva il primo**. Con gli spawn ravvicinati (o due nello stesso turno) succede davvero.
+3. **I token non erano per agente.** `subagentUsedTokens` è il misuratore del contesto effimero
+   in volo, azzerato quando un subagent rientra; veniva però **riletto e copiato** dentro il record
+   dell'agente. Un contatore condiviso non può descrivere due agenti.
+
+- **`renderSubagents`**: intestazione con quanti sono stati spawnati e il totale token, poi il box
+  dettagliato di quello in corso (se c'è) e **sotto** l'elenco di quelli rientrati, ciascuno con
+  esito, token e durata. Cap a `MAX_LISTED_SUBAGENTS = 5` con `… +N more`, perché la sidebar
+  scrolla ma non è infinita.
+- **`sub_${Date.now()}_${++this.subagentSeq}`**: il timestamp resta leggibile, la sequenza rende
+  l'id unico per costruzione.
+- **`store.addSpawnedAgentTokens(added)`**: i token si sommano sul record dell'agente attivo (e
+  sulla sua voce di storia). Il misuratore globale continua a fare il suo mestiere, ma non è più
+  la fonte del dato per-agente.
+- **Durata** (`startedAt`/`completedAt`, già presenti nel tipo e mai mostrati) sia nel box sia
+  nell'elenco.
+
+**Accettazione:** `tests/test_tui_subagent_queue_copy.ts` (15 test). Il caso nuovo spawna due
+subagent **nello stesso millisecondo** — la condizione che faceva sparire il primo — e verifica
+roster di due elementi con id distinti, token separati (120 e 300), esito conservato, misuratore
+in volo ancora a 300 e widget che mostra insieme il box di quello in corso e la riga di quello
+rientrato.
