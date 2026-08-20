@@ -28,6 +28,7 @@ process.env.TSUKA_MEMORY_FILE = path.join(testMemoryDir, 'memory.json');
 const suites = [
   'test_think_parser.ts',
   'test_markdown_render.ts',
+  'test_markdown_tables.ts',
   'test_phase1_fixes.ts',
   'test_phase2_fixes.ts',
   'test_memory.ts',

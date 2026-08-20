@@ -128,10 +128,10 @@ TSUKA ships with **30 native tools** (`src/tools/impl/*.ts`) categorized into:
 | `/team [name] ["task"]` | Collaborative multi-agent team pipeline. |
 | `/call [@a, @b] ["topic"]` | Multi-agent round-table conference debate. |
 | `/models [id]` `/provider [p]` | Switch active model or backend provider. |
-| `/benchmark [model|all]` | Capability fingerprinting for tool calling. |
+| `/benchmark [model\|all]` | Capability fingerprinting for tool calling. |
 | `/agent [name]` `/tools [filter]` | Inspect or switch persona / active tools. |
 | `/export [path]` | Export conversation & tool execution trace to Markdown. |
-| `/memory [clear|id]` `/blackboard` | Persistent memory & workflow scratchpad inspector. |
+| `/memory [clear\|id]` `/blackboard` | Persistent memory & workflow scratchpad inspector. |
 | `/stop` `/continue` `/reset` `/help` `/exit` | Session and execution lifecycle control. |
 
 ---
