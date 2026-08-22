@@ -1,153 +1,24 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { homePath } from './apphome';
-import { logSink } from './logSink';
-
-export interface ProviderConfig {
-  baseUrl: string;
-  model: string;
-}
-
-/**
- * Sampling parameters for one mode, in wire format (the same names the backend reads).
- * Every field is optional: only the ones present are sent.
- */
-export interface SamplingProfileParams {
-  temperature?: number;
-  top_p?: number;
-  top_k?: number;
-  min_p?: number;
-  presence_penalty?: number;
-  frequency_penalty?: number;
-  repetition_penalty?: number;
-}
-
-/**
- * Sampling profile of a model family, split by mode (T8.17). A profile can also be
- * written flat, without the thinking/instruct split: in that case it applies to both.
- */
-export interface SamplingProfileConfig {
-  /** Applied when the model reasons (effort other than 'none'). */
-  thinking?: SamplingProfileParams;
-  /** Applied when the effort is 'none', i.e. no reasoning block. */
-  instruct?: SamplingProfileParams;
-}
-
-export interface WebSearchConfig {
-  provider: 'duckduckgo' | 'tavily' | 'google';
-}
-
-export interface AppConfig {
-  activeProvider: 'ollama' | 'openrouter' | 'unsloth' | string;
-  providers: {
-    ollama: ProviderConfig;
-    openrouter: ProviderConfig;
-    [key: string]: ProviderConfig;
-  };
-  webSearch: WebSearchConfig;
-  activeRole: string;
-  activeTrait: string;
-  activeCharacter: string;
-  maxHistoryMessages?: number;
-  maxHistoryTokens?: number;
-  maxToolResultTokens?: number;
-  /** Whether roles with `coreTools` defer the rest behind `load_tools` (T14.14). Default: true. */
-  deferredToolsEnabled?: boolean;
-  /** Maximum consecutive tool execution rounds per user turn. Default: 15. */
-  maxToolRounds?: number;
-  /** Maximum facts retained in persistent memory before score-based eviction. Default: 200. */
-  memoryMaxFacts?: number;
-  workspaceRoot?: string;
-  memoryMaxChars?: number;
-  /** Final level of reasoning effort cascade (T8.10). */
-  reasoningEffort?: string;
-  /** Wall-clock timeout for LLM generation in ms (T8.16). Default: 120000. */
-  llmTimeoutMs?: number;
-  /** Default command timeout for execute_command in ms. Default: 120000. */
-  commandTimeoutMs?: number;
-  /** Default creativity preset ('precise' | 'balanced' | 'creative' | 'low' | 'medium' | 'high'). */
-  creativity?: string;
-  /** Enables true parallel execution for PARALLEL blocks in /goal (T9.10). Default: false. */
-  parallelExecutionEnabled?: boolean;
-  /** Maximum number of activity records kept in the in-memory ContextTracker ring buffer. Default: 100. */
-  contextTrackerMaxEntries?: number;
-  /** Maximum command history lines retained in REPL history file. Default: 100. */
-  cliMaxHistory?: number;
-  /** Character threshold above which agent turn outputs in /goal are condensed into persistent memory. Default: 1500. */
-  goalCondensedHistoryCharLimit?: number;
-  /** Timeout in ms to wait for the first streaming token before considering the LLM non-responsive. Default: 120000. */
-  firstTokenTimeoutMs?: number;
-  /** Maximum retry attempts on network failures or malformed tool call JSON. Default: 3. */
-  llmMaxRetries?: number;
-  /** Ceiling for maximum completion tokens requested in streaming LLM calls. Default: 8192. */
-  llmMaxTokensCeiling?: number;
-  /** HTTP request timeout in ms for browse_url tool. Default: 30000. */
-  browseFetchTimeoutMs?: number;
-  /** HTTP request timeout in ms for download_file tool. Default: 60000. */
-  downloadFetchTimeoutMs?: number;
-  /** Default UI mode when launching tsuka without flags ('tui' or 'cli'). Default: 'tui'. */
-  defaultUi?: 'tui' | 'cli';
-  /**
-   * Requests per-token logprobs from the backend to feed the latent space inspector
-   * (confidence + top candidates) with real data. Default: false, because not every
-   * OpenAI-compatible backend accepts the parameter (T14.9).
-   */
-  inferenceLogprobs?: boolean;
-  /**
-   * Sampling parameters per model family (T8.17). The key matches the model id
-   * (case-insensitive substring, or /regex/ when wrapped in slashes); the value carries
-   * the parameters for thinking mode and for instruct mode.
-   */
-  samplingProfiles?: Record<string, SamplingProfileConfig | SamplingProfileParams>;
-}
-
-/** Parameter names accepted inside a sampling profile: anything else is ignored. */
-export const SAMPLING_PARAM_KEYS = [
-  'temperature',
-  'top_p',
-  'top_k',
-  'min_p',
-  'presence_penalty',
-  'frequency_penalty',
-  'repetition_penalty'
-] as const;
-
-/**
- * Matches a samplingProfiles key against a model id: `/regex/flags` when the key is
- * wrapped in slashes, case-insensitive substring otherwise.
- */
-function matchesModelId(key: string, model: string): boolean {
-  const regexForm = key.match(/^\/(.*)\/([a-z]*)$/);
-  if (regexForm) {
-    try {
-      return new RegExp(regexForm[1], regexForm[2] || 'i').test(model);
-    } catch {
-      return false;
-    }
-  }
-  return model.toLowerCase().includes(key.toLowerCase());
-}
-
-/** Keeps only known keys holding a finite number, reporting whatever it discards. */
-function sanitizeSamplingParams(raw: unknown, source: string): SamplingProfileParams | undefined {
-  if (!raw || typeof raw !== 'object') return undefined;
-  const out: Record<string, number> = {};
-  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
-    if (!(SAMPLING_PARAM_KEYS as readonly string[]).includes(key)) {
-      logSink.log(`[Config] samplingProfiles['${source}']: unknown parameter '${key}', ignored.`);
-      continue;
-    }
-    if (typeof value !== 'number' || !Number.isFinite(value)) {
-      logSink.log(`[Config] samplingProfiles['${source}'].${key}: not a number, ignored.`);
-      continue;
-    }
-    out[key] = value;
-  }
-  return Object.keys(out).length > 0 ? (out as SamplingProfileParams) : undefined;
-}
+import { homePath } from '../apphome';
+import { AGENT_DEFAULTS, CLI_DEFAULTS, LLM_DEFAULTS, MEMORY_DEFAULTS, TOOLS_DEFAULTS } from '../constants';
+import { logSink } from '../logSink';
+import { matchesModelId, sanitizeSamplingParams } from './sampling';
+import {
+  AppConfig,
+  ProviderConfig,
+  SamplingProfileConfig,
+  SamplingProfileParams,
+  defaultAppConfig,
+} from './types';
 
 export const CONFIG_PATH = homePath('tsuka.config.json');
 
+/**
+ * Loads, heals and serves tsuka.config.json. Getters follow one pattern: accept a
+ * valid user override, fall back to the central defaults in `src/core/constants.ts`
+ * (AGENTS.md directive 9) when the value is missing or out of range.
+ */
 export class ConfigManager {
   private config!: AppConfig;
   private runtimeContextTokens: number | null = null;
@@ -183,29 +54,7 @@ export class ConfigManager {
         }
       } else {
         // Clean default fallback when configuration file is missing
-        this.config = {
-          activeProvider: 'ollama',
-          providers: {
-            ollama: {
-              baseUrl: 'http://localhost:11434/v1',
-              model: 'qwen2.5-coder:7b',
-            },
-            openrouter: {
-              baseUrl: 'https://openrouter.ai/api/v1',
-              model: 'meta-llama/llama-3.3-70b-instruct',
-            },
-            unsloth: {
-              baseUrl: 'http://127.0.0.1:8888/v1',
-              model: 'default',
-            },
-          },
-          webSearch: {
-            provider: 'duckduckgo'
-          },
-          activeRole: 'developer',
-          activeTrait: 'professional',
-          activeCharacter: 'custom'
-        };
+        this.config = defaultAppConfig();
         this.save();
       }
     } catch (error: any) {
@@ -326,7 +175,7 @@ export class ConfigManager {
     if (typeof value === 'number' && Number.isFinite(value) && value >= 4) {
       return Math.floor(value);
     }
-    return 500;
+    return AGENT_DEFAULTS.maxHistoryMessages;
   }
 
   /**
@@ -356,7 +205,7 @@ export class ConfigManager {
     if (typeof value === 'number' && Number.isFinite(value) && value >= 1024) {
       return Math.floor(value);
     }
-    return 65536;
+    return AGENT_DEFAULTS.defaultHistoryTokens;
   }
 
   /**
@@ -375,7 +224,7 @@ export class ConfigManager {
     if (typeof value === 'number' && Number.isFinite(value) && value >= 256) {
       return Math.floor(value);
     }
-    return 4000;
+    return AGENT_DEFAULTS.maxToolResultTokens;
   }
 
   /**
@@ -386,7 +235,7 @@ export class ConfigManager {
     if (typeof value === 'number' && Number.isFinite(value) && value >= 1) {
       return Math.floor(value);
     }
-    return 15;
+    return AGENT_DEFAULTS.maxToolRounds;
   }
 
   /**
@@ -397,7 +246,19 @@ export class ConfigManager {
     if (typeof value === 'number' && Number.isFinite(value) && value >= 10) {
       return Math.floor(value);
     }
-    return 200;
+    return MEMORY_DEFAULTS.maxFacts;
+  }
+
+  /**
+   * Active long-term memory backend name resolved against the registry in
+   * `src/core/memory/registry.ts`. Default: 'json'.
+   */
+  getMemoryBackend(): string {
+    const value = this.config.memoryBackend;
+    if (typeof value === 'string' && value.trim().length > 0) {
+      return value.trim().toLowerCase();
+    }
+    return 'json';
   }
 
   /**
@@ -408,7 +269,7 @@ export class ConfigManager {
     if (typeof value === 'number' && Number.isFinite(value) && value >= 1) {
       return Math.floor(value);
     }
-    return 3;
+    return AGENT_DEFAULTS.teamMaxRounds;
   }
 
   /**
@@ -430,15 +291,25 @@ export class ConfigManager {
     if (typeof value === 'number' && Number.isFinite(value) && value >= 100) {
       return Math.floor(value);
     }
-    return 600;
+    return MEMORY_DEFAULTS.promptMaxChars;
   }
 
   /**
    * Final fallback reasoning effort level from configuration.
    */
-  getDefaultReasoningEffort(): 'none' | 'low' | 'medium' | 'xhigh' | undefined {
+  getDefaultReasoningEffort(): 'none' | 'low' | 'medium' | 'high' | 'xhigh' | undefined {
     const value = this.config.reasoningEffort;
-    return value === 'none' || value === 'low' || value === 'medium' || value === 'xhigh' ? value : undefined;
+    return value === 'none' || value === 'low' || value === 'medium' || value === 'high' || value === 'xhigh' ? value : undefined;
+  }
+
+  /**
+   * Persists the reasoning effort default (and removes the key with undefined).
+   * Written by /effort alongside the runtime pin so the choice survives restarts;
+   * entry points (cli/index.ts, tui/app.ts) re-apply it as the startup pin.
+   */
+  setDefaultReasoningEffort(value: 'none' | 'low' | 'medium' | 'high' | 'xhigh' | undefined): void {
+    this.config.reasoningEffort = value;
+    this.save();
   }
 
   /**
@@ -449,7 +320,7 @@ export class ConfigManager {
     if (typeof value === 'number' && Number.isFinite(value) && value >= 1000) {
       return Math.floor(value);
     }
-    return 120000;
+    return LLM_DEFAULTS.generationTimeoutMs;
   }
 
   /**
@@ -460,7 +331,7 @@ export class ConfigManager {
     if (typeof value === 'number' && Number.isFinite(value) && value >= 1000) {
       return Math.floor(value);
     }
-    return 120000;
+    return TOOLS_DEFAULTS.commandTimeoutMs;
   }
 
   /**
@@ -511,7 +382,7 @@ export class ConfigManager {
     if (typeof value === 'number' && Number.isFinite(value) && value >= 10) {
       return Math.floor(value);
     }
-    return 100;
+    return TOOLS_DEFAULTS.contextTrackerMaxEntries;
   }
 
   /**
@@ -522,7 +393,7 @@ export class ConfigManager {
     if (typeof value === 'number' && Number.isFinite(value) && value >= 10) {
       return Math.floor(value);
     }
-    return 100;
+    return CLI_DEFAULTS.maxHistoryLines;
   }
 
   /**
@@ -533,7 +404,7 @@ export class ConfigManager {
     if (typeof value === 'number' && Number.isFinite(value) && value >= 100) {
       return Math.floor(value);
     }
-    return 1500;
+    return AGENT_DEFAULTS.goalCondensedHistoryCharLimit;
   }
 
   /**
@@ -544,7 +415,7 @@ export class ConfigManager {
     if (typeof value === 'number' && Number.isFinite(value) && value >= 1000) {
       return Math.floor(value);
     }
-    return 120000;
+    return LLM_DEFAULTS.firstTokenTimeoutMs;
   }
 
   /**
@@ -555,7 +426,7 @@ export class ConfigManager {
     if (typeof value === 'number' && Number.isFinite(value) && value >= 1) {
       return Math.floor(value);
     }
-    return 3;
+    return LLM_DEFAULTS.maxRetries;
   }
 
   /**
@@ -566,7 +437,7 @@ export class ConfigManager {
     if (typeof value === 'number' && Number.isFinite(value) && value >= 256) {
       return Math.floor(value);
     }
-    return 8192;
+    return LLM_DEFAULTS.maxTokensCeiling;
   }
 
   /**
@@ -585,7 +456,7 @@ export class ConfigManager {
     if (typeof value === 'number' && Number.isFinite(value) && value >= 1000) {
       return Math.floor(value);
     }
-    return 30000;
+    return TOOLS_DEFAULTS.browseFetchTimeoutMs;
   }
 
   /**
@@ -596,6 +467,6 @@ export class ConfigManager {
     if (typeof value === 'number' && Number.isFinite(value) && value >= 1000) {
       return Math.floor(value);
     }
-    return 60000;
+    return TOOLS_DEFAULTS.downloadFetchTimeoutMs;
   }
 }

@@ -2,7 +2,7 @@
 [![Node.js](https://img.shields.io/badge/Node.js-20+-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![Ollama](https://img.shields.io/badge/Ollama-native-black?logo=ollama&logoColor=white)](https://ollama.com/)
 [![OpenRouter](https://img.shields.io/badge/OpenRouter-ready-FF6B35?logo=openai&logoColor=white)](https://openrouter.ai/)
-[![Tests](https://img.shields.io/badge/Tests-74%20passed-brightgreen?logo=vitest&logoColor=white)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-78%20passed-brightgreen?logo=vitest&logoColor=white)](tests/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/nispa/tsuka/pulls)
 
@@ -36,12 +36,12 @@
 | 🎯 **Pure Determinism & Zero Magic** | The LLM only reasons and proposes tool calls; the harness strictly owns state, execution, loop ceilings (max 15 rounds), and permissions. |
 | 🪟 **True Cross-Platform Native** | First-class Windows support (PowerShell without WSL or Python required), macOS, and Linux out of the box. |
 | 🖥️ **Full-Screen Interactive TUI** | Double-buffered zero-flicker terminal dashboard (`tsuka --tui`) with SGR 1006 mouse support, tabs, and workspace file explorer. |
-| 🧠 **Zero-Dependency Persistent Memory** | BM25 keyword search, morphological stemming, write-time deduplication, and exponential half-life decay in pure TypeScript (`memory.json`). |
+| 🧠 **Pluggable Persistent Memory** | Modular `MemoryBackend` contract with default pure TypeScript JSON+BM25 ranking, stemming, deduplication, and half-life decay (`memory.json`). |
 | 🧩 **Dynamic Tool Auto-Discovery** | Drop any `.ts` tool into `src/tools/impl/` to hot-register it at boot with automatic JSON Schema validation. |
 | 🛠️ **Sandboxed Self-Authoring Tools** | Agents can write, sandbox-test (`node:vm`), and hot-load new tools during runtime to solve unanticipated problems. |
 | 👥 **Multi-Agent Orchestration** | Dynamic goal planning (`/goal`), parallel staging sandboxes (`PARALLELO`), preconfigured teams (`/team`), and conference debates (`/call`). |
 | 📊 **Capability Fingerprinting** | Empirical test runner (`/benchmark`) measures small-model tool-calling accuracy to dynamically tailor active tool sets. |
-| 🛡️ **3-Tier Permission Safety** | Strict workspace jail (`resolveSafePath`), serialized interactive prompts, credential masking, and defensive static code analysis. |
+| 🛡️ **Graduated Permission Safety** | Strict workspace jail (`resolveSafePath`), graduated command risk classification, serialized interactive prompts, credential masking, and SAST. |
 
 ---
 

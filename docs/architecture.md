@@ -4,9 +4,9 @@
   <p>Leggi in <a href="architecture-it.md">🇮🇹 Italiano</a></p>
 </div>
 
-> This document describes the technical architecture, design principles, and modular structure of the **TSUKA** framework (v0.5.5). For codebase contribution guidelines, see [`AGENTS.md`](../AGENTS.md); for completed and upcoming task backlogs, see [`TASKS.md`](../TASKS.md).
+> This document describes the technical architecture, design principles, and modular structure of the **TSUKA** framework (v0.6.0). For codebase contribution guidelines, see [`AGENTS.md`](../AGENTS.md); for completed and upcoming task backlogs, see [`TASKS.md`](../TASKS.md).
 >
-> 📊 **System Metrics**: 30 tools · 20 REPL commands · 24 core modules · 21 roles · 9 traits · 24 characters (agents) · 10 preconfigured teams · 74 automated test suites · Dual CLI & TUI interfaces.
+> 📊 **System Metrics**: 30 native tools · 20 REPL commands · 21 roles · 9 traits · 24 characters (agents) · 10 preconfigured teams · 78 automated test suites · Dual CLI & TUI interfaces.
 
 ---
 
@@ -138,14 +138,14 @@ In the goal orchestrator ([`/goal`](multi-agent.md)), the planning LLM selects a
 ---
 
 ## 5. Tool System & Tier Pruning
-
-The harness includes **27 integrated tools** built on schema-execution separation:
+ 
+The harness includes **30 native tools** built on schema-execution separation:
 * **JSON Schema (`tools_schemas/<name>.json`)**: defines name, description, parameters, risk tier (`riskLevel`), and required model tier (`requiredTier`).
 * **Implementation (`src/tools/impl/<name>.ts`)**: pure TypeScript execution logic adhering to the `Tool` interface.
-
+ 
 ```
                   ┌──────────────────────────────┐
-                  │       27 Native Tools        │
+                  │       30 Native Tools        │
                   └──────────────┬───────────────┘
                                  │
            Filter 1: Role        ▼
@@ -165,14 +165,14 @@ The harness includes **27 integrated tools** built on schema-execution separatio
                   │        current turn          │
                   └──────────────────────────────┘
 ```
-
+ 
 ### Tool Catalog Breakdown
 1. **Filesystem**: `read_file`, `write_file` (with append support and 16k char ceiling per call to prevent JSON truncation), `edit_file`, `delete_file`, `list_dir`, `grep_search`.
-2. **System**: `execute_command` (shell runner with timeout), `get_ps_info` (process & system metrics).
+2. **System**: `execute_command` (shell runner with graduated risk classification and dynamic timeout), `get_ps_info` (process & system metrics).
 3. **Web & Network**: `web_search`, `browse_url` (with Reader View extraction), `download_file`.
-4. **Memory**: `save_memory`, `recall_memory`.
+4. **Memory**: `save_memory`, `recall_memory`, `update_memory`, `forget_memory`.
 5. **Coordination**: `report_status`, `route_next`, `cast_vote`, `post_note`, `read_notes`, `send_message`.
-6. **Agent Extension**: `spawn_agent`, `switch_skill`, `create_role`, `create_tool`, `request_goal`, `request_team`, `request_call`.
+6. **Agent Extension**: `spawn_agent`, `switch_skill`, `create_role`, `create_tool`, `load_tools`, `request_goal`, `request_team`, `request_call`.
 7. **Security**: `audit_code` (OWASP vulnerability and secret scanner).
 
 ---
@@ -265,11 +265,13 @@ A unified client using the **OpenAI SDK** interfaces with local and remote endpo
 
 ## 11. Core Module Index
 
-| Module | Source Path | Architectural Responsibility |
+| Module / Subsystem | Source Path | Architectural Responsibility |
 |---|---|---|
-| **Agent** | `src/core/agent.ts` | ReAct loop, token pruning, compression, and event orchestration. |
-| **Provider** | `src/core/provider.ts` | HTTP OpenAI client, streaming parser, tokens accounting, and timeouts. |
-| **Memory Store** | `src/core/memory.ts` | Persistent JSON storage, keyword scoring, and eviction engine. |
+| **Agent** | `src/core/agent.ts` | ReAct loop, token pruning, compression, deferred tool resolution, and event orchestration. |
+| **Provider Client** | `src/core/provider/` | OpenAI HTTP client (`llmProvider.ts`), protocol contracts (`types.ts`), timeouts & interactive renewal (`timeouts.ts`), inference telemetry sink (`telemetry.ts`), and sampling profiles (`sampling.ts`). |
+| **Memory Engine** | `src/core/memory/` | Pluggable `MemoryBackend` contract (`types.ts`), pure BM25 scoring (`bm25.ts`), half-life decay & retention (`retention.ts`), `JsonMemoryBackend` (`jsonBackend.ts`), backend registry (`registry.ts`), and `MemoryStore` facade. |
+| **Configuration** | `src/core/config/` | Application configuration types (`types.ts`), model sampling sanitizer (`sampling.ts`), and `ConfigManager` (`manager.ts`). |
+| **Constants Registry** | `src/core/constants.ts` | Single source of built-in tunable defaults (`LLM_DEFAULTS`, `MEMORY_DEFAULTS`, `AGENT_DEFAULTS`, `TUI_DEFAULTS`, `TOOLS_DEFAULTS`, `CLI_DEFAULTS`). |
 | **Blackboard** | `src/core/blackboard.ts` | Session blackboard scoped per workflow via `AsyncLocalStorage`. |
 | **Context Budget** | `src/core/contextBudget.ts` | Dynamic token estimation, runtime calibration, and `capForContext`. |
 | **Model Profile** | `src/core/modelProfile.ts` | Capability fingerprinting profiles and model tier management. |
@@ -279,6 +281,7 @@ A unified client using the **OpenAI SDK** interfaces with local and remote endpo
 | **Log Sink** | `src/core/logSink.ts` | Injectable logging abstraction decoupling core from terminal TTY. |
 | **App Home** | `src/core/apphome.ts` | Hierarchical path resolution (global app home vs local workspace). |
 | **Platform** | `src/core/platform.ts` | Cross-platform shell execution (PowerShell on Windows, `/bin/sh` on Unix). |
+| **Command Safety** | `src/safety/commandRisk.ts` | Graduated risk classifier for shell commands (`classifyRisk`). |
 
 ---
 
@@ -305,6 +308,11 @@ TSUKA features a zero-flicker, Component-Driven terminal user interface:
 * **`TuiScreen` (`screen.ts`)**: Low-level ANSI double-buffering line renderer with differential updates (0ms latency, zero flicker) and robust ANSI slicing via `slice-ansi` and `string-width`.
 * **`TuiStore` (`store.ts`)**: Reactive state container managing active tabs, conversation feed, reasoning streaming chunks, files tree, token meters, and modal queues.
 * **`TuiBridge` (`bridge.ts`)**: Decouples the Core Engine (`AgentEvents`, `PermissionManager`) from the UI.
+* **Layout Composer (`layoutComposer.ts`)**: Pure deterministic one-frame composition function `composeFrame(state, width, height, tab, layout)` with zero side-effects.
+* **Interaction Layer (`src/tui/interaction/`)**: Decoupled user input handling:
+  * `geometry.ts`: Single source of truth for panel bounding boxes and dimensions.
+  * `keyHandlers.ts`: Focused keyboard routing per pane (input, chat, sidebar, files, tools).
+  * `mouseRouter.ts`: SGR 1006 mouse event routing (tabs, scroll wheel, panel focus, file selection, reasoning expansion).
 * **View Hierarchy (`src/tui/views/`)**: Pure functional renderers receiving `(state, width, height) => string[]`:
   * `HeaderView`: Top navigation tabs & token budget progress meter.
   * `SidebarView`: Active persona, role, trait, and token analytics.

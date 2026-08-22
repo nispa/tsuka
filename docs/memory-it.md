@@ -236,7 +236,32 @@ Elimina definitivamente un ricordo obsoleto o errato specificandone l'ID.
 
 ---
 
-## 6. Errori di Sviluppo & Lezioni Apprese
+## 6. Architettura Pluggabile del Backend (`src/core/memory/`)
+
+In conformità con la Direttiva 8 (*Modularity by Design*), TSUKA disaccoppia la memorizzazione e il recupero dei dati dietro un'interfaccia esplicita:
+
+```typescript
+// src/core/memory/types.ts
+export interface MemoryBackend {
+  load(): Promise<void>;
+  save(): Promise<void>;
+  addFact(fact: Omit<MemoryFact, 'id' | 'createdAt' | 'lastUsed' | 'hits'>): MemoryFact;
+  updateFact(id: string, patch: Partial<MemoryFact>): boolean;
+  forgetFact(id: string): boolean;
+  search(query: string, scope?: string, options?: SearchOptions): ScoredFact[];
+  formatForPrompt(maxChars?: number, scope?: string): string;
+  formatRelevant(taskText: string, maxChars?: number, scope?: string): string;
+  // ...
+}
+```
+
+* **Backend di Default (`JsonMemoryBackend`)**: Zero dipendenze esterne, salvataggio su file JSON in TypeScript puro con scoring BM25 puro (`memory/bm25.ts`) ed algoritmo di decadimento/eviction ad emivita (`memory/retention.ts`).
+* **Registro Pluggabile**: Backend alternativi (es. SQLite con estensione FTS5, database vettoriali o store cloud remoti) possono essere registrati tramite `registerMemoryBackend(name, factory)` e selezionati tramite la chiave `memoryBackend` in `tsuka.config.json` o la variabile d'ambiente `TSUKA_MEMORY_BACKEND`.
+* **Facade Unificata**: L'intero harness continua ad accedere alla memoria tramite il singleton facade `MemoryStore`, garantendo il 100% di compatibilità a ritroso.
+
+---
+
+## 7. Errori di Sviluppo & Lezioni Apprese
 
 La creazione di questo sistema ha fatto emergere diverse insidie pratiche:
 

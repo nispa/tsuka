@@ -104,6 +104,19 @@
 | T17.1 | ✅ Fatto | **Retrieval BM25/TF-IDF** (livello 3 migliorato): `search()` sostituisce `matches × 1000 + coverage-boost` con BM25 (`k1=1.2`, `b=0.75`), zero dipendenze; IDF calcolata per query sui fatti visibili; conservati stemming, stop-word e `tokenMatches` (exact + prefix in avanti), quindi il guard T6.1a resta valido. **Bug trovato in revisione**: il loop della document frequency passava la `Map` invece delle sue chiavi (`matchesAny(qt, d.freqs)`), e iterare una Map produce coppie `[token, count]` — il confronto era stringa-contro-array, sempre falso. Risultato: `n` sempre 0 e **IDF identica per ogni token**, cioè la ponderazione per cui esiste BM25 era disattivata, mentre il loop di scoring destrutturava correttamente e teneva viva la TF (per questo tutte le suite restavano verdi). Era anche un errore di tipo: `npm run build` e `npm run typecheck` fallivano. Corretto con `d.freqs.keys()`. Nuova suite `tests/test_memory_bm25.ts` (8 test): R1/R2 sono i guard di regressione — verificato che falliscono sul codice rotto e passano sul fix; R3 saturazione/lunghezza, R4 stop-word, R5 prefix, R6 nessun match spurio, R7 determinismo. Docs §5/§12 e tabella `recall_memory` allineate in EN+IT (il §12 elencava ancora BM25 fra i lavori *futuri*). |
 
 | T18.1 | ✅ Fatto | **Esecuzione Graduata: Classificare il Comando, non il Tool**: `execute_command` era DANGEROUS come capacità, quindi ogni invocazione costava una conferma interattiva piena — e la conseguenza pratica era che nessun ruolo autonomo poteva averlo: `developer` non lo aveva affatto in `allowedTools` (1 ruolo su 21, solo `sysadmin`), cioè scriveva codice senza poter lanciare né test né build. Nuovo `src/safety/commandRisk.ts`: la capacità resta DANGEROUS, la *singola chiamata* viene graduata (`git status` → SAFE, `npm test` → RESTRICTED, ignoto → DANGEROUS). RESTRICTED ha già "approva per la sessione", quindi il ciclo di debug costa una conferma invece di una per iterazione. Nuovo hook opzionale `Tool.classifyRisk(args)` nel registry, con fallback al `riskLevel` statico se assente, malformato o se lancia. Corretto anche un buco preesistente: `spawn` non impostava `cwd`, quindi la shell ereditava la directory del processo harness mentre i tool file erano confinati da `resolveSafePath` — ora parte da `getWorkspaceRoot()`. `developer` ha ora `execute_command` (differito, non in `coreTools`). Suite `tests/test_command_risk.ts` (25 test, di cui 8 di bypass). |
+| T19.1 | ✅ Fatto | **Direttiva 8 in `AGENTS.md` — Modularity by Design**: tutti i sottosistemi dell'harness (memoria, provider LLM, tool, persone, team, policy di sicurezza, formati di storage) devono stare dietro un'interfaccia esplicita con registry/factory selezionata da configurazione; l'implementazione esistente è il *backend di default* del suo contratto, mai un singleton concreto hard-wired nei call site. |
+| T19.2 | ✅ Fatto | **Memoria modulare (`MemoryBackend` pluggabile)**: `src/core/memory.ts` (821 righe, classe concreta con singleton statico consumata da 12 call site) trasformato nel package `src/core/memory/`: contratto `MemoryBackend` (`types.ts`), implementazione di default `JsonMemoryBackend` (JSON + BM25, zero cambi di comportamento), registro `registerMemoryBackend`/`createMemoryBackend`/`listMemoryBackends`, facade `MemoryStore` API-identico che delega al backend attivo. Selezione via `memoryBackend` in `tsuka.config.json` (nuovo getter `ConfigManager.getMemoryBackend()`) o env `TSUKA_MEMORY_BACKEND`; nome backend sconosciuto fallisce esplicitamente elencando i registrati. Tutti gli import `'../src/core/memory'` esistenti continuano a risolvere (barrel `index.ts`). Suite `tests/test_memory_backend_registry.ts` (17 test). 78 suite verdi, build e typecheck puliti. |
+| T19.3 | 🔲 Da fare | **Backend memoria avanzati come plugin**: studio e implementazione di backend più performanti dietro il contratto T19.2 — candidati: SQLite con FTS5 (retrieval su store grandi, eviction lato SQL), backend vettoriale/embedding (ricerca semantica oltre le keyword BM25), ibrido BM25+vettoriale con reranking. Nessun call site da toccare: basta `registerMemoryBackend(...)` + chiave di config. |
+
+| T19.3 | 🔲 Da fare | **Backend memoria avanzati come plugin**: studio e implementazione di backend più performanti dietro il contratto T19.2 — candidati: SQLite con FTS5 (retrieval su store grandi, eviction lato SQL), backend vettoriale/embedding (ricerca semantica oltre le keyword BM25), ibrido BM25+vettoriale con reranking. Nessun call site da toccare: basta `registerMemoryBackend(...)` + chiave di config. |
+| T19.4 | ✅ Fatto | **Split `src/core/provider.ts` in package `src/core/provider/`** (864 righe → 5 moduli): `types.ts` (tipi di protocollo + `ILLMProvider`), `timeouts.ts` (timeout primo token/generazione, retry, handler interattivo incapsulato in `requestTimeoutDecision`), `telemetry.ts` (sink telemetria inferenza T14.9 + gating sessione logprobs), `sampling.ts` (profili per famiglia modello T8.17 + knob estesi fuori schema OpenAI con degradazione una-tantum-per-sessione), `llmProvider.ts` (classe `LLMProvider`, unica implementazione del contratto). Barrel `index.ts` = zero cambi per i 27 punti d'import esistenti (`'./provider'` risolve sulla cartella). Zero cambi di comportamento. |
+| T19.5 | ✅ Fatto | **Split `JsonMemoryBackend`** (658 righe): scoring testuale puro estratto in `memory/bm25.ts` (normalizzazione token T15.1, stop-word, `rankByBM25` T17.1 come funzione pura senza I/O, `deriveTags` T15.4); policy retention/eviction estratta in `memory/retention.ts` (`KIND_WEIGHT`, half-life T15.2, quota `run` T15.5, `pickEvictionVictim`). Il backend resta lo store: I/O atomico T15.6, dedup T14.15, rendering prompt T15.8. Suite memory intatte e verdi. |
+| T19.6 | ✅ Fatto | **Direttiva 9 + centralizzazione default in `src/core/constants.ts`**: nuova regola non negoziabile "No Hardcoded Tunables". Creato il registro dei default namespaced per sottosistema (`LLM_DEFAULTS`, `MEMORY_DEFAULTS`, `AGENT_DEFAULTS`) e ricollegati: timeout/retry/token-ceiling LLM (provider/timeouts.ts + fallback `ConfigManager`), parametri BM25/prefix/tag/quota-run/half-life (memory/bm25.ts, memory/retention.ts), `maxToolRounds` e seed/static chars-per-token (agent.ts, contextBudget.ts), fallback config (maxToolResultTokens, memoryMaxFacts, memoryMaxChars, goalCondensedHistoryCharLimit, firstTokenTimeoutMs, llmMaxRetries, llmMaxTokensCeiling). Fuori dal registro, per design: tabelle dati non-tuning (profili sampling per modello, stop-word list) e letterali wire-protocol di singoli protocolli. Versione allineata a **0.6.0**. 78 suite verdi, build e typecheck puliti. |
+
+| T19.7 | ✅ Fatto | **Split `src/tui/app.ts`** (752 → 409 righe): la composizione del frame è estratta in `layoutComposer.ts` (funzione pura `composeFrame(state, width, height, tab, layout)`, stesso input → stesse righe, nessun side effect); gli handler tastiera per-focus (input/chat/sidebar/files/tools) in `tui/interaction/keyHandlers.ts`; il router mouse (wheel, click-zone tab da header, focus pannelli, selezione file, scrollbar, toggle reasoning) in `tui/interaction/mouseRouter.ts` con deps esplicite; la geometria dei pannelli — prima duplicata a mano fra render e mouse handler, la fonte del bug T18.7 — unificata in `tui/interaction/geometry.ts`. Applicata la direttiva 9 ai numeri toccati: nuovo namespace `TUI_DEFAULTS` in `constants.ts` (larghezza sidebar min/max, percentuali default, altezze minime pannelli, bounds input box). Deduplicati i due percorsi di calibrazione context-window (`discoverModelAtStartup`/`probeContextWindow`) in `applyContextWindow`. Zero cambi di comportamento: 78 suite verdi (incluse `test_tui*`, `test_files_explorer` con il guard T18.7 sul click-to-row), build e typecheck puliti. |
+
+| T19.8 | ✅ Fatto | **Split `src/core/config.ts` in package `src/core/config/`** (~620 righe): `types.ts` (shape di `tsuka.config.json`: `AppConfig`, `ProviderConfig`, profili sampling, whitelist `SAMPLING_PARAM_KEYS`, `defaultAppConfig()`), `sampling.ts` (`matchesModelId`, `sanitizeSamplingParams` — validazione testabile senza file), `manager.ts` (il `ConfigManager`, con i fallback ora tutti presi da `constants.ts`). Completata la direttiva 9 sul file: centralizzati gli ultimi default ancora letterali (500 messaggi history, 65536 token fallback, 3 round team, timeout execute_command/browse/download, ContextTracker 100, REPL history 100) nei namespace `AGENT_DEFAULTS`/`TOOLS_DEFAULTS`/`CLI_DEFAULTS`. Barrel `index.ts` = zero cambi per gli import esistenti. 78 suite verdi, build e typecheck puliti. |
+
 Tutti i task pianificati e di backlog sono completati; la serie T15 (memoria, modelli <30B) è implementata e chiusa con 72 suite di test verdi. Pianificata la serie **T16 (benchmark significativi)** su architettura a due velocità: **`/benchmark` fast** (1 colpo/test, deterministico — resta il gate del tier) e **`/benchmark --deep`** (repliche con variazione del prompt, mediana+varianza, per validazione/calibrazione). Pianificato anche **T17.1** (retrieval BM25/TF-IDF), il primo livello del percorso di apprendimento documentato in `docs/memory.md` §12. Valore di ritorno — i benchmark attuali saturano in alto e non discriminano tra i modelli, ma il gating dei tool (`registry.ts`) dipende proprio da quel tier: se tutto diventa `large` il gating è codice morto. Restano da fare T14.24 (commenti tests/ in inglese), T14.25 (token di protocollo multi-agente) e le serie T16/T17.
 
 ---
@@ -3167,3 +3180,218 @@ codice inline e che **ogni riga abbia le celle della propria intestazione**. Il 
 quello che vale: prende anche gli sbilanciamenti che non nascono da un backtick. Un primo test di
 sanità pretende almeno 20 righe di tabella trovate, così una scansione che smette di trovare i file
 fallisce invece di passare a vuoto.
+
+## T19.1 - Direttiva 8 in AGENTS.md: Modularity by Design
+
+**Dipende da:** -  **Sforzo:** basso  **Priorit:** alta
+
+Nuova direttiva non negoziabile in `AGENTS.md`: tutti i sottosistemi maggiori
+dell'harness (memoria, provider LLM, tool, persone, team, policy di sicurezza,
+formati di storage) vanno progettati dietro un'interfaccia/contratto esplicito con
+un registry o factory che seleziona l'implementazione attiva dalla configurazione -
+mai hard-wired come singleton concreto consumato direttamente attraverso i livelli.
+
+Due corollari espliciti nella direttiva:
+- l'implementazione esistente  il *backend di default* del proprio contratto (es.
+  lo store JSON/BM25  un `MemoryBackend` fra possibili backend SQLite/vettoriale/remoti);
+- una nuova capability che non si pu sostituire senza modificare i call site 
+  considerata incompleta.
+
+**Accettazione:** direttiva presente in `AGENTS.md`; nessun cambio di codice.
+
+## T19.2 - Memoria modulare: contratto MemoryBackend + registro + facade compatibile
+
+**Dipende da:** T19.1  **Sforzo:** medio  **Priorit:** alta
+
+`src/core/memory.ts` era un file unico da 821 righe con `MemoryStore` classe concreta
+e singleton statico, importata direttamente da ~12 punti (Agent, goal orchestrator,
+spawnAgent, i 4 memory tool, CLI, TUI): la pipeline era statica e nessun backend
+alternativo era possibile senza toccare ogni call site. Rifattorizzato nel package
+`src/core/memory/` con zero cambi di comportamento:
+
+- **`types.ts`**: il contratto `MemoryBackend` (`addFact`, `search`, `getRecent`,
+  `updateFact`, `forgetFact`, `remove`, `clear`, `count`, `formatForPrompt`,
+  `formatRelevant`, hook opzionale `refresh`) pi i tipi condivisi spostati tali
+  quali (`MemoryFact`, `MemoryKind`, `SearchOptions`, `AddFactOptions`,
+  `UpdateFactPatch`, `GLOBAL_SCOPE`, `MEMORY_KIND_TOKENS`, `resolveMemoryKind`,
+  `scopeFromWorkspaceRoot`). Il contratto  volutamente ricco abbastanza da permettere
+  a backend alternativi (SQLite, vettoriale, remoto) di implementare scoring ed
+  eviction propri.
+- **`jsonBackend.ts`**: tutta la logica esistente (BM25 T17.1, dedup T14.15,
+  eviction kind-weighted T15.2/T15.5, persistenza atomica T15.6, badge prompt T15.8)
+  diventa `JsonMemoryBackend implements MemoryBackend`, il *default* registrato sotto
+  il nome `'json'`. Il refresh del singleton ora passa dall'hook `refresh()` del
+  contratto invece di un metodo privato.
+- **`registry.ts`**: `registerMemoryBackend(name, factory)` /
+  `createMemoryBackend(...)` / `listMemoryBackends()`. Risoluzione del nome:
+  env `TSUKA_MEMORY_BACKEND` > chiave `memoryBackend` in `tsuka.config.json`
+  (nuovo campo `AppConfig.memoryBackend` + getter `ConfigManager.getMemoryBackend()`)
+  > `'json'`. Un nome sconosciuto **fallisce esplicitamente** elencando i backend
+  registrati - mai un fallback silenzioso su un altro store.
+- **`facade.ts`**: `MemoryStore` mantiene costruttore `(filePath?, maxFacts?, scope?)`
+  e `getInstance()` identici; ogni metodo delega al backend attivo. I 12 call site
+  non sono stati toccati; gli import `'../src/core/memory'` continuano a risolvere
+  tramite il barrel `index.ts` (moduleResolution node).
+
+Scelta deliberata: niente auto-discovery da cartella per i plugin (come per i tool):
+la registrazione esplicita via `registerMemoryBackend`  sufficiente per i backend
+built-in futuri e evita il sandboxing `node:vm` finch non c' un caso d'uso reale.
+
+**Accettazione:** suite `tests/test_memory_backend_registry.ts` (17 test): default
+JSON, precedenza env > config > default, registrazione plugin e selezione via facade,
+errore esplicito su nome sconosciuto, backward-compatibility persistenza JSON e
+singleton. `npm test` (78 suite), `npm run build` e `npm run typecheck` verdi.
+
+**Fuori scope:** implementazione dei backend avanzati (T19.3); migrazione dei call
+site dal facade all'interfaccia nuda (non serve: il facade  gi solo delega).
+
+
+## T19.4 - Split provider.ts in package src/core/provider/
+
+**Dipende da:** T19.1  **Sforzo:** medio  **Priorit:** media
+
+`src/core/provider.ts` (864 righe) mescolava cinque responsabilit: tipi di
+protocollo, policy di timeout/retry, telemetria inferenza, risoluzione dei profili
+di campionamento e il client OpenAI-compatibile. Diviso in package con un modulo
+per responsabilit e barrel `index.ts` che ri-esporta tutti i nomi pubblici:
+`'../core/provider'` risolve sulla cartella e i 27 punti d'import esistenti (src,
+tests, scripts) non sono stati toccati.
+
+- **`types.ts`**: `ILLMProvider`, `ChatOptions`, `ChatStats`, `ChatResponse`,
+  tipi sampling/telemetria/timeout. Il contratto resta l'unico punto di dipendenza
+  per Agent, strategie team/goal, TUI.
+- **`timeouts.ts`**: default e getter per primo-token/generazione/retry/token-ceiling,
+  pi l'handler interattivo di timeout incapsulato dietro `requestTimeoutDecision`
+  (prima era una variabile globale letta direttamente dalla classe).
+- **`telemetry.ts`**: sink della telemetria reale T14.9 + stato di sessione logprobs
+  (`isLogprobsEnabled`, rifiuto registrato una sola volta con degradazione visibile).
+- **`sampling.ts`**: profili built-in per famiglia modello (tabella dati, non tuning),
+  merge config > famiglia > creativity, knob estesi fuori schema OpenAI con flag di
+  sessione (`isExtendedSamplingSupported`/`noteExtendedSamplingRejected`).
+- **`llmProvider.ts`**: la classe `LLMProvider`, ora ~430 righe di solo ciclo
+  streaming/retry.
+
+Zero cambi di comportamento; le variabili globali di stato di sessione restano
+module-scoped nei rispettivi moduli.
+
+**Accettazione:** build strict verde; suite `test_generation_timeout`,
+`test_malformed_toolcall_retry`, `test_sampling_params`, `test_inference_telemetry`,
+`test_reasoning_effort` verdi senza modifiche.
+
+## T19.5 - Split JsonMemoryBackend: scoring BM25 e retention come moduli puri
+
+**Dipende da:** T19.2  **Sforzo:** basso  **Priorit:** media
+
+Il backend JSON creato in T19.2 ereditava tutto dal file storico (658 righe):
+store, scoring, eviction, rendering. Estratte le due parti *policy* come moduli
+puri (nessun I/O, nessuno stato mutabile), lasciando nel backend solo lo store:
+
+- **`memory/bm25.ts`**: normalizzazione token e prefix-match (T15.1), stop-word,
+  `rankByBM25(candidates, query, limit, useOrder)` (T17.1) come funzione pura,
+  `deriveTags` (T15.4). Testabile senza disco.
+- **`memory/retention.ts`**: `KIND_WEIGHT`, half-life per kind (T15.2), quota
+  transienti `run` (T15.5), `rankByRetentionValue` e `pickEvictionVictim`.
+
+Il loop di eviction nel backend si riduce a: quota run -> victim -> rimozione.
+Le suite memory esistenti (scope, dedup, persistence, bm25, summary, phase3)
+verificano il comportamento invariato.
+
+**Accettazione:** tutte le suite `test_memory_*` verdi senza modifiche.
+
+## T19.6 - Direttiva 9: niente tunables hardcodati, default centralizzati
+
+**Dipende da:** -  **Sforzo:** medio  **Priorit:** alta
+
+Nuova direttiva non negoziabile in `AGENTS.md`: le costanti di taratura (timeout,
+retry, tetti di token, cap di memoria, parametri di scoring, quote, rapporti) non
+vanno dichiarate come letterali locali sparsi nel modulo che li usa. Vivono una
+sola volta in `src/core/constants.ts` namespaced per sottosistema; i valori
+configurabili dall'utente passano da `ConfigManager` con uno di questi default
+come fallback.
+
+Ricollegati in questo task (prima sparsi fra provider/timeouts.ts, memory/bm25.ts,
+memory/retention.ts, agent.ts, contextBudget.ts e i fallback di ConfigManager):
+
+- `LLM_DEFAULTS`: firstTokenTimeoutMs (120000), maxRetries (3),
+  maxTokensCeiling (8192), generationTimeoutMs (120000).
+- `MEMORY_DEFAULTS`: maxFacts (200), promptMaxChars (600), summaryMaxLen (72),
+  autoTagsMax (5), bm25K1 (1.2), bm25B (0.75), minPrefixTokenLen (3),
+  runQuotaRatio (0.3), halfLifeHours {run 2, fatto 48, decisione 168, lezione 720}.
+- `AGENT_DEFAULTS`: maxToolRounds (15), seedCharsPerToken / staticCharsPerToken
+  (3.5), maxToolResultTokens (4000), goalCondensedHistoryCharLimit (1500).
+
+Deliberatamente FUORI dal registro: le tabelle dati che sono contenuto e non
+taratura (profili sampling per modello T8.17, lista stop-word T15.1) e i letterali
+wire-protocol posseduti da un singolo modulo protocollo.
+
+Versione allineata a 0.6.0.
+
+**Accettazione:** `rg 'return <literal>' src/core/config.ts` non mostra pi fallback
+numerici per le voci sopra; `npm test` (78 suite), `npm run build`,
+`npm run typecheck` verdi.
+
+
+## T19.7 - Split app.ts: composer puro, interaction layer, geometria unica
+
+**Dipende da:** T19.1, T19.6  **Sforzo:** medio  **Priorit:** media
+
+`src/tui/app.ts` (752 righe) orchestrava wiring, ciclo di vita dell'agente,
+rendering del frame, routing tastiera per-focus e routing mouse in una sola classe,
+con la geometria dei pannelli calcolata due volte con formule copiate (il seme del
+bug T18.7: click che colpiva la riga sotto). Divisione per responsabilit:
+
+- **`tui/layoutComposer.ts`**: `composeFrame(state, width, height, activeTab, layout)`
+  funzione pura - compone l'intero frame (header + colonne + input + overlay modale)
+  dallo store state. Testabile senza terminale: stesso input -> stesse righe.
+- **`tui/interaction/geometry.ts`**: le formule dei pannelli esistono ora una volta
+  sola (`computeSidebarWidth`, `computeFilePaneHeights`, `computeInputHeight`) e sono
+  usate sia dal composer sia dal mouse router, cos una click-zone non pu pi
+  discostarsi da ci che stato disegnato.
+- **`tui/interaction/keyHandlers.ts`**: gli handler per focus (input/chat/sidebar/
+  files/tools) come funzioni con deps esplicite `{ store, submitPrompt, browseTo }`;
+  condividono `openFileEntry`/`insertPathIntoInput` col router mouse (prima la logica
+  "click again to preview" era duplicata fra tastiera e click).
+- **`tui/interaction/mouseRouter.ts`**: `routeMouseEvent(deps, mouse)` - wheel,
+  click-zone delle tab (stessa tabella che disegna l'header), focus dei pannelli,
+  selezione file a due stadi, jump sulla scrollbar, toggle reasoning via click.
+
+In `TuiApp` restano orchestrazione e ciclo di vita: costruzione controller, agent
+lifecycle, modali di timeout/tool-rounds, discovery all'avvio, dispatch globale.
+I due percorsi di calibrazione della context window erano identici tranne la probe:
+unificati in `applyContextWindow`.
+
+Direttiva 9 applicata ai numeri toccati: `TUI_DEFAULTS` in `constants.ts`
+(minEffectiveWidth, sidebarMin/MaxWidth, percentuali default, minMainHeight,
+minFilesHeight/minProfileHeight, bounds input box).
+
+**Accettazione:** 78 suite verdi senza modifiche - in particolare
+`test_files_explorer` (guard T18.7: la riga cliccata ricavata dal frame renderizzato),
+`test_tui_paste`, `test_tui*`; build e typecheck puliti.
+
+
+## T19.8 - Split config.ts: shape, validazione sampling e manager separati
+
+**Dipende da:** T19.6  **Sforzo:** basso  **Priorit:** media
+
+`src/core/config.ts` (~620 righe) conteneva insieme la shape di
+`tsuka.config.json`, la validazione dei profili di campionamento e il manager.
+Package `src/core/config/` con barrel compatibile (zero cambi per gli import):
+
+- **`types.ts`**: `AppConfig`, `ProviderConfig`, `SamplingProfileParams/Config`,
+  `WebSearchConfig`, whitelist `SAMPLING_PARAM_KEYS` e `defaultAppConfig()` - la
+  configurazione pulita scritta quando il file manca, prima inline nel loader.
+- **`sampling.ts`**: `matchesModelId` e `sanitizeSamplingParams`, testabili senza
+  file di configurazione su disco.
+- **`manager.ts`**: il solo `ConfigManager`; ogni getter segue il pattern gi
+  consolidato (override valido dall'utente, altrimenti default da `constants.ts`).
+
+Direttiva 9 completata sul file: centralizzati gli ultimi fallback ancora come
+letterali - `maxHistoryMessages` (500), `maxHistoryTokens` (65536), `teamMaxRounds`
+(3) in `AGENT_DEFAULTS`; `commandTimeoutMs` (120000), `browseFetchTimeoutMs`
+(30000), `downloadFetchTimeoutMs` (60000), `contextTrackerMaxEntries` (100) nel
+nuovo `TOOLS_DEFAULTS`; `cliMaxHistory` (100) in `CLI_DEFAULTS`. Il fallback di
+`getLlmTimeoutMs` ora punta a `LLM_DEFAULTS.generationTimeoutMs` (stesso valore,
+una sola definizione).
+
+**Accettazione:** 78 suite verdi senza modifiche (incluse `test_config_limits`
+e `test_sampling_params`); build e typecheck puliti.

@@ -146,10 +146,10 @@ async function main() {
   }
 
   // ============================================================
-  // SE.3 — i 4 livelli dell'enum viaggiano tutti correttamente, uno per uno.
+  // SE.3 — i 5 livelli dell'enum viaggiano tutti correttamente, uno per uno.
   // ============================================================
   {
-    const levels = ['none', 'low', 'medium', 'xhigh'];
+    const levels = ['none', 'low', 'medium', 'high', 'xhigh'];
     for (const level of levels) {
       const registry = buildRegistry();
       const provider = new MockLLMProvider([
@@ -238,7 +238,7 @@ async function main() {
   }
 
   // ============================================================
-  // SE.6 — schema JSON: enum a 4 livelli e descrizione con guida "quando abbassarlo".
+  // SE.6 — schema JSON: enum a 5 livelli e descrizione con guida "quando abbassarlo".
   // ============================================================
   {
     const schemaRaw = fs.readFileSync(path.join(__dirname, '..', 'tools_schemas', 'spawn_agent.json'), 'utf-8');
@@ -247,8 +247,8 @@ async function main() {
     check('SE.6a', !!prop, "lo schema JSON dichiara la proprietà 'reasoningEffort'");
     check(
       'SE.6b',
-      Array.isArray(prop?.enum) && ['none', 'low', 'medium', 'xhigh'].every((v) => prop.enum.includes(v)) && prop.enum.length === 4,
-      `l'enum copre esattamente i 4 livelli (ricevuto: ${JSON.stringify(prop?.enum)})`
+      Array.isArray(prop?.enum) && ['none', 'low', 'medium', 'high', 'xhigh'].every((v) => prop.enum.includes(v)) && prop.enum.length === 5,
+      `l'enum copre esattamente i 5 livelli (ricevuto: ${JSON.stringify(prop?.enum)})`
     );
     const desc: string = prop?.description || '';
     check('SE.6c', /mechanical/i.test(desc), `la descrizione indica il caso d'uso (compiti meccanici) per abbassare l'effort (${desc})`);

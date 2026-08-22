@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import { ConfigManager, CONFIG_PATH } from './config';
+import { AGENT_DEFAULTS } from './constants';
 import { ChatMessage } from './types';
 
 /**
@@ -14,7 +15,7 @@ import { ChatMessage } from './types';
  * portions using `grep_search` or `read_file` with offset/limit pagination.
  */
 
-const CHARS_PER_TOKEN = 3.5;
+const CHARS_PER_TOKEN = AGENT_DEFAULTS.staticCharsPerToken;
 
 const DEFAULT_RECOVERY_HINT =
   "To read the rest: use grep_search to find specific terms, or read_file with " +

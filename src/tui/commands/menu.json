@@ -4,7 +4,7 @@
   { "command": "/team", "label": "👥 /team [name]", "hint": "Launch autonomous multi-agent team (10 teams) (F4)" },
   { "command": "/goal ", "label": "🎯 /goal <objective>", "hint": "Goal orchestrator with parallel branches" },
   { "command": "/memory", "label": "🧠 /memory [clear|query]", "hint": "Manage & search shared persistent memory (F5)" },
-  { "command": "/effort", "label": "🔥 /effort [level]", "hint": "Reasoning effort: none, low, medium, xhigh, auto" },
+  { "command": "/effort", "label": "🔥 /effort [level]", "hint": "Reasoning effort: none, low, medium, high, xhigh, auto" },
   { "command": "/layout", "label": "📐 /layout", "hint": "TUI layout editor, themes, widths & files explorer (F7)" },
   { "command": "/role", "label": "👔 /role [name]", "hint": "Set operational role (21 available roles)" },
   { "command": "/trait", "label": "🎨 /trait [name]", "hint": "Set communication style and trait (9 traits)" },

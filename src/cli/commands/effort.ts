@@ -12,7 +12,7 @@ import {
  * `/effort` command: runtime control of reasoning effort.
  */
 
-const VALID_LEVELS: ReasoningEffort[] = ['none', 'low', 'medium', 'xhigh'];
+const VALID_LEVELS: ReasoningEffort[] = ['none', 'low', 'medium', 'high', 'xhigh'];
 
 function activeRoleAndCharacter(ctx: CommandCtx) {
   const charName = ctx.configManager.getActiveCharacter();
@@ -49,7 +49,7 @@ function printStatus(ctx: CommandCtx): void {
   console.log(`  Tool tier:      ${tierColor(tier.toUpperCase())} (for model '${ctx.provider.getCurrentModel()}')`);
   console.log(`  Global pin:     ${getEffortPin() ? chalk.magenta(getEffortPin()) : chalk.gray('none')}`);
   console.log(`  Ask mode:       ${isAskModeEnabled() ? chalk.green('enabled') : chalk.gray('disabled')} ${chalk.gray('(interactive chat only)')}`);
-  console.log(chalk.gray('  Usage: /effort <none|low|medium|xhigh> · /effort auto · /effort ask'));
+  console.log(chalk.gray('  Usage: /effort <none|low|medium|high|xhigh> · /effort auto · /effort ask'));
   console.log();
 }
 
@@ -58,6 +58,8 @@ function applyPinAndAnnounce(ctx: CommandCtx, newPin: ReasoningEffort | undefine
   const before = toolNamesAt(ctx, role.allowedTools, ctx.agent.current.getReasoningEffort());
 
   setEffortPin(newPin);
+  // Persist the choice so it survives restarts (restored as startup pin in cli/index.ts).
+  ctx.configManager.setDefaultReasoningEffort(newPin);
   ctx.agent.current = ctx.recreateAgent();
 
   const after = toolNamesAt(ctx, role.allowedTools, ctx.agent.current.getReasoningEffort());
@@ -84,7 +86,7 @@ export async function handleEffort(ctx: CommandCtx, arg: string): Promise<void> 
       CLITheme.info('No pin active: already in automatic cascade mode.');
       return;
     }
-    applyPinAndAnnounce(ctx, undefined, 'Pin removed: restored automatic cascade.');
+    applyPinAndAnnounce(ctx, undefined, 'Pin removed: restored automatic cascade (choice cleared from tsuka.config.json).');
     return;
   }
 
@@ -106,5 +108,5 @@ export async function handleEffort(ctx: CommandCtx, arg: string): Promise<void> 
   }
 
   const level = normalized as ReasoningEffort;
-  applyPinAndAnnounce(ctx, level, `Reasoning effort pinned to '${level}' for this session.`);
+  applyPinAndAnnounce(ctx, level, `Reasoning effort pinned to '${level}' (saved to tsuka.config.json).`);
 }

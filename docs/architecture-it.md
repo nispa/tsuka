@@ -4,9 +4,9 @@
   <p>Read in <a href="architecture.md">🇬🇧 English</a></p>
 </div>
 
-> Questo documento descrive l'architettura tecnica, i principi di progettazione e l'organizzazione modulare del framework **TSUKA** (v0.5.5). Per le linee guida operative di contribuzione al codice si rimanda ad [`AGENTS.md`](../AGENTS.md); per l'elenco dei task completati e pianificati, consultare [`TASKS.md`](../TASKS.md).
+> Questo documento descrive l'architettura tecnica, i principi di progettazione e l'organizzazione modulare del framework **TSUKA** (v0.6.0). Per le linee guida operative di contribuzione al codice si rimanda ad [`AGENTS.md`](../AGENTS.md); per l'elenco dei task completati e pianificati, consultare [`TASKS.md`](../TASKS.md).
 >
-> 📊 **Metriche di sistema**: 30 tool · 20 comandi REPL · 24 moduli core · 21 ruoli · 9 tratti · 24 personaggi (agenti) · 10 team configurati · 74 suite di test automatici · Doppia interfaccia CLI & TUI.
+> 📊 **Metriche di sistema**: 30 tool · 20 comandi REPL · 21 ruoli · 9 tratti · 24 personaggi (agenti) · 10 team configurati · 78 suite di test automatici · Doppia interfaccia CLI & TUI.
 
 ---
 
@@ -145,7 +145,7 @@ Il catalogo comprende **30 tool integrati**, sviluppati secondo il principio del
 
 ```
                   ┌──────────────────────────────┐
-                  │       27 Tool nel Core       │
+                  │       30 Tool nel Core       │
                   └──────────────┬───────────────┘
                                  │
            Filtro 1: Ruolo       ▼
@@ -168,11 +168,11 @@ Il catalogo comprende **30 tool integrati**, sviluppati secondo il principio del
 
 ### Classificazione dei Tool per Categoria
 1. **Manipolazione Filesystem**: `read_file`, `write_file` (con supporto append e limite di 16.000 caratteri per chiamata per prevenire troncamenti JSON), `edit_file`, `delete_file`, `list_dir`, `grep_search`.
-2. **Controllo di Sistema**: `execute_command` (esecuzione shell con timeout configurabile), `get_ps_info` (diagnostica processi e risorse).
+2. **Controllo di Sistema**: `execute_command` (esecuzione shell con classificazione graduata del rischio e timeout configurabile), `get_ps_info` (diagnostica processi e risorse).
 3. **Ricerca Web e Rete**: `web_search`, `browse_url` (con modalità Reader View e rimozione di elementi superflui), `download_file`.
-4. **Persistenza e Memoria**: `save_memory`, `recall_memory`.
+4. **Persistenza e Memoria**: `save_memory`, `recall_memory`, `update_memory`, `forget_memory`.
 5. **Coordinamento Multi-Agente**: `report_status`, `route_next`, `cast_vote`, `post_note`, `read_notes`, `send_message`.
-6. **Estendibilità ed Escalation**: `spawn_agent`, `switch_skill`, `create_role`, `create_tool`, `request_goal`, `request_team`, `request_call`.
+6. **Estendibilità ed Escalation**: `spawn_agent`, `switch_skill`, `create_role`, `create_tool`, `load_tools`, `request_goal`, `request_team`, `request_call`.
 7. **Sicurezza e Analisi Statica**: `audit_code` (scansione vulnerabilità OWASP, pattern insicuri e leak di segreti).
 
 ---
@@ -309,11 +309,13 @@ TSUKA adotta un client unificato basato sull'SDK ufficiale **OpenAI**, interfacc
 
 ## 11. Mappa dei Moduli Core
 
-| Modulo | File sorgente | Ruolo architetturale |
+| Modulo / Sottosistema | File sorgente | Ruolo architetturale |
 |---|---|---|
-| **Agent** | `src/core/agent.ts` | Ciclo ReAct, pruning token-driven, compressione e gestione degli eventi. |
-| **Provider** | `src/core/provider.ts` | Client HTTP OpenAI, gestione dello streaming, parsing token e timeout. |
-| **Memory Store** | `src/core/memory.ts` | Database JSON persistente, scoring per rilevanza semantica e politiche di eviction. |
+| **Agent** | `src/core/agent.ts` | Ciclo ReAct, potatura token-driven, compressione, risoluzione tool differiti e gestione eventi. |
+| **Provider Client** | `src/core/provider/` | Client HTTP OpenAI (`llmProvider.ts`), contratti di protocollo (`types.ts`), timeout e rinnovo interattivo (`timeouts.ts`), sink di telemetria (`telemetry.ts`) e profili di sampling (`sampling.ts`). |
+| **Motore Memoria** | `src/core/memory/` | Contratto pluggabile `MemoryBackend` (`types.ts`), scoring BM25 puro (`bm25.ts`), decadimento ed eviction (`retention.ts`), `JsonMemoryBackend` (`jsonBackend.ts`), registro backend (`registry.ts`) e facade `MemoryStore`. |
+| **Configurazione** | `src/core/config/` | Tipi di configurazione applicativa (`types.ts`), validatore dei profili di sampling (`sampling.ts`) e `ConfigManager` (`manager.ts`). |
+| **Registro Costanti** | `src/core/constants.ts` | Unica sorgente dei valori di default e parametri di tuning (`LLM_DEFAULTS`, `MEMORY_DEFAULTS`, `AGENT_DEFAULTS`, `TUI_DEFAULTS`, `TOOLS_DEFAULTS`, `CLI_DEFAULTS`). |
 | **Blackboard** | `src/core/blackboard.ts` | Lavagna di sessione isolata per workflow tramite `AsyncLocalStorage`. |
 | **Context Budget** | `src/core/contextBudget.ts` | Algoritmi di stima dei token, calibrazione a runtime e troncamento `capForContext`. |
 | **Model Profile** | `src/core/modelProfile.ts` | Gestione dei profili di capability fingerprinting e classificazione dei tier. |
@@ -322,7 +324,8 @@ TSUKA adotta un client unificato basato sull'SDK ufficiale **OpenAI**, interfacc
 | **Loop Controller** | `src/core/loop.ts` | Ciclo di esecuzione iterativa guidato da criteri di accettazione oggettivi (`acceptance`). |
 | **Log Sink** | `src/core/logSink.ts` | Astrazione di logging iniettabile per disaccoppiare il core dal terminale TTY. |
 | **App Home** | `src/core/apphome.ts` | Risoluzione gerarchica dei percorsi tra cartella globale e directory di lavoro locale. |
-| **Platform** | `src/core/platform.ts` | Astrazione cross-platform per l'esecuzione comandi (PowerShell su Windows, `/bin/sh` su Unix). |
+| **Platform** | `src/core/platform.ts` | Astrazione cross-platform per l'esecuzione comandi (PowerShell su Windows, `/bin/sh` on Unix). |
+| **Sicurezza Comandi** | `src/safety/commandRisk.ts` | Classificatore graduato del rischio dei comandi shell (`classifyRisk`). |
 
 ---
 
@@ -349,12 +352,17 @@ TSUKA include una dashboard terminale grafica interattiva a componenti puri:
 * **`TuiScreen` (`screen.ts`)**: Motore a basso livello con rendering differenziale a riga singola (0ms di latenza visiva, zero flickering) e slicing ANSI sicuro con `slice-ansi` e `string-width`.
 * **`TuiStore` (`store.ts`)**: Gestione reattiva dello stato unificato (messaggi, token, file explorer, reasoning streaming, modali).
 * **`TuiBridge` (`bridge.ts`)**: Adapter che converte gli eventi del core (`AgentEvents`, `PermissionManager`) in mutazioni dello stato TUI.
+* **Compositore Layout (`layoutComposer.ts`)**: Funzione pura deterministica di composizione `composeFrame(state, width, height, tab, layout)` priva di effetti collaterali.
+* **Layer di Interazione (`src/tui/interaction/`)**: Gestione disaccoppiata degli input:
+  * `geometry.ts`: Unica fonte di verità per le coordinate geometriche e le dimensioni dei pannelli.
+  * `keyHandlers.ts`: Routing degli eventi tastiera per-focus (input, chat, sidebar, files, tools).
+  * `mouseRouter.ts`: Routing degli eventi mouse SGR 1006 (schede, rotellina di scroll, focus pannelli, selezione file, toggle reasoning).
 * **Componenti Grafici Puri (`src/tui/views/`)**:
   * `HeaderView`: Schede di navigazione e barra grafica di consumo del context window.
   * `SidebarView`: Profilo agente attivo, ruolo, tratto e statistiche token.
   * `FilesView`: File explorer del workspace con icone per estensione, scrollbar e click per incollare il file nel prompt.
   * `ChatView`: Rendering Markdown formattato, blocchi di codice evidenziati e box di reasoning `<think>`.
-  * `ToolsView`: Catalogo e cronologia dei 30 tool nativi.
+  * `ToolsView`: Catalogo e cronologia dei 30 tool nativi con filtro interattivo di ricerca.
   * `InputView`: Buffer di input multi-riga con cursore e spinner di caricamento.
   * `ModalView`: Finestre modali di conferma sicurezza, selezione modelli, estensione timeout e cheatsheet comandi (`F12`). Ogni tipo di modale fornisce solo il proprio box (`BOX_BUILDERS`); centratura e composizione sullo schermo sono condivise.
 * **Tabelle di Dispatch Data-Driven**: il comportamento sta in liste, non in catene di condizioni; estendere la TUI significa aggiungere una riga.

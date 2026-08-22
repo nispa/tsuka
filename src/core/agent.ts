@@ -7,6 +7,7 @@ import chalk from 'chalk';
 import { MemoryStore } from './memory';
 import { logSink } from './logSink';
 import { ChatMessage } from './types';
+import { AGENT_DEFAULTS } from './constants';
 import { calculateReasoningBudget, sumMessageChars } from './contextBudget';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -84,7 +85,7 @@ export interface ToolRoundsPromptInfo {
 export type ToolRoundsPromptHandler = (info: ToolRoundsPromptInfo) => Promise<ToolRoundsAction>;
 
 export class Agent implements ToolSetController {
-  private static readonly DEFAULT_MAX_TOOL_ROUNDS = 15;
+  private static readonly DEFAULT_MAX_TOOL_ROUNDS = AGENT_DEFAULTS.maxToolRounds;
 
   private provider: ILLMProvider;
   private registry: ToolRegistry;
@@ -95,7 +96,7 @@ export class Agent implements ToolSetController {
   private maxHistoryMessages: number;
   private maxHistoryTokens: number;
   private maxToolRounds: number;
-  private charsPerToken = 3.5;
+  private charsPerToken = AGENT_DEFAULTS.seedCharsPerToken;
   private static readonly RATIO_SMOOTHING = 0.2;
   private agentLabel?: string;
   private reasoningEffort?: ReasoningEffort;

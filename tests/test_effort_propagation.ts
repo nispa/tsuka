@@ -102,7 +102,7 @@ async function main() {
     registry.register({ name: 'read_file', riskLevel: 'SAFE', execute: async () => 'ok' }); // requiredTier small
     registry.register({ name: 'execute_command', riskLevel: 'RESTRICTED', execute: async () => 'ok' }); // requiredTier medium
 
-    const namesAt = (effort?: 'none' | 'low' | 'medium' | 'xhigh') =>
+    const namesAt = (effort?: 'none' | 'low' | 'medium' | 'high' | 'xhigh') =>
       registry.listForLLM(model, undefined, effort).map((t) => t.function.name);
 
     const atLow = namesAt('low');

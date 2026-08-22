@@ -186,6 +186,7 @@ export class SystemModals {
 
   static openEffortModal(
     store: TuiStore,
+    configManager: ConfigManager,
     onAgentRecreate: () => void,
     onSyncState: () => void
   ): void {
@@ -198,7 +199,8 @@ export class SystemModals {
       { label: '⚡ None', value: 'none', hint: 'Disable reasoning tokens (maximum speed)' },
       { label: '🟢 Low', value: 'low', hint: 'Brief reasoning for simple tasks' },
       { label: '🟡 Medium', value: 'medium', hint: 'Balanced reasoning (default/recommended)' },
-      { label: '🔴 High / XHigh', value: 'xhigh', hint: 'Deep multi-step reasoning' },
+      { label: '🔴 High', value: 'high', hint: 'Hard reasoning, deep planning, complex debugging' },
+      { label: '🟣 XHigh', value: 'xhigh', hint: 'Deep multi-step reasoning, long agentic runs' },
     ];
 
     store.showModal({
@@ -207,19 +209,16 @@ export class SystemModals {
       selectedIndex: 0,
       options,
       onSelect: (chosen) => {
-        if (chosen === 'auto') {
-          setEffortPin(undefined);
-          onAgentRecreate();
-          onSyncState();
-          store.closeModal();
-          store.notify('Reasoning effort restored to automatic cascade', 'success');
-        } else {
-          setEffortPin(chosen as any);
-          onAgentRecreate();
-          onSyncState();
-          store.closeModal();
-          store.notify(`Reasoning effort pinned to: ${chosen}`, 'success');
-        }
+        const pin = chosen === 'auto' ? undefined : (chosen as 'none' | 'low' | 'medium' | 'high' | 'xhigh');
+        setEffortPin(pin);
+        // Persist so the choice is restored as the startup pin (see TuiApp constructor).
+        configManager.setDefaultReasoningEffort(pin);
+        onAgentRecreate();
+        onSyncState();
+        store.closeModal();
+        store.notify(pin
+          ? `Reasoning effort pinned to: ${pin}`
+          : 'Reasoning effort restored to automatic cascade', 'success');
       },
     });
   }

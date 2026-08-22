@@ -14,7 +14,7 @@ import { PermissionManager } from '../safety/permissions';
 import { Agent, resolveReasoningEffort } from '../core/agent';
 import { resolveToolSet } from '../core/toolSet';
 import { getModelProfile, getRecommendedEffort } from '../core/modelProfile';
-import { withEffortPin, confirmEffortDivergence } from '../core/effortControl';
+import { withEffortPin, confirmEffortDivergence, setEffortPin } from '../core/effortControl';
 import type { ReasoningEffort } from '../core/provider';
 import { CLITheme, InteractiveMenu } from './ui';
 import { StreamRenderer } from './stream';
@@ -90,6 +90,11 @@ async function main() {
   let activeConfig = configManager.getActiveProviderConfig();
   
   let provider = new LLMProvider(activeConfig.baseUrl, configManager.getApiKey(), activeConfig.model);
+
+  // Restore the last /effort choice persisted in tsuka.config.json as the startup pin,
+  // so it must be set BEFORE the first recreateAgent() bakes effort into the agent.
+  const savedEffort = configManager.getDefaultReasoningEffort();
+  if (savedEffort) setEffortPin(savedEffort);
 
   // Helper to recreate agent dynamically with active settings
   const recreateAgent = (): Agent => {
@@ -277,7 +282,7 @@ async function main() {
         return [...new Set([...chars, ...roles])];
       }
       if (command === '/memory') return ['clear'];
-      if (command === '/effort') return ['none', 'low', 'medium', 'xhigh', 'auto', 'ask'];
+      if (command === '/effort') return ['none', 'low', 'medium', 'high', 'xhigh', 'auto', 'ask'];
       return [];
     },
     mentions: () => {

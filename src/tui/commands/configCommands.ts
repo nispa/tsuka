@@ -52,7 +52,7 @@ const SEARCH_ENGINES = [
 ] as const;
 
 /** Effort levels accepted by /effort: pin value and the toast that confirms it. */
-const EFFORT_LEVELS: Record<string, { pin: string | undefined; message: string; tone: 'info' | 'success' }> = {
+const EFFORT_LEVELS: Record<string, { pin: 'none' | 'low' | 'medium' | 'high' | 'xhigh' | undefined; message: string; tone: 'info' | 'success' }> = {
   none: { pin: 'none', message: 'Reasoning effort set to: none', tone: 'info' },
   low: { pin: 'low', message: 'Reasoning effort set to: low', tone: 'success' },
   medium: { pin: 'medium', message: 'Reasoning effort set to: medium', tone: 'success' },
@@ -159,16 +159,18 @@ export const CONFIG_COMMANDS: TuiCommandSpec[] = [
 
   {
     name: '/effort',
-    description: 'Reasoning effort: none, low, medium, xhigh, auto',
+    description: 'Reasoning effort: none, low, medium, high, xhigh, auto',
     run: (c) => {
       const level = EFFORT_LEVELS[c.arg.toLowerCase().trim()];
       if (!level) {
         // No argument, or an unknown level: let the user pick from the modal.
-        SystemModals.openEffortModal(c.store, () => c.setAgent(c.recreateAgent()), () => c.syncState());
+        SystemModals.openEffortModal(c.store, c.configManager, () => c.setAgent(c.recreateAgent()), () => c.syncState());
         return;
       }
 
-      setEffortPin(level.pin as any);
+      setEffortPin(level.pin);
+      // Persist so the choice is restored as the startup pin (see TuiApp constructor).
+      c.configManager.setDefaultReasoningEffort(level.pin);
       applyAndSync(c);
       c.store.notify(level.message, level.tone);
     },

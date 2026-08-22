@@ -8,7 +8,10 @@ import { logSink } from './logSink';
  * controlled by the `/effort` command. Final precedence:
  * **global pin -> caller override -> character -> role -> config default**.
  *
- * Ephemeral PROCESS state: module variables, never written to `tsuka.config.json`.
+ * Ephemeral PROCESS state: the pin lives in module variables and this module never
+ * touches `tsuka.config.json`. Persistence is owned by the callers: `/effort` (CLI
+ * and TUI) writes the chosen level through `ConfigManager.setDefaultReasoningEffort`,
+ * and entry points re-apply it as the startup pin.
  */
 
 let pin: ReasoningEffort | undefined;

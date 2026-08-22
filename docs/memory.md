@@ -236,7 +236,32 @@ Permanently removes an obsolete or incorrect memory entry by ID.
 
 ---
 
-## 6. Lessons Learned from Development Errors
+## 6. Pluggable Backend Architecture (`src/core/memory/`)
+
+Following Directive 8 (*Modularity by Design*), TSUKA decouples memory storage and retrieval behind an explicit contract:
+
+```typescript
+// src/core/memory/types.ts
+export interface MemoryBackend {
+  load(): Promise<void>;
+  save(): Promise<void>;
+  addFact(fact: Omit<MemoryFact, 'id' | 'createdAt' | 'lastUsed' | 'hits'>): MemoryFact;
+  updateFact(id: string, patch: Partial<MemoryFact>): boolean;
+  forgetFact(id: string): boolean;
+  search(query: string, scope?: string, options?: SearchOptions): ScoredFact[];
+  formatForPrompt(maxChars?: number, scope?: string): string;
+  formatRelevant(taskText: string, maxChars?: number, scope?: string): string;
+  // ...
+}
+```
+
+* **Default Implementation (`JsonMemoryBackend`)**: Zero external dependencies, pure TypeScript JSON file storage with pure BM25 ranking (`memory/bm25.ts`) and exponential half-life eviction (`memory/retention.ts`).
+* **Pluggable Registry**: Alternative backends (e.g. SQLite with FTS5, vector databases, remote cloud stores) can be registered via `registerMemoryBackend(name, factory)` and selected dynamically through `memoryBackend` in `tsuka.config.json` or the `TSUKA_MEMORY_BACKEND` environment variable.
+* **Unified Facade**: Consumers throughout the harness access memory via the standard `MemoryStore` singleton facade, maintaining 100% backward compatibility.
+
+---
+
+## 7. Lessons Learned from Development Errors
 
 Building this harness provided several concrete lessons on what *not* to do with agent memory:
 

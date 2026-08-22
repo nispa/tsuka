@@ -18,7 +18,7 @@ import {
 export const BENCHMARK_VERSION = 4;
 
 /** The 4 reasoning effort levels swept by benchmark in increasing order. */
-export const REASONING_EFFORT_LEVELS: ReasoningEffort[] = ['none', 'low', 'medium', 'xhigh'];
+export const REASONING_EFFORT_LEVELS: ReasoningEffort[] = ['none', 'low', 'medium', 'high', 'xhigh'];
 
 export interface ModelScores {
   /** 0..1: weighted average of "instruction" category tests in benchmarks/ */

@@ -44,15 +44,15 @@
 
 ---
 
-## 🔒 1. Tre Livelli di Rischio dei Tool (`riskLevel`)
+## 🔒 1. Livelli di Rischio dei Tool ed Esecuzione Graduata (`riskLevel`)
 
-Ogni tool registrato nel `ToolRegistry` dichiara esplicitamente il proprio livello di rischio. Il modulo `PermissionManager` garantisce che nessuna operazione impattante avvenga senza la necessaria autorizzazione:
+Ogni tool nativo o dinamico registrato nel `ToolRegistry` dichiara un livello di rischio esplicito. Il `PermissionManager` garantisce che nessuna azione modificatrice di stato o potenzialmente pericolosa venga eseguita senza opportuna autorizzazione:
 
 | Livello | Descrizione Operativa | Tool Nativi | Politica di Esecuzione |
 | :--- | :--- | :--- | :--- |
-| **`SAFE`** | Operazioni di sola lettura, analisi statica difensiva, query internet e diagnostica di sistema. | `read_file`, `list_dir`, `grep_search`, `audit_code`, `web_search`, `browse_url`, `get_ps_info`, `recall_memory`, `read_notes` | **Esecuzione immediata e trasparente** senza interruzioni per l'utente. |
-| **`RESTRICTED`** | Modifica o cancellazione di file nel workspace, download da rete o creazione di ruoli/tool. | `write_file`, `edit_file`, `delete_file`, `download_file`, `create_role`, `create_tool`, `save_memory`, `post_note` | **Richiede conferma interattiva**: `[y/N/sempre]`. L'opzione `sempre` attiva l'approvazione delle sole modifiche ai file per la sessione attiva. |
-| **`DANGEROUS`** | Esecuzione di codice arbitrario, script shell di sistema (PowerShell, Bash) o apertura di processi. | `execute_command` | **Richiede SEMPRE conferma esplicita** `[y/N]`. Il bypass di sessione (`always`) è **rigorosamente disabilitato** per prevenire esecuzioni incontrollate. |
+| **`SAFE`** | Operazioni di sola lettura, analisi statica difensiva, query internet, protocolli di coordinamento e gestione memoria. | `read_file`, `list_dir`, `grep_search`, `audit_code`, `web_search`, `browse_url`, `get_ps_info`, `save_memory`, `recall_memory`, `update_memory`, `forget_memory`, `read_notes`, `post_note`, `report_status`, `route_next`, `cast_vote`, `send_message`, `load_tools`, `switch_skill` | **Esecuzione immediata e trasparente** senza interruzioni per l'utente. |
+| **`RESTRICTED`** | Modifica/cancellazione file nel workspace, download da rete, spawn di sotto-agenti, escalation o creazione ruoli/tool. | `write_file`, `edit_file`, `delete_file`, `download_file`, `spawn_agent`, `create_role`, `create_tool`, `request_goal`, `request_team`, `request_call` | **Richiede conferma interattiva**: `[y/N/sempre]`. L'opzione `sempre` attiva l'approvazione per le operazioni analoghe nella sessione attiva. |
+| **`DANGEROUS` (Graduato)** | Esecuzione di comandi shell di sistema (`execute_command`). Graduato dinamicamente per singola invocazione tramite `classifyRisk()` ([`src/safety/commandRisk.ts`](../src/safety/commandRisk.ts)). | `execute_command` | **Politica Graduata**: comandi di sola ispezione innocui (`git status`, `ls`) sono `SAFE`; comandi di test/build (`npm test`, `cargo build`) sono `RESTRICTED` (con approvazione di sessione); comandi arbitrari/sconosciuti restano `DANGEROUS` (richiedono sempre conferma esplicita `[y/N]`). |
 
 ---
 

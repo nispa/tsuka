@@ -44,15 +44,15 @@
 
 ---
 
-## 🔒 1. Three Tool Risk Tiers (`riskLevel`)
+## 🔒 1. Tool Risk Tiers & Graduated Execution (`riskLevel`)
 
 Every native and dynamic tool registered in `ToolRegistry` declares an explicit risk tier. The `PermissionManager` guarantees that no state-modifying or potentially dangerous action executes without authorization:
 
 | Risk Tier | Operational Description | Native Tools | Execution Policy |
 | :--- | :--- | :--- | :--- |
-| **`SAFE`** | Read-only operations, defensive static analysis, internet searches, and system telemetry. | `read_file`, `list_dir`, `grep_search`, `audit_code`, `web_search`, `browse_url`, `get_ps_info`, `recall_memory`, `read_notes` | **Immediate and transparent execution** without interrupting the user. |
-| **`RESTRICTED`** | Modifying/deleting workspace files, network downloads, or creating roles and tools. | `write_file`, `edit_file`, `delete_file`, `download_file`, `create_role`, `create_tool`, `save_memory`, `post_note` | **Prompts the user interactively**: `[y/N/always]`. Choosing `always` grants permission for subsequent workspace file writes during the active session. |
-| **`DANGEROUS`** | Arbitrary code execution, system shell commands (PowerShell, Bash), or network socket operations. | `execute_command` | **ALWAYS prompts for explicit confirmation** `[y/N]`. Session-wide auto-approval is **strictly disabled** to prevent runaway executions. |
+| **`SAFE`** | Read-only operations, defensive static analysis, internet searches, coordination protocols, and memory operations. | `read_file`, `list_dir`, `grep_search`, `audit_code`, `web_search`, `browse_url`, `get_ps_info`, `save_memory`, `recall_memory`, `update_memory`, `forget_memory`, `read_notes`, `post_note`, `report_status`, `route_next`, `cast_vote`, `send_message`, `load_tools`, `switch_skill` | **Immediate and transparent execution** without interrupting the user. |
+| **`RESTRICTED`** | Modifying/deleting workspace files, network downloads, subagent spawning, escalation, or creating roles and tools. | `write_file`, `edit_file`, `delete_file`, `download_file`, `spawn_agent`, `create_role`, `create_tool`, `request_goal`, `request_team`, `request_call` | **Prompts the user interactively**: `[y/N/always]`. Choosing `always` grants permission for subsequent matching operations during the active session. |
+| **`DANGEROUS` (Graduated)** | System shell execution (`execute_command`). Graduated dynamically per command invocation via `classifyRisk()` ([`src/safety/commandRisk.ts`](../src/safety/commandRisk.ts)). | `execute_command` | **Graduated Policy**: harmless read-only commands (`git status`, `ls`) execute as `SAFE`; build/test commands (`npm test`, `cargo build`) run as `RESTRICTED` (allowing session-wide approval); arbitrary/unknown commands remain `DANGEROUS` (always interactive prompt `[y/N]`). |
 
 ---
 

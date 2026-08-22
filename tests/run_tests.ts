@@ -100,6 +100,7 @@ const suites = [
   'test_memory_persistence.ts',
   'test_memory_tools.ts',
   'test_memory_bm25.ts',
+  'test_memory_backend_registry.ts',
   'test_command_risk.ts',
   'test_files_explorer.ts',
   'test_wiki_build.ts'

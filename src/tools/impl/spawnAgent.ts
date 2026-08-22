@@ -18,7 +18,7 @@ import { resolveToolSet } from '../../core/toolSet';
 const MAX_TASK_LENGTH = 2000;
 const MAX_BRIEFING_FILE_LENGTH = 12000;
 
-const VALID_REASONING_EFFORTS: ReasoningEffort[] = ['none', 'low', 'medium', 'xhigh'];
+const VALID_REASONING_EFFORTS: ReasoningEffort[] = ['none', 'low', 'medium', 'high', 'xhigh'];
 
 export const spawnAgentTool: Tool = {
   name: 'spawn_agent',

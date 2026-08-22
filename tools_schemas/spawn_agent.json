@@ -32,6 +32,7 @@
           "none",
           "low",
           "medium",
+          "high",
           "xhigh"
         ],
         "description": "Reasoning effort imposed on the sub-agent for THIS task, overriding the character/role. Optional: if omitted, the sub-agent inherits the normal cascade (character -> role -> default). Lower it to 'none' or 'low' for mechanical tasks (applying an already-known change, reformatting a file, extracting fields from text): having a sub-agent reason at length over a mechanical task is just wasted time. Leave it at 'medium'/'xhigh' only if the task genuinely requires analysis or planning."

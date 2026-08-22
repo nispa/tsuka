@@ -1,37 +1,40 @@
 /**
  * Main Application Orchestrator for TSUKA TUI.
- * Composes double-buffered terminal layout, input event routing, controllers and views.
+ * Wires the double-buffered screen, the reactive store and the controllers together,
+ * owns the agent lifecycle and dispatches input events to the interaction modules
+ * (src/tui/interaction/) and rendering to the pure frame composer (layoutComposer.ts).
  */
 
 import { TuiScreen, KeyPressEvent, TuiMouseEvent } from './screen';
-import { TuiTabSpec, tabAtColumn, resolveTabShortcut } from './navigation';
-import { enterDirectory, parentDirectory, entryPath, PARENT_ENTRY } from './fileExplorer';
-import { TuiFileItem } from './types';
+import { TuiTabSpec, resolveTabShortcut } from './navigation';
 import { TuiStore } from './store';
 import { TuiBridge } from './bridge';
-import { HeaderView } from './views/Header';
-import { SidebarView } from './views/Sidebar';
-import { ChatView } from './views/Chat';
-import { InputView } from './views/Input';
-import { ToolsView } from './views/Tools';
-import { FilesView } from './views/Files';
-import { ModalView } from './views/Modal';
-import { Agent, ToolRoundsAction } from '../core/agent';
+import { Agent, ToolRoundsAction, resolveReasoningEffort } from '../core/agent';
 import { resolveToolSet } from '../core/toolSet';
 import { ConfigManager } from '../core/config';
 import { ILLMProvider, setTimeoutPromptHandler, TimeoutAction } from '../core/provider';
 import { ToolRegistry } from '../tools/registry';
 import { PermissionManager } from '../safety/permissions';
 import { loadCharacter, loadRole, loadTrait, loadSystemPrompt } from '../cli/shared';
-import { resolveReasoningEffort } from '../core/agent';
-import { withEffortPin, describeEffortSource } from '../core/effortControl';
-import { detectContextWindow, probeProvider } from '../core/discovery';
+import { withEffortPin, describeEffortSource, setEffortPin } from '../core/effortControl';
+import { detectContextWindow, scanProviders } from '../core/discovery';
 import { LayoutConfigManager, TuiLayoutConfig } from './layoutConfig';
-import { ModalKeyHandler, PersonaModals, SystemModals, LayoutModals, FileViewerModal } from './modals';
+import { composeFrame } from './layoutComposer';
+import { ModalKeyHandler, PersonaModals, SystemModals, LayoutModals } from './modals';
+import { FilesView } from './views/Files';
+import {
+  handleChatKey,
+  handleFilesKey,
+  handleInputKey,
+  handleSidebarKey,
+  handleToolsKey,
+  openFileEntry as openFileEntryAction,
+} from './interaction/keyHandlers';
+import { routeMouseEvent } from './interaction/mouseRouter';
+import { TuiFileItem } from './types';
 import { TuiCommandController, TuiTurnRunner } from './controllers';
 import { setLogSink, resetLogSink } from '../core/logSink';
 import { setProgressSink } from '../core/progressSink';
-import { copyToClipboard } from '../core/platform';
 
 export interface TuiAppOptions {
   configManager: ConfigManager;
@@ -66,6 +69,10 @@ export class TuiApp {
     this.bridge = new TuiBridge(this.store, this.permissionManager);
 
     this.setupTimeoutPrompt();
+    // Restore the last /effort choice persisted in tsuka.config.json as the startup pin,
+    // BEFORE the first recreateAgent() bakes effort into the agent (same as cli/index.ts).
+    const savedEffort = this.configManager.getDefaultReasoningEffort();
+    if (savedEffort) setEffortPin(savedEffort);
     this.agent = this.recreateAgent();
 
     this.commandController = new TuiCommandController({
@@ -248,44 +255,54 @@ export class TuiApp {
    * see cli/commands/provider.ts) but unattended, run once when the TUI opens. tsuka.config.json
    * records a model name, but the server behind it can drift — restarted with a different model,
    * or the configured one no longer served — and nothing short of manually running `/provider`
-   * used to notice. This reconciles config against what the server actually reports:
-   *  - configured model missing from the server's list → fall back to the first one available
-   *    (same auto-recovery `handleProvider` performs after a manual switch) and warn;
-   *  - a different model is loaded in RAM → warn only, since forcing a swap would reload the
-   *    server (same reasoning as `maybeWarmUp`'s opt-in prompt in the CLI);
+   * used to notice. This reconciles config against what the server actually reports,
+   * with the SAME precedence as the CLI startup (cli/index.ts):
+   *  - configured provider unreachable → fail over to the first reachable local one
+   *    (scanProviders probes the active first, then the remaining local servers);
+   *  - a model already loaded in server RAM wins: attaching to it avoids forcing a slow
+   *    reload of the server;
+   *  - otherwise keep the configured model if still served, else fall back to the first
+   *    available (same auto-recovery `handleProvider` performs after a manual switch);
    *  - either way, calibrate the context window from the same scan instead of a second round trip.
-   * Silent on an unreachable server — `probeProvider` returning null just means "nothing to do".
+   * Silent on an unreachable server — scanProviders returning null just means "nothing to do".
    */
   async discoverModelAtStartup(): Promise<void> {
     try {
       const providerName = this.configManager.getActiveProviderName();
-      const activeConfig = this.configManager.getActiveProviderConfig();
-      const apiKey = this.configManager.getApiKey();
-      const configuredModel = this.provider.getCurrentModel();
-
-      const scan = await probeProvider(providerName, activeConfig, apiKey);
+      const candidates = this.configManager.getProviderNames().map((name) => ({
+        name,
+        config: this.configManager.getProviderConfig(name)!,
+        apiKey: this.configManager.getApiKeyFor(name),
+      }));
+      const scan = await scanProviders(candidates, providerName);
       if (!scan) return;
 
-      if (scan.models.length > 0 && !scan.models.includes(configuredModel)) {
-        const fallback = scan.models[0];
-        this.provider.setCurrentModel(fallback);
-        this.configManager.updateActiveModel(fallback);
+      // Provider failover: same recovery as the CLI startup path.
+      if (scan.name !== providerName) {
+        this.configManager.setActiveProvider(scan.name);
+        const newCfg = this.configManager.getActiveProviderConfig();
+        this.provider.reconfigure(newCfg.baseUrl, this.configManager.getApiKey(), newCfg.model);
         this.agent = this.recreateAgent();
-        this.store.notify(`Model '${configuredModel}' not found on server — switched to '${fallback}'`, 'warn');
-      } else if (scan.loadedModel && scan.loadedModel !== configuredModel) {
-        this.store.notify(`Server has '${scan.loadedModel}' loaded in RAM (config expects '${configuredModel}')`, 'warn');
+        this.store.notify(`Configured provider '${providerName}' unreachable — switched to '${scan.name}'`, 'warn');
+      }
+      const configuredModel = this.provider.getCurrentModel();
+
+      // RAM-loaded model beats config (same precedence as cli/index.ts startup).
+      const chosen = scan.loadedModel ?? (scan.models.includes(configuredModel) ? configuredModel : (scan.models[0] ?? ''));
+      if (chosen && chosen !== configuredModel) {
+        this.provider.setCurrentModel(chosen);
+        this.configManager.updateActiveModel(chosen);
+        this.agent = this.recreateAgent();
+        if (scan.loadedModel === chosen) {
+          this.store.notify(`Attached to model already loaded in server RAM: '${chosen}'`, 'success');
+        } else {
+          this.store.notify(`Model '${configuredModel}' not found on server — switched to '${chosen}'`, 'warn');
+        }
       }
 
       const dynamicCtx = scan.contextWindow;
       if (dynamicCtx && dynamicCtx >= 1024) {
-        this.configManager.setRuntimeContextTokens(dynamicCtx);
-        const usedTokens = this.store.getState().stats.usedTokens;
-        this.store.updateStats({
-          maxTokens: dynamicCtx,
-          percentage: Math.min(100, Math.round((usedTokens / dynamicCtx) * 100)),
-        });
-        this.agent = this.recreateAgent();
-        this.store.notify(`Context window calibrated: ${dynamicCtx.toLocaleString()} tokens (${this.provider.getCurrentModel()})`, 'info');
+        this.applyContextWindow(dynamicCtx);
       }
     } catch {}
   }
@@ -297,85 +314,28 @@ export class TuiApp {
       const currentModel = this.provider.getCurrentModel();
       const dynamicCtx = await detectContextWindow(activeConfig.baseUrl, apiKey, currentModel);
       if (dynamicCtx && dynamicCtx >= 1024) {
-        this.configManager.setRuntimeContextTokens(dynamicCtx);
-        const usedTokens = this.store.getState().stats.usedTokens;
-        this.store.updateStats({
-          maxTokens: dynamicCtx,
-          percentage: Math.min(100, Math.round((usedTokens / dynamicCtx) * 100)),
-        });
-        this.agent = this.recreateAgent();
-        this.store.notify(`Context window calibrated: ${dynamicCtx.toLocaleString()} tokens (${currentModel})`, 'info');
+        this.applyContextWindow(dynamicCtx);
       }
     } catch {}
+  }
+
+  /** Shared tail of both discovery paths: persist, reflect in stats, rebuild the agent. */
+  private applyContextWindow(dynamicCtx: number): void {
+    this.configManager.setRuntimeContextTokens(dynamicCtx);
+    const usedTokens = this.store.getState().stats.usedTokens;
+    this.store.updateStats({
+      maxTokens: dynamicCtx,
+      percentage: Math.min(100, Math.round((usedTokens / dynamicCtx) * 100)),
+    });
+    this.agent = this.recreateAgent();
+    this.store.notify(`Context window calibrated: ${dynamicCtx.toLocaleString()} tokens (${this.provider.getCurrentModel()})`, 'info');
   }
 
   // ── Layout Frame Rendering ──
 
   private renderFrame(): string[] {
     const { width, height } = this.screen.getDimensions();
-    const state = this.store.getState();
-    const effectiveWidth = Math.max(20, width - 1);
-
-    const headerLines = HeaderView.render(state, effectiveWidth, this.activeTab);
-    const headerHeight = headerLines.length;
-    const rawLineCount = state.inputText ? state.inputText.split(/\r?\n/).length : 1;
-    const inputHeight = Math.min(6, Math.max(3, rawLineCount + 2));
-    const mainHeight = Math.max(5, height - headerHeight - inputHeight);
-
-    const layout = this.layoutConfig;
-    const sidebarPos = layout.sidebarPosition;
-    const showFiles = layout.showFilesExplorer;
-    const widthPct = (layout.sidebarWidthPercent || 26) / 100;
-    const filesPct = (layout.filesHeightPercent || 55) / 100;
-
-    let sidebarWidth = 0;
-    let mainWidth = effectiveWidth;
-
-    if (sidebarPos !== 'hidden') {
-      sidebarWidth = Math.min(42, Math.max(22, Math.floor(effectiveWidth * widthPct)));
-      mainWidth = Math.max(10, effectiveWidth - sidebarWidth);
-    }
-
-    let sidebarColumnLines: string[] = [];
-    if (sidebarPos !== 'hidden') {
-      if (showFiles) {
-        const filesHeight = Math.max(5, Math.floor(mainHeight * filesPct));
-        const profileHeight = Math.max(6, mainHeight - filesHeight);
-        const profileLines = SidebarView.render(state, sidebarWidth, profileHeight, layout.visibleWidgets);
-        const filesLines = FilesView.render(state, sidebarWidth, filesHeight);
-        sidebarColumnLines = [...profileLines, ...filesLines];
-      } else {
-        sidebarColumnLines = SidebarView.render(state, sidebarWidth, mainHeight, layout.visibleWidgets);
-      }
-    }
-
-    const mainLines = this.activeTab === 'chat'
-      ? ChatView.render(state, mainWidth, mainHeight)
-      : ToolsView.render(state, mainWidth, mainHeight);
-
-    const compositeBody: string[] = [];
-    for (let i = 0; i < mainHeight; i++) {
-      if (sidebarPos === 'hidden') {
-        compositeBody.push(mainLines[i] || ' '.repeat(mainWidth));
-      } else if (sidebarPos === 'right') {
-        const mainPart = mainLines[i] || ' '.repeat(mainWidth);
-        const sidePart = sidebarColumnLines[i] || ' '.repeat(sidebarWidth);
-        compositeBody.push(mainPart + sidePart);
-      } else {
-        const sidePart = sidebarColumnLines[i] || ' '.repeat(sidebarWidth);
-        const mainPart = mainLines[i] || ' '.repeat(mainWidth);
-        compositeBody.push(sidePart + mainPart);
-      }
-    }
-
-    const inputLines = InputView.render(state, effectiveWidth, inputHeight);
-    let screenBuffer = [...headerLines, ...compositeBody, ...inputLines];
-
-    if (state.activeModal) {
-      screenBuffer = ModalView.renderOverlay(state.activeModal, screenBuffer, effectiveWidth, height);
-    }
-
-    return screenBuffer;
+    return composeFrame(this.store.getState(), width, height, this.activeTab, this.layoutConfig);
   }
 
   // ── Keyboard & Mouse Event Dispatchers ──
@@ -464,85 +424,16 @@ export class TuiApp {
       return;
     }
 
+    const deps = { store: this.store, submitPrompt: (prompt: string) => this.turnRunner.handleUserPrompt(prompt) };
+
     switch (state.focus) {
-      case 'input': this.handleInputKey(key); break;
-      case 'chat': this.handleChatKey(key); break;
-      case 'sidebar': this.handleSidebarKey(key); break;
-      case 'files': this.handleFilesKey(key); break;
-      case 'tools': this.handleToolsKey(key); break;
-    }
-  }
-
-  private handleInputKey(key: KeyPressEvent): void {
-    if (key.name === 'linefeed' || (key.name === 'return' && (key.shift || key.meta || key.ctrl))) {
-      this.store.insertInputChar('\n');
-      return;
-    }
-    if (key.name === 'return') {
-      const prompt = this.store.commitInput();
-      if (prompt) this.turnRunner.handleUserPrompt(prompt);
-      return;
-    }
-    if (key.name === 'backspace') { this.store.deleteInputCharBefore(); return; }
-    if (key.name === 'delete') { this.store.deleteInputCharAfter(); return; }
-    if (key.name === 'left') { this.store.moveInputCursor(-1); return; }
-    if (key.name === 'right') { this.store.moveInputCursor(1); return; }
-    if (key.name === 'up') { this.store.navigateHistory('up'); return; }
-    if (key.name === 'down') { this.store.navigateHistory('down'); return; }
-    if (key.char && !key.ctrl && !key.meta) this.store.insertInputChar(key.char);
-  }
-
-  private handleChatKey(key: KeyPressEvent): void {
-    if (key.name === 'up') this.store.scroll('chat', 2);
-    else if (key.name === 'down') this.store.scroll('chat', -2);
-    else if (key.name === 'pageup') this.store.scroll('chat', 10);
-    else if (key.name === 'pagedown') this.store.scroll('chat', -10);
-    else if (key.name === 'c' || key.name === 'y') {
-      const state = this.store.getState();
-      const lastAssistantMsg = [...state.messages].reverse().find((m) => m.role === 'assistant' && m.content);
-      if (lastAssistantMsg) {
-        const ok = copyToClipboard(lastAssistantMsg.content);
-        if (ok) this.store.notify('Copied last response to clipboard!', 'success');
-        else this.store.notify('Clipboard copy failed', 'error');
-      } else {
-        this.store.notify('No message content to copy', 'warn');
-      }
-    } else if (key.name === 't' || key.name === 'return' || key.name === 'space') {
-      const state = this.store.getState();
-      const lastWithThinking = [...state.messages].reverse().find((m) => m.thinkingContent);
-      if (lastWithThinking) {
-        const isExpanded = this.store.toggleMessageThinking(lastWithThinking.id);
-        this.store.notify(`Reasoning (${lastWithThinking.authorName || 'Tsuka'}): ${isExpanded ? 'Expanded' : 'Collapsed'}`, 'info');
-      } else {
-        const isExpanded = this.store.toggleThinkingExpansion();
-        this.store.notify(`Reasoning traces: ${isExpanded ? 'Expanded' : 'Collapsed'}`, 'info');
-      }
-    }
-  }
-
-  private handleSidebarKey(key: KeyPressEvent): void {
-    if (key.name === 'up') this.store.scroll('sidebar', -1);
-    else if (key.name === 'down') this.store.scroll('sidebar', 1);
-  }
-
-  private handleToolsKey(key: KeyPressEvent): void {
-    if (key.name === 'up') this.store.scroll('tools', -2);
-    else if (key.name === 'down') this.store.scroll('tools', 2);
-    else if (key.name === 'pageup') this.store.scroll('tools', -10);
-    else if (key.name === 'pagedown') this.store.scroll('tools', 10);
-    else if (key.name === 'escape') {
-      const current = this.store.getState().toolsFilter;
-      if (current) {
-        this.store.setState({ toolsFilter: '' });
-      } else {
-        this.store.setFocus('input');
-      }
-    } else if (key.name === 'backspace') {
-      const current = this.store.getState().toolsFilter || '';
-      this.store.setState({ toolsFilter: current.slice(0, -1), toolsScrollOffset: 0 });
-    } else if (key.char && !key.ctrl && !key.meta) {
-      const current = this.store.getState().toolsFilter || '';
-      this.store.setState({ toolsFilter: current + key.char, toolsScrollOffset: 0 });
+      case 'input': handleInputKey(deps, key); break;
+      case 'chat': handleChatKey(deps, key); break;
+      case 'sidebar': handleSidebarKey(deps, key); break;
+      case 'files':
+        handleFilesKey({ ...deps, browseTo: (cwd) => this.browseDirectory(cwd) }, key);
+        break;
+      case 'tools': handleToolsKey(deps, key); break;
     }
   }
 
@@ -571,182 +462,18 @@ export class TuiApp {
     return true;
   }
 
-  /** Enter on a directory browses it; on a file it opens the preview. */
-  private openFileEntry(item: TuiFileItem): void {
-    const state = this.store.getState();
-    if (item.isDir) {
-      this.browseDirectory(enterDirectory(state.filesCwd || '', item.name));
-      return;
-    }
-    FileViewerModal.openFileModal(this.store, entryPath(state.filesCwd || '', item.name));
-  }
-
-  private handleFilesKey(key: KeyPressEvent): void {
-    const state = this.store.getState();
-    const files = this.currentFiles();
-
-    // Left works even on an empty folder: it is the way back out of it.
-    if (key.name === 'left') {
-      if (!this.browseDirectory(parentDirectory(state.filesCwd || ''))) {
-        this.store.notify('Already at the workspace root', 'info');
-      }
-      return;
-    }
-    if (files.length === 0) return;
-
-    const selected = files[state.selectedFileIndex];
-
-    if (key.name === 'up') {
-      const next = Math.max(0, state.selectedFileIndex - 1);
-      const scroll = next < state.filesScrollOffset ? next : state.filesScrollOffset;
-      this.store.setState({ selectedFileIndex: next, filesScrollOffset: scroll });
-    } else if (key.name === 'down') {
-      const next = Math.min(files.length - 1, state.selectedFileIndex + 1);
-      const innerHeight = 6;
-      const scroll = next >= state.filesScrollOffset + innerHeight ? next - innerHeight + 1 : state.filesScrollOffset;
-      this.store.setState({ selectedFileIndex: next, filesScrollOffset: scroll });
-    } else if (key.name === 'right') {
-      // Right only descends: on a file there is nothing to enter.
-      if (selected?.isDir) this.browseDirectory(enterDirectory(state.filesCwd || '', selected.name));
-    } else if (key.name === 'return') {
-      if (selected) this.openFileEntry(selected);
-    } else if (key.name === 'i' || key.name === 'space') {
-      if (selected && selected.name !== PARENT_ENTRY) {
-        const insertPath = entryPath(state.filesCwd || '', selected.name);
-        const currentInput = this.store.getState().inputText;
-        this.store.setInputText((currentInput ? currentInput + ' ' : '') + insertPath);
-        this.store.setFocus('input');
-        this.store.notify(`Inserted '${insertPath}' into input prompt`, 'info');
-      }
-    } else if (key.name === 'escape') {
-      this.store.setFocus('input');
-    }
-  }
-
   private handleMouseEvent(mouse: TuiMouseEvent): void {
-    const state = this.store.getState();
-    const { width, height } = this.screen.getDimensions();
-    const effectiveWidth = Math.max(20, width - 1);
-    const headerHeight = 3;
-    const inputHeight = 3;
-    const mainHeight = Math.max(5, height - headerHeight - inputHeight);
-
-    const layout = this.layoutConfig;
-    const sidebarPos = layout.sidebarPosition;
-    const showFiles = layout.showFilesExplorer;
-    const widthPct = (layout.sidebarWidthPercent || 26) / 100;
-    const filesPct = (layout.filesHeightPercent || 55) / 100;
-
-    let sidebarWidth = 0;
-    if (sidebarPos !== 'hidden') {
-      sidebarWidth = Math.min(42, Math.max(22, Math.floor(effectiveWidth * widthPct)));
-    }
-
-    const filesHeight = showFiles ? Math.max(5, Math.floor(mainHeight * filesPct)) : 0;
-    const profileHeight = Math.max(6, mainHeight - filesHeight);
-
-    // 1. Mouse Wheel Scrolling
-    if (mouse.button === 'wheelup') {
-      const inSidebar = (sidebarPos === 'left' && mouse.col <= sidebarWidth) ||
-                        (sidebarPos === 'right' && mouse.col >= effectiveWidth - sidebarWidth);
-      if (inSidebar) {
-        if (showFiles && mouse.row > headerHeight + profileHeight) this.store.scroll('files', -2);
-        else this.store.scroll('sidebar', -2);
-      } else {
-        if (this.activeTab === 'chat') this.store.scroll('chat', 3);
-        else this.store.scroll('tools', -3);
-      }
-      return;
-    }
-    if (mouse.button === 'wheeldown') {
-      const inSidebar = (sidebarPos === 'left' && mouse.col <= sidebarWidth) ||
-                        (sidebarPos === 'right' && mouse.col >= effectiveWidth - sidebarWidth);
-      if (inSidebar) {
-        if (showFiles && mouse.row > headerHeight + profileHeight) this.store.scroll('files', 2);
-        else this.store.scroll('sidebar', 2);
-      } else {
-        if (this.activeTab === 'chat') this.store.scroll('chat', -3);
-        else this.store.scroll('tools', 3);
-      }
-      return;
-    }
-
-    // 2. Left Click handling
-    if (mouse.button === 'left' && (mouse.action === 'down' || mouse.action === 'move')) {
-      if (state.activeModal) {
-        if (mouse.action === 'down' && (mouse.row <= 2 || mouse.row >= height - 2)) this.store.closeModal();
-        return;
-      }
-
-      // Top Header Click Tabs: zones are computed from the same table the header
-      // draws, so a relabelled tab keeps a click zone that matches what is shown.
-      if (mouse.row <= headerHeight) {
-        if (mouse.action !== 'down') return;
-        const clicked = tabAtColumn(effectiveWidth, this.activeTab, mouse.col);
-        if (clicked) this.activateTab(clicked);
-        return;
-      }
-
-      // Bottom Input Click
-      if (mouse.row >= height - inputHeight) {
-        this.store.setFocus('input');
-        return;
-      }
-
-      // Middle Body Click
-      const isSidebarClick = sidebarPos !== 'hidden' && (
-        (sidebarPos === 'left' && mouse.col <= sidebarWidth) ||
-        (sidebarPos === 'right' && mouse.col >= effectiveWidth - sidebarWidth)
-      );
-
-      if (isSidebarClick) {
-        if (!showFiles || mouse.row <= headerHeight + profileHeight) {
-          this.store.setFocus('sidebar');
-        } else {
-          this.store.setFocus('files');
-          const files = this.currentFiles();
-          const clickedRow = TuiScreen.paneContentRow(mouse.row, headerHeight, profileHeight);
-          const targetIndex = FilesView.indexAtRow(state, filesHeight, clickedRow);
-          if (targetIndex !== undefined) {
-            const isAlreadySelected = state.selectedFileIndex === targetIndex;
-            this.store.setState({ selectedFileIndex: targetIndex });
-            const file = files[targetIndex];
-            if (file) {
-              // First click selects, second click acts: enter the directory or preview the file.
-              if (isAlreadySelected) {
-                this.openFileEntry(file);
-              } else if (file.isDir) {
-                this.store.notify(`Click again to open '${file.name}'`, 'info');
-              } else {
-                const insertPath = entryPath(state.filesCwd || '', file.name);
-                const currentInput = this.store.getState().inputText;
-                this.store.setInputText((currentInput ? currentInput + ' ' : '') + insertPath);
-                this.store.notify(`Selected '${insertPath}' (Click again to preview)`, 'info');
-              }
-            }
-          }
-        }
-      } else {
-        this.store.setFocus(this.activeTab === 'chat' ? 'chat' : 'tools');
-        if (mouse.col >= effectiveWidth - 2) {
-          const trackY = Math.max(0, Math.min(mainHeight - 1, mouse.row - headerHeight - 1));
-          const scrollRatio = 1 - (trackY / (mainHeight - 1));
-          const totalMsgs = state.messages.length * 4;
-          const targetOffset = Math.round(scrollRatio * Math.max(0, totalMsgs));
-          this.store.setState({ chatScrollOffset: Math.max(0, targetOffset) });
-        } else if (mouse.action === 'down' && this.activeTab === 'chat') {
-          const chatWidth = effectiveWidth - sidebarWidth;
-          const clickedRow = TuiScreen.paneContentRow(mouse.row, headerHeight);
-          // A click on the pane border resolves to no content row at all.
-          const thinkTarget = clickedRow >= 0
-            ? ChatView.getThinkingHeaderAtRow(state, chatWidth, mainHeight, clickedRow)
-            : undefined;
-          if (thinkTarget) {
-            const isExpanded = this.store.toggleMessageThinking(thinkTarget.id);
-            this.store.notify(`Reasoning (${thinkTarget.authorName || 'Tsuka'}): ${isExpanded ? 'Expanded' : 'Collapsed'}`, 'info');
-          }
-        }
-      }
-    }
+    routeMouseEvent(
+      {
+        store: this.store,
+        layout: this.layoutConfig,
+        getActiveTab: () => this.activeTab,
+        dimensions: () => this.screen.getDimensions(),
+        currentFiles: () => this.currentFiles(),
+        openFileEntry: (item) => openFileEntryAction(this.store, (cwd) => this.browseDirectory(cwd), item),
+        activateTab: (spec) => this.activateTab(spec),
+      },
+      mouse
+    );
   }
 }

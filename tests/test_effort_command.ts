@@ -15,8 +15,10 @@
  *    scrive invece una riga di log (vincolo esplicito: ask è attiva SOLO
  *    nella chat interattiva; /team, /goal e i figli di spawn_agent degradano
  *    sempre, a prescindere dalla modalità ask globale);
- *  - il pin vive in memoria di processo: non compare in tsuka.config.json e
- *    non sopravvive a un nuovo processo.
+ *  - il pin vive in memoria di processo: il modulo effortControl non tocca MAI
+ *    tsuka.config.json (la persistenza è dei call site: /effort ora la richiede
+ *    via ConfigManager.setDefaultReasoningEffort, verificata col fake che
+ *    registra senza scrivere su disco).
  *
  * Isolamento: models_profile.json (repo reale) è usato con backup/restore,
  * stesso pattern di test_reasoning_effort.ts/test_effort_propagation.ts. Il
@@ -24,9 +26,9 @@
  * (runs/<uuid>/*.md, come da comportamento normale del tool T8.5): il file/
  * cartella generati vengono cancellati a fine sezione, in un finally.
  * tsuka.config.json reale è letto MAI scritto in questo file (nessuna
- * ConfigManager.set* viene mai chiamata: per le sezioni che hanno bisogno di
+ * ConfigManager reale viene mai usata: per le sezioni che hanno bisogno di
  * un personaggio/ruolo/default arbitrario si costruisce un ConfigManager
- * finto in memoria, non l'istanza reale).
+ * finto in memoria, che registra setDefaultReasoningEffort senza scrivere).
  *
  * Esecuzione isolata: node --import tsx tests/test_effort_command.ts
  * (imposta TSUKA_MEMORY_FILE a un file temporaneo prima di lanciarlo da solo).
@@ -95,21 +97,24 @@ async function captureLogs<T>(fn: () => Promise<T>): Promise<{ result: T; logs: 
   }
 }
 
-/** ConfigManager finto (nessuna scrittura su disco, mai la classe reale): solo i metodi che handleEffort/recreateAgent usano davvero. */
+/** ConfigManager finto (nessuna scrittura su disco, mai la classe reale): solo i metodi che handleEffort/recreateAgent usano davvero. setDefaultReasoningEffort REGISTRA la richiesta di persistenza senza toccare il filesystem reale. */
 function fakeConfigManager(opts: {
   activeCharacter?: string;
   activeRole?: string;
   activeTrait?: string;
   defaultEffort?: ReasoningEffort;
-}): ConfigManager {
+}): ConfigManager & { persistedEfforts: (ReasoningEffort | undefined)[] } {
+  const persistedEfforts: (ReasoningEffort | undefined)[] = [];
   return {
+    persistedEfforts,
     getActiveCharacter: () => opts.activeCharacter ?? 'custom',
     getActiveRole: () => opts.activeRole ?? 'developer',
     getActiveTrait: () => opts.activeTrait ?? 'professional',
     getDefaultReasoningEffort: () => opts.defaultEffort,
+    setDefaultReasoningEffort: (value: ReasoningEffort | undefined) => { persistedEfforts.push(value); },
     getMaxHistoryMessages: () => 40,
     getMaxHistoryTokens: () => 65536,
-  } as unknown as ConfigManager;
+  } as unknown as ConfigManager & { persistedEfforts: (ReasoningEffort | undefined)[] };
 }
 
 /** Stessa logica di recreateAgent in cli/index.ts (T8.10 + T8.14: cascata + pin). */
@@ -456,6 +461,8 @@ async function main() {
         check('H.2b', ctx.agent.current.getReasoningEffort() === 'medium', 'l\'agente è stato ricreato con l\'effort pinnato');
         check('H.2c', /(Cambiano i tool|Visible tools changed)/i.test(text), `Accettazione: un pin che cambia il tier produce un messaggio che nomina la differenza (ricevuto: ${JSON.stringify(logs)})`);
         check('H.2d', /execute_command/.test(text), 'il messaggio nomina il tool coinvolto (execute_command)');
+        check('H.2e', (configManager as any).persistedEfforts.includes('medium'),
+          'il comando richiede la persistenza del livello scelto (ConfigManager.setDefaultReasoningEffort)');
       }
 
       // H3 — /effort auto: rimuove il pin, ricrea l'agente, nessun cambiamento
@@ -476,6 +483,9 @@ async function main() {
         check('H.3a', getEffortPin() === undefined, '/effort auto rimuove il pin');
         check('H.3b', ctx.agent.current.getReasoningEffort() === 'medium', 'senza pin, l\'agente torna alla cascata (ruolo sysadmin → medium)');
         check('H.3c', /(Nessun cambiamento|No changes in visible tools)/i.test(text), `nessun profilo per questo modello: il tier resta lo stesso, il comando lo dichiara esplicitamente (ricevuto: ${JSON.stringify(logs)})`);
+        const persisted = (configManager as any).persistedEfforts as unknown[];
+        check('H.3e', persisted.length > 0 && persisted[persisted.length - 1] === undefined,
+          '/effort auto cancella anche la persistenza (setDefaultReasoningEffort(undefined))');
       }
 
       // H3b — /effort auto quando non c'è già nessun pin: no-op dichiarato, non un errore.

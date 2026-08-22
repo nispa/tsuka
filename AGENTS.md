@@ -6,7 +6,7 @@
 
 * **Runtime**: Node.js (v20+ recommended), TypeScript (strict mode, ES2022 target, CommonJS module output), `tsx` for live execution.
 * **Core Design**: Deterministic ReAct loop, hot-plug dynamic tool auto-discovery, orthogonal persona system (*Role* × *Trait* = *Character/Agent*), session-scoped run blackboard via `AsyncLocalStorage`, token-budgeted memory with semantic keyword scoring, and empirical capability fingerprinting (`/benchmark`).
-* **Metrics**: 30 native tools · 24 characters/agents · 21 roles · 9 traits · 10 preconfigured teams · 20 REPL slash commands · 74 automated test suites · Dual CLI & TUI Interactive Interfaces.
+* **Metrics**: 30 native tools · 24 characters/agents · 21 roles · 9 traits · 10 preconfigured teams · 20 REPL slash commands · 78 automated test suites · Dual CLI & TUI Interactive Interfaces.
 
 ---
 
@@ -21,8 +21,10 @@
 3. **Strict Workspace Jail**: All filesystem operations (`read_file`, `write_file`, `edit_file`, `delete_file`, `list_dir`, `grep_search`, `audit_code`) must be strictly confined within `workspaceRoot` via `resolveSafePath()`. Escaping via `..` is blocked.
 4. **Environment & Credential Masking**: Automatically mask sensitive environment variables (`KEY`, `SECRET`, `TOKEN`, `PASSWORD`, `CREDENTIAL`, `AUTH`) before logging or sending prompts.
 5. **Deterministic Multi-Agent Coordination**: Inter-agent communication in `/team` and `/goal` must use dedicated protocol tools (`report_status`, `route_next`, `cast_vote`) with automated fallback to text markers and visible degradation warnings.
-6. **No Test Regressions**: All 74 test suites (`npm test`) must pass cleanly before completing any task. Automated tests must use mock stores and temporary test directories—never mutate the active user's `memory.json`.
+6. **No Test Regressions**: All 78 test suites (`npm test`) must pass cleanly before completing any task. Automated tests must use mock stores and temporary test directories—never mutate the active user's `memory.json`.
 7. **Gate di Completamento di un task**: prima di dichiarare completato qualsiasi task, i tre comandi `npm test`, `npm run build` e `npm run typecheck` devono essere verdi. La suite (`npm test`) è il contratto di regressione del comportamento; `npm run build` (tsc su `src/`) e `npm run typecheck` (tsc -p tsconfig.check.json, include anche i test) garantiscono che il repo compili in strict mode. Un task chiuso con uno dei tre rosso va riaperto, non archiviato.
+8. **Modularity by Design — Every Harness Element Is Pluggable**: All major subsystems of the harness (memory, LLM providers, tools, personas, teams, safety policies, storage formats) must be designed behind an explicit interface/contract with a registry or factory selecting the active implementation from configuration — never hard-wired as a concrete singleton consumed directly across layers. When touching any subsystem, preserve or improve its substitutability: consumers depend on the contract, not the implementation. The current implementation ships as the *default backend* of its contract (e.g. the JSON/BM25 `MemoryStore` is one `MemoryBackend` among possible SQLite/vector/remote backends). A new capability that cannot be swapped out without editing call sites is considered incomplete.
+9. **No Hardcoded Tunables — One Source of Defaults**: Tunable constants (timeouts, retries, token ceilings, memory caps, scoring parameters, quotas, ratios) must never be declared as scattered local literals inside the module that happens to use them. They live exactly once in `src/core/constants.ts` (`LLM_DEFAULTS`, `MEMORY_DEFAULTS`, `AGENT_DEFAULTS`, ...), namespaced by subsystem; modules import from there. Values users may override at runtime go through `ConfigManager` with one of these constants as the fallback. NOT in `constants.ts`: data tables that are content rather than tuning (model sampling profiles, stop-word lists) and wire-protocol literals owned by a single protocol module. When adding or touching a tunable, centralize it — a magic number found inline during any edit must be moved to `constants.ts` in the same task, not left behind.
 
 ---
 
@@ -66,7 +68,9 @@ harness/
 │   │   └── commands/                # Slash command implementations shared with the TUI
 │   ├── tui/
 │   │   ├── index.ts                 # TUI entry point (npm run tui / tsuka --tui)
-│   │   ├── app.ts                   # TuiApp main orchestrator, layout composer, key/mouse router
+│   │   ├── app.ts                   # TuiApp main orchestrator: wiring, agent lifecycle, event dispatch
+│   │   ├── layoutComposer.ts        # Pure one-frame composition from store state (no side effects)
+│   │   ├── interaction/             # Input layer: pane geometry, per-focus key handlers, mouse router
 │   │   ├── screen.ts                # TuiScreen: differential buffer renderer, ANSI-safe box drawing
 │   │   ├── store.ts                 # TuiStore: reactive state management (Flux/Observable pattern)
 │   │   ├── bridge.ts                # TuiBridge: decouples Core AgentEvents into TUI actions
@@ -90,11 +94,16 @@ harness/
 │   │       └── Modal.ts             # Universal modal overlay (permission prompt, menus, help)
 │   ├── core/
 │   │   ├── agent.ts                 # Agent class: ReAct cycle, token pruning, smart compression
-│   │   ├── provider.ts              # LLMProvider: OpenAI SDK client, SSE parser, timeouts
+│   │   ├── provider/                # LLM provider package: OpenAI-compatible client (llmProvider.ts),
+│   │   │                            #   protocol types, timeouts/retry policy, sampling profiles,
+│   │   │                            #   inference telemetry; `ILLMProvider` is the swappable contract
 │   │   ├── types.ts                 # Core protocol interfaces & shared types
 │   │   ├── contextBudget.ts         # Token estimations, runtime calibration, capForContext
 │   │   ├── toolSet.ts               # Active vs deferred tool split (coreTools + load_tools)
-│   │   ├── memory.ts                # MemoryStore: persistent facts, keyword scoring, eviction
+│   │   ├── memory/                  # Pluggable long-term memory: MemoryBackend contract (types.ts),
+│   │   │                            #   default JsonMemoryBackend (JSON+BM25), backend registry,
+│   │   │                            #   MemoryStore facade; scoring in bm25.ts, eviction in retention.ts
+│   │   ├── constants.ts             # Single source of built-in tunable defaults (directive 9)
 │   │   ├── blackboard.ts            # Ephemeral session blackboard isolated via AsyncLocalStorage
 │   │   ├── modelProfile.ts          # Capability fingerprinting profiles & tier assigner
 │   │   ├── benchmarkTests.ts        # Test runner for instruction, JSON, and tool benchmarks
@@ -107,7 +116,8 @@ harness/
 │   │   ├── messageQueue.ts          # Inter-agent message queue (send_message)
 │   │   ├── apphome.ts               # Hierarchical path resolver (.tsuka/ vs global app home)
 │   │   ├── platform.ts              # Cross-platform shell executor (PowerShell / sh)
-│   │   └── config.ts                # ConfigManager: tsuka.config.json manager
+│   │   └── config/                  # tsuka.config.json: AppConfig shape (types.ts), sampling
+│   │                                #   profile validation (sampling.ts), ConfigManager (manager.ts)
 │   ├── tools/
 │   │   ├── index.ts                 # Dynamic auto-discovery scanner
 │   │   ├── registry.ts              # ToolRegistry, tier gating, parameter validation
@@ -121,7 +131,7 @@ harness/
 ├── presets/                         # Manifests: core.json & domain packs for tsuka init
 ├── tools_schemas/                   # 30 JSON Schema files for function calling validation
 ├── benchmarks/                      # 5 JSON capability benchmark fixtures
-├── tests/                           # 74 automated test suites
+├── tests/                           # 78 automated test suites
 └── tsuka.config.json                # Runtime configuration file
 ```
 
@@ -179,7 +189,7 @@ npm run build
 # Run compiled build
 npm start
 
-# Execute full automated test suite (74 test suites)
+# Execute full automated test suite (78 test suites)
 npm test
 
 # Link globally for CLI usage
