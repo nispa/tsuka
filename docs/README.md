@@ -32,6 +32,9 @@ This portal is designed to explain **how modern agentic systems work under the h
 ### 7. [Practical Use Cases & Recipes](use-cases.md) 💼
 * Concrete recipes and prompts across 24 characters, 21 roles, and 10 preconfigured collaborative teams.
 
+### 8. [MCP Integration](mcp.md) 🔌
+* How the native MCP client (stdio, JSON-RPC 2.0, zero dependencies) launches external servers and registers their tools as first-class citizens of the registry — naming convention, permission gating, timeouts, and the safety model.
+
 ---
 
 ## 🏗️ Core Pedagogical Principles

@@ -103,7 +103,9 @@ const suites = [
   'test_memory_backend_registry.ts',
   'test_command_risk.ts',
   'test_files_explorer.ts',
-  'test_wiki_build.ts'
+  'test_wiki_build.ts',
+  'test_mcp_client.ts',
+  'test_mcp_registry.ts'
 ];
 
 let passed = 0;

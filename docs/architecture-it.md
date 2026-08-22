@@ -6,7 +6,7 @@
 
 > Questo documento descrive l'architettura tecnica, i principi di progettazione e l'organizzazione modulare del framework **TSUKA** (v0.6.0). Per le linee guida operative di contribuzione al codice si rimanda ad [`AGENTS.md`](../AGENTS.md); per l'elenco dei task completati e pianificati, consultare [`TASKS.md`](../TASKS.md).
 >
-> 📊 **Metriche di sistema**: 30 tool · 20 comandi REPL · 21 ruoli · 9 tratti · 24 personaggi (agenti) · 10 team configurati · 78 suite di test automatici · Doppia interfaccia CLI & TUI.
+> 📊 **Metriche di sistema**: 30 tool · 20 comandi REPL · 21 ruoli · 9 tratti · 24 personaggi (agenti) · 10 team configurati · 80 suite di test automatici · Doppia interfaccia CLI & TUI.
 
 ---
 

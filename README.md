@@ -2,7 +2,7 @@
 [![Node.js](https://img.shields.io/badge/Node.js-20+-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![Ollama](https://img.shields.io/badge/Ollama-native-black?logo=ollama&logoColor=white)](https://ollama.com/)
 [![OpenRouter](https://img.shields.io/badge/OpenRouter-ready-FF6B35?logo=openai&logoColor=white)](https://openrouter.ai/)
-[![Tests](https://img.shields.io/badge/Tests-78%20passed-brightgreen?logo=vitest&logoColor=white)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-80%20passed-brightgreen?logo=vitest&logoColor=white)](tests/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/nispa/tsuka/pulls)
 
@@ -120,6 +120,25 @@ TSUKA ships with **30 native tools** (`src/tools/impl/*.ts`) categorized into:
 
 ---
 
+## 🔌 MCP Integration
+
+TSUKA speaks the **Model Context Protocol**: any MCP stdio server configured in `tsuka.config.json` is launched at startup and its tools join the registry as `mcp__<server>__<tool>` — same permission gating, same tier system, zero new dependencies.
+
+```json
+"mcpServers": {
+  "filesystem": {
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-filesystem", "C:\\data"]
+  }
+}
+```
+
+A failing server degrades with a visible warning and never blocks startup; every call passes through the interactive permission prompt with its full prefixed name.
+
+> 📚 Full documentation: [MCP Integration Guide](docs/mcp.md)
+
+---
+
 ## 🛠️ REPL Slash Commands
 
 | Command | Description |
@@ -146,6 +165,7 @@ TSUKA was built as an open, educational instrument to learn how agentic harnesse
 * 👥 [**Multi-Agent Workflows**](docs/multi-agent.md) — Team coordination, protocol tools, and parallel staging.
 * 📊 [**Capability Fingerprinting**](docs/benchmark.md) — Measuring small model reliability on function calling.
 * 🛡️ [**Security & Permissions**](docs/security.md) — Workspace jailing, risk tiers, and sandboxing.
+* 🔌 [**MCP Integration**](docs/mcp.md) — Plugging external MCP servers into the tool registry.
 
 ---
 

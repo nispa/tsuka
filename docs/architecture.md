@@ -6,7 +6,7 @@
 
 > This document describes the technical architecture, design principles, and modular structure of the **TSUKA** framework (v0.6.0). For codebase contribution guidelines, see [`AGENTS.md`](../AGENTS.md); for completed and upcoming task backlogs, see [`TASKS.md`](../TASKS.md).
 >
-> 📊 **System Metrics**: 30 native tools · 20 REPL commands · 21 roles · 9 traits · 24 characters (agents) · 10 preconfigured teams · 78 automated test suites · Dual CLI & TUI interfaces.
+> 📊 **System Metrics**: 30 native tools · 20 REPL commands · 21 roles · 9 traits · 24 characters (agents) · 10 preconfigured teams · 80 automated test suites · Dual CLI & TUI interfaces.
 
 ---
 

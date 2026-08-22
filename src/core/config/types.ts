@@ -37,6 +37,20 @@ export interface WebSearchConfig {
   provider: 'duckduckgo' | 'tavily' | 'google';
 }
 
+/**
+ * One MCP (Model Context Protocol) stdio server: a child process exposing
+ * tools that TSUKA registers as its own with the `mcp__<server>__<tool>`
+ * naming convention. Full shape in src/core/mcp/types.ts.
+ */
+export interface McpServerConfigEntry {
+  command: string;
+  args?: string[];
+  env?: Record<string, string>;
+  enabled?: boolean;
+  riskLevel?: 'SAFE' | 'RESTRICTED' | 'DANGEROUS';
+  timeoutMs?: number;
+}
+
 export interface AppConfig {
   activeProvider: 'ollama' | 'openrouter' | 'unsloth' | string;
   providers: {
@@ -104,6 +118,12 @@ export interface AppConfig {
    * the parameters for thinking mode and for instruct mode.
    */
   samplingProfiles?: Record<string, SamplingProfileConfig | SamplingProfileParams>;
+  /**
+   * MCP stdio servers launched at startup; their tools join the ToolRegistry as
+   * `mcp__<server>__<tool>` (T20.1). A failing server degrades with a warning,
+   * it never blocks startup.
+   */
+  mcpServers?: Record<string, McpServerConfigEntry>;
 }
 
 /** Parameter names accepted inside a sampling profile: anything else is ignored. */

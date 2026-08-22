@@ -8,6 +8,7 @@ import { homePath } from '../core/apphome';
 import { ConfigManager } from '../core/config';
 import { LLMProvider, setLlmTimeoutMs } from '../core/provider';
 import { createDefaultRegistry } from '../tools/index';
+import { connectMcpServers } from '../core/mcp/connectMcpServers';
 import { PermissionManager } from '../safety/permissions';
 import { TuiApp } from './app';
 
@@ -20,6 +21,10 @@ export async function launchTui(): Promise<void> {
 
   const permissionManager = new PermissionManager();
   const registry = await createDefaultRegistry();
+
+  // T20.1: MCP servers join the registry; failures degrade with a warning,
+  // child processes are killed by the sync 'exit' hook in connectMcpServers.
+  await connectMcpServers(registry, configManager.getMcpServers());
 
   const activeConfig = configManager.getActiveProviderConfig();
   const provider = new LLMProvider(activeConfig.baseUrl, configManager.getApiKey(), activeConfig.model);

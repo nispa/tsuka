@@ -47,6 +47,12 @@ export interface Tool {
   /** Static worst-case risk of the tool as a capability. Always the fallback. */
   riskLevel: RiskLevel;
   /**
+   * Inline schema for tools whose definition does not live in tools_schemas/
+   * (T20.1: MCP tools receive it from their server). When present it takes
+   * precedence over `loadToolSchema(name)`; native tools leave it unset.
+   */
+  schema?: ToolSchemaData;
+  /**
    * Optional per-invocation refinement (T18.1). `execute_command` is DANGEROUS as a capability,
    * but `git status` and `curl … | sh` are not the same request; a tool that can tell them apart
    * implements this so the permission tier follows the actual arguments. Implementations must
@@ -282,7 +288,7 @@ export class ToolRegistry {
         continue;
       }
 
-      const schemaData = loadToolSchema(tool.name);
+      const schemaData = tool.schema ?? loadToolSchema(tool.name);
       const requiredTierLevel = TIER_HIERARCHY[schemaData.requiredTier || 'small'];
       if (currentTierLevel < requiredTierLevel) {
         continue;
@@ -328,7 +334,7 @@ export class ToolRegistry {
 
     const effectiveArgs = typeof args === 'string' ? sanitizeToolCallArguments(args).parsed : args;
 
-    const schemaData = loadToolSchema(name);
+    const schemaData = tool.schema ?? loadToolSchema(name);
     if (schemaData.schema?.type === 'object' && schemaData.schema?.properties) {
       const validationError = validateToolArgs(effectiveArgs, schemaData.schema, name);
       if (validationError) {

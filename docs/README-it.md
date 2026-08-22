@@ -32,6 +32,9 @@ Questo portale è strutturato per spiegare **come funzionano davvero i sistemi a
 ### 7. [Casi d'Uso Pratici & Ricette](use-cases-it.md) 💼
 * Esempi pratici e prompt operativi per tutti i 24 personaggi, 21 ruoli e 10 team preconfigurati.
 
+### 8. [Integrazione MCP](mcp-it.md) 🔌
+* Come il client MCP nativo (stdio, JSON-RPC 2.0, zero dipendenze) avvia i server esterni e registra i loro tool come cittadini di prima classe del registry — convenzione dei nomi, gating dei permessi, timeout e modello di sicurezza.
+
 ---
 
 ## 🏗️ Principi Didattici Fondamentali

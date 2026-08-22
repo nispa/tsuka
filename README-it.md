@@ -2,7 +2,7 @@
 [![Node.js](https://img.shields.io/badge/Node.js-20+-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![Ollama](https://img.shields.io/badge/Ollama-nativo-black?logo=ollama&logoColor=white)](https://ollama.com/)
 [![OpenRouter](https://img.shields.io/badge/OpenRouter-pronto-FF6B35?logo=openai&logoColor=white)](https://openrouter.ai/)
-[![Test](https://img.shields.io/badge/Test-78%20superati-brightgreen?logo=vitest&logoColor=white)](tests/)
+[![Test](https://img.shields.io/badge/Test-80%20superati-brightgreen?logo=vitest&logoColor=white)](tests/)
 [![Licenza](https://img.shields.io/badge/Licenza-MIT-blue.svg)](LICENSE)
 [![PR benvenute](https://img.shields.io/badge/PR-benvenute-brightgreen.svg)](https://github.com/nispa/tsuka/pulls)
 
@@ -120,6 +120,25 @@ TSUKA include **30 tool nativi** (`src/tools/impl/*.ts`) suddivisi per area:
 
 ---
 
+## 🔌 Integrazione MCP
+
+TSUKA parla il **Model Context Protocol**: ogni server MCP stdio configurato in `tsuka.config.json` viene avviato allo startup e i suoi tool entrano nel registry come `mcp__<server>__<tool>` — stessi permessi, stesso sistema a tier, zero dipendenze nuove.
+
+```json
+"mcpServers": {
+  "filesystem": {
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-filesystem", "C:\\dati"]
+  }
+}
+```
+
+Un server che fallisce degrada con un warning visibile senza bloccare l'avvio; ogni call passa dal prompt di permesso interattivo col nome prefissato completo.
+
+> 📚 Approfondimenti: [Guida all'Integrazione MCP](docs/mcp-it.md)
+
+---
+
 ## 🛠️ Comandi Slash della REPL
 
 | Comando | Descrizione |
@@ -146,6 +165,7 @@ TSUKA è nato come strumento didattico aperto per comprendere il funzionamento c
 * 👥 [**Workflow Multi-Agente**](docs/multi-agent-it.md) — Coordinamento dei team, tool di protocollo e staging parallelo.
 * 📊 [**Capability Fingerprinting**](docs/benchmark-it.md) — Misurare l'affidabilità dei modelli locali sul function calling.
 * 🛡️ [**Sicurezza & Permessi**](docs/security-it.md) — Confinamento del workspace, livelli di rischio e sandboxing.
+* 🔌 [**Integrazione MCP**](docs/mcp-it.md) — Collegare server MCP esterni al registro dei tool.
 
 ---
 

@@ -200,26 +200,42 @@ I blocchi di ragionamento voluminosi vengono archiviati su disco in file Markdow
 
 ---
 
-### Tappa 6 — Interfaccia utente: streaming, rendering e reattività
+### Tappa 6 — Disaccoppiare l'interfaccia: un motore agnostico (CLI, TUI, Web)
 
-*Riferimenti nel codice: `src/cli/stream.ts`, `src/cli/statusline.ts`, `src/cli/markdown.ts`, `src/cli/interrupt.ts`*
+*Riferimenti nel codice: `src/core/logSink.ts`, `src/core/agent.ts` (`AgentEvents`), `src/tui/`, `src/cli/stream.ts`, `src/cli/interrupt.ts`*
 
-Per mantenere l'applicazione snella e senza dipendenze pesanti da framework TUI complessi, l'interfaccia adotta un'architettura basata su **stream grezzo live → cancellazione ANSI → repaint formattato**:
-1. Durante la generazione, il testo grezzo viene stampato a video man mano che arrivano i chunk dallo stream.
-2. Al termine della risposta, l'area interessata viene cancellata tramite sequenze di escape ANSI (`\x1b[nF\x1b[0J`).
-3. Il contenuto completo viene quindi ridipinto come pannello Markdown renderizzato, con evidenziazione della sintassi e box formattati.
+#### 1. Il problema del `console.log` diffuso
+Quando si inizia a costruire un harness, la tentazione più comune è inserire chiamate a `console.log` ovunque per monitorare l'esecuzione dei tool, il caricamento della memoria o il ciclo ReAct. Questo approccio rapido diventa però un vicolo cieco non appena si vuole far evolvere l'interfaccia:
+* Se un tool stampa direttamente a video durante una risposta, rischia di spezzare il rendering del testo.
+* Se si crea una **dashboard interattiva a schermo intero (TUI)**, una singola riga stampata a video dal core distrugge il layout grafico del terminale.
+* Se in futuro si vuole collegare un'interfaccia Web o un server in background, quei log restano intrappolati nel processo locale anziché raggiungere l'utente.
+
+#### 2. La soluzione: separare il motore dall'output
+Per rendere l'harness davvero modulare, il motore logico (Core, Memoria, Tool) **non deve mai stampare direttamente a video**. L'output viene invece instradato attraverso due canali dedicati:
+
+1. **Canale di conversazione (`AgentEvents`)**: durante la generazione, l'agente emette eventi tipizzati a chiunque stia ascoltando (`onChunk` per i frammenti di testo in arrivo, `onStats` per token e velocità, `onEvent` per lo stato dei tool).
+2. **Canale di diagnostica (`logSink`)**: tutti i moduli di servizio inviano avvisi, errori e messaggi operativi a un sink sostituibile (`logSink.log()`, `logSink.warn()`, `logSink.error()`).
 
 ```
-[ Generazione in corso ] ──► [ Stream grezzo a video ]
-                                      │
-[ Fine generazione ]     ──► [ Cancella area ANSI: \x1b[nF\x1b[0J ]
-                                      │
-                         ──► [ Repaint finale in Markdown stilizzato ]
+┌────────────────────────────────────────────────────────┐
+│                  MOTORE CORE AGENTICO                  │
+│       (Nessun console.log — logica pura riusabile)     │
+└──────────────┬───────────────────────────┬─────────────┘
+               │ Eventi stream             │ Log e warning
+               ▼ (AgentEvents)             ▼ (logSink)
+       ┌────────────────────────┐  ┌─────────────────────┐
+       │     Dashboard TUI      │  │      CLI REPL       │
+       │    a schermo intero    │  │   classica a riga   │
+       │    (npm run tui)       │  │   di comando        │
+       └────────────────────────┘  └─────────────────────┘
 ```
 
-Durante la fase di generazione, l'input da tastiera passa in modalità grezza (*raw mode*) per consentire la cancellazione immediata del turno tramite il tasto `Esc` o la combinazione `Ctrl+X` (gestita con `AbortController`), preservando lo stato della sessione senza dover terminare il processo.
+#### 3. La prova pratica: da CLI a TUI senza toccare il Core
+Grazie a questo disaccoppiamento, TSUKA può offrire due interfacce completamente diverse usando esattamente lo stesso motore:
+* **TUI a schermo intero (`src/tui/`)**: intercetta gli `AgentEvents` per aggiornare in tempo reale la chat, i blocchi di pensiero `<think>`, l'albero dei file e la telemetria, mentre reindirizza i messaggi di `logSink` nelle notifiche pop-up.
+* **CLI classica (`src/cli/`)**: riceve gli stessi eventi per mostrare lo streaming continuo dei token e ridipingere il testo formattato in Markdown a fine risposta.
 
-Tutte le emissioni a video sono instradate attraverso un'astrazione a sink sostituibile (`src/core/logSink.ts`), disaccoppiando il motore logico dell'harness dall'interfaccia di visualizzazione.
+In entrambi i casi, l'utente può premere `Esc` o `Ctrl+X` in qualsiasi momento per interrompere la generazione: l'interruzione viene gestita tramite un segnale asincrono (`AbortController`), preservando lo stato della sessione senza dover terminare il programma.
 
 ---
 
@@ -312,17 +328,26 @@ Anziché affidarsi a euristiche basate sul nome del file di modello, TSUKA adott
 
 ---
 
-### Tappa 9 — Auto-estensione: creazione dinamica di tool
+### Tappa 9 — Estendibilità: Tool dinamici in sandbox ed ecosistema MCP
 
-*Riferimenti nel codice: `src/tools/impl/createTool.ts`*
+*Riferimenti nel codice: `src/tools/impl/createTool.ts`, `src/core/mcp/` (`types.ts`, `stdioTransport.ts`, `client.ts`, `adapter.ts`, `connectMcpServers.ts`)*
 
-TSUKA include una funzionalità avanzata di self-extension: tramite il tool `create_tool`, un agente con autorizzazioni adeguate (ad esempio un `developer`) può generare a runtime nuove utility JavaScript/TypeScript.
+Un harness completo non può rimanere vincolato al catalogo iniziale di tool statici. Per consentire all'agente di affrontare compiti imprevisti e interagire con servizi esterni, l'architettura adotta due meccanismi complementari di estensione:
 
-Per garantire la stabilità dell'ambiente:
-* Il codice viene validato all'interno di una sandbox `node:vm` con blocco degli accessi non autorizzati.
-* I tool generati a runtime possono avere al massimo livello `SAFE` o `RESTRICTED` (mai `DANGEROUS`).
-* È vietata la sovrascrittura dei tool di sistema (core).
-* Viene effettuato un backup preventivo automatico e la registrazione a caldo nel registro dei tool.
+#### 9.1 Estensione Interna: creazione dinamica di tool a runtime (`create_tool`)
+Tramite il tool nativo `create_tool`, un agente con competenze di sviluppo può generare al volo nuove utility JavaScript/TypeScript:
+* **Sandbox sicura**: il codice generato viene validato ed eseguito all'interno di una sandbox isolata (`node:vm`) che impedisce accessi impropri al sistema.
+* **Tiers vincolati**: i tool autogenerati possono assumere al massimo il livello `SAFE` o `RESTRICTED` (mai `DANGEROUS`).
+* **Protezione del Core**: è vietata la sovrascrittura dei tool nativi e viene sempre conservato un backup automatico nella cartella di lavoro prima del caricamento a caldo nel registro.
+
+#### 9.2 Estensione Esterna: Client MCP nativo (Model Context Protocol)
+Per connettere l'agente a fonti dati e servizi complessi (repository GitHub, database SQLite, browser web, filesystem esterni) senza dover implementare decine di librerie dedicate in TypeScript, l'harness supporta lo standard aperto **Model Context Protocol (MCP)**.
+
+Invece di appesantire il progetto con SDK esterni, TSUKA adotta un'implementazione **nativa e a zero dipendenze** (~400 righe in `src/core/mcp/`):
+1. **Trasporto Standard I/O (`stdioTransport.ts`)**: all'avvio, l'harness legge la sezione `mcpServers` dal file `tsuka.config.json` e avvia ciascun server configurato come processo figlio comunicando via `stdin`/`stdout`.
+2. **Handshake e auto-discovery (`client.ts`)**: il client comunica tramite **JSON-RPC 2.0**, esegue l'handshake iniziale (`initialize`) e scarica la lista dei tool disponibili (`tools/list`).
+3. **Integrazione come Adapter (`adapter.ts`)**: i tool remoti vengono registrati nel `ToolRegistry` con il prefisso `mcp__<server>__<tool>`, usando gli schemi JSON forniti dal server per convalidare le chiamate del modello.
+4. **Sicurezza e resilienza**: i tool MCP ereditano automaticamente il sistema dei permessi (`PermissionManager`, con livello `RESTRICTED` e conferma interattiva). Se un server MCP va in crash o non risponde, l'harness emette un avviso tramite `logSink` e prosegue senza bloccare l'agente. Alla chiusura, tutti i processi figli vengono terminati in modo pulito.
 
 ---
 

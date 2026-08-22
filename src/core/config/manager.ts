@@ -9,6 +9,7 @@ import {
   ProviderConfig,
   SamplingProfileConfig,
   SamplingProfileParams,
+  McpServerConfigEntry,
   defaultAppConfig,
 } from './types';
 
@@ -112,6 +113,11 @@ export class ConfigManager {
       this.config.providers[provider].model = modelName;
       this.save();
     }
+  }
+
+  /** MCP stdio servers configured by the user (T20.1); empty when none are set. */
+  getMcpServers(): Record<string, McpServerConfigEntry> {
+    return this.config.mcpServers ?? {};
   }
 
   getWebSearchProvider(): 'duckduckgo' | 'tavily' | 'google' {

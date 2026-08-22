@@ -165,6 +165,22 @@ const PAGES: WikiPage[] = [
     source: { kind: 'doc', file: 'docs/benchmark-it.md' },
   },
   {
+    name: 'MCP',
+    title: 'MCP integration',
+    lang: 'en',
+    counterpart: 'Integrazione-MCP',
+    summary: 'Plugging external MCP servers into the tool registry: config, naming, safety model',
+    source: { kind: 'doc', file: 'docs/mcp.md' },
+  },
+  {
+    name: 'Integrazione-MCP',
+    title: 'Integrazione MCP',
+    lang: 'it',
+    counterpart: 'MCP',
+    summary: 'Collegare server MCP esterni al registro dei tool: configurazione, naming, modello di sicurezza',
+    source: { kind: 'doc', file: 'docs/mcp-it.md' },
+  },
+  {
     name: 'Use-Cases',
     title: 'Use cases',
     lang: 'en',

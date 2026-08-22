@@ -10,6 +10,7 @@ import { ConfigManager } from '../core/config';
 import { scanProviders, detectContextWindow } from '../core/discovery';
 import { MemoryStore } from '../core/memory';
 import { createDefaultRegistry } from '../tools/index';
+import { connectMcpServers } from '../core/mcp/connectMcpServers';
 import { PermissionManager } from '../safety/permissions';
 import { Agent, resolveReasoningEffort } from '../core/agent';
 import { resolveToolSet } from '../core/toolSet';
@@ -85,6 +86,11 @@ async function main() {
 
   const permissionManager = new PermissionManager();
   const registry = await createDefaultRegistry();
+
+  // T20.1: MCP servers configured in tsuka.config.json join the registry here.
+  // A failing server degrades with a logged warning; startup never blocks on it.
+  // Child processes are killed by the sync 'exit' hook installed in connectMcpServers.
+  await connectMcpServers(registry, configManager.getMcpServers());
 
   let activeProvider = configManager.getActiveProviderName();
   let activeConfig = configManager.getActiveProviderConfig();

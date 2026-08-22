@@ -177,15 +177,42 @@ The context window is your scarcest computational resource. TSUKA manages it via
 
 ---
 
-### Milestone 6 — UI: Live Streaming & ANSI Repaint
+### Milestone 6 — UI Decoupling: An Interface-Agnostic Core (CLI, TUI, Web)
 
-*Code references: `src/cli/stream.ts`, `src/cli/markdown.ts`, `src/cli/interrupt.ts`*
+*Code references: `src/core/logSink.ts`, `src/core/agent.ts` (`AgentEvents`), `src/tui/`, `src/cli/stream.ts`, `src/cli/interrupt.ts`*
 
-To maintain high performance without bulky TUI frameworks:
-1. Stream raw chunks directly to the terminal as they arrive.
-2. On completion, erase the stream region via ANSI sequences (`\x1b[nF\x1b[0J`).
-3. Repaint the final output as beautifully formatted Markdown with syntax highlighting.
-4. Raw keyboard mode captures `Esc` or `Ctrl+X` to abort turns instantly via `AbortController`.
+#### 1. The Trap of Hardcoded `console.log`
+When starting an agent harness, it is tempting to scatter `console.log` calls everywhere to monitor tools, memory, or the ReAct loop. This works for a basic terminal, but quickly becomes a dead end as the user interface evolves:
+* If a tool prints directly to stdout during a turn, it breaks live text streaming.
+* If you build a **full-screen interactive terminal dashboard (TUI)**, a single stray `console.log` corrupts the screen buffer.
+* If you later expose the agent via a Web UI or headless background server, those logs stay trapped on the server stdout instead of reaching the user.
+
+#### 2. The Solution: Separate the Engine from Output
+A truly modular harness core (Core, Memory, Tools) **never prints directly to the terminal**. All output is routed through two decoupled channels:
+
+1. **Conversation Channel (`AgentEvents`)**: during streaming generations, the agent emits typed events to any listening frontend (`onChunk` for incoming text chunks, `onStats` for speed and tokens, `onEvent` for tool lifecycle states).
+2. **Diagnostic Channel (`logSink`)**: all internal utility modules send warnings, errors, and operational notices to an injectable sink (`logSink.log()`, `logSink.warn()`, `logSink.error()`).
+
+```
+┌────────────────────────────────────────────────────────┐
+│                  CORE AGENTIC ENGINE                   │
+│        (Zero console.log — pure reusable logic)        │
+└──────────────┬───────────────────────────┬─────────────┘
+               │ Streaming events          │ Logs & warnings
+               ▼ (AgentEvents)             ▼ (logSink)
+       ┌────────────────────────┐  ┌─────────────────────┐
+       │      TUI Dashboard     │  │       CLI REPL      │
+       │    Full-screen app     │  │   Classic terminal  │
+       │    (npm run tui)       │  │   interface         │
+       └────────────────────────┘  └─────────────────────┘
+```
+
+#### 3. Practical Payoff: CLI to TUI with Zero Core Rewrites
+Thanks to this decoupling, TSUKA powers two completely different interfaces using the exact same underlying engine:
+* **Full-Screen TUI (`src/tui/`)**: subscribes to `AgentEvents` to update the chat feed, `<think>` reasoning containers, file explorer, and live telemetry, while routing `logSink` diagnostics into pop-up notification modals.
+* **Classic CLI (`src/cli/`)**: receives the same events to display continuous token streams and repaints syntax-highlighted Markdown on completion.
+
+In both interfaces, pressing `Esc` or `Ctrl+X` aborts generation immediately via an `AbortController` signal, preserving the conversation state without killing the process.
 
 ---
 
@@ -224,14 +251,26 @@ Local models range from 1B to 70B parameters. Instead of guessing capabilities f
 
 ---
 
-### Milestone 9 — Tool Self-Authoring (`create_tool`)
+### Milestone 9 — Extensibility: Dynamic Tools & MCP Ecosystem
 
-*Code references: `src/tools/impl/createTool.ts`*
+*Code references: `src/tools/impl/createTool.ts`, `src/core/mcp/` (`types.ts`, `stdioTransport.ts`, `client.ts`, `adapter.ts`, `connectMcpServers.ts`)*
 
-Agents can dynamically author new JavaScript/TypeScript tools at runtime:
-* Validated inside a `node:vm` sandbox with pattern blocklists.
-* Restricted to `SAFE` or `RESTRICTED` risk levels (never `DANGEROUS`).
-* Hot-registered for immediate session use with automatic backups.
+A mature agent harness cannot remain confined to its initial static tool set. TSUKA supports two complementary extension pathways:
+
+#### 9.1 Internal Extensibility: Dynamic Runtime Tool Creation (`create_tool`)
+Agents equipped with development permissions can author new JavaScript/TypeScript tools on the fly:
+* **Sandboxed Validation**: generated code runs inside a `node:vm` sandbox with pattern blocklists.
+* **Risk Capped**: generated tools can only be assigned `SAFE` or `RESTRICTED` tiers (never `DANGEROUS`).
+* **Core Protection**: native system tools cannot be overwritten, and automated backups are preserved in the workspace.
+
+#### 9.2 External Extensibility: Native MCP Client (Model Context Protocol)
+To connect the agent with complex external services (GitHub repositories, SQLite databases, web browsers, external filesystems) without writing bespoke TypeScript libraries, TSUKA implements the open **Model Context Protocol (MCP)**.
+
+Rather than taking on heavy third-party SDKs, TSUKA features a **native, zero-dependency** implementation (~400 lines in `src/core/mcp/`):
+1. **Standard I/O Transport (`stdioTransport.ts`)**: launches configured servers from `tsuka.config.json` as child processes communicating over `stdin`/`stdout`.
+2. **JSON-RPC 2.0 Handshake (`client.ts`)**: performs the `initialize` handshake and queries available tools via `tools/list`.
+3. **Adapter Registration (`adapter.ts`)**: registers remote tools into `ToolRegistry` with the `mcp__<server>__<tool>` prefix, using remote JSON schemas directly for validation.
+4. **Safety & Fault Isolation**: MCP tools inherit full `PermissionManager` gating (`RESTRICTED` by default with interactive approval). Crashed or unresponsive MCP servers emit diagnostics via `logSink` without blocking the harness, and child processes are cleaned up synchronously on exit.
 
 ---
 

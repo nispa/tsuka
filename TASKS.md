@@ -116,6 +116,7 @@
 | T19.7 | ✅ Fatto | **Split `src/tui/app.ts`** (752 → 409 righe): la composizione del frame è estratta in `layoutComposer.ts` (funzione pura `composeFrame(state, width, height, tab, layout)`, stesso input → stesse righe, nessun side effect); gli handler tastiera per-focus (input/chat/sidebar/files/tools) in `tui/interaction/keyHandlers.ts`; il router mouse (wheel, click-zone tab da header, focus pannelli, selezione file, scrollbar, toggle reasoning) in `tui/interaction/mouseRouter.ts` con deps esplicite; la geometria dei pannelli — prima duplicata a mano fra render e mouse handler, la fonte del bug T18.7 — unificata in `tui/interaction/geometry.ts`. Applicata la direttiva 9 ai numeri toccati: nuovo namespace `TUI_DEFAULTS` in `constants.ts` (larghezza sidebar min/max, percentuali default, altezze minime pannelli, bounds input box). Deduplicati i due percorsi di calibrazione context-window (`discoverModelAtStartup`/`probeContextWindow`) in `applyContextWindow`. Zero cambi di comportamento: 78 suite verdi (incluse `test_tui*`, `test_files_explorer` con il guard T18.7 sul click-to-row), build e typecheck puliti. |
 
 | T19.8 | ✅ Fatto | **Split `src/core/config.ts` in package `src/core/config/`** (~620 righe): `types.ts` (shape di `tsuka.config.json`: `AppConfig`, `ProviderConfig`, profili sampling, whitelist `SAMPLING_PARAM_KEYS`, `defaultAppConfig()`), `sampling.ts` (`matchesModelId`, `sanitizeSamplingParams` — validazione testabile senza file), `manager.ts` (il `ConfigManager`, con i fallback ora tutti presi da `constants.ts`). Completata la direttiva 9 sul file: centralizzati gli ultimi default ancora letterali (500 messaggi history, 65536 token fallback, 3 round team, timeout execute_command/browse/download, ContextTracker 100, REPL history 100) nei namespace `AGENT_DEFAULTS`/`TOOLS_DEFAULTS`/`CLI_DEFAULTS`. Barrel `index.ts` = zero cambi per gli import esistenti. 78 suite verdi, build e typecheck puliti. |
+| T20.1 | ✅ Fatto | **Client MCP nativo (stdio)**: nuovo package `src/core/mcp/` — `types.ts` (envelope JSON-RPC 2.0, descrittori tool, contratto swappable `IMcpClient`, direttiva 8), `stdioTransport.ts` (spawn del server, framing newline-delimited, correlazione per id, timeout per richiesta, crash/malformed gestiti), `client.ts` (handshake `initialize` → `tools/list` con cursori → `tools/call`), `adapter.ts` (tool MCP → `Tool` TSUKA col prefisso `mcp__<server>__<tool>`, schema inline dal server), `connectMcpServers.ts` (server falliti = warning via logSink, mai blocco dell'avvio; hook 'exit' sincrono che uccide i processi figli). Registry: campo opzionale `Tool.schema` (inline, backward-compatible) usato da `listForLLM`/`executeTool` al posto del caricamento da disco. Config: sezione `mcpServers` + getter `ConfigManager.getMcpServers()`; default in `MCP_DEFAULTS` (`constants.ts`). Wired in CLI e TUI dopo `createDefaultRegistry()`. Mock server JSON-RPC in `tests/fixtures/mock_mcp_server.mjs`; suite nuove `test_mcp_client.ts` (13 casi: handshake, round-trip echo/add, idempotenza close, crash post-init, frame malformati, errore JSON-RPC, isError, timeout) e `test_mcp_registry.ts` (10 casi: nomi prefissati, schema inline in listForLLM, tier gating, validazione su schema remoto, riskLevel default RESTRICTED e override, degradazione server rotto, enabled:false, config assente). 80 suite verdi, build e typecheck puliti. |
 
 Tutti i task pianificati e di backlog sono completati; la serie T15 (memoria, modelli <30B) è implementata e chiusa con 72 suite di test verdi. Pianificata la serie **T16 (benchmark significativi)** su architettura a due velocità: **`/benchmark` fast** (1 colpo/test, deterministico — resta il gate del tier) e **`/benchmark --deep`** (repliche con variazione del prompt, mediana+varianza, per validazione/calibrazione). Pianificato anche **T17.1** (retrieval BM25/TF-IDF), il primo livello del percorso di apprendimento documentato in `docs/memory.md` §12. Valore di ritorno — i benchmark attuali saturano in alto e non discriminano tra i modelli, ma il gating dei tool (`registry.ts`) dipende proprio da quel tier: se tutto diventa `large` il gating è codice morto. Restano da fare T14.24 (commenti tests/ in inglese), T14.25 (token di protocollo multi-agente) e le serie T16/T17.
 
@@ -3395,3 +3396,52 @@ una sola definizione).
 
 **Accettazione:** 78 suite verdi senza modifiche (incluse `test_config_limits`
 e `test_sampling_params`); build e typecheck puliti.
+
+## T20.1 - Client MCP nativo (stdio): tool esterni nel ToolRegistry
+
+**Dipende da:** nessuno  **Sforzo:** medio  **Priorit:** alta
+
+Agganciare TSUKA ai server MCP (Model Context Protocol) esistenti
+(filesystem, github, sqlite, ...) tramite un client JSON-RPC 2.0 su stdio
+scritto nativamente: zero dipendenze nuove, coerente con l'etica leggera
+del progetto. I tool MCP entrano nel `ToolRegistry` come tool normali,
+quindi passano da tier gating e PermissionManager come i nativi.
+
+**Nuovo package `src/core/mcp/`:**
+- `types.ts`: `McpServerConfig` (command/args/env/enabled/riskLevel/
+  timeoutMs), envelope JSON-RPC 2.0, descrittori tool MCP, contratto
+  swappable `IMcpClient` (direttiva 8).
+- `stdioTransport.ts`: spawn del processo server, framing newline-delimited
+  su stdin/stdout, correlazione request/response per id, timeout per
+  richiesta, gestione crash/malformed.
+- `client.ts`: handshake `initialize`, `tools/list`, `tools/call`;
+  errori MCP mappati a messaggi leggibili dal modello.
+- `adapter.ts`: tool MCP -> oggetto `Tool` TSUKA con nome prefissato
+  `mcp__<server>__<toolname>` e schema inline servito dal server.
+- `connectMcpServers.ts`: connette i server abilitati dalla config e li
+  registra nel registry; un server che fallisce degrada con warning via
+  logSink senza bloccare l'avvio.
+
+**Modifiche a file esistenti:**
+- `src/tools/registry.ts`: campo opzionale `schema?: ToolSchemaData` su
+  `Tool`; `listForLLM` ed `executeTool` lo usano quando presente al posto
+  di caricare da disco (backward-compatible, i 30 nativi non cambiano).
+- `src/core/config/types.ts`: sezione `mcpServers` in `AppConfig`.
+- `src/core/constants.ts`: `MCP_DEFAULTS` (timeout init/call, riskLevel di
+  default RESTRICTED).
+- `src/cli/index.ts` + `src/tui/index.ts`: `connectMcpServers(...)` dopo la
+  creazione del registry; chiusura pulita dei processi figli all'exit.
+
+**Sicurezza:** ogni call passa dal PermissionManager col tier configurato;
+il nome prefissato rende l'origine evidente nei prompt di permesso. Env dei
+server filtrato dalle chiavi sensibili nei log. Il workspace jail NON copre
+i server esterni: documentato, il gating permessi resta la rete.
+
+**Test:** mock server JSON-RPC in `tests/fixtures/mock_mcp_server.mjs`
+(handshake, tools/list con 2 tool, echo in tools/call) +
+`tests/test_mcp_client.ts` (transport, client, percorsi di errore:
+crash/timeout/malformed) + `tests/test_mcp_registry.ts` (nomi prefissati in
+listForLLM, schema inline rispettato, esecuzione tramite permessi).
+
+**Accettazione:** npm test + npm run build + npm run typecheck verdi;
+nessuna suite esistente modificata; conteggi aggiornati in AGENTS.md.

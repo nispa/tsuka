@@ -84,6 +84,16 @@ export const TOOLS_DEFAULTS = {
   contextTrackerMaxEntries: 100,
 };
 
+/** MCP client defaults (src/core/mcp/, ConfigManager-independent). */
+export const MCP_DEFAULTS = {
+  /** Wall-clock wait for the initialize handshake before a server is deemed broken. */
+  initializeTimeoutMs: 30_000,
+  /** Default per-request timeout for tools/list and tools/call. */
+  requestTimeoutMs: 60_000,
+  /** Permission tier for MCP tools when the server config does not override it. */
+  defaultRiskLevel: 'RESTRICTED' as const,
+};
+
 /** CLI REPL defaults. */
 export const CLI_DEFAULTS = {
   /** Command history lines retained in the REPL history file (cliMaxHistory). */
