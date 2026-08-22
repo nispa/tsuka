@@ -12,17 +12,17 @@ models_profile.json
 *.log
 .tsuka_history*
 
-# Runtime State & Agent Artifacts
-memory/
-workflow_logs/
-runs/
-workspace/
-downloads/
-tools_backup/
-custom_tools/
-custom_tools_schemas/
-.tsuka/
-archive/
+# Runtime State & Agent Artifacts (root only)
+/memory/
+/workflow_logs/
+/runs/
+/workspace/
+/downloads/
+/tools_backup/
+/custom_tools/
+/custom_tools_schemas/
+/.tsuka/
+/archive/
 
 # Tool Outputs
-output/
+/output/

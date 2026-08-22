@@ -41,7 +41,7 @@
   "scripts": {
     "dev": "tsx src/cli/index.ts",
     "tui": "tsx src/tui/index.ts",
-    "build": "node -e \"fs.rmSync('dist',{recursive:true,force:true})\" && tsc",
+    "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc",
     "start": "node dist/cli/index.js",
     "test": "tsx tests/run_tests.ts",
     "wiki:build": "tsx scripts/buildWiki.ts",
