@@ -341,10 +341,12 @@ export class ConfigManager {
   }
 
   /**
-   * Parallel execution flag for PARALLEL blocks in /goal (T9.10). Default: false.
+   * OpenRouter can serve independent requests concurrently, so its PARALLEL goal
+   * blocks run concurrently without requiring a separate user toggle. Local
+   * providers remain serialized unless the explicit opt-in is enabled.
    */
   isParallelExecutionEnabled(): boolean {
-    return this.config.parallelExecutionEnabled === true;
+    return this.config.activeProvider === 'openrouter' || this.config.parallelExecutionEnabled === true;
   }
 
   /**

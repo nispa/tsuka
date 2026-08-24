@@ -3,3 +3,4 @@ export * from './personaModals';
 export * from './systemModals';
 export * from './layoutModals';
 export * from './fileViewerModal';
+export * from './textViewerModal';

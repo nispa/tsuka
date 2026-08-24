@@ -58,11 +58,19 @@ export interface TuiFileViewerState {
   fileSize: number;
 }
 
+export interface TuiTextViewerState {
+  lines: string[];
+  scrollOffset: number;
+  totalLines: number;
+  pageSize: number;
+}
+
 export interface TuiModalState {
-  type: 'permission' | 'help' | 'slash_menu' | 'confirm' | 'file_viewer';
+  type: 'permission' | 'help' | 'slash_menu' | 'confirm' | 'file_viewer' | 'text_viewer';
   title: string;
   permissionReq?: TuiPermissionRequest;
   fileViewer?: TuiFileViewerState;
+  textViewer?: TuiTextViewerState;
   selectedIndex: number;
   options?: Array<{ label: string; value: string; hint?: string }>;
   onSelect?: (value: string) => void;
@@ -142,6 +150,8 @@ export interface TuiState {
   characterRecommendedEffort?: string;
   activeSpawnedAgent: TuiSpawnedAgent | null;
   spawnedAgentsHistory: TuiSpawnedAgent[];
+  /** Names of workflow branches that are currently executing concurrently. */
+  parallelAgents?: string[];
   generationStatus?: TuiGenerationStatus;
   telemetry?: TuiInferenceTelemetry;
   stats: TuiStats;

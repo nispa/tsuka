@@ -49,6 +49,7 @@ import { handleInitCmd } from './initCmd';
 import { launchTui } from '../tui/index';
 import type { WorkflowDispatcher } from '../core/workflowDispatcher';
 import { createCliPermissionPromptHandler } from './permissionPrompt';
+import { setLogSink } from '../core/logSink';
 
 export { RoleConfig, TraitConfig, CharacterConfig, TeamConfig };
 export { loadRole, loadTrait, loadCharacter, loadTeam, loadSystemPrompt, listAvailableItems };
@@ -88,6 +89,15 @@ async function main() {
     await launchTui();
     return;
   }
+
+  // The bare CLI owns stdout and can preserve chunk-level command streaming. Other
+  // presentation layers replace this sink instead of competing for the terminal.
+  setLogSink({
+    log: (message) => console.log(message),
+    warn: (message) => console.warn(message),
+    error: (message) => console.error(message),
+    write: (message) => process.stdout.write(message),
+  });
 
   // Lock raw mode across whole session to prevent Windows readline input wedge
   lockRawMode();
@@ -133,7 +143,7 @@ async function main() {
       provider,
       registry,
       permissionManager,
-      loadSystemPrompt(role, trait, model, registry, char, undefined, reasoningEffort),
+      loadSystemPrompt(role, trait, model, registry, char, undefined, reasoningEffort, provider.getBaseUrl()),
       toolSet.active,
       configManager.getMaxHistoryMessages(),
       configManager.getMaxHistoryTokens(),
@@ -203,7 +213,7 @@ async function main() {
         agent = recreateAgent();
       }
 
-      notifyIfUnprofiled(provider.getCurrentModel(), agent.getReasoningEffort());
+      notifyIfUnprofiled(provider.getCurrentModel(), agent.getReasoningEffort(), provider.getBaseUrl());
     }
   } else {
     initSpinner.fail(chalk.red('No LLM server reachable (Ollama, Unsloth, OpenRouter).'));

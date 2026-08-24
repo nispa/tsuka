@@ -86,7 +86,7 @@ export async function handleTeam(ctx: CommandCtx, arg: string, directTask?: stri
 
     const teamMessages: ChatMessage[] = seedTeamMessages(task);
 
-    const interrupt = new GenerationInterrupt();
+    const interrupt = ctx.interrupt ?? new GenerationInterrupt();
     interrupt.arm();
 
     const turnLog: ProtocolLogEntry[] = [];

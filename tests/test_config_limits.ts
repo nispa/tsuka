@@ -120,6 +120,38 @@ async function run() {
   check('CFG.20', config.getBrowseFetchTimeoutMs() === 30000, `default browseFetchTimeoutMs è 30000 (trovato: ${config.getBrowseFetchTimeoutMs()})`);
   check('CFG.21', config.getDownloadFetchTimeoutMs() === 60000, `default downloadFetchTimeoutMs è 60000 (trovato: ${config.getDownloadFetchTimeoutMs()})`);
 
+  // OpenRouter supports concurrent remote requests; local providers require an explicit opt-in.
+  fs.writeFileSync(
+    customConfigPath,
+    JSON.stringify({
+      activeProvider: 'openrouter',
+      providers: {
+        ollama: { baseUrl: 'http://localhost:11434/v1', model: 'local-model' },
+        openrouter: { baseUrl: 'https://openrouter.ai/api/v1', model: 'cloud-model' }
+      },
+      parallelExecutionEnabled: false
+    }, null, 2),
+    'utf-8'
+  );
+  const openRouterConfig = new ConfigManager();
+  check('CFG.22', openRouterConfig.isParallelExecutionEnabled(), 'OpenRouter enables parallel multi-agent execution automatically');
+  openRouterConfig.setActiveProvider('ollama');
+  check('CFG.23', !openRouterConfig.isParallelExecutionEnabled(), 'a local provider remains serialized when explicit parallel execution is disabled');
+
+  fs.writeFileSync(
+    customConfigPath,
+    JSON.stringify({
+      activeProvider: 'ollama',
+      providers: {
+        ollama: { baseUrl: 'http://localhost:11434/v1', model: 'local-model' },
+        openrouter: { baseUrl: 'https://openrouter.ai/api/v1', model: 'cloud-model' }
+      },
+      parallelExecutionEnabled: true
+    }, null, 2),
+    'utf-8'
+  );
+  check('CFG.24', new ConfigManager().isParallelExecutionEnabled(), 'the explicit opt-in still enables parallel execution for local providers');
+
   const { ContextTracker } = await import('../src/core/contextTracker');
   const tracker = new ContextTracker(15);
   for (let i = 1; i <= 25; i++) {
@@ -131,7 +163,7 @@ async function run() {
       action: `action_${i}`
     });
   }
-  check('CFG.22', tracker.getAll().length === 15, `ContextTracker rispetta la capacità massima personalizzata (trovati: ${tracker.getAll().length})`);
+  check('CFG.25', tracker.getAll().length === 15, `ContextTracker rispetta la capacità massima personalizzata (trovati: ${tracker.getAll().length})`);
 
   delete process.env.TSUKA_HOME;
   try { fs.rmSync(tmpHome, { recursive: true, force: true }); } catch {}

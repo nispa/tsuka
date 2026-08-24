@@ -371,7 +371,13 @@ export class Agent implements ToolSetController {
     signal?: AbortSignal,
     reasoningEffortOverride?: ReasoningEffort
   ): Promise<string> {
-    const emit = onEvent ?? plainEventRenderer;
+    const eventSink = onEvent ?? plainEventRenderer;
+    // Presentation layers need stable authorship because concurrent agent events can
+    // interleave just like streamed chunks. Preserve an explicit nested label if set.
+    const emit: AgentEventHandler = (event) => eventSink({
+      ...event,
+      agentLabel: event.agentLabel ?? this.agentLabel,
+    });
     this.messages.push({ role: 'user', content: userMessage });
     const reactState = createReActState(reasoningEffortOverride);
 
@@ -395,7 +401,12 @@ export class Agent implements ToolSetController {
       const effectiveEffort = (budget.effectiveEffort as ReasoningEffort) ?? baseEffort;
       const chatOptions: ChatOptions | undefined = effectiveEffort ? { reasoningEffort: effectiveEffort } : undefined;
 
-      const tools = this.registry.listForLLM(this.provider.getCurrentModel(), this.allowedTools, effectiveEffort);
+      const tools = this.registry.listForLLM(
+        this.provider.getCurrentModel(),
+        this.allowedTools,
+        effectiveEffort,
+        this.provider.getBaseUrl()
+      );
       const toolsForRequest = tools.length > 0 ? tools : undefined;
 
       this.updateToolsSize(toolsForRequest);

@@ -4,6 +4,7 @@ import { Agent } from '../../core/agent';
 import { GenerationInterrupt } from '../../cli/interrupt';
 import { logSink } from '../../core/logSink';
 import { TuiCommandController } from './commandController';
+import { TUI_DEFAULTS } from '../../core/constants';
 
 export interface TurnRunnerContext {
   store: TuiStore;
@@ -27,6 +28,13 @@ export class TuiTurnRunner {
   async handleUserPrompt(prompt: string): Promise<void> {
     const trimmed = prompt.trim();
     if (!trimmed) return;
+
+    // Stop commands are control input, never work to enqueue behind the activity
+    // they are supposed to interrupt.
+    if (/^\/(?:stop|abort|cancel|kill)(?:\s|$)/i.test(trimmed)) {
+      this.interrupt();
+      return;
+    }
 
     // If already processing a turn, add message with [IN QUEUE] badge to chat immediately and queue
     if (this.isProcessing) {
@@ -55,9 +63,11 @@ export class TuiTurnRunner {
 
     // 1. Slash command routing
     if (prompt.startsWith('/')) {
+      this.currentInterrupt = new GenerationInterrupt();
       try {
         await this.ctx.commandController.handleCommand(prompt);
       } finally {
+        this.currentInterrupt = undefined;
         this.processNextInQueue();
       }
       return;
@@ -129,13 +139,44 @@ export class TuiTurnRunner {
       const next = this.promptQueue.shift()!;
       setTimeout(() => {
         this.executeTurn(next).catch(() => {});
-      }, 50);
+      }, TUI_DEFAULTS.promptQueueDelayMs);
     } else {
       this.isProcessing = false;
     }
   }
 
+  getCurrentInterrupt(): GenerationInterrupt | undefined {
+    return this.currentInterrupt;
+  }
+
+  /** Requests confirmation before stopping any active turn or workflow. */
   interrupt(): void {
+    const { store } = this.ctx;
+    if (!this.isProcessing || !this.currentInterrupt || !store.getState().isGenerating) {
+      store.notify('No active processing to interrupt', 'info');
+      return;
+    }
+
+    let resolved = false;
+    store.showModal({
+      type: 'confirm',
+      title: '🛑 Interrupt active processing?',
+      selectedIndex: 0,
+      options: [
+        { label: 'Continue processing', value: 'continue', hint: 'Close this confirmation without stopping' },
+        { label: 'Interrupt now', value: 'interrupt', hint: 'Abort the active turn or multi-agent workflow' },
+      ],
+      onSelect: (value) => {
+        if (resolved) return;
+        resolved = true;
+        store.closeModal();
+        if (value === 'interrupt') this.abortCurrent();
+      },
+      onCancel: () => { resolved = true; },
+    });
+  }
+
+  private abortCurrent(): void {
     const { store, bridge } = this.ctx;
     const state = store.getState();
 
@@ -159,7 +200,6 @@ export class TuiTurnRunner {
       store.notify('Generation interrupted by user', 'warn');
       bridge.resetCurrentTurn();
       store.finishStreaming(state.messages[state.messages.length - 1]?.id || '');
-      this.isProcessing = false;
     }
   }
 }

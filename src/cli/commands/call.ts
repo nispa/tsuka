@@ -123,7 +123,7 @@ export async function handleCall(ctx: CommandCtx, arg: string, directTopic?: str
     const rounds = 2;
     const fullTranscript: string[] = [];
 
-    const interrupt = new GenerationInterrupt();
+    const interrupt = ctx.interrupt ?? new GenerationInterrupt();
     interrupt.arm();
 
     conf:

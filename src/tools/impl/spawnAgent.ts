@@ -96,7 +96,16 @@ export const spawnAgentTool: Tool = {
     const effectiveOverride = withEffortPin(reasoningEffortOverride);
     logEffortDivergence(label, effectiveOverride, configManager.getDefaultReasoningEffort());
 
-    let sysPrompt = loadSystemPrompt(roleObj, traitObj, provider.getCurrentModel?.() || 'default', registry, char, task, effectiveOverride) +
+    let sysPrompt = loadSystemPrompt(
+      roleObj,
+      traitObj,
+      provider.getCurrentModel?.() || 'default',
+      registry,
+      char,
+      task,
+      effectiveOverride,
+      provider.getBaseUrl?.()
+    ) +
       `\n\nThis is a subordinate sub-agent task. Complete the work and report results concisely.`;
 
     if (blackboard) {

@@ -130,6 +130,7 @@
 | T21.7 | ⬜ Da fare | **Backend JSON focalizzato**: separare codec/recovery/persistenza atomica dalle operazioni di memoria senza aggiungere contratti speculativi e senza cambiare il formato su disco. |
 | T21.8 | ⬜ Da fare | **Audit delle varianti dietro flag**: classificare configurazione di prodotto, compatibilità, diagnostica e migrazioni concluse; convergere su un solo percorso dove sopravvivono varianti temporanee. |
 | T21.9 | ⬜ Da fare | **Navigabilità di `TASKS.md` e guida didattica**: mantenere un unico file come registro storico, aggiungere indice e viste di stato senza archivi separati, quindi raccontare nella guida le decisioni realmente emerse dal refactoring senza trasformarla in un corso. |
+| T21.10 | ⬜ Da fare | **Esecuzione shell per developer solo su tier large**: rendere `execute_command` direttamente disponibile al developer soltanto per modelli classificati `large`; build, test e installazione dipendenze restano operazioni RESTRICTED con consenso, mai un privilegio implicito per modelli piccoli o medi. |
 
 Tutti i task pianificati e di backlog sono completati; la serie T15 (memoria, modelli <30B) è implementata e chiusa con 72 suite di test verdi. Pianificata la serie **T16 (benchmark significativi)** su architettura a due velocità: **`/benchmark` fast** (1 colpo/test, deterministico — resta il gate del tier) e **`/benchmark --deep`** (repliche con variazione del prompt, mediana+varianza, per validazione/calibrazione). Pianificato anche **T17.1** (retrieval BM25/TF-IDF), il primo livello del percorso di apprendimento documentato in `docs/memory.md` §12. Valore di ritorno — i benchmark attuali saturano in alto e non discriminano tra i modelli, ma il gating dei tool (`registry.ts`) dipende proprio da quel tier: se tutto diventa `large` il gating è codice morto. Restano da fare T14.24 (commenti tests/ in inglese), T14.25 (token di protocollo multi-agente) e le serie T16/T17.
 
@@ -3729,3 +3730,34 @@ perché e un solo percorso di produzione. Non convertirla in lezioni o esercizi.
 
 **Accettazione:** un solo `TASKS.md`, nessun task storico perso; link e Wiki verdi;
 backlog corrente rapidamente leggibile; guide IT/EN allineate; tre gate verdi.
+
+## T21.10 — Esecuzione shell per developer solo su tier large
+
+**Dipende da:** T21.4 · **Sforzo:** basso · **Priorità:** alta
+
+Un developer deve poter eseguire build, test e installazioni di dipendenze quando il
+modello ha capacità sufficienti, ma un modello small o medium non deve ricevere uno
+strumento shell arbitrario: una tool call allucinata può modificare il sistema anche
+se poi viene fermata dal prompt di autorizzazione. La policy richiesta è quindi
+esplicita: `execute_command` viene offerto solo con tier `large`.
+
+- mantenere `execute_command` in `allowedTools` del ruolo developer e renderlo un
+  core tool, così un modello large non deve consumare un round per `load_tools` prima
+  di eseguire una verifica;
+- portare `requiredTier` dello schema a `large`; small e medium non devono ricevere
+  né lo schema né il nome nel prompt; per questa policy tutti i modelli erogati da
+  OpenRouter sono considerati `large`, senza dipendere dal nome o dal fingerprint
+  locale;
+- classificare `npm test`, `npm run <script>`, `npm ci` e installazioni npm comuni
+  (incluse opzioni come `-D`/`--save-dev`) come RESTRICTED, mai SAFE; composizioni,
+  redirezioni e comandi non riconosciuti restano DANGEROUS;
+- instradare stdout/stderr di `execute_command` tramite `logSink`, mai direttamente
+  su stdout, per non corrompere il double buffer del TUI;
+- documentare nel prompt developer che test e installazioni richiedono consenso e
+  che il comando non è disponibile fuori dal tier large.
+
+**Accettazione:** registry e system prompt espongono `execute_command` al developer
+solo con un modello/profilo `large`; small e medium non lo ricevono; build/test/npm
+install richiedono consenso RESTRICTED, le composizioni restano DANGEROUS; un modello
+OpenRouter riceve il tool come tier `large`; il TUI non riceve scritture raw; test
+mirati e i tre gate `npm test`, `npm run build`, `npm run typecheck` verdi.

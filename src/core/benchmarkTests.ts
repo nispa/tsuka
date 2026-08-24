@@ -246,7 +246,12 @@ export interface BenchRunOutcome {
 /**
  * Executes a single benchmark test against the provider.
  */
-export async function runBenchTest(provider: ILLMProvider, test: BenchTest, chatOptions?: ChatOptions): Promise<BenchRunOutcome> {
+export async function runBenchTest(
+  provider: ILLMProvider,
+  test: BenchTest,
+  chatOptions?: ChatOptions,
+  signal?: AbortSignal
+): Promise<BenchRunOutcome> {
   const steps = normalizeSteps(test);
   const messages: any[] = [];
   let gained = 0;
@@ -258,6 +263,7 @@ export async function runBenchTest(provider: ILLMProvider, test: BenchTest, chat
   let chainBroken = false;
 
   for (const step of steps) {
+    if (signal?.aborted) break;
     const stepWeight = step.checks.reduce((s, c) => s + (c.weight ?? 1), 0);
     total += stepWeight;
     if (chainBroken) continue;
@@ -276,7 +282,13 @@ export async function runBenchTest(provider: ILLMProvider, test: BenchTest, chat
       messages.push({ role: 'user', content: step.prompt });
     }
 
-    const r = await provider.chatWithTools(messages, test.tools && test.tools.length > 0 ? test.tools : undefined, undefined, undefined, chatOptions);
+    const r = await provider.chatWithTools(
+      messages,
+      test.tools && test.tools.length > 0 ? test.tools : undefined,
+      undefined,
+      signal,
+      chatOptions
+    );
     tokensPerSecond ??= r.stats?.tokensPerSecond;
     if (typeof r.stats?.tokenCount === 'number') {
       completionTokensSum += r.stats.tokenCount;

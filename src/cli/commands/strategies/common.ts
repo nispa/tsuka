@@ -145,7 +145,16 @@ export async function runMemberTurn(
   const cascadedEffort = resolveReasoningEffort(undefined, memberChar, roleObj, ctx.configManager.getDefaultReasoningEffort());
   const reasoningEffort = withEffortPin(cascadedEffort);
 
-  let sysPrompt = loadSystemPrompt(roleObj, traitObj, ctx.provider.getCurrentModel(), ctx.registry, memberChar, task, reasoningEffort);
+  let sysPrompt = loadSystemPrompt(
+    roleObj,
+    traitObj,
+    ctx.provider.getCurrentModel(),
+    ctx.registry,
+    memberChar,
+    task,
+    reasoningEffort,
+    ctx.provider.getBaseUrl()
+  );
   sysPrompt += `\n\n[COLLABORATIVE CONTEXT]: You are working on a team task: "${task}".
     This is your active work turn (round ${round}/${maxRounds}). Analyze the task and what previous colleagues did (inspect workspace files and history if needed).
     Use your tools (read, write, edit, search, commands) to advance or complete the work YOURSELF. 'spawn_agent' is for splitting off an INDEPENDENT sub-task while you keep working on the rest — never for handing off this entire assigned task verbatim: that is not delegation, it is skipping your turn. If spawn_agent rejects your call for being too long, that is a signal to do the work directly, not to retry the same call.
@@ -196,28 +205,45 @@ SHARED BLACKBOARD (optional): this run has a shared blackboard, separate from th
   const lastSeeded = tempAgent.getMessages()[tempAgent.getMessages().length - 1];
   const turnStatsRef: { s: TurnStats | null } = { s: null };
 
-  const renderer = new StreamRenderer({ headerName: memberChar.aiName });
-  renderer.begin();
+  const renderer = ctx.workflowEvents ? null : new StreamRenderer({ headerName: memberChar.aiName });
+  renderer?.begin();
   try {
     const activationPrompt = isFirstRound
       ? `Your turn, ${memberChar.aiName}. Work on the task and invoke your tools.`
       : `Task is still in progress (round ${round}). Continue from where the team left off, ${memberChar.aiName}.`;
     await tempAgent.run(
       activationPrompt,
-      (chunk, channel) => renderer.onDelta(chunk, channel ?? 'content'),
-      (stats) => { renderer.setStats(stats); turnStatsRef.s = stats as TurnStats; },
-      (ev) => { renderer.onAgentEvent(ev); interrupt.rearm(); },
+      (chunk, channel) => {
+        if (ctx.workflowEvents) {
+          ctx.workflowEvents.onChunk(chunk, channel ?? 'content', memberChar.aiName);
+        } else {
+          renderer?.onDelta(chunk, channel ?? 'content');
+        }
+      },
+      (stats) => {
+        renderer?.setStats(stats);
+        ctx.workflowEvents?.onStats(stats, memberChar.aiName);
+        turnStatsRef.s = stats as TurnStats;
+      },
+      (ev) => {
+        if (ctx.workflowEvents) {
+          ctx.workflowEvents.onEvent(ev);
+        } else {
+          renderer?.onAgentEvent(ev);
+        }
+        interrupt.rearm();
+      },
       interrupt.signal
     );
     if (interrupt.aborted) {
-      renderer.abort();
+      renderer?.abort();
       CLITheme.warning('Team workflow interrupted (Esc).');
       return 'interrupted';
     }
-    renderer.finish();
+    renderer?.finish();
     logSink.log('');
   } catch (err: any) {
-    renderer.abort();
+    renderer?.abort();
     if (interrupt.aborted) {
       CLITheme.warning('Team workflow interrupted (Esc).');
       return 'interrupted';

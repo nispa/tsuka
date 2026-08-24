@@ -90,6 +90,12 @@ export const AGENT_DEFAULTS = {
 export const TOOLS_DEFAULTS = {
   /** Shell command execution timeout for execute_command (commandTimeoutMs). */
   commandTimeoutMs: 120_000,
+  /** Lowest accepted per-call command timeout override. */
+  commandMinTimeoutMs: 1_000,
+  /** Highest accepted per-call command timeout override. */
+  commandMaxTimeoutMs: 600_000,
+  /** Raw command output retained before context-aware truncation. */
+  commandMaxOutputBytes: 50 * 1024,
   /** HTTP request timeout for browse_url (browseFetchTimeoutMs). */
   browseFetchTimeoutMs: 30_000,
   /** HTTP request timeout for download_file (downloadFetchTimeoutMs). */
@@ -116,6 +122,8 @@ export const CLI_DEFAULTS = {
 
 /** Terminal UI layout defaults (tui/interaction/geometry.ts, tui/layoutComposer.ts). */
 export const TUI_DEFAULTS = {
+  /** Yield before starting the next queued prompt so the completed frame can render. */
+  promptQueueDelayMs: 50,
   /** Minimum usable terminal width before clamping (effectiveWidth floor). */
   minEffectiveWidth: 20,
   /** Sidebar width bounds in columns, whatever percentage the layout asks for. */
@@ -132,4 +140,11 @@ export const TUI_DEFAULTS = {
   inputMinLines: 3,
   inputMaxLines: 6,
   inputPaddingLines: 2,
+  /** Modal geometry shared by full-screen text and file viewers. */
+  viewerMaxWidth: 105,
+  viewerMinWidth: 40,
+  viewerHorizontalMargin: 6,
+  viewerMaxHeight: 26,
+  viewerMinHeight: 10,
+  viewerVerticalMargin: 4,
 };

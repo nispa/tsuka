@@ -137,6 +137,23 @@ console.log('--- Test TuiBridge & Permission Integration ---');
   assert.strictEqual(store.getState().messages[3].authorName, 'Coder');
   assert.strictEqual(store.getState().messages[3].thinkingContent, 'Subagent thinking...');
 
+  // Parallel chunks remain attached to one live message per author even when interleaved.
+  const parallelStore = new TuiStore();
+  const parallelBridge = new TuiBridge(parallelStore, new PermissionManager());
+  const onParallelChunk = parallelBridge.createChunkHandler();
+  onParallelChunk('Alpha starts. ', 'reasoning', 'Alpha');
+  onParallelChunk('Beta starts. ', 'reasoning', 'Beta');
+  onParallelChunk('Alpha continues.', 'reasoning', 'Alpha');
+  onParallelChunk('Beta continues.', 'reasoning', 'Beta');
+  const parallelMessages = parallelStore.getState().messages;
+  assert.strictEqual(parallelMessages.length, 2);
+  assert.strictEqual(parallelMessages.find((m) => m.authorName === 'Alpha')?.thinkingContent, 'Alpha starts. Alpha continues.');
+  assert.strictEqual(parallelMessages.find((m) => m.authorName === 'Beta')?.thinkingContent, 'Beta starts. Beta continues.');
+  assert.ok(parallelMessages.every((m) => m.isStreaming), 'Both parallel thoughts remain live');
+  parallelStore.setState({ isGenerating: true, parallelAgents: ['Alpha', 'Beta'] });
+  const parallelChat = ChatView.render(parallelStore.getState(), 100, 20).join('\n');
+  assert.ok(parallelChat.includes('2 AGENTS IN PARALLEL') && parallelChat.includes('@Alpha') && parallelChat.includes('@Beta'), 'Parallel workflow status remains visible beside interleaved thoughts');
+
   // Test subagent tool execution attribution
   onEvent({ type: 'tool_start', name: 'read_file', args: { path: 'file.ts' }, agentLabel: 'Coder' });
   assert.strictEqual(store.getState().activeTools[0].name, 'read_file (@Coder)');
@@ -263,11 +280,18 @@ console.log('--- Test TuiTurnRunner Sequential Prompt Queue ---');
     }
   };
 
+  let workflowSignal: AbortSignal | undefined;
+  let runner: any;
   const mockCommandController: any = {
-    handleCommand: async () => {}
+    handleCommand: async () => {
+      workflowSignal = runner.getCurrentInterrupt()?.signal;
+      store.setState({ isGenerating: true, generationStatus: { phase: 'reasoning', agentName: 'Goal Orchestrator' } });
+      await new Promise<void>((resolve) => workflowSignal?.addEventListener('abort', () => resolve(), { once: true }));
+      store.setState({ isGenerating: false, generationStatus: { phase: 'idle' } });
+    }
   };
 
-  const runner = new TuiTurnRunner({
+  runner = new TuiTurnRunner({
     store,
     bridge,
     getAgent: () => mockAgent,
@@ -296,6 +320,20 @@ console.log('--- Test TuiTurnRunner Sequential Prompt Queue ---');
 
   assert.strictEqual(runCount, 3);
   assert.deepStrictEqual(executedPrompts, ['First prompt', 'Second prompt (queued)', 'Third prompt (queued)']);
+  assert.strictEqual(store.getState().isGenerating, false);
+
+  // A stop command is handled immediately, asks for confirmation, and aborts the
+  // same controller exposed to a slash workflow rather than entering the queue.
+  const workflow = runner.handleUserPrompt('/goal parallel work');
+  await new Promise((r) => setTimeout(r, 10));
+  assert.ok(workflowSignal, 'Slash workflow receives the turn runner interrupt signal');
+  await runner.handleUserPrompt('/stop');
+  const confirmation = store.getState().activeModal;
+  assert.strictEqual(confirmation?.type, 'confirm');
+  assert.strictEqual(workflowSignal?.aborted, false, 'Stop waits for confirmation');
+  confirmation?.onSelect?.('interrupt');
+  assert.strictEqual(workflowSignal?.aborted, true, 'Confirmed stop aborts the slash workflow');
+  await workflow;
   assert.strictEqual(store.getState().isGenerating, false);
 
   console.log('✔ TuiTurnRunner prompt queue test passed');

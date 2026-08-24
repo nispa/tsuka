@@ -286,8 +286,8 @@ async function main() {
           [profileKey(fakeModel, 'medium')]: {
             model: fakeModel,
             provider: 'test',
-            tier: 'medium',
-            scores: { instruction: 0.7, json: 0.6, toolCalling: 0.65 },
+            tier: 'large',
+            scores: { instruction: 1, json: 1, toolCalling: 1 },
             tokensPerSecond: 20,
             testedAt: new Date().toISOString(),
             benchmarkVersion: BENCHMARK_VERSION,
@@ -298,25 +298,23 @@ async function main() {
         }
       }, null, 2), 'utf-8');
 
-      // execute_command ha requiredTier 'medium' (tools_schemas/execute_command.json):
-      // visibile solo da tier medium in su. Registrato con un execute finto: il test
-      // ispeziona solo l'elenco tool offerto all'LLM (registry.listForLLM via Agent),
-      // non lo esegue mai (lo script del mock risponde solo con 'content', mai un tool_call).
+      // execute_command is large-only (tools_schemas/execute_command.json). The
+      // profile measured at medium effort deliberately earns a large capability tier,
+      // proving that effort selection and capability tier remain separate concerns.
       const registry = new ToolRegistry();
       registry.register({ name: 'execute_command', riskLevel: 'RESTRICTED', execute: async () => 'ok' });
 
-      // Girato allo STESSO effort del profilo misurato ('medium') → tier misurato
-      // (medium): execute_command diventa visibile.
+      // Running at the measured effort resolves the large profile and exposes the shell.
       const providerMedium = new MockLLMProvider([{ content: 'ok' }], { model: fakeModel });
       const agentMedium = new Agent(providerMedium, registry, new PermissionManager(), 'Sei un test.', undefined, 40, 65536, 'tester', 'medium');
       await agentMedium.run('ciao');
       const toolsMedium = (providerMedium.callLog[0]?.tools ?? []).map((t: any) => t.function.name);
       check('RE.10a', toolsMedium.includes('execute_command'),
-        `girato a 'medium' (profilato a 'medium') → tier misurato, execute_command visibile (tool ricevuti: ${toolsMedium.join(', ') || 'nessuno'})`);
+        `effort medium resolves its measured large tier and exposes execute_command (received: ${toolsMedium.join(', ') || 'none'})`);
 
       // Girato a un effort MAI profilato per questo modello ('xhigh') → nessun profilo
       // a quella chiave → ricade sull'euristica del nome ('small', nessuna cifra+'b'):
-      // execute_command (medium) resta nascosto. Il difetto esatto descritto in
+      // execute_command (large) resta nascosto. Il difetto esatto descritto in
       // TASKS.md T8.12: prima di questa modifica il lookup cercava sempre '@xhigh' a
       // prescindere dall'effort reale, quindi questo caso e RE.10a avrebbero dato lo
       // STESSO risultato (entrambi euristica) invece di isolarsi come qui.
@@ -327,17 +325,25 @@ async function main() {
       check('RE.10b', !toolsXhigh.includes('execute_command'),
         `girato a 'xhigh' (mai profilato per questo modello) → fallback euristica ('small'), execute_command resta nascosto (tool ricevuti: ${toolsXhigh.join(', ') || 'nessuno'})`);
 
-      // loadSystemPrompt (shared.ts) propaga lo stesso effort a registry.listForLLM:
-      // il testo del prompt deve elencare lo STESSO set di tool che Agent.run() poi
-      // rende davvero eseguibile, non un sottoinsieme più prudente calcolato a parte.
-      // Role finto minimale (non uno dei roles/*.json reali): l'unica cosa che conta
-      // qui è che allowedTools includa execute_command, il tool-sonda della prova sopra.
+      // Prompt assembly must propagate provider context through the same registry
+      // policy used by Agent.run. An unprofiled OpenRouter model receives the
+      // large-only tool, while the same unprofiled model on a local endpoint does not.
       const fakeRole = { name: 'probe', displayName: 'Probe', description: 'test', systemPrompt: 'Sei un test.', allowedTools: ['execute_command'] };
       const fakeTrait = { name: 't', displayName: 't', description: 't', prompt: 'stile neutro' };
-      const promptMedium = loadSystemPrompt(fakeRole, fakeTrait, fakeModel, registry, null, undefined, 'medium');
-      const promptXhigh = loadSystemPrompt(fakeRole, fakeTrait, fakeModel, registry, null, undefined, 'xhigh');
-      check('RE.10c', promptMedium.includes('execute_command') && !promptXhigh.includes('execute_command'),
-        "loadSystemPrompt propaga l'effort a registry.listForLLM: il testo del prompt riflette lo stesso tier usato da Agent.run()");
+      const unprofiledModel = '__prompt_provider_context_probe__';
+      const promptCloud = loadSystemPrompt(
+        fakeRole,
+        fakeTrait,
+        unprofiledModel,
+        registry,
+        null,
+        undefined,
+        'none',
+        'https://openrouter.ai/api/v1'
+      );
+      const promptLocal = loadSystemPrompt(fakeRole, fakeTrait, unprofiledModel, registry, null, undefined, 'none');
+      check('RE.10c', promptCloud.includes('execute_command') && !promptLocal.includes('execute_command'),
+        'loadSystemPrompt applies the same OpenRouter large-tier policy used by Agent.run');
     } finally {
       if (backup !== null) {
         fs.writeFileSync(profilePath, backup, 'utf-8');

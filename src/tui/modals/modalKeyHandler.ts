@@ -9,6 +9,44 @@ export class ModalKeyHandler {
       return;
     }
 
+    if (modal.type === 'text_viewer' && modal.textViewer) {
+      const viewer = modal.textViewer;
+      const maxOffset = Math.max(0, viewer.totalLines - viewer.pageSize);
+      if (key.name === 'up') {
+        const next = Math.max(0, viewer.scrollOffset - 1);
+        store.showModal({ ...modal, textViewer: { ...viewer, scrollOffset: next } });
+        return;
+      }
+      if (key.name === 'down') {
+        const next = Math.min(maxOffset, viewer.scrollOffset + 1);
+        store.showModal({ ...modal, textViewer: { ...viewer, scrollOffset: next } });
+        return;
+      }
+      if (key.name === 'pageup') {
+        const next = Math.max(0, viewer.scrollOffset - viewer.pageSize);
+        store.showModal({ ...modal, textViewer: { ...viewer, scrollOffset: next } });
+        return;
+      }
+      if (key.name === 'pagedown') {
+        const next = Math.min(maxOffset, viewer.scrollOffset + viewer.pageSize);
+        store.showModal({ ...modal, textViewer: { ...viewer, scrollOffset: next } });
+        return;
+      }
+      if (key.name === 'home' || key.name === 'g') {
+        store.showModal({ ...modal, textViewer: { ...viewer, scrollOffset: 0 } });
+        return;
+      }
+      if (key.name === 'end' || key.name === 'G') {
+        const next = maxOffset;
+        store.showModal({ ...modal, textViewer: { ...viewer, scrollOffset: next } });
+        return;
+      }
+      if (key.name === 'return' || key.name === 'q' || key.name === 'Q') {
+        store.closeModal();
+        return;
+      }
+    }
+
     if (modal.type === 'file_viewer' && modal.fileViewer) {
       const fv = modal.fileViewer;
       if (key.name === 'escape' || key.name === 'q' || key.name === 'Q') {

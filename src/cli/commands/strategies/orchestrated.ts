@@ -139,7 +139,12 @@ export async function runOrchestrated(
   const orchestratorRole = ctx.loadRole(orchestratorChar.role);
   const orchestratorTrait = ctx.loadTrait(orchestratorChar.trait);
 
-  const routeNextTools = ctx.registry.listForLLM(ctx.provider.getCurrentModel(), ['route_next']);
+  const routeNextTools = ctx.registry.listForLLM(
+    ctx.provider.getCurrentModel(),
+    ['route_next'],
+    undefined,
+    ctx.provider.getBaseUrl()
+  );
 
   outer:
   for (let round = 1; round <= maxRounds; round++) {

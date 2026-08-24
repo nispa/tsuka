@@ -52,6 +52,7 @@ import {
 } from '../src/cli/shared';
 import { CommandCtx } from '../src/cli/commands/types';
 import { handleEffort } from '../src/cli/commands/effort';
+import { handleBenchmark } from '../src/cli/commands/provider';
 import { runRoundRobin } from '../src/cli/commands/team';
 import { GenerationInterrupt } from '../src/cli/interrupt';
 import { InteractiveMenu } from '../src/cli/ui';
@@ -300,12 +301,10 @@ async function main() {
         provider.callLog[0]?.options?.reasoningEffort === 'medium',
         `chi copre 'developer' (@${DEV}) gira davvero a 'medium' (ricevuto: ${JSON.stringify(provider.callLog[0]?.options)})`
       );
-      // Config reale di questo repo non ha "reasoningEffort" (verificato in
-      // tsuka.config.json): il default è quindi undefined, quindi 'medium'
-      // diverge dal riferimento → una riga di log deve comparire.
+      const hasDivergence = provider.callLog[0]?.options?.reasoningEffort !== ctx.configManager.getDefaultReasoningEffort();
       check('F.1c',
-        logs.some((l) => /\[Effort\]/.test(l) && new RegExp(DEV_AI, 'i').test(l)),
-        `ask mode attiva ma contesto /team: la divergenza produce una riga di log, non un prompt (righe: ${JSON.stringify(logs)})`
+        logs.some((l) => /\[Effort\]/.test(l) && new RegExp(DEV_AI, 'i').test(l)) === hasDivergence,
+        `ask mode in /team logs an effort divergence without prompting only when one exists (logs: ${JSON.stringify(logs)})`
       );
     } finally {
       (InteractiveMenu as any).select = originalSelect;
@@ -424,15 +423,15 @@ async function main() {
         check('H.1c', /nessuno|disattiva|none|disabled/i.test(text), 'dichiara che nessun pin è attivo e la modalità ask è spenta');
       }
 
-      // H2 — /effort <livello>: fissa il pin, ricrea l'agente, annuncia un
-      // cambiamento REALE del set di tool (fakeModel profilato SOLO a 'medium').
+      // H2 — /effort <level> pins the effort, recreates the agent, and reports a
+      // real tool-set change (the fake model earns tier large only at medium effort).
       {
         const fakeModel = '__t814_h2_probe__';
         fs.writeFileSync(profilePath, JSON.stringify({
           profiles: {
             [profileKey(fakeModel, 'medium')]: {
-              model: fakeModel, provider: 'test', tier: 'medium',
-              scores: { instruction: 0.7, json: 0.6, toolCalling: 0.65 },
+              model: fakeModel, provider: 'test', tier: 'large',
+              scores: { instruction: 1, json: 1, toolCalling: 1 },
               tokensPerSecond: 20, testedAt: new Date().toISOString(),
               benchmarkVersion: BENCHMARK_VERSION, testsHash: getBenchmarkTestsHash(),
               reasoningEffort: 'medium', avgCompletionTokens: 200
@@ -446,10 +445,8 @@ async function main() {
         const provider = new MockLLMProvider([], { model: fakeModel });
         const ctx = buildEffortCtx(provider, registry, configManager);
 
-        // sysadmin è già 'medium' di suo: per generare una VERA divergenza di
-        // tier partiamo da 'none' (nessun profilo a quella chiave → euristica
-        // 'small', execute_command nascosto), poi pinniamo esplicitamente 'medium'
-        // (profilo misurato → tier 'medium', execute_command visibile).
+        // Start at unprofiled effort none (small fallback, shell hidden), then pin
+        // medium: the profile measured at that effort earns large and exposes it.
         setEffortPin('none');
         ctx.agent.current = ctx.recreateAgent();
         const before = getModelTier(fakeModel, ctx.agent.current.getReasoningEffort());
@@ -521,6 +518,22 @@ async function main() {
         const { logs } = await captureLogs(() => handleEffort(ctx, 'ultra'));
         check('H.5a', getEffortPin() === undefined, 'un livello non valido non tocca il pin');
         check('H.5b', logs.some((l) => /(non valido|Invalid effort level)/i.test(l)), 'errore esplicito per un livello fuori enum');
+      }
+
+      // H6 — OpenRouter receives tier large by cloud policy, so /benchmark must
+      // not issue the expensive effort sweep or hit endpoints that reject none.
+      {
+        const configManager = fakeConfigManager({ activeCharacter: 'custom', activeRole: 'developer' });
+        const provider = new MockLLMProvider([], {
+          model: 'stealth/ox-alpha',
+          baseUrl: 'https://openrouter.ai/api/v1'
+        });
+        const ctx = buildEffortCtx(provider, new ToolRegistry(), configManager);
+        const { logs } = await captureLogs(() => handleBenchmark(ctx, ''));
+        check('H.6a', provider.callLog.length === 0,
+          'OpenRouter /benchmark sends no model requests');
+        check('H.6b', logs.some((line) => /tier LARGE/i.test(line) && /No benchmark requests/i.test(line)),
+          'OpenRouter /benchmark explains that the cloud tier policy already applies');
       }
     } finally {
       if (backup !== null) {

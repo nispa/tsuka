@@ -8,7 +8,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { computeTier, getModelProfile, profileKey, BENCHMARK_VERSION, ModelProfile } from '../src/core/modelProfile';
 import { getBenchmarkTestsHash } from '../src/core/benchmarkTests';
-import { getModelTier } from '../src/tools/registry';
+import { getModelTier, isOpenRouterProvider, ToolRegistry } from '../src/tools/registry';
 
 /** Fabbrica di un profilo finto v4 completo (T8.10): evita di ripetere gli stessi
  *  campi obbligatori (reasoningEffort/avgCompletionTokens) in ogni probe. */
@@ -102,6 +102,28 @@ async function main() {
     // default 'xhigh' (vedi modelProfile.ts): coerente col profilo scritto sopra.
     check('X2.2b', getModelTier('__probe_model__') === 'large', 'getModelTier usa il tier misurato (default xhigh)');
     check('X2.2c', getModelTier('qwenpaw-9b-sconosciuto') === 'small', 'fallback euristica per modelli senza profilo');
+
+    // --- T21.10: cloud gateway policy, independent from names and benchmarks ---
+    const openRouterUrl = 'https://openrouter.ai/api/v1';
+    check('X21.10a', getModelTier('__cloud_model_without_profile__', 'none', openRouterUrl) === 'large',
+      'an unprofiled OpenRouter model starts directly at the large tier');
+    check('X21.10b', getModelTier('__probe_isolation__', 'low', openRouterUrl) === 'large',
+      'the OpenRouter large policy overrides even a local small fingerprint');
+    check('X21.10c', getModelTier('__cloud_model_without_profile__', 'none', 'http://127.0.0.1:8888/v1') === 'small',
+      'the same model on a local provider keeps the conservative small fallback');
+    check('X21.10d', isOpenRouterProvider('https://openrouter.ai.evil.example/v1') === false,
+      'gateway recognition checks the actual hostname rather than a substring');
+
+    const cloudRegistry = new ToolRegistry();
+    cloudRegistry.register({ name: 'execute_command', riskLevel: 'DANGEROUS', execute: async () => 'ok' });
+    const cloudTools = cloudRegistry.listForLLM(
+      '__cloud_model_without_profile__',
+      ['execute_command'],
+      'none',
+      openRouterUrl
+    );
+    check('X21.10e', cloudTools.some((tool) => tool.function.name === 'execute_command'),
+      'the tier policy reaches listForLLM: OpenRouter receives large tools without a benchmark');
 
     const missing = getModelProfile('__modello_che_non_esiste__');
     check('X2.2d', missing === null, 'modello senza profilo → null');

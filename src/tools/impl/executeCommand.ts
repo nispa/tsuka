@@ -6,8 +6,8 @@ import { capForContext } from '../../core/contextBudget';
 import { logSink } from '../../core/logSink';
 import { ConfigManager } from '../../core/config';
 import { classifyCommandRisk } from '../../safety/commandRisk';
+import { TOOLS_DEFAULTS } from '../../core/constants';
 
-const MAX_OUTPUT_BYTES = 50 * 1024; // 50 KB
 
 export const executeCommandTool: Tool = {
   name: 'execute_command',
@@ -20,8 +20,8 @@ export const executeCommandTool: Tool = {
       const shellConfig = getShellConfig();
       const configManager = new ConfigManager();
       const defaultTimeout = configManager.getCommandTimeoutMs();
-      const requestedTimeout = typeof args.timeout_ms === 'number' && Number.isFinite(args.timeout_ms) && args.timeout_ms >= 1000
-        ? Math.min(600_000, Math.floor(args.timeout_ms))
+      const requestedTimeout = typeof args.timeout_ms === 'number' && Number.isFinite(args.timeout_ms) && args.timeout_ms >= TOOLS_DEFAULTS.commandMinTimeoutMs
+        ? Math.min(TOOLS_DEFAULTS.commandMaxTimeoutMs, Math.floor(args.timeout_ms))
         : defaultTimeout;
 
       logSink.log(chalk.gray(`\n[Executing: ${args.command} (timeout: ${requestedTimeout / 1000}s)]`));
@@ -58,13 +58,13 @@ export const executeCommandTool: Tool = {
       child.stdout.on('data', (data) => {
         const text = data.toString();
         combinedOutput += text;
-        process.stdout.write(chalk.white(text));
+        logSink.write(chalk.white(text));
       });
 
       child.stderr.on('data', (data) => {
         const text = data.toString();
         combinedOutput += text;
-        process.stdout.write(chalk.red(text));
+        logSink.write(chalk.red(text));
       });
 
       child.on('close', (code) => {
@@ -74,13 +74,13 @@ export const executeCommandTool: Tool = {
         logSink.log(chalk.gray(`[Command completed with code: ${code}]`));
 
         let resultOutput = combinedOutput;
-        if (resultOutput.length > MAX_OUTPUT_BYTES) {
-          const tail = resultOutput.slice(-MAX_OUTPUT_BYTES);
+        if (resultOutput.length > TOOLS_DEFAULTS.commandMaxOutputBytes) {
+          const tail = resultOutput.slice(-TOOLS_DEFAULTS.commandMaxOutputBytes);
           const parts = tail.split(/\r?\n/);
           parts.shift();
           resultOutput =
             `[Output truncated: ${Buffer.byteLength(combinedOutput, 'utf-8')} bytes total, ` +
-            `showing last ~${MAX_OUTPUT_BYTES / 1024}KB]\n` + parts.join('\n');
+            `showing last ~${TOOLS_DEFAULTS.commandMaxOutputBytes / 1024}KB]\n` + parts.join('\n');
         }
 
         const capOptions = {

@@ -1,7 +1,7 @@
 {
   "name": "execute_command",
   "description": "Executes an arbitrary command or PowerShell script on Windows. Streams stdout/stderr live to the user's console. This tool allows full system modification and is dangerous.",
-  "requiredTier": "medium",
+  "requiredTier": "large",
   "parameters": {
     "type": "object",
     "properties": {

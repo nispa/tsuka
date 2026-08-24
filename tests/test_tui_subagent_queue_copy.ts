@@ -161,8 +161,13 @@ function test(name: string, fn: () => void | Promise<void>) {
     assert.strictEqual(store.getState().messages.length, 2);
     assert.strictEqual(store.getState().messages[1].isQueued, true);
 
-    // Trigger interrupt
+    // Request interrupt, then confirm it. Queued work is preserved until the user
+    // explicitly accepts the destructive action.
     runner.interrupt();
+    assert.strictEqual(store.getState().messages[1].isQueued, true);
+    const confirmation = store.getState().activeModal;
+    assert.strictEqual(confirmation?.type, 'confirm');
+    confirmation?.onSelect?.('interrupt');
 
     const stateAfterInterrupt = store.getState();
     assert.strictEqual(stateAfterInterrupt.messages[1].isQueued, false);
@@ -194,6 +199,24 @@ function test(name: string, fn: () => void | Promise<void>) {
 
     onEvent({ type: 'tool_end', name: 'read_file', args: { path: 'har_to_recipe.py' }, success: true, output: '242 lines', agentLabel: 'Geordi' });
     assert.strictEqual(store.getState().activeTools[0].status, 'completed');
+  });
+
+  await test('TuiBridge: parallel workflow agents keep same-named tools attached to their own messages', () => {
+    const store = new TuiStore();
+    const bridge = new TuiBridge(store, new PermissionManager());
+    const onEvent = bridge.createEventHandler();
+
+    onEvent({ type: 'tool_start', name: 'read_file', args: { path: 'alpha.ts' }, agentLabel: 'Alpha' });
+    onEvent({ type: 'tool_start', name: 'read_file', args: { path: 'beta.ts' }, agentLabel: 'Beta' });
+    onEvent({ type: 'tool_end', name: 'read_file', args: { path: 'beta.ts' }, success: true, output: 'beta output', agentLabel: 'Beta' });
+    onEvent({ type: 'tool_end', name: 'read_file', args: { path: 'alpha.ts' }, success: true, output: 'alpha output', agentLabel: 'Alpha' });
+
+    const alpha = store.getState().messages.find((message) => message.authorName === 'Alpha');
+    const beta = store.getState().messages.find((message) => message.authorName === 'Beta');
+    assert.strictEqual(alpha?.toolCalls?.[0]?.status, 'completed');
+    assert.strictEqual(alpha?.toolCalls?.[0]?.output, 'alpha output');
+    assert.strictEqual(beta?.toolCalls?.[0]?.status, 'completed');
+    assert.strictEqual(beta?.toolCalls?.[0]?.output, 'beta output');
   });
 
   // ── 5. Subagent Token Aggregation & Multi-Color Stacked Gauge ──
@@ -489,8 +512,8 @@ function test(name: string, fn: () => void | Promise<void>) {
     // Execute /stop command
     await cmdController.handleCommand('/stop');
     assert.strictEqual(interruptedCalled, true, '/stop should invoke turnRunner.interrupt()');
-    assert.strictEqual(store.getState().isGenerating, false, 'isGenerating should be reset to false');
-    assert.ok(store.getState().messages.some((m) => m.content.includes('stopped')), '/stop should log cancellation to chat');
+    assert.strictEqual(store.getState().isGenerating, true, 'command must not fake completion before confirmation and workflow unwind');
+    assert.ok(!store.getState().messages.some((m) => m.content.includes('stopped')), '/stop must not claim cancellation before confirmation');
   });
   // ── 14. Subagent roster: the running one plus what the previous ones cost ──
   await test('PersonaWidget & TuiBridge: the subagent roster survives the next spawn, tokens included', () => {

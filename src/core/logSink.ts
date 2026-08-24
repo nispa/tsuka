@@ -18,6 +18,8 @@ export interface LogSink {
   log(message: string): void;
   warn(message: string): void;
   error(message: string): void;
+  /** Optional live output channel; presentation layers may deliberately silence it. */
+  write?(message: string): void;
 }
 
 function appendToFileLog(level: 'INFO' | 'WARN' | 'ERROR', message: string): void {
@@ -39,6 +41,7 @@ const defaultSink: LogSink = {
   log: (message: string) => console.log(message),
   warn: (message: string) => console.warn(message),
   error: (message: string) => console.error(message),
+  write: (message: string) => console.log(message),
 };
 
 let activeSink: LogSink = defaultSink;
@@ -66,5 +69,8 @@ export const logSink = {
     appendToFileLog('ERROR', message);
     activeSink.error(message);
   },
+  write: (message: string) => {
+    if (activeSink.write) activeSink.write(message);
+    else activeSink.log(message);
+  },
 };
-

@@ -66,7 +66,9 @@ export class ChatView {
       const gen = state.generationStatus;
       const phase = gen?.phase || 'reasoning';
       const agent = gen?.agentName ? `@${gen.agentName}` : `@${state.activeAiName}`;
-      if (phase === 'reasoning') title = `Conversation (⚡ THINKING... ${agent})`;
+      const parallel = state.parallelAgents || [];
+      if (parallel.length > 1) title = `Conversation (⚡ PARALLEL ${parallel.length}: ${parallel.map((name) => `@${name}`).join(' · ')})`;
+      else if (phase === 'reasoning') title = `Conversation (⚡ THINKING... ${agent})`;
       else if (phase === 'tool') title = `Conversation (🔧 TOOL: ${gen?.toolName || 'tool'} ${agent})`;
       else title = `Conversation (💬 GENERATING... ${agent})`;
     }
@@ -183,8 +185,11 @@ export class ChatView {
     const gen = state.generationStatus;
     const phase = gen?.phase || 'reasoning';
     const agent = gen?.agentName ? `@${gen.agentName}` : `@${state.activeAiName}`;
+    const parallel = state.parallelAgents || [];
     let statusCard = '';
-    if (phase === 'reasoning') {
+    if (parallel.length > 1) {
+      statusCard = chalk.bgHex('#7c3aed').white.bold(` ⚡ ${parallel.length} AGENTS IN PARALLEL `) + ' ' + chalk.hex('#ddd6fe')(parallel.map((name) => `@${name}`).join('  ·  ')) + ' ' + chalk.gray('(Esc or /stop to halt)');
+    } else if (phase === 'reasoning') {
       statusCard = chalk.bgHex('#ea580c').white.bold(` ⚡ THINKING... `) + ' ' + chalk.hex('#fdba74')(`${agent} is analyzing and reasoning...`) + ' ' + chalk.gray('(Press Esc or /stop to halt)');
     } else if (phase === 'tool') {
       statusCard = chalk.bgHex('#d97706').white.bold(` 🔧 TOOL EXECUTION `) + ' ' + chalk.hex('#fde047')(`${agent} is executing: ${chalk.bold(gen?.toolName || 'tool')}...`) + ' ' + chalk.gray('(Press Esc or /stop to halt)');
@@ -329,7 +334,8 @@ export class ChatView {
         }
       }
 
-      // Render compact single-line tool calls attached to message
+      // Keep the call header compact, but render completed output below it so multiline
+      // results such as recalled memories remain readable inside the pane.
       if (msg.toolCalls && msg.toolCalls.length > 0) {
         for (const tc of msg.toolCalls) {
           const statusIcon = tc.status === 'running' ? chalk.yellow('⏳') : tc.status === 'completed' ? chalk.green('✔') : chalk.red('✘');
@@ -354,13 +360,15 @@ export class ChatView {
           let resultSummary = '';
           if (tc.status === 'running') {
             resultSummary = chalk.yellow(' running…');
-          } else if (tc.output) {
-            const outClean = tc.output.trim().replace(/\r?\n/g, ' ');
-            const preview = outClean.length > 35 ? outClean.slice(0, 32) + '…' : outClean;
-            resultSummary = chalk.gray(` → ${preview}`);
           }
 
           lines.push(`  ${statusIcon} ${chalk.bold.magenta(tc.name)}${shortArgs}${resultSummary}`);
+          if (tc.status !== 'running' && tc.output?.trim()) {
+            const outputLines = renderMarkdownToLines(tc.output.trim(), Math.max(6, contentWidth - 4));
+            for (const outputLine of outputLines) {
+              lines.push('    ' + chalk.gray('│ ') + outputLine);
+            }
+          }
         }
       }
 
@@ -379,7 +387,9 @@ export class ChatView {
         lines.push('  ' + chalk.hex('#FFA500')(l));
       }
     } else if (msg.role === 'tool') {
-      lines.push(chalk.gray(`  🔧 [tool result] ${msg.content.slice(0, innerWidth)}`));
+      lines.push(chalk.gray('  🔧 [tool result]'));
+      const textLines = renderMarkdownToLines(msg.content || '', contentWidth);
+      for (const line of textLines) lines.push('    ' + line);
     }
 
     return { lines, thinking };

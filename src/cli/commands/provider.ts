@@ -5,6 +5,7 @@ import { probeProvider, warmUpModel, isLocalUrl, detectContextWindow } from '../
 import { CLITheme, InteractiveMenu } from '../ui';
 import { notifyIfUnprofiled } from '../shared';
 import { filterOpenRouterModels, ModelCatalogFilter } from '../../core/modelCatalog';
+import { isOpenRouterProvider } from '../../tools/registry';
 import chalk from 'chalk';
 import prompts from 'prompts';
 
@@ -130,7 +131,11 @@ export async function handleProvider(ctx: CommandCtx, arg: string): Promise<void
       ctx.agent.current = ctx.recreateAgent();
     }
     CLITheme.success(`Active model: ${chalk.green(ctx.provider.getCurrentModel())}`);
-    notifyIfUnprofiled(ctx.provider.getCurrentModel(), ctx.agent.current.getReasoningEffort());
+    notifyIfUnprofiled(
+      ctx.provider.getCurrentModel(),
+      ctx.agent.current.getReasoningEffort(),
+      ctx.provider.getBaseUrl()
+    );
   } catch (err: any) {
     checkSpinner.fail(chalk.red(`Could not verify connection for ${targetProvider}.`));
     CLITheme.warning('Provider configuration updated, but server is not responding.');
@@ -218,7 +223,7 @@ async function pickModel(
         CLITheme.info(`Active context window: ${chalk.green(dynamicCtx.toLocaleString())} tokens (detected from server)`);
       }
       await maybeWarmUp(ctx, selectedModel, loadedModel);
-      notifyIfUnprofiled(selectedModel, ctx.agent.current.getReasoningEffort());
+      notifyIfUnprofiled(selectedModel, ctx.agent.current.getReasoningEffort(), ctx.provider.getBaseUrl());
       return true;
     }
   } catch (err: any) {
@@ -256,7 +261,7 @@ export async function handleModels(ctx: CommandCtx, arg: string): Promise<void> 
         CLITheme.info(`Active context window: ${chalk.green(dynamicCtx.toLocaleString())} tokens (detected from server)`);
       }
       await maybeWarmUp(ctx, arg, scan?.loadedModel ?? null);
-      notifyIfUnprofiled(arg, ctx.agent.current.getReasoningEffort());
+      notifyIfUnprofiled(arg, ctx.agent.current.getReasoningEffort(), ctx.provider.getBaseUrl());
     } else {
       CLITheme.error(`Model '${arg}' not found on active server.`);
       console.log(chalk.gray(`Use ${chalk.cyan('/models')} without arguments to open interactive menu.`));
@@ -269,7 +274,7 @@ export async function handleModels(ctx: CommandCtx, arg: string): Promise<void> 
     ctx.agent.current = ctx.recreateAgent();
     CLITheme.printModelChanged(oldModel, arg);
     CLITheme.warning(`Model set to '${arg}' (server verification failed).`);
-    notifyIfUnprofiled(arg, ctx.agent.current.getReasoningEffort());
+    notifyIfUnprofiled(arg, ctx.agent.current.getReasoningEffort(), ctx.provider.getBaseUrl());
   }
 }
 
@@ -319,6 +324,22 @@ function printProfile(p: ModelProfile): void {
 export async function handleBenchmark(ctx: CommandCtx, arg: string): Promise<void> {
   const currentModel = ctx.provider.getCurrentModel();
 
+  // OpenRouter models are cloud-curated and receive tier large by policy. Avoid a
+  // costly five-level sweep, including effort=none requests rejected by endpoints
+  // that require reasoning, when the result cannot change tool visibility.
+  if (isOpenRouterProvider(ctx.provider.getBaseUrl())) {
+    const targetLabel = arg && arg.toLowerCase() !== 'all'
+      ? `'${arg}'`
+      : arg.toLowerCase() === 'all'
+        ? 'all OpenRouter models'
+        : `'${currentModel}'`;
+    CLITheme.info(
+      `OpenRouter cloud policy assigns tier LARGE to ${targetLabel}. ` +
+      'No benchmark requests were sent.'
+    );
+    return;
+  }
+
   let targets: string[] = [];
   if (!arg) {
     targets = [currentModel];
@@ -336,7 +357,7 @@ export async function handleBenchmark(ctx: CommandCtx, arg: string): Promise<voi
       CLITheme.warning('No models available on server.');
       return;
     }
-    CLITheme.warning(`Benchmarking ${targets.length} models across 4 effort levels may take several minutes.`);
+    CLITheme.warning(`Benchmarking ${targets.length} models across 5 effort levels may take several minutes.`);
   } else {
     targets = [arg];
   }
@@ -349,7 +370,12 @@ export async function handleBenchmark(ctx: CommandCtx, arg: string): Promise<voi
     try {
       const { profiles, recommendedEffort } = await runBenchmark(ctx.provider, model, (step) => {
         spinner.text = chalk.cyan(`Benchmarking '${model}' — ${step}`);
-      });
+      }, ctx.interrupt?.signal);
+      if (ctx.interrupt?.aborted) {
+        spinner.stop();
+        CLITheme.warning('Benchmark interrupted by user. No incomplete profile was saved.');
+        return;
+      }
       spinner.succeed(chalk.green(`Benchmark completed for '${model}' (${profiles.length} effort levels)`));
       for (const profile of profiles) {
         printProfile(profile);
@@ -366,6 +392,11 @@ export async function handleBenchmark(ctx: CommandCtx, arg: string): Promise<voi
       }
       console.log();
     } catch (err: any) {
+      if (ctx.interrupt?.aborted) {
+        spinner.stop();
+        CLITheme.warning('Benchmark interrupted by user. No incomplete profile was saved.');
+        return;
+      }
       spinner.fail(chalk.red(`Benchmark failed for '${model}': ${err.message}`));
     }
   }

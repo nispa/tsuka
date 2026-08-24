@@ -12,6 +12,7 @@ import { Agent } from '../../core/agent';
 import { TuiLayoutConfig } from '../layoutConfig';
 import { ToolRegistry } from '../../tools/registry';
 import { PermissionManager } from '../../safety/permissions';
+import { WorkflowEventSink } from '../../cli/commands/types';
 
 /**
  * Everything a command may need from the application.
@@ -32,6 +33,7 @@ export interface CommandControllerContext {
   probeContextWindow: () => Promise<void>;
   setActiveTab: (tab: 'chat' | 'tools') => void;
   getTurnRunner?: () => any;
+  workflowEvents?: WorkflowEventSink;
   stopApp: () => void;
 }
 

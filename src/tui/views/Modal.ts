@@ -11,6 +11,7 @@ import chalk from 'chalk';
 import { TuiModalState } from '../types';
 import { TuiScreen } from '../screen';
 import { TUI_TABS } from '../navigation';
+import { viewerHeight, viewerWidth } from '../viewerGeometry';
 
 type Colorizer = (s: string) => string;
 
@@ -125,8 +126,8 @@ function buildHelpBox(modal: TuiModalState, screen: ScreenSize): ModalBox {
 
 function buildFileViewerBox(modal: TuiModalState, screen: ScreenSize): ModalBox {
   const fv = modal.fileViewer!;
-  const width = Math.min(105, Math.max(40, screen.width - 6));
-  const height = Math.min(26, Math.max(10, screen.height - 4));
+  const width = viewerWidth(screen.width);
+  const height = viewerHeight(screen.height);
   const innerHeight = Math.max(4, height - 5);
   const innerWidth = Math.max(10, width - 4);
 
@@ -159,6 +160,28 @@ function buildFileViewerBox(modal: TuiModalState, screen: ScreenSize): ModalBox 
   };
 }
 
+function buildTextViewerBox(modal: TuiModalState, screen: ScreenSize): ModalBox {
+  const viewer = modal.textViewer!;
+  const width = viewerWidth(screen.width);
+  const height = viewerHeight(screen.height);
+  const innerHeight = Math.max(3, height - 3);
+  const maxOffset = Math.max(0, viewer.totalLines - innerHeight);
+  const startIdx = Math.min(viewer.scrollOffset, maxOffset);
+  const lines = viewer.lines.slice(startIdx, startIdx + innerHeight).map((line) => chalk.white(line));
+
+  while (lines.length < innerHeight) lines.push('');
+  lines.push(chalk.gray('[▲/▼ / PgUp/PgDn scroll • Home/End jump • Esc / Enter close]'));
+
+  return {
+    title: modal.title || 'Text Viewer',
+    lines,
+    width,
+    height,
+    borderColor: chalk.hex('#38bdf8'),
+    scrollbar: { total: viewer.totalLines, visible: innerHeight, offset: startIdx },
+  };
+}
+
 /** Standard dialog: width from the screen, height from the content. */
 function dialogBox(modal: TuiModalState, lines: string[], screen: ScreenSize): ModalBox {
   return {
@@ -176,6 +199,7 @@ function dialogBox(modal: TuiModalState, lines: string[], screen: ScreenSize): M
  */
 const BOX_BUILDERS: Partial<Record<TuiModalState['type'], (m: TuiModalState, s: ScreenSize) => ModalBox>> = {
   file_viewer: (m, s) => (m.fileViewer ? buildFileViewerBox(m, s) : dialogBox(m, renderOptionList(m, s), s)),
+  text_viewer: (m, s) => (m.textViewer ? buildTextViewerBox(m, s) : dialogBox(m, renderOptionList(m, s), s)),
   permission: (m, s) => (m.permissionReq ? buildPermissionBox(m, s) : dialogBox(m, renderOptionList(m, s), s)),
   help: buildHelpBox,
 };

@@ -100,7 +100,10 @@ export class InputView {
       const gen = state.generationStatus;
       const phase = gen?.phase || 'reasoning';
       const agent = gen?.agentName ? `@${gen.agentName}` : `@${state.activeAiName}`;
-      if (phase === 'reasoning') {
+      const parallel = state.parallelAgents || [];
+      if (parallel.length > 1) {
+        title = `Prompt Input (⚡ PARALLEL ${parallel.length}: ${parallel.map((name) => `@${name}`).join(' · ')} | Esc or /stop to halt)`;
+      } else if (phase === 'reasoning') {
         title = `Prompt Input (⚡ THINKING... ${agent} | Esc or /stop to halt)`;
       } else if (phase === 'tool') {
         title = `Prompt Input (🔧 TOOL EXECUTION: ${gen?.toolName || 'tool'} ${agent} | Esc or /stop to halt)`;

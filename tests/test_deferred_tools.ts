@@ -172,6 +172,8 @@ async function main() {
     const loadResult = agent.getMessages().find((m) => m.role === 'tool' && m.name === LOAD_TOOLS_TOOL);
     check('C5', typeof loadResult?.content === 'string' && loadResult.content.includes(HEAVY),
       'load_tools reports back which tools it activated, so the model knows what it may call next');
+    check('C5b', typeof loadResult?.content === 'string' && loadResult.content.includes('Usage: call') && loadResult.content.includes('JSON Schema'),
+      'the activation result includes the callable parameter contract instead of only the tool name');
 
     // A model guessing a name outside its role must get a usable answer, not a dead turn.
     const provider2 = new MockLLMProvider([
@@ -184,6 +186,19 @@ async function main() {
     const denied = agent2.getMessages().find((m) => m.role === 'tool' && m.name === LOAD_TOOLS_TOOL);
     check('C6', typeof denied?.content === 'string' && denied.content.includes(HEAVY),
       'asking for an unavailable tool answers with the list of loadable ones instead of failing the turn');
+
+    // The live Agent must propagate provider identity to the registry. This is the
+    // production path that lets an unprofiled OpenRouter model receive large tools.
+    registry.register({ name: 'execute_command', riskLevel: 'DANGEROUS', execute: async () => 'command-ok' });
+    const cloudProvider = new MockLLMProvider(
+      [{ content: 'done' }],
+      { model: '__unprofiled_cloud_model__', baseUrl: 'https://openrouter.ai/api/v1' }
+    );
+    const cloudAgent = new Agent(cloudProvider, registry, new PermissionManager(), 'sys', ['execute_command']);
+    await cloudAgent.run('inspect the project');
+    const cloudRound = (cloudProvider.callLog[0].tools || []).map((t: any) => t.function.name);
+    check('C7', cloudRound.includes('execute_command'),
+      'Agent forwards OpenRouter provider context, so a large core tool is present without a benchmark');
   }
 
   // ════════════════════════════════════════════════════════════════
@@ -272,6 +287,10 @@ async function main() {
       check(`F1:${roleName}`, JSON.stringify(covered) === JSON.stringify([...role.allowedTools].sort()),
         `${roleName}: active + deferred reproduce allowedTools exactly (${set.active.length - 1} core, ${set.deferred.length} deferred)`);
     }
+
+    const developerSet = resolveToolSet(loadRole('developer'), { enabled: true });
+    check('F2', developerSet.active.includes('execute_command') && !developerSet.deferred.includes('execute_command'),
+      'developer receives execute_command as a core tool when the model tier permits it');
   }
 
   console.log(`\n=== Result: ${passed} passed, ${failed} failed ===`);

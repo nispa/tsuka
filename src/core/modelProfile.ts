@@ -17,7 +17,7 @@ import {
 
 export const BENCHMARK_VERSION = 4;
 
-/** The 4 reasoning effort levels swept by benchmark in increasing order. */
+/** The reasoning effort levels swept by benchmark in increasing order. */
 export const REASONING_EFFORT_LEVELS: ReasoningEffort[] = ['none', 'low', 'medium', 'high', 'xhigh'];
 
 export interface ModelScores {
@@ -155,7 +155,7 @@ function tierRank(tier: 'small' | 'medium' | 'large'): number {
 }
 
 export interface BenchmarkSweepResult {
-  /** One profile for each of the 4 reasoning effort levels. */
+  /** One profile for each configured reasoning effort level. */
   profiles: ModelProfile[];
   /** Lowest effort level achieving the highest tier observed. */
   recommendedEffort: ReasoningEffort | null;
@@ -167,7 +167,8 @@ export interface BenchmarkSweepResult {
 export async function runBenchmark(
   provider: ILLMProvider,
   model: string,
-  onProgress?: (step: string) => void
+  onProgress?: (step: string) => void,
+  signal?: AbortSignal
 ): Promise<BenchmarkSweepResult> {
   const tests = loadBenchmarkTests();
   if (tests.length === 0) {
@@ -183,15 +184,18 @@ export async function runBenchmark(
     const profiles: ModelProfile[] = [];
 
     for (const effort of REASONING_EFFORT_LEVELS) {
+      if (signal?.aborted) break;
       const testResults: BenchTestResult[] = [];
       let tokensPerSecond = 0;
       let completionTokensSum = 0;
       let completionTokensCount = 0;
 
       for (let i = 0; i < tests.length; i++) {
+        if (signal?.aborted) break;
         const test = tests[i];
         onProgress?.(`[${effort}] Test ${i + 1}/${tests.length}: ${test.name} [${test.category}]...`);
-        const outcome = await runBenchTest(provider, test, { reasoningEffort: effort });
+        const outcome = await runBenchTest(provider, test, { reasoningEffort: effort }, signal);
+        if (signal?.aborted) break;
         if (tokensPerSecond === 0 && outcome.tokensPerSecond) {
           tokensPerSecond = outcome.tokensPerSecond;
         }
@@ -205,6 +209,8 @@ export async function runBenchmark(
           score: Math.round(outcome.score * 100) / 100
         });
       }
+
+      if (signal?.aborted) break;
 
       const categoryScore = (cat: BenchCategory): number => {
         let sum = 0;
@@ -236,8 +242,11 @@ export async function runBenchmark(
         reasoningEffort: effort,
         avgCompletionTokens: completionTokensCount > 0 ? Math.round(completionTokensSum / completionTokensCount) : 0
       };
-      saveProfile(profile);
       profiles.push(profile);
+    }
+
+    if (signal?.aborted) {
+      return { profiles: [], recommendedEffort: null };
     }
 
     let recommendedEffort: ReasoningEffort | null = null;
@@ -246,7 +255,9 @@ export async function runBenchmark(
       const best = profiles.find((p) => tierRank(p.tier) === maxRank);
       recommendedEffort = best?.reasoningEffort ?? null;
       if (recommendedEffort && profiles.length > 0) {
-        saveProfile(profiles[0], recommendedEffort);
+        for (const profile of profiles) {
+          saveProfile(profile, profile.reasoningEffort === profiles[0].reasoningEffort ? recommendedEffort : null);
+        }
       }
     }
 

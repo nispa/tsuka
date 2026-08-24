@@ -7,6 +7,7 @@ import { probeProvider } from '../../core/discovery';
 import { warmUpIfNeeded } from '../../cli/commands/provider';
 import { filterOpenRouterModels, ModelCatalogFilter } from '../../core/modelCatalog';
 import commandsData from '../commands/menu.json';
+import { TextViewerModal } from './textViewerModal';
 
 /**
  * `toLocaleTimeString()` alone (the previous hint) drops the date entirely — every fact saved on
@@ -88,15 +89,12 @@ export class SystemModals {
           store.closeModal();
           store.notify('Memory inserted into prompt', 'info');
         } else if (action === 'view') {
-          store.showModal({
-            type: 'slash_menu',
-            title: `Memory #${fact.id.slice(0, 8)}: ${fact.summary}`,
-            selectedIndex: 0,
-            options: [
-              { label: '↩️ Close View', value: 'close', hint: fact.content },
-            ],
-            onSelect: () => SystemModals.openMemoryActionModal(store, fact),
-          });
+          TextViewerModal.open(
+            store,
+            `Memory #${fact.id.slice(0, 8)}: ${fact.summary}`,
+            fact.content,
+            () => SystemModals.openMemoryActionModal(store, fact)
+          );
         } else if (action === 'delete') {
           memoryStore.remove(fact.id);
           store.notify(`Memory #${fact.id.slice(0, 8)} deleted`, 'warn');

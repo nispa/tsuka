@@ -86,7 +86,7 @@ export interface AppConfig {
   commandTimeoutMs?: number;
   /** Default creativity preset ('precise' | 'balanced' | 'creative' | 'low' | 'medium' | 'high'). */
   creativity?: string;
-  /** Enables true parallel execution for PARALLEL blocks in /goal (T9.10). Default: false. */
+  /** Enables parallel /goal blocks for local providers; OpenRouter enables them automatically. */
   parallelExecutionEnabled?: boolean;
   /** Maximum number of activity records kept in the in-memory ContextTracker ring buffer. Default: 100. */
   contextTrackerMaxEntries?: number;

@@ -14,11 +14,8 @@ export const SESSION_COMMANDS: TuiCommandSpec[] = [
     name: '/stop',
     aliases: ['/abort', '/cancel', '/kill'],
     description: 'Stop the running agent activity or workflow',
-    run: ({ store, getTurnRunner }) => {
+    run: ({ getTurnRunner }) => {
       getTurnRunner?.()?.interrupt();
-      store.setState({ isGenerating: false, generationStatus: { phase: 'idle' } });
-      store.addMessage({ role: 'system', content: '🛑 **Agent activity stopped by user** (`/stop`).' });
-      store.notify('Agent activity stopped successfully', 'warn');
     },
   },
 

@@ -89,6 +89,14 @@ export class TuiApp {
       probeContextWindow: () => this.probeContextWindow(),
       setActiveTab: (t) => { this.activeTab = t; },
       getTurnRunner: () => this.turnRunner,
+      workflowEvents: {
+        onChunk: this.bridge.createChunkHandler(),
+        onStats: this.bridge.createStatsHandler(),
+        onEvent: this.bridge.createEventHandler(),
+        onParallelStart: (agentNames) => this.bridge.setParallelAgents(agentNames),
+        onParallelEnd: () => this.bridge.setParallelAgents([]),
+        reset: () => this.bridge.resetCurrentTurn(),
+      },
       stopApp: () => this.stop(),
     });
 
@@ -122,7 +130,16 @@ export class TuiApp {
       this.provider,
       this.registry,
       this.permissionManager,
-      loadSystemPrompt(role, trait, model, this.registry, char, undefined, reasoningEffort),
+      loadSystemPrompt(
+        role,
+        trait,
+        model,
+        this.registry,
+        char,
+        undefined,
+        reasoningEffort,
+        this.provider.getBaseUrl()
+      ),
       toolSet.active,
       this.configManager.getMaxHistoryMessages(),
       this.configManager.getMaxHistoryTokens(),
@@ -229,6 +246,9 @@ export class TuiApp {
       },
       warn: (msg: string) => this.store.notify(msg, 'warn'),
       error: (msg: string) => this.store.notify(msg, 'error'),
+      // Command output is attached to the tool event on completion. Writing chunks
+      // independently would flood the chat while the TUI owns the terminal buffer.
+      write: () => {},
     });
     setProgressSink((text: string) => {
       const stripped = text.replace(/\x1b\[[0-9;]*m/g, '').trim();
@@ -393,13 +413,24 @@ export class TuiApp {
       return;
     }
 
-    if (state.activeModal) {
-      ModalKeyHandler.handleKey(key, state.activeModal, this.store);
+    if (key.name === 'escape' || (key.ctrl && key.name === 'x')) {
+      // During processing Escape always means "request interruption". If another
+      // modal owns the screen, cancel it first so its pending promise is resolved.
+      if (state.isGenerating && state.activeModal?.type !== 'confirm') {
+        this.store.closeModal();
+        this.turnRunner.interrupt();
+        return;
+      }
+      if (state.activeModal) {
+        ModalKeyHandler.handleKey(key, state.activeModal, this.store);
+        return;
+      }
+      this.turnRunner.interrupt();
       return;
     }
 
-    if (key.name === 'escape' || (key.ctrl && key.name === 'x')) {
-      this.turnRunner.interrupt();
+    if (state.activeModal) {
+      ModalKeyHandler.handleKey(key, state.activeModal, this.store);
       return;
     }
 

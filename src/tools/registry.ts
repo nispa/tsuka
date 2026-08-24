@@ -105,7 +105,30 @@ function formatPermissionDetails(toolName: string, args: any): string {
  * Uses measured benchmark capability fingerprinting if available;
  * otherwise falls back to model name heuristics.
  */
-export function getModelTier(modelName: string, effort?: ReasoningEffort): 'small' | 'medium' | 'large' {
+/**
+ * OpenRouter is a curated cloud gateway: its hosted models receive the full tool
+ * tier without requiring an expensive local capability sweep first. The gateway
+ * identity comes from provider context, never from model-name heuristics.
+ */
+export function isOpenRouterProvider(baseUrl?: string): boolean {
+  if (!baseUrl) return false;
+  try {
+    const hostname = new URL(baseUrl).hostname.toLowerCase();
+    return hostname === 'openrouter.ai' || hostname.endsWith('.openrouter.ai');
+  } catch {
+    return false;
+  }
+}
+
+export function getModelTier(
+  modelName: string,
+  effort?: ReasoningEffort,
+  providerBaseUrl?: string
+): 'small' | 'medium' | 'large' {
+  if (isOpenRouterProvider(providerBaseUrl)) {
+    return 'large';
+  }
+
   const profile = getModelProfile(modelName, effort);
   if (profile) {
     return profile.tier;
@@ -269,7 +292,12 @@ export class ToolRegistry {
   /**
    * Filters tools matching the active role, model capability tier, and reasoning effort.
    */
-  listForLLM(modelName: string, allowedTools?: string[], effort?: ReasoningEffort): Array<{
+  listForLLM(
+    modelName: string,
+    allowedTools?: string[],
+    effort?: ReasoningEffort,
+    providerBaseUrl?: string
+  ): Array<{
     type: 'function';
     function: {
       name: string;
@@ -277,7 +305,7 @@ export class ToolRegistry {
       parameters: any;
     };
   }> {
-    const modelTier = getModelTier(modelName, effort);
+    const modelTier = getModelTier(modelName, effort, providerBaseUrl);
     const currentTierLevel = TIER_HIERARCHY[modelTier];
     const result: Array<{
       type: 'function';

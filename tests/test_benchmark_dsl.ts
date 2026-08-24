@@ -111,6 +111,17 @@ async function main() {
   const broken = await runBenchTest(noToolProvider, chainTest);
   check('BD.5d', broken.score === 0, 'nessuna tool call → catena rotta, punteggio 0');
 
+  const controller = new AbortController();
+  let receivedSignal: AbortSignal | undefined;
+  const abortableProvider: any = {
+    chatWithTools: async (_messages: any[], _tools?: any[], _onChunk?: any, signal?: AbortSignal) => {
+      receivedSignal = signal;
+      return { content: 'ok' };
+    }
+  };
+  await runBenchTest(abortableProvider, chainTest, undefined, controller.signal);
+  check('BD.5e', receivedSignal === controller.signal, 'the cancellation signal reaches benchmark requests');
+
   console.log(`\n=== Risultato: ${passed} passati, ${failed} falliti ===`);
   process.exit(failed > 0 ? 1 : 0);
 }

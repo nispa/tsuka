@@ -14,10 +14,11 @@
 import './isolateMemory';
 import { handleGoal, parsePlan, formatAgentSignature } from '../src/cli/commands/goal';
 import { ContextTracker } from '../src/core/contextTracker';
-import { MockLLMProvider } from './mocks/mockProvider';
+import { MockLLMProvider, mockToolCall } from './mocks/mockProvider';
 import { buildMockCtx } from './mocks/mockCtx';
 import { listAvailableCharacters } from '../src/cli/shared';
 import { distinctAgents, aiNameOf } from './fixtures/roster';
+import { GenerationInterrupt } from '../src/cli/interrupt';
 
 // Agenti del piano scriptato, risolti per ruolo (mai per nome proprio).
 const [WORKER, SECOND, DEV, LEAD] = distinctAgents('sysadmin', 'security_auditor', 'developer', 'supervisor');
@@ -198,6 +199,86 @@ FINE
     // vale il token che costa. Soglia alzata deliberatamente, non per far passare la suite:
     // il budget assoluto ha ancora ~145 token di margine.
     check('G5d', allChars.length >= 18 && avgTokPerChar <= 64 && estimatedTokens < 1600, `catalogo reale completo di ${allChars.length} agenti consuma ~${estimatedTokens} tok (~${avgTokPerChar} tok/agente, budget medio < 64, tetto assoluto < 1600)`);
+  }
+
+  // TUI workflows receive the same live reasoning, content, and tool lifecycle data as regular turns.
+  {
+    const provider = new MockLLMProvider([
+      {
+        content: `AGENTE: @${WORKER} — Inspect shared notes\nFINE`,
+        reasoningText: 'Selecting the best agent for this goal.'
+      },
+      {
+        toolCalls: [mockToolCall('read_notes')],
+        reasoningText: 'Checking the workflow blackboard first.'
+      },
+      { content: 'Inspection completed.\nSTATO: COMPLETATO' }
+    ]);
+    const ctx = buildMockCtx(provider);
+    const chunks: Array<{ text: string; channel?: string; author?: string }> = [];
+    const eventTypes: string[] = [];
+    let statsCount = 0;
+    ctx.workflowEvents = {
+      onChunk: (text, channel, author) => chunks.push({ text, channel, author }),
+      onStats: () => { statsCount++; },
+      onEvent: (event) => eventTypes.push(event.type),
+      reset: () => {}
+    };
+
+    await handleGoal(ctx, 'Inspect notes with visible TUI activity');
+
+    check(
+      'G6a',
+      chunks.some((chunk) => chunk.channel === 'reasoning' && chunk.author === 'Goal Orchestrator') &&
+        chunks.some((chunk) => chunk.channel === 'reasoning' && chunk.author === WORKER_AI),
+      'workflow presentation sink receives reasoning from the orchestrator and member agent with correct authorship'
+    );
+    check(
+      'G6b',
+      eventTypes.includes('tool_start') && eventTypes.includes('tool_end'),
+      'workflow presentation sink receives member tool lifecycle events'
+    );
+    check('G6c', statsCount >= 2, 'workflow presentation sink receives orchestrator and member statistics');
+  }
+
+  // A presentation-owned interrupt must stop /goal before fallback agents are started.
+  {
+    const provider = new MockLLMProvider([{ content: '' }]);
+    const ctx = buildMockCtx(provider);
+    const interrupt = new GenerationInterrupt();
+    interrupt.abort();
+    ctx.interrupt = interrupt;
+
+    await handleGoal(ctx, 'Stop this goal from the TUI');
+
+    check('G7a', provider.callLog.length === 1, 'goal uses the presentation-owned interrupt for orchestration');
+    check('G7b', provider.remaining === 1, 'aborted orchestration does not consume a response or launch fallback agents');
+  }
+
+  // Parallel groups report their complete roster to presentation layers, not just
+  // whichever agent most recently produced a streamed chunk.
+  {
+    const provider = new MockLLMProvider([
+      { content: `PARALLELO:\nAGENTE: @${WORKER} — Inspect A\nAGENTE: @${SECOND} — Inspect B\nFINE PARALLELO\nFINE` },
+      { content: 'A done.\nSTATO: COMPLETATO' },
+      { content: 'B done.\nSTATO: COMPLETATO' },
+    ]);
+    const ctx = buildMockCtx(provider);
+    const parallelEvents: string[][] = [];
+    let parallelEndCount = 0;
+    ctx.workflowEvents = {
+      onChunk: () => {},
+      onStats: () => {},
+      onEvent: () => {},
+      onParallelStart: (agentNames) => parallelEvents.push(agentNames),
+      onParallelEnd: () => { parallelEndCount++; },
+      reset: () => {},
+    };
+
+    await handleGoal(ctx, 'Expose parallel workflow roster');
+
+    check('G8a', parallelEvents.length === 1 && parallelEvents[0].includes(WORKER_AI) && parallelEvents[0].includes(SECOND_AI), 'parallel workflow sink receives every active agent name');
+    check('G8b', parallelEndCount === 1, 'parallel workflow sink clears the roster after the group completes');
   }
 
   console.log(`\n=== Risultato: ${passed} passati, ${failed} falliti ===`);

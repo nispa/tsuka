@@ -89,13 +89,15 @@ export async function handleGoal(ctx: CommandCtx, arg: string): Promise<void> {
       { role: 'user', content: `Plan team for: "${goal}"` }
     ];
 
-    const interrupt = new GenerationInterrupt();
+    const interrupt = ctx.interrupt ?? new GenerationInterrupt();
     interrupt.arm();
 
     logSink.log(chalk.bold.cyan('[ORCHESTRATOR] Analyzing goal and planning team...\n'));
 
-    const planRenderer = new StreamRenderer({ headerName: 'Goal Orchestrator', headerColor: chalk.magenta });
-    planRenderer.begin();
+    const planRenderer = ctx.workflowEvents
+      ? null
+      : new StreamRenderer({ headerName: 'Goal Orchestrator', headerColor: chalk.magenta });
+    planRenderer?.begin();
 
     const orchestratorEffort = withEffortPin('low');
 
@@ -104,20 +106,37 @@ export async function handleGoal(ctx: CommandCtx, arg: string): Promise<void> {
       const response = await ctx.provider.chatWithTools(
         orcMessages,
         undefined,
-        (chunk, channel) => planRenderer.onDelta(chunk, channel ?? 'content'),
+        (chunk, channel) => {
+          if (ctx.workflowEvents) {
+            ctx.workflowEvents.onChunk(chunk, channel ?? 'content', 'Goal Orchestrator');
+          } else {
+            planRenderer?.onDelta(chunk, channel ?? 'content');
+          }
+        },
         interrupt.signal,
         {
           reasoningEffort: orchestratorEffort,
           creativity: 'precise'
         }
       );
-      planRenderer.finish();
+      if (response.stats && ctx.workflowEvents) {
+        ctx.workflowEvents.onStats(response.stats, 'Goal Orchestrator');
+      }
+      planRenderer?.finish();
       planText = response.content?.trim() || '';
       logSink.log('');
     } catch (err: any) {
-      planRenderer.abort();
+      planRenderer?.abort();
       if (interrupt.aborted) { CLITheme.warning('Goal interrupted (Esc).'); interrupt.disarm(); return; }
       CLITheme.error(`Orchestrator error: ${err.message}`);
+      interrupt.disarm();
+      return;
+    }
+
+    // Some providers resolve with partial or empty content after abort instead of
+    // throwing. Do not recover that as a plan and accidentally start fallback agents.
+    if (interrupt.aborted) {
+      CLITheme.warning('Goal interrupted by user.');
       interrupt.disarm();
       return;
     }
@@ -230,6 +249,7 @@ export async function handleGoal(ctx: CommandCtx, arg: string): Promise<void> {
             logSink.log('');
 
             const branches = createParallelBranches(group.steps.map((s) => getCharDisplayName(allCharacters, s.agentName)));
+            ctx.workflowEvents?.onParallelStart?.(group.steps.map((s) => getCharDisplayName(allCharacters, s.agentName)));
 
             const restoreConsole = installLogBuffering();
             const spinner = CLITheme.createSpinner(`${group.steps.length} agents working in parallel...`);
@@ -266,6 +286,7 @@ export async function handleGoal(ctx: CommandCtx, arg: string): Promise<void> {
             } finally {
               restoreConsole();
               spinner.stop();
+              ctx.workflowEvents?.onParallelEnd?.();
             }
 
             for (const pr of parallelResults) {

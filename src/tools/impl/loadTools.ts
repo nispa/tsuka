@@ -33,9 +33,15 @@ export const loadToolsTool: Tool = {
 
     const parts: string[] = [];
     if (activated.length > 0) {
-      const described = activated.map((name) => `- ${name}: ${loadToolSchema(name).description}`);
+      // Include the contract in the tool result as well as the next request's tools array.
+      // This keeps activation actionable for providers that pay little attention to a newly
+      // introduced function definition after completing the load_tools call.
+      const described = activated.map((name) => {
+        const schema = loadToolSchema(name);
+        return `- ${name}: ${schema.description}\n  Usage: call ${name} with arguments matching this JSON Schema: ${JSON.stringify(schema.schema)}`;
+      });
       parts.push(
-        `Activated ${activated.length} tool(s); their full parameter schemas are available from your next response onward:\n${described.join('\n')}`
+        `Activated ${activated.length} tool(s). You can call them in your next response; their full parameter schemas are also included below:\n${described.join('\n')}`
       );
     }
     if (alreadyActive.length > 0) {

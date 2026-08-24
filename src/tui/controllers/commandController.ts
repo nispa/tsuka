@@ -35,6 +35,8 @@ export class TuiCommandController {
       agent: { current: this.ctx.getAgent() },
       availableModels: { current: [] },
       recreateAgent: () => this.ctx.recreateAgent(),
+      workflowEvents: this.ctx.workflowEvents,
+      interrupt: this.ctx.getTurnRunner?.()?.getCurrentInterrupt(),
     };
   }
 

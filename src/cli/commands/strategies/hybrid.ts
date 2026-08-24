@@ -45,7 +45,14 @@ export async function runDiscussionRound(
   logSink.log(chalk.bold.magenta(`\n═══ DISCUSSION ROUND ${round} ═══`));
 
   let allApproved = true;
-  const voteTools = votingEnabled ? ctx.registry.listForLLM(ctx.provider.getCurrentModel(), ['cast_vote']) : [];
+  const voteTools = votingEnabled
+    ? ctx.registry.listForLLM(
+        ctx.provider.getCurrentModel(),
+        ['cast_vote'],
+        undefined,
+        ctx.provider.getBaseUrl()
+      )
+    : [];
 
   for (const memberName of members) {
     if (interrupt.aborted) return 'interrupted';

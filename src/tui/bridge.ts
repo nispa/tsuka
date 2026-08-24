@@ -16,8 +16,9 @@ export class TuiBridge {
   private subagentSeq = 0;
   private store: TuiStore;
   private permissionManager: PermissionManager;
-  private currentAssistantMsgId?: string;
-  private currentToolExecMap: Map<string, string> = new Map();
+  /** Each concurrent author owns one live message; chunks may arrive interleaved. */
+  private currentAssistantMsgIds: Map<string, string> = new Map();
+  private currentToolExecMap: Map<string, { toolId: string; messageId?: string }> = new Map();
   private lastTtftMs?: number;
   /** Prompt ingestion speed measured on the last completed turn. */
   private lastPrefillTokensPerSec?: number;
@@ -45,6 +46,11 @@ export class TuiBridge {
         lastUpdated: Date.now(),
       },
     });
+  }
+
+  /** Keeps workflow concurrency visible even while chunks arrive one agent at a time. */
+  setParallelAgents(agentNames: string[]): void {
+    this.store.setState({ parallelAgents: [...agentNames] });
   }
 
   /**
@@ -135,7 +141,24 @@ export class TuiBridge {
       log: (message: string) => {},
       warn: (message: string) => this.store.notify(message, 'warn'),
       error: (message: string) => this.store.notify(message, 'error'),
+      write: () => {},
     });
+  }
+
+  private toolExecutionKey(name: string, agentLabel?: string): string {
+    return `${agentLabel || ''}\u0000${name}`;
+  }
+
+  private streamKey(authorName?: string): string {
+    return authorName || this.store.getState().activeAiName;
+  }
+
+  private finishAuthorStream(authorName?: string): void {
+    const key = this.streamKey(authorName);
+    const messageId = this.currentAssistantMsgIds.get(key);
+    if (!messageId) return;
+    this.store.finishStreaming(messageId);
+    this.currentAssistantMsgIds.delete(key);
   }
 
   /**
@@ -155,27 +178,31 @@ export class TuiBridge {
         });
       }
 
-      // If switching authors (e.g. subagent vs parent), or if switching from content to reasoning,
-      // finalize previous message so the new reasoning / author block starts fresh.
-      if (this.currentAssistantMsgId) {
+      // Concurrent workflow branches interleave chunks, so switching authors must not
+      // close another author's stream. Only a new reasoning phase after answer content
+      // starts a fresh message for the same author.
+      let currentAssistantMsgId = this.currentAssistantMsgIds.get(effectiveAuthor);
+      if (currentAssistantMsgId) {
         const state = this.store.getState();
-        const currentMsg = state.messages.find((m) => m.id === this.currentAssistantMsgId);
-        if (currentMsg && (currentMsg.authorName !== effectiveAuthor || (isReasoning && currentMsg.content && currentMsg.content.trim()))) {
-          this.store.finishStreaming(this.currentAssistantMsgId);
-          this.currentAssistantMsgId = undefined;
+        const currentMsg = state.messages.find((m) => m.id === currentAssistantMsgId);
+        if (!currentMsg || (isReasoning && currentMsg.content && currentMsg.content.trim())) {
+          if (currentMsg) this.store.finishStreaming(currentAssistantMsgId);
+          this.currentAssistantMsgIds.delete(effectiveAuthor);
+          currentAssistantMsgId = undefined;
         }
       }
 
-      if (!this.currentAssistantMsgId) {
-        this.currentAssistantMsgId = this.store.addMessage({
+      if (!currentAssistantMsgId) {
+        currentAssistantMsgId = this.store.addMessage({
           role: 'assistant',
           authorName: effectiveAuthor,
           content: !isReasoning ? chunk : '',
           thinkingContent: isReasoning ? chunk : '',
           isStreaming: true,
         });
+        this.currentAssistantMsgIds.set(effectiveAuthor, currentAssistantMsgId);
       } else {
-        this.store.appendStreamingChunk(this.currentAssistantMsgId, chunk, isReasoning);
+        this.store.appendStreamingChunk(currentAssistantMsgId, chunk, isReasoning);
       }
 
       const currentGen = this.store.getState().generationStatus;
@@ -301,10 +328,10 @@ export class TuiBridge {
         const displayToolName = ev.agentLabel ? `${ev.name} (@${ev.agentLabel})` : ev.name;
         const args = JSON.stringify(ev.args || {});
         const toolId = this.store.startTool(displayToolName, args);
-        this.currentToolExecMap.set(ev.name, toolId);
 
-        this.ensureCurrentAssistantMessage();
-        this.patchCurrentToolCalls((toolCalls) => [
+        const messageId = this.ensureCurrentAssistantMessage(ev.agentLabel);
+        this.currentToolExecMap.set(this.toolExecutionKey(ev.name, ev.agentLabel), { toolId, messageId });
+        this.patchToolCalls(messageId, (toolCalls) => [
           ...toolCalls,
           { id: toolId, name: ev.name, args, status: 'running' as const },
         ]);
@@ -314,13 +341,14 @@ export class TuiBridge {
         if (ev.agentLabel) this.store.updateSpawnedAgent({ currentTool: undefined });
         this.backToThinking(ev.agentLabel);
 
-        const toolId = this.currentToolExecMap.get(ev.name);
-        if (toolId) {
-          this.store.finishTool(toolId, ev.output || '', ev.success);
-          this.currentToolExecMap.delete(ev.name);
+        const toolKey = this.toolExecutionKey(ev.name, ev.agentLabel);
+        const execution = this.currentToolExecMap.get(toolKey);
+        if (execution) {
+          this.store.finishTool(execution.toolId, ev.output || '', ev.success);
+          this.currentToolExecMap.delete(toolKey);
         }
 
-        this.patchCurrentToolCalls((toolCalls) =>
+        this.patchToolCalls(execution?.messageId, (toolCalls) =>
           toolCalls.map((tc) =>
             tc.name === ev.name && tc.status === 'running'
               ? { ...tc, status: ev.success ? ('completed' as const) : ('failed' as const), output: ev.output }
@@ -329,14 +357,11 @@ export class TuiBridge {
         );
       },
 
-      round_continue: () => {
-        // Close the current message so the next ReAct round starts a fresh one.
-        if (this.currentAssistantMsgId) {
-          this.store.finishStreaming(this.currentAssistantMsgId);
-          this.currentAssistantMsgId = undefined;
-        }
+      round_continue: (ev) => {
+        // Close only this agent's message; other parallel rounds remain live.
+        this.finishAuthorStream(ev.agentLabel);
         this.store.setState({ isGenerating: true });
-        this.backToThinking();
+        this.backToThinking(ev.agentLabel);
       },
 
       max_rounds: (ev) => {
@@ -367,36 +392,39 @@ export class TuiBridge {
    * non-thinking model that calls a tool emits no chunk first, so without this
    * anchor the tool activity would appear in the Tools page but never in chat.
    */
-  private ensureCurrentAssistantMessage(): void {
-    if (this.currentAssistantMsgId) {
-      const exists = this.store.getState().messages.some((m) => m.id === this.currentAssistantMsgId);
-      if (exists) return;
-      this.currentAssistantMsgId = undefined;
-    }
-    this.currentAssistantMsgId = this.store.addMessage({
+  private ensureCurrentAssistantMessage(authorName?: string): string {
+    const effectiveAuthor = authorName || this.store.getState().activeAiName;
+    const currentId = this.currentAssistantMsgIds.get(effectiveAuthor);
+    if (currentId && this.store.getState().messages.some((m) => m.id === currentId)) return currentId;
+
+    const messageId = this.store.addMessage({
       role: 'assistant',
-      authorName: this.store.getState().activeAiName,
+      authorName: effectiveAuthor,
       content: '',
       isStreaming: true,
     });
+    this.currentAssistantMsgIds.set(effectiveAuthor, messageId);
+    return messageId;
   }
 
-  /** Rewrites the tool calls attached to the message being streamed, if any. */
-  private patchCurrentToolCalls(
+  /** Rewrites tool calls on their owning message, even if another parallel agent is now streaming. */
+  private patchToolCalls(
+    messageId: string | undefined,
     update: (toolCalls: NonNullable<TuiChatMessage['toolCalls']>) => NonNullable<TuiChatMessage['toolCalls']>
   ): void {
-    if (!this.currentAssistantMsgId) return;
-    const msg = this.store.getState().messages.find((m) => m.id === this.currentAssistantMsgId);
+    if (!messageId) return;
+    const msg = this.store.getState().messages.find((m) => m.id === messageId);
     if (!msg) return;
-    this.store.updateMessage(this.currentAssistantMsgId, { toolCalls: update(msg.toolCalls || []) });
+    this.store.updateMessage(messageId, { toolCalls: update(msg.toolCalls || []) });
   }
 
   resetCurrentTurn(): void {
-    if (this.currentAssistantMsgId) {
-      this.store.finishStreaming(this.currentAssistantMsgId);
-      this.currentAssistantMsgId = undefined;
+    for (const messageId of this.currentAssistantMsgIds.values()) {
+      this.store.finishStreaming(messageId);
     }
+    this.currentAssistantMsgIds.clear();
     this.currentToolExecMap.clear();
+    this.setParallelAgents([]);
 
     // An interrupted turn produces no final stats: confidence and candidates refer
     // to a token that is no longer being generated, so they must not stay on screen.

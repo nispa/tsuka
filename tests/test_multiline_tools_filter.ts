@@ -71,7 +71,7 @@ describe('TUI & CLI Parity: Multi-line Input & Tools Search Filter', () => {
       },
       loadCharacter: () => null,
       loadRole: () => ({ displayName: 'Developer', allowedTools: ['read_file', 'write_file', 'run_command'] }),
-      provider: { getCurrentModel: () => 'qwen2.5-coder' },
+      provider: { getCurrentModel: () => 'qwen2.5-coder', getBaseUrl: () => 'mock://local' },
       agent: { current: { getReasoningEffort: () => 'standard' } },
       registry: {
         getAllTools: () => [

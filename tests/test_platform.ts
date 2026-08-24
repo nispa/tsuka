@@ -5,6 +5,7 @@
 import { getShellConfig, isWindows, getPlatformName } from '../src/core/platform';
 import { executeCommandTool } from '../src/tools/impl/executeCommand';
 import { getPsInfoTool } from '../src/tools/impl/getPsInfo';
+import { resetLogSink, setLogSink } from '../src/core/logSink';
 
 let passed = 0;
 let failed = 0;
@@ -32,11 +33,29 @@ async function main() {
     check('X1.1b', cfg.buildArgs('echo hi')[0] === '-c', 'argomenti sh presenti');
   }
 
-  // --- X1.2: execute_command funziona sulla piattaforma corrente ---
+  // --- X1.2: execute_command works and routes live output through logSink ---
   const marker = `probe_${Date.now()}`;
   const echoCmd = isWindows() ? `Write-Output ${marker}` : `echo ${marker}`;
-  const out = await executeCommandTool.execute({ command: echoCmd });
+  let streamedOutput = '';
+  let rawWrites = 0;
+  const originalStdoutWrite = process.stdout.write;
+  setLogSink({
+    log: () => {},
+    warn: () => {},
+    error: () => {},
+    write: (text) => { streamedOutput += text; },
+  });
+  (process.stdout as any).write = () => { rawWrites++; return true; };
+  let out = '';
+  try {
+    out = await executeCommandTool.execute({ command: echoCmd });
+  } finally {
+    (process.stdout as any).write = originalStdoutWrite;
+    resetLogSink();
+  }
   check('X1.2', out.includes(marker), `execute_command cross-platform: output contiene il marker`);
+  check('X1.2b', streamedOutput.includes(marker), 'execute_command streams output through logSink');
+  check('X1.2c', rawWrites === 0, 'execute_command never writes directly to stdout');
 
   // --- X1.3: get_ps_info 'processes' e 'env' funzionano e filtrano i segreti ---
   process.env.PLATFORM_PROBE_SECRET_KEY = 'valore_segreto_probe';

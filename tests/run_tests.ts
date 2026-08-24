@@ -92,6 +92,7 @@ const suites = [
   'test_tui_thinking_view.ts',
   'test_tui_paste.ts',
   'test_tui_fileviewer_export.ts',
+  'test_tui_memory_output.ts',
   'test_multiline_tools_filter.ts',
   'test_inference_telemetry.ts',
   'test_tui_data_driven.ts',

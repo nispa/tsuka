@@ -6,6 +6,7 @@
 import chalk from 'chalk';
 import { TuiState } from '../types';
 import { TuiScreen } from '../screen';
+import { renderMarkdownToLines } from '../../cli/markdown';
 
 export class ToolsView {
   static render(state: TuiState, width: number, height: number): string[] {
@@ -49,8 +50,9 @@ export class ToolsView {
           rawLines.push(chalk.gray(`  args: ${t.args.slice(0, innerWidth - 8)}`));
         }
         if (t.output) {
-          const outPreview = t.output.trim().replace(/\r?\n/g, ' ').slice(0, innerWidth - 8);
-          rawLines.push(chalk.white(`  out:  ${outPreview}`));
+          rawLines.push(chalk.gray('  out:'));
+          const outputLines = renderMarkdownToLines(t.output.trim(), Math.max(6, innerWidth - 6));
+          for (const outputLine of outputLines) rawLines.push(`    ${outputLine}`);
         }
         rawLines.push(chalk.gray('─'.repeat(Math.min(innerWidth, 30))));
       }

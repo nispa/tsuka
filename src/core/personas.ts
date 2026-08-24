@@ -220,7 +220,8 @@ export function loadSystemPrompt(
   registry?: ToolRegistry,
   character?: CharacterConfig | null,
   taskText?: string,
-  effort?: ReasoningEffort
+  effort?: ReasoningEffort,
+  providerBaseUrl?: string
 ): string {
   let prompt = '';
 
@@ -248,7 +249,7 @@ export function loadSystemPrompt(
 
   if (registry) {
     const toolSet = resolveToolSet(role);
-    const tools = registry.listForLLM(modelName, toolSet.active, effort);
+    const tools = registry.listForLLM(modelName, toolSet.active, effort, providerBaseUrl);
     if (tools.length > 0) {
       if (!hasNativeFunctionCalling(modelName, effort)) {
         // Names only (T14.14): every description already travels in the `tools` array of
@@ -265,7 +266,7 @@ export function loadSystemPrompt(
       // request applies, so the prompt never advertises a tool the model cannot receive.
       // Tools registered as alwaysAllow bypass that filter, hence the final intersection.
       const loadable = registry
-        .listForLLM(modelName, toolSet.deferred, effort)
+        .listForLLM(modelName, toolSet.deferred, effort, providerBaseUrl)
         .map((t) => t.function.name)
         .filter((name) => toolSet.deferred.includes(name));
       if (loadable.length > 0) {

@@ -20,6 +20,7 @@ export class TuiStore {
       activeModel: 'llama3',
       activeSpawnedAgent: null,
       spawnedAgentsHistory: [],
+      parallelAgents: [],
       stats: {
         usedTokens: 0,
         subagentUsedTokens: 0,

@@ -24,6 +24,7 @@ interface CliWorkflow {
 
 async function runCliWorkflow(c: TuiCommandContext, wf: CliWorkflow): Promise<void> {
   const { store } = c;
+  c.workflowEvents?.reset();
   store.addMessage({ role: 'user', content: wf.echo });
   store.setState({ isGenerating: true, generationStatus: { phase: 'reasoning', agentName: wf.agentLabel } });
 
@@ -33,6 +34,7 @@ async function runCliWorkflow(c: TuiCommandContext, wf: CliWorkflow): Promise<vo
   } catch (err: any) {
     store.addMessage({ role: 'system', content: `❌ **${wf.errorTitle}:** ${err.message}` });
   } finally {
+    c.workflowEvents?.reset();
     store.setState({ isGenerating: false, generationStatus: { phase: 'idle' } });
   }
 }
@@ -127,7 +129,7 @@ export const WORKFLOW_COMMANDS: TuiCommandSpec[] = [
         agentLabel: 'Benchmark Suite',
         echo: `/benchmark ${c.arg || ''}`.trim(),
         errorTitle: 'Benchmark Error',
-        doneMessage: 'Benchmark completed! Results saved to models_profile.json',
+        doneMessage: 'Benchmark command completed.',
         execute: () => handleBenchmark(c.cliContext(), c.arg),
       });
     },

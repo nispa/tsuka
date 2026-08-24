@@ -100,7 +100,7 @@ async function main() {
     // ── 2. registry.listForLLM propaga l'effort al filtro tier ──
     const registry = new ToolRegistry();
     registry.register({ name: 'read_file', riskLevel: 'SAFE', execute: async () => 'ok' }); // requiredTier small
-    registry.register({ name: 'execute_command', riskLevel: 'RESTRICTED', execute: async () => 'ok' }); // requiredTier medium
+    registry.register({ name: 'execute_command', riskLevel: 'RESTRICTED', execute: async () => 'ok' }); // requiredTier large
 
     const namesAt = (effort?: 'none' | 'low' | 'medium' | 'high' | 'xhigh') =>
       registry.listForLLM(model, undefined, effort).map((t) => t.function.name);
@@ -110,8 +110,8 @@ async function main() {
       `tier 'small' (misurato a 'low'): solo read_file visibile (ricevuti: ${atLow.join(', ') || 'nessuno'})`);
 
     const atMedium = namesAt('medium');
-    check('T812.2b', atMedium.includes('read_file') && atMedium.includes('execute_command'),
-      `tier 'medium' (misurato a 'medium'): entrambi i tool visibili (ricevuti: ${atMedium.join(', ')})`);
+    check('T812.2b', atMedium.includes('read_file') && !atMedium.includes('execute_command'),
+      `tier 'medium' measured at medium: large-only shell remains hidden (received: ${atMedium.join(', ')})`);
 
     const atXhigh = namesAt('xhigh');
     check('T812.2c', atXhigh.includes('read_file') && atXhigh.includes('execute_command'),
@@ -141,8 +141,8 @@ async function main() {
       const agentMedium = new Agent(providerMedium, registry, new PermissionManager(), 'Sei un test.', ['execute_command'], 40, 65536, 'tester', 'medium');
       await agentMedium.run('ciao');
       const namesMedium = (providerMedium.callLog[0]?.tools ?? []).map((t: any) => t.function.name);
-      check('T812.3b', namesMedium.includes('execute_command'),
-        `stesso agente, effort di costruzione 'medium' → tier misurato 'medium': execute_command visibile (ricevuti: ${namesMedium.join(', ') || 'nessuno'})`);
+      check('T812.3b', !namesMedium.includes('execute_command'),
+        `the same agent at measured tier medium cannot receive the large-only shell (received: ${namesMedium.join(', ') || 'none'})`);
     }
 
     // ── 4. L'override per singola run() (T8.10, terzo livello della cascata) cambia
@@ -168,8 +168,8 @@ async function main() {
 
       check('T812.5a', promptLow.includes('read_file') && !promptLow.includes('execute_command'),
         "loadSystemPrompt con effort='low': solo read_file elencato nel prompt");
-      check('T812.5b', promptMedium.includes('read_file') && promptMedium.includes('execute_command'),
-        "loadSystemPrompt con effort='medium': entrambi i tool elencati nel prompt");
+      check('T812.5b', promptMedium.includes('read_file') && !promptMedium.includes('execute_command'),
+        "loadSystemPrompt at effort='medium' omits the large-only shell tool");
       // Aggiornato dopo T8.9: a 'xhigh' questo profilo ha toolCalling >= 0.9, quindi
       // `hasNativeFunctionCalling` è vera e l'elenco testuale dei tool viene omesso —
       // il modello li riceve comunque nell'array `tools` dell'API. L'assenza della

@@ -31,6 +31,7 @@ async function main() {
     let llmCalls = 0;
     const provider: any = {
       getCurrentModel: () => 'fake',
+      getBaseUrl: () => 'mock://local',
       chatWithTools: async () => { llmCalls++; return { content: 'mai' }; },
     };
     const registry: any = { listForLLM: () => [], executeTool: async () => ({ success: true, output: 'ok' }) };
@@ -53,6 +54,7 @@ async function main() {
 
     const provider: any = {
       getCurrentModel: () => 'fake',
+      getBaseUrl: () => 'mock://local',
       chatWithTools: async () => {
         llmCalls++;
         if (llmCalls === 1) {
@@ -97,6 +99,7 @@ async function main() {
   {
     const provider: any = {
       getCurrentModel: () => 'fake',
+      getBaseUrl: () => 'mock://local',
       chatWithTools: async () => ({ content: 'risposta normale' }),
     };
     const registry: any = { listForLLM: () => [], executeTool: async () => ({ success: true, output: 'ok' }) };
