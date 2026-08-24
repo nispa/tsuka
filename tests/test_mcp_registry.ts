@@ -27,7 +27,7 @@ const SERVER = path.join(__dirname, 'fixtures', 'mock_mcp_server.mjs');
 async function run() {
   console.log('=== Test MCP Registry Integration ===\n');
   const registry = new ToolRegistry();
-  const pm = new PermissionManager();
+  const pm = new PermissionManager(async () => 'yes');
 
   // 1. Healthy server: tools registered with the mcp__<server>__<tool> names
   const report = await connectMcpServers(registry, {

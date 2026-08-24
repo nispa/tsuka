@@ -1,7 +1,3 @@
-import prompts from 'prompts';
-import chalk from 'chalk';
-import { InteractiveMenu } from '../cli/ui';
-
 export type RiskLevel = 'SAFE' | 'RESTRICTED' | 'DANGEROUS';
 
 export interface PermissionPromptRequest {
@@ -18,13 +14,15 @@ export class PermissionManager {
   // Internal promise chain (T3.1): requests triggering interactive prompts
   // (RESTRICTED/DANGEROUS) are queued sequentially rather than colliding on stdin.
   private promptQueue: Promise<void> = Promise.resolve();
-  private customPromptHandler?: PermissionPromptHandler;
+  private promptHandler?: PermissionPromptHandler;
 
-  constructor() {}
+  constructor(promptHandler?: PermissionPromptHandler) {
+    this.promptHandler = promptHandler;
+  }
 
   /** Sets a custom async UI handler for permission requests (e.g. for TUI/WebUI). */
   setPromptHandler(handler?: PermissionPromptHandler): void {
-    this.customPromptHandler = handler;
+    this.promptHandler = handler;
   }
 
   /** Resets permission state for a new session. */
@@ -70,72 +68,25 @@ export class PermissionManager {
   }
 
   private async promptForDecision(toolName: string, details: string, riskLevel: RiskLevel, requesterLabel?: string): Promise<boolean> {
-    const who = requesterLabel ? ` (${requesterLabel})` : '';
-
     if (riskLevel === 'RESTRICTED') {
       if (this.allowAllWrite) {
         return true;
       }
 
-      if (this.customPromptHandler) {
-        const decision = await this.customPromptHandler({ toolName, details, riskLevel, requesterLabel });
-        if (decision === 'yes') return true;
-        if (decision === 'always') {
-          this.allowAllWrite = true;
-          return true;
-        }
-        return false;
-      }
-
-      console.log(chalk.yellow(`\n🛡️  [Authorization Request]${who} The agent requests modification tool:`));
-      console.log(`   Tool: ${chalk.cyan(toolName)}`);
-      console.log(`   Action: ${chalk.white(details)}`);
-
-      const decision = await InteractiveMenu.select<string>(
-        'Choose how to proceed:',
-        [
-          { title: 'Approve this time (y)', value: 'yes' },
-          { title: 'Deny this time (n)', value: 'no' },
-          { title: 'Always approve for this session (a)', value: 'always' }
-        ],
-        'yes'
-      );
-
-      if (decision === 'yes') {
-        return true;
-      } else if (decision === 'always') {
+      if (!this.promptHandler) return false;
+      const decision = await this.promptHandler({ toolName, details, riskLevel, requesterLabel });
+      if (decision === 'yes') return true;
+      if (decision === 'always') {
         this.allowAllWrite = true;
-        console.log(chalk.green('✔ Write permission granted for the rest of the session.'));
         return true;
-      } else {
-        console.log(chalk.red('✘ Operation denied by user.'));
-        return false;
       }
+      return false;
     }
 
     if (riskLevel === 'DANGEROUS') {
-      if (this.customPromptHandler) {
-        const decision = await this.customPromptHandler({ toolName, details, riskLevel, requesterLabel });
-        return decision === 'yes' || decision === 'always';
-      }
-
-      console.log(chalk.red.bold(`\n⚠️  [CRITICAL AUTHORIZATION REQUIRED]${who} The agent requests system command execution:`));
-      console.log(`   Command: ${chalk.yellow(details)}`);
-
-      const response = await prompts({
-        type: 'confirm',
-        name: 'confirm',
-        message: chalk.red('Do you want to allow execution?'),
-        initial: false
-      });
-
-      if (response.confirm) {
-        console.log(chalk.green('✔ Command authorized.'));
-        return true;
-      } else {
-        console.log(chalk.red('✘ Command rejected.'));
-        return false;
-      }
+      if (!this.promptHandler) return false;
+      const decision = await this.promptHandler({ toolName, details, riskLevel, requesterLabel });
+      return decision === 'yes' || decision === 'always';
     }
 
     return false;

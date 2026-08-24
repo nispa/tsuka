@@ -47,9 +47,19 @@ import { listThinkingTraces, resolveThinkingTrace, buildResumeDirective } from '
 
 import { handleInitCmd } from './initCmd';
 import { launchTui } from '../tui/index';
+import type { WorkflowDispatcher } from '../core/workflowDispatcher';
+import { createCliPermissionPromptHandler } from './permissionPrompt';
 
 export { RoleConfig, TraitConfig, CharacterConfig, TeamConfig };
 export { loadRole, loadTrait, loadCharacter, loadTeam, loadSystemPrompt, listAvailableItems };
+
+function createWorkflowDispatcher(ctx: CommandCtx): WorkflowDispatcher {
+  return {
+    runGoal: (goal) => handleGoal(ctx, goal),
+    runTeam: (teamName, task) => handleTeam(ctx, teamName, task),
+    runCall: (participants, topic) => handleCall(ctx, participants.join(' '), topic),
+  };
+}
 
 // Load environment variables (.env) from app home directory
 dotenv.config({ path: homePath('.env') });
@@ -84,7 +94,7 @@ async function main() {
 
   CLITheme.banner();
 
-  const permissionManager = new PermissionManager();
+  const permissionManager = new PermissionManager(createCliPermissionPromptHandler());
   const registry = await createDefaultRegistry();
 
   // T20.1: MCP servers configured in tsuka.config.json join the registry here.
@@ -134,7 +144,7 @@ async function main() {
     );
     a.setDeferredTools(toolSet.deferred);
     if (typeof commandCtx !== 'undefined') {
-      a.setCommandCtx(commandCtx);
+      a.setWorkflowDispatcher(createWorkflowDispatcher(commandCtx));
     }
     return a;
   };
@@ -250,7 +260,7 @@ async function main() {
     listAvailableCharacters,
     listAvailableItems
   };
-  agent.setCommandCtx(commandCtx);
+  agent.setWorkflowDispatcher(createWorkflowDispatcher(commandCtx));
 
   const commandMap: Record<string, (ctx: CommandCtx, arg: string) => Promise<void>> = {
     '/provider':   handleProvider,

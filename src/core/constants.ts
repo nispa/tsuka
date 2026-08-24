@@ -21,6 +21,16 @@ export const LLM_DEFAULTS = {
   generationTimeoutMs: 120_000,
 };
 
+/** Provider discovery and local model loading defaults. */
+export const DISCOVERY_DEFAULTS = {
+  /** Maximum wait for a provider or context metadata probe. */
+  probeTimeoutMs: 2_500,
+  /** Short follow-up probe used after a provider has already responded. */
+  metadataTimeoutMs: 1_500,
+  /** Model swaps can legitimately take several minutes on local hardware. */
+  warmUpTimeoutMs: 300_000,
+};
+
 /** Persistent-memory defaults (memory package + ConfigManager fallbacks). */
 export const MEMORY_DEFAULTS = {
   /** Facts retained before score-based eviction (memoryMaxFacts). */
@@ -52,6 +62,8 @@ export const AGENT_DEFAULTS = {
    * refines it from real usage.prompt_tokens (T5.1).
    */
   seedCharsPerToken: 3.5,
+  /** Exponential smoothing weight for observed prompt character/token ratios. */
+  tokenRatioSmoothing: 0.2,
   /**
    * Fixed ratio used for estimates outside a live Agent (contextBudget.ts): no usage
    * feedback is available there, so the calibrated value cannot apply.
@@ -61,6 +73,8 @@ export const AGENT_DEFAULTS = {
   maxToolResultTokens: 4000,
   /** Character threshold above which /goal turn outputs are condensed to memory. */
   goalCondensedHistoryCharLimit: 1500,
+  /** Minimum reasoning trace length worth persisting to disk and memory. */
+  reasoningTraceMinChars: 300,
   /**
    * Guard limit on retained session messages; primary compaction is token-driven
    * via historyTokens below (maxHistoryMessages).

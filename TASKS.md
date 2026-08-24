@@ -5,7 +5,9 @@
 >
 > **Regole valide per ogni task:**
 > - Leggere `AGENTS.md` prima di iniziare (architettura e convenzioni).
-> - Commenti e nomi in italiano, codice in inglese. TS strict, CommonJS, no Ink.
+> - Codice, nomi, commenti, docstring, test e schemi tool in inglese. I documenti di
+>   pianificazione per il maintainer (`TASKS.md`, `PLANNING-QUALITA.md`) restano in
+>   italiano. TS strict, CommonJS, no Ink.
 > - Prima di dichiarare completato: `npm test` verde + `npm run build` senza errori.
 > - Non modificare comportamenti non elencati nel task. Se un fix richiede di toccare
 >   altro, segnalarlo nel report finale invece di farlo.
@@ -117,6 +119,17 @@
 
 | T19.8 | ✅ Fatto | **Split `src/core/config.ts` in package `src/core/config/`** (~620 righe): `types.ts` (shape di `tsuka.config.json`: `AppConfig`, `ProviderConfig`, profili sampling, whitelist `SAMPLING_PARAM_KEYS`, `defaultAppConfig()`), `sampling.ts` (`matchesModelId`, `sanitizeSamplingParams` — validazione testabile senza file), `manager.ts` (il `ConfigManager`, con i fallback ora tutti presi da `constants.ts`). Completata la direttiva 9 sul file: centralizzati gli ultimi default ancora letterali (500 messaggi history, 65536 token fallback, 3 round team, timeout execute_command/browse/download, ContextTracker 100, REPL history 100) nei namespace `AGENT_DEFAULTS`/`TOOLS_DEFAULTS`/`CLI_DEFAULTS`. Barrel `index.ts` = zero cambi per gli import esistenti. 78 suite verdi, build e typecheck puliti. |
 | T20.1 | ✅ Fatto | **Client MCP nativo (stdio)**: nuovo package `src/core/mcp/` — `types.ts` (envelope JSON-RPC 2.0, descrittori tool, contratto swappable `IMcpClient`, direttiva 8), `stdioTransport.ts` (spawn del server, framing newline-delimited, correlazione per id, timeout per richiesta, crash/malformed gestiti), `client.ts` (handshake `initialize` → `tools/list` con cursori → `tools/call`), `adapter.ts` (tool MCP → `Tool` TSUKA col prefisso `mcp__<server>__<tool>`, schema inline dal server), `connectMcpServers.ts` (server falliti = warning via logSink, mai blocco dell'avvio; hook 'exit' sincrono che uccide i processi figli). Registry: campo opzionale `Tool.schema` (inline, backward-compatible) usato da `listForLLM`/`executeTool` al posto del caricamento da disco. Config: sezione `mcpServers` + getter `ConfigManager.getMcpServers()`; default in `MCP_DEFAULTS` (`constants.ts`). Wired in CLI e TUI dopo `createDefaultRegistry()`. Mock server JSON-RPC in `tests/fixtures/mock_mcp_server.mjs`; suite nuove `test_mcp_client.ts` (13 casi: handshake, round-trip echo/add, idempotenza close, crash post-init, frame malformati, errore JSON-RPC, isError, timeout) e `test_mcp_registry.ts` (10 casi: nomi prefissati, schema inline in listForLLM, tier gating, validazione su schema remoto, riskLevel default RESTRICTED e override, degradazione server rotto, enabled:false, config assente). 80 suite verdi, build e typecheck puliti. |
+| T21.1 | ✅ Fatto | **Regole di qualità per la manutenibilità**: nuova direttiva 10 in `AGENTS.md` — design piccolo e focalizzato, niente patch fragili/dead code/astrazioni speculative, commenti locali sul *perché*, API pubbliche strette e un solo percorso semantico di produzione. Corretta la regola linguistica storica di `TASKS.md`: artefatti tecnici in inglese, pianificazione maintainer in italiano. Solo documentazione, zero runtime. 81 suite verdi, build e typecheck puliti. |
+| T21.2 | ✅ Fatto | **Confini architetturali verificabili**: nuova suite `test_architecture_boundaries.ts` (4 check) registrata nel runner. Protegge direzione core/tools/safety → mai UI, uso dei barrel provider/memoria da CLI/TUI, confinamento di `StdioTransport` nel package MCP e assenza di nuovi `console.*` nei layer protetti. La prima esecuzione è fallita trovando 5 archi inversi reali; registrati come debito nominato T21.2a/T21.2b, non come eccezioni anonime. 81 suite verdi, build e typecheck puliti. |
+| T21.2a | ✅ Fatto | **Chiuse le eccezioni I/O note**: `PermissionManager` non importa più menu/chalk/prompts e riceve un `PermissionPromptHandler`; la CLI possiede il renderer in `permissionPrompt.ts`, la TUI continua a iniettare il proprio handler. Senza renderer le richieste non-SAFE falliscono chiuse. Il fatal startup TUI passa da `logSink`. La guardia consente `console.*` solo nell'infrastruttura `logSink`/`logBuffer`. Test coda esteso a 10 casi. 81 suite verdi, build e typecheck puliti. |
+| T21.2b | ✅ Fatto | **Invertite le dipendenze tool → CLI**: nuovo contratto core `WorkflowDispatcher`, iniettato nell'`Agent` dalla composition root CLI; i tool `request_goal/team/call` non importano più command handler. Catalogo, risoluzione persona e prompt assembly spostati in `core/personas.ts`; `cli/shared.ts` resta barrel compatibile. La guardia architetturale non contiene più eccezioni di dipendenza. Test escalation esteso a 16 casi con verifica delle tre deleghe. Guide architetturali/didattiche IT/EN aggiornate. 81 suite verdi, build e typecheck puliti. |
+| T21.3 | ✅ Fatto | **Split di `Agent` per invarianti**: mantenuta `Agent` come facade compatibile ed estratte calibrazione token, history/pruning, tool round, macchina ReAct e persistenza del reasoning in moduli focalizzati (`tokenCalibration.ts`, `conversationHistory.ts`, `toolRound.ts`, `reactState.ts`, `reasoningTrace.ts`). Tunable centralizzati, accessor mutabili compatibili preservati, invarianti system/tool history isolate. 82 suite OK, build e typecheck puliti. |
+| T21.4 | ⬜ Da fare | **Contratti stretti per i tool**: separare contratti, catalogo, schema, tier policy ed esecuzione; sostituire gli `any` ai confini senza duplicare il percorso fra tool nativi e MCP. |
+| T21.5 | ⬜ Da fare | **Boundary provider normalizzato**: confinare payload OpenAI-compatible, streaming, tool-call assembly, usage ed error mapping nel package provider, lasciando al core un solo protocollo tipizzato. |
+| T21.6 | ⬜ Da fare | **Composition root condivisa**: alleggerire CLI e TUI con un runtime applicativo stretto e lifecycle idempotente, includendo la chiusura MCP senza esporre process internals. |
+| T21.7 | ⬜ Da fare | **Backend JSON focalizzato**: separare codec/recovery/persistenza atomica dalle operazioni di memoria senza aggiungere contratti speculativi e senza cambiare il formato su disco. |
+| T21.8 | ⬜ Da fare | **Audit delle varianti dietro flag**: classificare configurazione di prodotto, compatibilità, diagnostica e migrazioni concluse; convergere su un solo percorso dove sopravvivono varianti temporanee. |
+| T21.9 | ⬜ Da fare | **Navigabilità di `TASKS.md` e guida didattica**: mantenere un unico file come registro storico, aggiungere indice e viste di stato senza archivi separati, quindi raccontare nella guida le decisioni realmente emerse dal refactoring senza trasformarla in un corso. |
 
 Tutti i task pianificati e di backlog sono completati; la serie T15 (memoria, modelli <30B) è implementata e chiusa con 72 suite di test verdi. Pianificata la serie **T16 (benchmark significativi)** su architettura a due velocità: **`/benchmark` fast** (1 colpo/test, deterministico — resta il gate del tier) e **`/benchmark --deep`** (repliche con variazione del prompt, mediana+varianza, per validazione/calibrazione). Pianificato anche **T17.1** (retrieval BM25/TF-IDF), il primo livello del percorso di apprendimento documentato in `docs/memory.md` §12. Valore di ritorno — i benchmark attuali saturano in alto e non discriminano tra i modelli, ma il gating dei tool (`registry.ts`) dipende proprio da quel tier: se tutto diventa `large` il gating è codice morto. Restano da fare T14.24 (commenti tests/ in inglese), T14.25 (token di protocollo multi-agente) e le serie T16/T17.
 
@@ -3445,3 +3458,274 @@ listForLLM, schema inline rispettato, esecuzione tramite permessi).
 
 **Accettazione:** npm test + npm run build + npm run typecheck verdi;
 nessuna suite esistente modificata; conteggi aggiornati in AGENTS.md.
+
+# FASE 8 — Maintainability & Sharp Core
+
+## Perché questa fase
+
+TSUKA ha già separato memoria, provider, configurazione, strategie collaborative,
+rendering TUI e client MCP. La crescita incrementale ha però lasciato alcuni moduli
+centrali con troppe responsabilità e confini ancora espressi tramite `any`. Questa
+fase non aggiunge funzionalità: riduce il costo di comprendere, verificare e cambiare
+il sistema, mantenendo un solo percorso di produzione e le facade pubbliche esistenti.
+
+Il criterio non è il numero di righe. Uno split è valido solo quando rende esplicita
+un'invariante, restringe una dipendenza o isola una policy che oggi ha più motivi per
+cambiare. Vietati framework DI, astrazioni speculative e coppie permanenti
+`legacy/new` dietro flag.
+
+## T21.1 — Regole di qualità per la manutenibilità
+
+**Dipende da:** nessuno · **Sforzo:** basso · **Priorità:** alta
+
+Aggiungere ad `AGENTS.md` una direttiva vincolante che richieda implementazioni
+piccole e focalizzate, il design minimo che risolve la causa, commenti locali e
+compatti sulle decisioni non evidenti, API pubbliche strette e un unico percorso
+semantico di produzione. Adattare il principio degli internals al dominio TSUKA:
+CLI e TUI non devono conoscere wire format del provider, storage concreto, processi
+MCP o stato specifico dei backend.
+
+Allineare la regola linguistica in testa a `TASKS.md`: gli artefatti tecnici sono in
+inglese; i documenti di pianificazione per il maintainer restano in italiano.
+
+**Fuori scope:** nessuna modifica runtime o riorganizzazione di moduli.
+
+**Accettazione:** diff limitato a `AGENTS.md` e `TASKS.md`; `npm test`,
+`npm run build` e `npm run typecheck` verdi.
+
+**Esito:** direttiva 10 aggiunta e regola linguistica riconciliata. Il conteggio suite
+è stato portato a 81 dopo T21.2. Nessun file runtime modificato. Gate finali:
+81 suite OK, build e typecheck puliti.
+
+## T21.2 — Confini architetturali verificabili
+
+**Dipende da:** T21.1 · **Sforzo:** basso · **Priorità:** alta
+
+Mappare gli import reali fra `src/cli`, `src/tui`, `src/core`, `src/tools` e
+`src/safety`. Aggiungere una suite architetturale data-driven che analizzi gli import
+statici e impedisca almeno queste regressioni:
+
+- `src/core`, `src/tools` e `src/safety` non importano CLI o TUI;
+- CLI e TUI non importano implementazioni concrete interne di memoria e provider
+  quando esiste il barrel/contratto pubblico;
+- i dettagli del trasporto MCP restano confinati nel package MCP e nella sua
+  composition root;
+- nessun nuovo accesso diretto a `console.*` entra nei layer vietati.
+
+La suite deve descrivere dipendenze proibite, non congelare ogni import esistente.
+Eventuali violazioni preesistenti vanno prima caratterizzate e trasformate in task:
+non creare allowlist anonime che le rendano permanenti.
+
+**Fuori scope:** dependency-injection framework, path alias, spostamenti massivi e
+cambiamenti runtime.
+
+**Accettazione:** nuova suite registrata in `tests/run_tests.ts`; una prima esecuzione
+su stato reale dimostra che intercetta e rende leggibili le dipendenze vietate; le
+violazioni trovate diventano task nominati con proprietario; tre gate verdi.
+
+**Esito:** suite data-driven con 4 check. La prima corsa ha chiuso 80 suite e fallito
+solo la nuova, esponendo gli import tool/safety → CLI. I cinque archi sono ammessi
+temporaneamente per identità esatta e collegati a T21.2a/T21.2b: qualunque nuovo
+attraversamento fallisce. Individuate anche le quattro sedi di `console.*`: due
+infrastrutturali (`logSink`, `logBuffer`) e due da migrare in T21.2a. Gate finali:
+81 suite OK, build e typecheck puliti.
+
+## T21.2a — Chiudere le eccezioni I/O note
+
+**Dipende da:** T21.2 · **Sforzo:** basso · **Priorità:** alta
+
+L'audit iniziale trova due violazioni runtime preesistenti della direttiva I/O:
+`src/safety/permissions.ts` rende direttamente i prompt con `console.log`, mentre
+`src/tui/index.ts` usa `console.error` per il fatal error di startup. Migrarle verso
+un contratto di rendering/iniezione coerente con i rispettivi proprietari. Le sole
+eccezioni permanenti restano `logSink.ts` e `logBuffer.ts`, perché implementano il
+boundary di compatibilità con la console stessa.
+
+**Accettazione:** la suite architetturale elimina le due eccezioni di debito dalla
+lista nominata; comportamento interattivo CLI e TUI invariato; tre gate verdi.
+
+**Esito:** estratto `createCliPermissionPromptHandler` in `src/cli/`; safety conserva
+solo policy, coda e stato `always`. In assenza di handler, RESTRICTED e DANGEROUS
+ritornano `false`, mentre SAFE resta invariato. `src/tui/index.ts` usa `logSink` per
+il fatal error. Rimosse entrambe le eccezioni dalla guardia: restano soltanto i due
+file che implementano il boundary console. 81 suite OK, build e typecheck puliti.
+
+## T21.2b — Invertire le dipendenze tool → CLI
+
+**Dipende da:** T21.2 · **Sforzo:** medio · **Priorità:** alta
+
+L'audit iniziale trova cinque archi inversi esistenti: `requestCall.ts`,
+`requestGoal.ts` e `requestTeam.ts` importano direttamente i command handler CLI;
+`spawnAgent.ts` importa il loader persona da `cli/shared.ts`; `permissions.ts`
+importa il renderer `cli/ui.ts`. Introdurre contratti applicativi stretti per il
+dispatch dei workflow e spostare la risoluzione di ruoli/personaggi in un package
+neutro consumato sia dalla UI sia dai tool. La migrazione del prompt dei permessi
+resta di proprietà di T21.2a.
+
+Rimuovere dalla suite architetturale ciascuna eccezione nominata nello stesso commit
+che elimina l'arco. Non sostituire gli import con callback `any` o service locator
+globali: la dipendenza deve essere visibile nel contesto di esecuzione tipizzato.
+
+**Accettazione:** zero import da `src/tools`/`src/safety` verso `src/cli` o `src/tui`;
+tool di escalation, spawn, prompt interattivi e depth guard invariati; tre gate verdi.
+
+**Esito:** `WorkflowDispatcher` espone soltanto `runGoal`, `runTeam` e `runCall`; la
+CLI costruisce l'adapter sui command handler e lo inietta nell'`Agent`, che lo passa
+al contesto dei tool. Rimossi `commandCtx?: any` da `Agent`, `ToolRegistry` e
+`ToolExecutionContext`. Il subsystem persona è ora `src/core/personas.ts`; il vecchio
+path CLI re-esporta l'API per compatibilità. La suite escalation verifica sia il
+depth guard sia le tre deleghe reali. Zero eccezioni di dipendenza nella guardia,
+81 suite OK, build e typecheck puliti.
+
+## T21.3 — Split di `Agent` per invarianti
+
+**Dipende da:** T21.2 · **Sforzo:** alto · **Priorità:** alta
+
+Mantenere `Agent` come facade pubblica compatibile. Prima aggiungere characterization
+test sulle invarianti del turno; poi estrarre in passi indipendenti:
+
+1. calibrazione token e contabilizzazione degli schemi come logica pura;
+2. gestione della history, preservando coppie `tool_call`/risposta durante pruning e
+   compressione;
+3. preparazione, parsing ed esecuzione di un tool round;
+4. macchina del ciclo ReAct e decisioni `continue/conclude/abort`;
+5. persistenza delle reasoning trace.
+
+Ogni estrazione deve rimuovere il codice originale nello stesso task: nessun doppio
+percorso. Commentare vicino al codice solo ordering, ownership e recovery non ovvi.
+
+**Accettazione:** costruttore e metodi pubblici di `Agent` compatibili; eventi,
+streaming, abort, stats, reasoning effort, deferred tools, max rounds e retry
+invariati; nessun nuovo `any`; tre gate verdi dopo ogni sotto-step chiuso.
+
+**Avanzamento T21.3.1 — calibrazione estratta:** aggiunto `src/core/tokenCalibration.ts`
+con `TokenCalibrationState`, `createTokenCalibrationState`, `observePromptTokens` e
+`estimateTokensFromChars`. `Agent` conserva soltanto l'orchestrazione e delega la
+policy di aggiornamento; `tokenRatioSmoothing` è ora in `AGENT_DEFAULTS` invece di
+essere un letterale privato. `tests/test_token_calibration.ts` aggiunge tre casi
+sul contratto puro (input invalido, osservazione, stima). Il comportamento della
+facade resta invariato: 81 suite OK, build e typecheck puliti. Restano da estrarre
+history, tool round, ciclo ReAct e reasoning trace.
+
+**Avanzamento T21.3.2 — history estratta:** aggiunto `src/core/conversationHistory.ts`
+con ownership dell'array mutabile, aggiornamento del system prompt e pruning per
+limite messaggi/token. `Agent.pruneHistory()` delega la decisione e conserva soltanto
+la stima calibrata, il conteggio degli schemi tool e il rendering diagnostico. Il
+compatibility accessor permette ai consumer esistenti di continuare a usare
+`getMessages().push(...)` e il test legacy che sostituisce `messages` via reflection.
+I test mirati di fase 2, prompt overhead e multi-skill sono verdi; build e typecheck
+sono verdi. Il gate completo del task resta da eseguire dopo i prossimi sotto-passi.
+
+**Avanzamento T21.3.3 — tool round estratto:** aggiunto `src/core/toolRound.ts`
+con un contratto `ToolRoundContext` stretto e una funzione `executeToolRound` che
+mantiene l'ordine delle chiamate, la gestione dell'abort, gli eventi `tool_start` /
+`tool_end`, il passaggio di provider/permessi/dispatcher e la costruzione dei
+messaggi `tool`. `Agent` conserva il ciclo ReAct e aggiunge i messaggi risultanti
+dalla funzione, senza duplicare il percorso precedente. Test mirati di provider,
+interrupt, sanitizzazione e deferred tools verdi; build e typecheck verdi. Il gate
+completo del task resta da eseguire dopo l'estrazione del ciclo ReAct e della trace.
+
+**Avanzamento T21.3.4 — reasoning trace estratta:** aggiunto
+`src/core/reasoningTrace.ts`; il modulo applica la soglia centralizzata, crea il file
+con naming dell'agente e stato `interrupted`, registra il puntatore in `MemoryStore`
+e gestisce gli errori tramite `logSink`. `Agent` conserva soltanto il piccolo adapter
+che passa il proprio label. `tests/test_reasoning_memory.ts` e
+`tests/test_continue_command.ts` restano verdi; build e typecheck verdi. Il gate
+completo del task resta da eseguire dopo la macchina ReAct.
+
+**Avanzamento T21.3.5 — stato ReAct estratto:** aggiunto `src/core/reactState.ts`
+per confinare contatore dei tool round, memoria del primo tool call, nudge per risposta
+testuale senza tool e override temporaneo del reasoning effort. `Agent` mantiene il
+controllo del flusso, ma delega le decisioni pure `accept/nudge` e l'aggiornamento del
+round; il testo del nudge e l'ordine degli eventi restano invariati. Aggiunta
+`tests/test_react_state.ts`; gate finale: **82 suite OK, `npm run build` e
+`npm run typecheck` verdi**. Il thinking continua a essere persistito come prima e
+`/continue` conserva il proprio comportamento.
+
+## T21.4 — Contratti stretti e responsabilità del Tool Registry
+
+**Dipende da:** T21.2 · **Sforzo:** medio · **Priorità:** alta
+
+Separare dal facade `ToolRegistry` i contratti dei tool, la risoluzione degli schemi,
+la validazione, la tier policy e l'esecuzione autorizzata. Nativi, tool dinamici e MCP
+devono continuare a percorrere la stessa pipeline. Sostituire ai confini gli `any` con
+`unknown`, tipi JSON minimi, `ILLMProvider`, `ChatStats` e un contratto ristretto per
+il contesto dei comandi.
+
+**Fuori scope:** validatore JSON Schema completo, modifica dei risk level, modifica
+dei tier o dei payload visibili al modello.
+
+**Accettazione:** facade backward-compatible, schema inline MCP invariato, permessi e
+tier applicati una sola volta, test esistenti non indeboliti, tre gate verdi.
+
+## T21.5 — Boundary provider normalizzato
+
+**Dipende da:** T21.2 · **Sforzo:** medio · **Priorità:** media
+
+Confinare nel package provider costruzione del payload, compatibilità dei campi di
+reasoning, normalizzazione streaming/non-streaming, assembly delle tool call, usage,
+logprobs ed error mapping. Il core deve consumare esclusivamente i tipi del contratto
+`ILLMProvider`, senza conoscere shape dell'SDK OpenAI-compatible.
+
+**Accettazione:** nessun wire-format cast fuori dal package provider; payload e
+telemetria invariati nei test; retry e timeout conservano ordering e cleanup; tre
+gate verdi.
+
+## T21.6 — Composition root condivisa e lifecycle
+
+**Dipende da:** T21.3, T21.4, T21.5 · **Sforzo:** medio · **Priorità:** media
+
+Ridurre `src/cli/index.ts` e l'avvio TUI a caricamento config, costruzione delle
+dipendenze, binding degli eventi e shutdown. Introdurre un runtime applicativo
+stretto con `close()` idempotente; il lifecycle MCP appartiene alla composition root,
+non ad `Agent`, registry o renderer.
+
+**Accettazione:** CLI e TUI condividono la stessa costruzione del core; nessun output
+core diretto al terminale; shutdown normale, segnale e startup parziale chiudono una
+sola volta le risorse; tre gate verdi.
+
+## T21.7 — Backend JSON focalizzato
+
+**Dipende da:** T21.2 · **Sforzo:** medio · **Priorità:** media
+
+Completare lo split iniziato in T19.5 estraendo solo responsabilità reali ancora
+mescolate in `JsonMemoryBackend`: codec/normalizzazione, recovery da corruzione e
+persistenza atomica. `MemoryBackend` resta l'unico contratto pubblico; nessuna nuova
+interfaccia per helper che hanno un solo consumatore.
+
+**Accettazione:** formato e ordering di `memory.json` invariati nei casi normali;
+backup, recovery, deduplica, retrieval ed eviction invariati; tre gate verdi.
+
+## T21.8 — Audit delle varianti semantiche dietro flag
+
+**Dipende da:** T21.2 · **Sforzo:** medio · **Priorità:** bassa
+
+Inventariare flag e configurazioni e classificarli come prodotto, compatibilità,
+diagnostica/test o migrazione temporanea. Conservare le opzioni pubbliche; confinare
+la compatibilità nel backend proprietario; rimuovere solo rami temporanei dimostrati
+morti. Ogni rimozione che cambia configurazione richiede un task di migrazione
+dedicato, non una pulizia silenziosa.
+
+**Accettazione:** inventario con proprietario e test; nessuna coppia permanente
+old/new non giustificata; tre gate verdi per ogni rimozione.
+
+## T21.9 — Rendere navigabile `TASKS.md` e aggiornare la guida didattica
+
+**Dipende da:** T21.3, T21.4, T21.5, T21.6, T21.7, T21.8 · **Sforzo:** medio ·
+**Priorità:** media
+
+`TASKS.md` resta deliberatamente un unico file: è insieme backlog e diario tecnico e
+la continuità cronologica ha valore didattico. Migliorarne la navigabilità senza
+archivi separati o fonti duplicate:
+
+- mantenere in testa regole, stato corrente e un indice delle fasi;
+- aggiungere link interni alle fasi e una vista compatta dei soli task aperti;
+- preservare anchor e riferimenti consumati da README e Wiki;
+- documentare una sola procedura per aprire e chiudere un task nello stesso file.
+
+Solo dopo i refactoring aggiornare la guida didattica IT/EN con ciò che è realmente
+emerso: split per invarianti, facade compatibili, contratti stretti, commenti sul
+perché e un solo percorso di produzione. Non convertirla in lezioni o esercizi.
+
+**Accettazione:** un solo `TASKS.md`, nessun task storico perso; link e Wiki verdi;
+backlog corrente rapidamente leggibile; guide IT/EN allineate; tre gate verdi.

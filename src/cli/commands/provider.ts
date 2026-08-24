@@ -4,8 +4,29 @@ import { runBenchmark, ModelProfile } from '../../core/modelProfile';
 import { probeProvider, warmUpModel, isLocalUrl, detectContextWindow } from '../../core/discovery';
 import { CLITheme, InteractiveMenu } from '../ui';
 import { notifyIfUnprofiled } from '../shared';
+import { filterOpenRouterModels, ModelCatalogFilter } from '../../core/modelCatalog';
 import chalk from 'chalk';
 import prompts from 'prompts';
+
+const CHANGE_PROVIDER = '__change_provider__';
+const SHOW_FREE_MODELS = '__show_free_models__';
+const SHOW_ALL_MODELS = '__show_all_models__';
+
+function formatProviderName(name: string): string {
+  if (name === 'openrouter') return 'OpenRouter';
+  if (name === 'ollama') return 'Ollama';
+  if (name === 'unsloth') return 'Unsloth Studio';
+  return name;
+}
+
+function activateProvider(ctx: CommandCtx, target: string): boolean {
+  const config = ctx.configManager.getProviderConfig(target);
+  if (!config) return false;
+  ctx.configManager.setActiveProvider(target);
+  ctx.provider.reconfigure(config.baseUrl, ctx.configManager.getApiKey(), config.model);
+  ctx.agent.current = ctx.recreateAgent();
+  return true;
+}
 
 /**
  * Sends the real warm-up request (a 1-token completion, forcing the server to load the model)
@@ -71,38 +92,33 @@ async function maybeWarmUp(ctx: CommandCtx, selectedModel: string, loadedModel: 
 
 export async function handleProvider(ctx: CommandCtx, arg: string): Promise<void> {
   let targetProvider = arg.toLowerCase();
+  const providerNames = ctx.configManager.getProviderNames();
 
   if (!targetProvider) {
     const currentProvider = ctx.configManager.getActiveProviderName();
     console.log();
-    const selected = await InteractiveMenu.select<'ollama' | 'openrouter' | 'unsloth' | string>(
+    const selected = await InteractiveMenu.select<string>(
       'Select active provider (use arrow keys):',
-      [
-        { title: `Ollama ${currentProvider === 'ollama' ? '(selected)' : ''}`, value: 'ollama' },
-        { title: `OpenRouter ${currentProvider === 'openrouter' ? '(selected)' : ''}`, value: 'openrouter' },
-        { title: `Unsloth Studio ${currentProvider === 'unsloth' ? '(selected)' : ''}`, value: 'unsloth' }
-      ],
+      providerNames.map((name) => ({
+        title: `${formatProviderName(name)} ${currentProvider === name ? '(selected)' : ''}`,
+        value: name,
+      })),
       currentProvider
     );
     if (!selected) return;
     targetProvider = selected;
   }
 
-  if (targetProvider !== 'ollama' && targetProvider !== 'openrouter' && targetProvider !== 'unsloth') {
-    CLITheme.error('Please specify a valid provider: /provider ollama, openrouter, or unsloth');
+  if (!providerNames.includes(targetProvider)) {
+    CLITheme.error(`Please specify a configured provider: ${providerNames.join(', ')}`);
     return;
   }
 
-  const target = targetProvider as 'ollama' | 'openrouter' | 'unsloth';
-  ctx.configManager.setActiveProvider(target);
+  activateProvider(ctx, targetProvider);
   const newConfig = ctx.configManager.getActiveProviderConfig();
+  CLITheme.success(`Provider changed to: ${chalk.green(targetProvider.toUpperCase())}`);
 
-  ctx.provider.reconfigure(newConfig.baseUrl, ctx.configManager.getApiKey(), newConfig.model);
-
-  ctx.agent.current = ctx.recreateAgent();
-  CLITheme.success(`Provider changed to: ${chalk.green(target.toUpperCase())}`);
-
-  const checkSpinner = CLITheme.createSpinner(`Checking connection to ${target}...`);
+  const checkSpinner = CLITheme.createSpinner(`Checking connection to ${targetProvider}...`);
   checkSpinner.start();
   try {
     const models = await ctx.provider.listModels();
@@ -116,24 +132,51 @@ export async function handleProvider(ctx: CommandCtx, arg: string): Promise<void
     CLITheme.success(`Active model: ${chalk.green(ctx.provider.getCurrentModel())}`);
     notifyIfUnprofiled(ctx.provider.getCurrentModel(), ctx.agent.current.getReasoningEffort());
   } catch (err: any) {
-    checkSpinner.fail(chalk.red(`Could not verify connection for ${target}.`));
+    checkSpinner.fail(chalk.red(`Could not verify connection for ${targetProvider}.`));
     CLITheme.warning('Provider configuration updated, but server is not responding.');
   }
 }
 
-async function pickModel(ctx: CommandCtx): Promise<boolean> {
+async function pickProviderForModels(ctx: CommandCtx): Promise<boolean> {
+  const currentProvider = ctx.configManager.getActiveProviderName();
+  const providerNames = ctx.configManager.getProviderNames();
+  console.log();
+  const selected = await InteractiveMenu.select<string>(
+    'Select the provider whose models you want to use:',
+    providerNames.map((name) => ({
+      title: `${formatProviderName(name)} ${currentProvider === name ? '(selected)' : ''}`,
+      value: name,
+    })),
+    currentProvider
+  );
+  if (!selected || !activateProvider(ctx, selected)) return false;
+  CLITheme.success(`Provider changed to: ${chalk.green(selected.toUpperCase())}`);
+  return pickModel(ctx, false);
+}
+
+async function pickModel(
+  ctx: CommandCtx,
+  offerProviderSwitch = true,
+  catalogFilter: ModelCatalogFilter = 'all'
+): Promise<boolean> {
   const spinner = CLITheme.createSpinner('Fetching available models...');
   spinner.start();
   try {
     const name = ctx.configManager.getActiveProviderName();
     const scan = await probeProvider(name, ctx.configManager.getActiveProviderConfig(), ctx.configManager.getApiKey());
-    const models = scan ? scan.models : await ctx.provider.listModels();
+    const allModels = scan ? scan.models : await ctx.provider.listModels();
+    const models = filterOpenRouterModels(name, allModels, catalogFilter, scan?.zeroPricedModels);
     const loadedModel = scan?.loadedModel ?? null;
-    ctx.availableModels.current = models;
+    ctx.availableModels.current = allModels;
     spinner.succeed(chalk.green('Models retrieved!'));
 
     if (models.length === 0) {
+      if (name === 'openrouter' && catalogFilter === 'free') {
+        CLITheme.warning('OpenRouter returned no free models.');
+        return pickModel(ctx, offerProviderSwitch, 'all');
+      }
       CLITheme.warning('No models available on this server.');
+      if (offerProviderSwitch) return pickProviderForModels(ctx);
       return false;
     }
 
@@ -141,16 +184,28 @@ async function pickModel(ctx: CommandCtx): Promise<boolean> {
     console.log();
     const selectedModel = await InteractiveMenu.select<string>(
       'Select model to activate (use arrow keys):',
-      models.map((m) => {
+      [
+        ...(offerProviderSwitch ? [{ title: chalk.cyan('⇄ Change provider…'), value: CHANGE_PROVIDER }] : []),
+        ...(name === 'openrouter' ? [{
+          title: catalogFilter === 'free'
+            ? chalk.cyan('◉ Show all OpenRouter models')
+            : chalk.green('○ Free models only'),
+          value: catalogFilter === 'free' ? SHOW_ALL_MODELS : SHOW_FREE_MODELS,
+        }] : []),
+        ...models.map((m) => {
         const tags = [
           m === loadedModel ? chalk.green('● loaded') : '',
           m === current ? chalk.gray('(selected)') : '',
         ].filter(Boolean).join(' ');
         return { title: tags ? `${m} ${tags}` : m, value: m };
-      }),
+        }),
+      ],
       current
     );
 
+    if (selectedModel === CHANGE_PROVIDER) return pickProviderForModels(ctx);
+    if (selectedModel === SHOW_FREE_MODELS) return pickModel(ctx, offerProviderSwitch, 'free');
+    if (selectedModel === SHOW_ALL_MODELS) return pickModel(ctx, offerProviderSwitch, 'all');
     if (selectedModel) {
       const oldModel = ctx.provider.getCurrentModel();
       ctx.provider.setCurrentModel(selectedModel);
@@ -169,6 +224,7 @@ async function pickModel(ctx: CommandCtx): Promise<boolean> {
   } catch (err: any) {
     spinner.fail(chalk.red('Failed to fetch models list.'));
     CLITheme.error(err.message);
+    if (offerProviderSwitch) return pickProviderForModels(ctx);
   }
   return false;
 }

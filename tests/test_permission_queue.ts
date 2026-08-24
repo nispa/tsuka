@@ -19,6 +19,7 @@
  */
 import { PermissionManager } from '../src/safety/permissions';
 import { InteractiveMenu } from '../src/cli/ui';
+import { createCliPermissionPromptHandler } from '../src/cli/permissionPrompt';
 
 let passed = 0;
 let failed = 0;
@@ -71,7 +72,7 @@ async function main() {
       return selectCalls === 1 ? d1.promise : d2.promise;
     };
 
-    const pm = new PermissionManager();
+    const pm = new PermissionManager(createCliPermissionPromptHandler());
 
     const p1 = pm.checkPermission('write_file', 'file A', 'RESTRICTED', 'Agente-A');
     const p2 = pm.checkPermission('write_file', 'file B', 'RESTRICTED', 'Agente-B');
@@ -98,7 +99,7 @@ async function main() {
   // T2: il prompt mostra quale agente sta chiedendo (requesterLabel)
   {
     (InteractiveMenu as any).select = async () => 'yes';
-    const pm = new PermissionManager();
+    const pm = new PermissionManager(createCliPermissionPromptHandler());
 
     const { logs } = await captureLogs(() => pm.checkPermission('delete_file', 'x.txt', 'RESTRICTED', 'Agente-C'));
 
@@ -110,7 +111,7 @@ async function main() {
   // T3: nessun cambio per il caso singolo — una sola richiesta RESTRICTED si comporta come prima
   {
     (InteractiveMenu as any).select = async () => 'yes';
-    const pm = new PermissionManager();
+    const pm = new PermissionManager(createCliPermissionPromptHandler());
 
     const approved = await pm.checkPermission('write_file', 'solo.txt', 'RESTRICTED');
     check('PQ3a', approved === true, 'richiesta singola approvata normalmente (nessun cambio di comportamento)');
@@ -135,7 +136,7 @@ async function main() {
       return 'no';
     };
 
-    const pm = new PermissionManager();
+    const pm = new PermissionManager(createCliPermissionPromptHandler());
     const p1 = pm.checkPermission('write_file', 'file A', 'RESTRICTED', 'Agente-A');
     const p2 = pm.checkPermission('write_file', 'file B', 'RESTRICTED', 'Agente-B');
 
@@ -149,6 +150,10 @@ async function main() {
 
     InteractiveMenu.select = originalSelect;
   }
+
+  const failClosedManager = new PermissionManager();
+  const failClosed = await failClosedManager.checkPermission('write_file', 'unattended.txt', 'RESTRICTED');
+  check('PQ5', !failClosed, 'a non-safe request without an injected prompt handler fails closed');
 
   console.log(`\n=== Risultato: ${passed} passati, ${failed} falliti ===`);
   process.exit(failed > 0 ? 1 : 0);

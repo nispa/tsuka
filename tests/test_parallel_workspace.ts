@@ -30,7 +30,6 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { MockLLMProvider, mockToolCall } from './mocks/mockProvider';
-import { InteractiveMenu } from '../src/cli/ui';
 
 // I branch paralleli sono etichettati con il nome dell'agente: qui contano i RUOLI
 // coinvolti, non chi li interpreta nel catalogo installato. La fixture va importata
@@ -177,9 +176,6 @@ async function main() {
 
   // ── Parte 2: end-to-end con /goal, MockLLMProvider e write_file reale ─────
 
-  const originalSelect = InteractiveMenu.select;
-  (InteractiveMenu as any).select = async () => 'yes'; // auto-approva i prompt RESTRICTED (write_file)
-
   // Import dinamico DOPO aver impostato TSUKA_HOME (come in test_workspace_jail.ts)
   const { handleGoal } = await import('../src/cli/commands/goal');
   const { buildMockCtx } = await import('./mocks/mockCtx');
@@ -197,6 +193,7 @@ async function main() {
       { content: 'Fatto.\nSTATO: COMPLETATO' },
     ]);
     const ctx = buildMockCtx(provider);
+    ctx.permissionManager.setPromptHandler(async () => 'yes');
     ctx.registry.register(writeFileTool);
     // T9.10: parallelExecutionEnabled è false di default (una singola GPU non trae
     // vantaggio dal parallelismo). Questo test valida PROPRIO il meccanismo di
@@ -238,6 +235,7 @@ async function main() {
       { content: 'Fatto.\nSTATO: COMPLETATO' },
     ]);
     const ctx = buildMockCtx(provider);
+    ctx.permissionManager.setPromptHandler(async () => 'yes');
     ctx.registry.register(writeFileTool);
     // T9.10: parallelExecutionEnabled è false di default (una singola GPU non trae
     // vantaggio dal parallelismo). Questo test valida PROPRIO il meccanismo di
@@ -259,7 +257,6 @@ async function main() {
     );
   }
 
-  InteractiveMenu.select = originalSelect;
 
   // Pulizia
   try { fs.rmSync(tmpHome, { recursive: true, force: true }); } catch {}

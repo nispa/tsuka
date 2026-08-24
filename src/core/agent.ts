@@ -9,9 +9,12 @@ import { logSink } from './logSink';
 import { ChatMessage } from './types';
 import { AGENT_DEFAULTS } from './constants';
 import { calculateReasoningBudget, sumMessageChars } from './contextBudget';
-import * as fs from 'fs';
-import * as path from 'path';
-import { homePath } from './apphome';
+import type { WorkflowDispatcher } from './workflowDispatcher';
+import { createTokenCalibrationState, estimateTokensFromChars, observePromptTokens, TokenCalibrationState } from './tokenCalibration';
+import { ConversationHistory } from './conversationHistory';
+import { executeToolRound } from './toolRound';
+import { persistReasoningTrace } from './reasoningTrace';
+import { createReActState, evaluateTextResponse, markToolRound } from './reactState';
 
 /**
  * Minimal interface shape for reasoning effort cascade resolution (T8.10).
@@ -90,14 +93,13 @@ export class Agent implements ToolSetController {
   private provider: ILLMProvider;
   private registry: ToolRegistry;
   private permissionManager: PermissionManager;
-  private messages: ChatMessage[] = [];
+  private history = new ConversationHistory();
   private allowedTools?: string[];
   private deferredTools: string[] = [];
   private maxHistoryMessages: number;
   private maxHistoryTokens: number;
   private maxToolRounds: number;
-  private charsPerToken = AGENT_DEFAULTS.seedCharsPerToken;
-  private static readonly RATIO_SMOOTHING = 0.2;
+  private tokenCalibration: TokenCalibrationState = createTokenCalibrationState();
   private agentLabel?: string;
   private reasoningEffort?: ReasoningEffort;
   private acceptTextOnlyIf?: (content: string) => boolean;
@@ -130,11 +132,20 @@ export class Agent implements ToolSetController {
     this.clearHistory(systemPrompt);
   }
 
-  private commandCtx?: any;
+  private workflowDispatcher?: WorkflowDispatcher;
 
-  /** Sets CLI command context (used by escalation tools like request_goal/team/call). */
-  setCommandCtx(ctx: any): void {
-    this.commandCtx = ctx;
+  /** Compatibility accessor: callers historically receive and mutate this array. */
+  private get messages(): ChatMessage[] {
+    return this.history.messages;
+  }
+
+  private set messages(messages: ChatMessage[]) {
+    this.history.replace(messages);
+  }
+
+  /** Connects escalation tools to the active application's workflow runner. */
+  setWorkflowDispatcher(dispatcher: WorkflowDispatcher | undefined): void {
+    this.workflowDispatcher = dispatcher;
   }
 
   setToolRoundsPromptHandler(handler: ToolRoundsPromptHandler | undefined): void {
@@ -154,15 +165,12 @@ export class Agent implements ToolSetController {
   }
 
   private estimateTokens(m: Pick<ChatMessage, 'content' | 'tool_calls'>): number {
-    return Math.ceil(Agent.messageChars(m) / this.charsPerToken);
+    return estimateTokensFromChars(Agent.messageChars(m), this.tokenCalibration);
   }
 
   private calibrateCharsPerToken(sentMessages: Array<Pick<ChatMessage, 'content' | 'tool_calls'>>, promptTokens?: number): void {
-    if (!promptTokens || promptTokens <= 0) return;
     const chars = sentMessages.reduce((sum, m) => sum + Agent.messageChars(m), 0) + this.toolsChars;
-    const observed = chars / promptTokens;
-    if (!Number.isFinite(observed) || observed <= 0) return;
-    this.charsPerToken = this.charsPerToken * (1 - Agent.RATIO_SMOOTHING) + observed * Agent.RATIO_SMOOTHING;
+    observePromptTokens(this.tokenCalibration, chars, promptTokens);
   }
 
   private updateToolsSize(toolsForRequest: unknown[] | undefined): void {
@@ -178,7 +186,7 @@ export class Agent implements ToolSetController {
   }
 
   private estimateToolsTokens(): number {
-    return this.toolsChars > 0 ? Math.ceil(this.toolsChars / this.charsPerToken) : 0;
+    return this.toolsChars > 0 ? estimateTokensFromChars(this.toolsChars, this.tokenCalibration) : 0;
   }
 
   getMessages() {
@@ -186,9 +194,7 @@ export class Agent implements ToolSetController {
   }
 
   clearHistory(systemPrompt: string): void {
-    this.messages = [
-      { role: 'system', content: systemPrompt }
-    ];
+    this.history.clear(systemPrompt);
   }
 
   /**
@@ -196,11 +202,7 @@ export class Agent implements ToolSetController {
    */
   setActiveSkill(systemPrompt: string, allowedTools?: string[]): void {
     this.allowedTools = allowedTools;
-    if (this.messages.length > 0 && this.messages[0].role === 'system') {
-      this.messages[0].content = systemPrompt;
-    } else {
-      this.messages.unshift({ role: 'system', content: systemPrompt });
-    }
+    this.history.setSystemPrompt(systemPrompt);
   }
 
   getAllowedTools(): string[] | undefined {
@@ -251,44 +253,23 @@ export class Agent implements ToolSetController {
    * Prunes history to stay within message count and estimated token budgets.
    */
   pruneHistory(): number {
-    let start = 1;
-    if (this.messages.length > this.maxHistoryMessages) {
-      start = this.messages.length - (this.maxHistoryMessages - 1);
-    }
-
-    if (this.maxHistoryTokens > 0) {
-      let total = this.estimateToolsTokens() + this.estimateTokens(this.messages[0]);
-      for (let i = start; i < this.messages.length; i++) {
-        total += this.estimateTokens(this.messages[i]);
-      }
-      while (total > this.maxHistoryTokens && start < this.messages.length - 3) {
-        total -= this.estimateTokens(this.messages[start]);
-        start++;
-      }
-    }
-
-    while (start < this.messages.length - 1 && this.messages[start].role === 'tool') {
-      start++;
-    }
-
-    const removed = start - 1;
-    if (removed <= 0) {
-      return 0;
-    }
-
-    this.messages = [this.messages[0], ...this.messages.slice(start)];
-    logSink.log(
-      chalk.gray(`[History: pruned ${removed} older messages to stay within context window (~${this.maxHistoryTokens} tokens)]`)
+    return this.history.prune(
+      this.maxHistoryMessages,
+      this.maxHistoryTokens,
+      this.estimateToolsTokens(),
+      (message) => this.estimateTokens(message),
+      (removed) => logSink.log(
+        chalk.gray(`[History: pruned ${removed} older messages to stay within context window (~${this.maxHistoryTokens} tokens)]`)
+      )
     );
-    return removed;
   }
 
   estimateMessagesTokens(msgs: Array<Pick<ChatMessage, 'content' | 'tool_calls'>>): number {
-    return Math.ceil(sumMessageChars(msgs) / this.charsPerToken);
+    return estimateTokensFromChars(sumMessageChars(msgs), this.tokenCalibration);
   }
 
   getCharsPerTokenRatio(): number {
-    return this.charsPerToken;
+    return this.tokenCalibration.charsPerToken;
   }
 
   estimateTotalContextTokens(): number {
@@ -375,36 +356,8 @@ export class Agent implements ToolSetController {
     return { saved, compressedCount: toCompress.length };
   }
 
-  private static readonly MIN_REASONING_TO_PERSIST = 300;
-
-  /**
-   * Persists long reasoning chains to disk under `memory/thinking/` and adds an index pointer to MemoryStore.
-   */
   private persistReasoningTrace(text: string, taskExcerpt: string, interrupted: boolean): void {
-    const trimmed = (text || '').trim();
-    if (trimmed.length < Agent.MIN_REASONING_TO_PERSIST) return;
-    try {
-      const dir = homePath('memory', 'thinking');
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const label = (this.agentLabel || 'agent').replace(/[^a-z0-9_-]+/gi, '-').slice(0, 30) || 'agent';
-      const filename = `${stamp}-${label}${interrupted ? '-interrupted' : ''}.md`;
-      fs.writeFileSync(path.join(dir, filename), trimmed, 'utf-8');
-
-      const shortTask = (taskExcerpt || '').replace(/\s+/g, ' ').trim().slice(0, 120);
-      const status = interrupted ? 'interrupted' : 'complete';
-      const pointer =
-        `Reasoning trace ${status} (${trimmed.length} chars) on "${shortTask}" saved in ` +
-        `memory/thinking/${filename} — read with read_file before re-evaluating the task from scratch.`;
-      MemoryStore.getInstance().addFact(pointer.slice(0, 500), this.agentLabel || 'agent', {
-        kind: 'run',
-        summary: `Reasoning trace ${status}: "${shortTask}"`,
-      });
-    } catch (error: any) {
-      logSink.error(chalk.gray(`[Unable to save reasoning trace: ${error.message}]`));
-    }
+    persistReasoningTrace(text, taskExcerpt, interrupted, this.agentLabel);
   }
 
   /**
@@ -420,11 +373,10 @@ export class Agent implements ToolSetController {
   ): Promise<string> {
     const emit = onEvent ?? plainEventRenderer;
     this.messages.push({ role: 'user', content: userMessage });
-    let currentRoundEffortOverride = reasoningEffortOverride;
+    const reactState = createReActState(reasoningEffortOverride);
 
     let isDone = false;
     let finalAnswer = '';
-    let toolRounds = 0;
     let cumStats: ChatStats = {
       durationMs: 0,
       decodeMs: 0,
@@ -433,14 +385,12 @@ export class Agent implements ToolSetController {
       promptTokens: 0,
       totalTokens: 0
     };
-    let everCalledTool = false;
-    let noToolNudgeUsed = false;
 
     while (!isDone) {
       if (signal?.aborted) break;
 
-      const promptTokensEst = Math.ceil(this.estimateMessagesTokens(this.messages) + this.toolsChars / this.charsPerToken);
-      const baseEffort = currentRoundEffortOverride ?? this.reasoningEffort;
+      const promptTokensEst = this.estimateMessagesTokens(this.messages) + this.toolsChars / this.tokenCalibration.charsPerToken;
+      const baseEffort = reactState.currentRoundEffortOverride ?? this.reasoningEffort;
       const budget = calculateReasoningBudget(promptTokensEst, this.maxHistoryTokens, baseEffort);
       const effectiveEffort = (budget.effectiveEffort as ReasoningEffort) ?? baseEffort;
       const chatOptions: ChatOptions | undefined = effectiveEffort ? { reasoningEffort: effectiveEffort } : undefined;
@@ -505,75 +455,39 @@ export class Agent implements ToolSetController {
         }
 
         if (!toolCalls || toolCalls.length === 0) {
-          const textIsAcceptable = everCalledTool || !this.acceptTextOnlyIf || this.acceptTextOnlyIf(content || '');
-          if (!textIsAcceptable && !noToolNudgeUsed) {
-            noToolNudgeUsed = true;
-            currentRoundEffortOverride = 'none';
-            const closingHint = this.allowedTools?.includes('report_status')
-              ? "call 'report_status' with the appropriate status to explicitly complete your turn"
-              : 'write a clear summary of what you did (or why progress could not be made) to complete the turn';
+          const textResponse = evaluateTextResponse(reactState, content || '', this.allowedTools, this.acceptTextOnlyIf);
+          if (!textResponse.accepted && textResponse.nudge) {
             this.messages.push({
               role: 'user',
-              content: 'You did not call any tools in this response. If you were planning, ACT NOW: call the appropriate ' +
-                'tool (e.g. write_file, edit_file, execute_command). If the task is already completed or cannot proceed further, ' +
-                `${closingHint}.`
+              content: textResponse.nudge
             });
             continue;
           }
           isDone = true;
           break;
         }
-        everCalledTool = true;
-
-        for (let i = 0; i < toolCalls.length; i++) {
-          const toolCall = toolCalls[i];
-          const toolName = toolCall.function.name;
-          const toolArgs: any = parsedArgsList[i] ?? {};
-
-          if (signal?.aborted) {
-            this.messages.push({
-              role: 'tool',
-              tool_call_id: toolCall.id,
-              name: toolName,
-              content: '[Execution cancelled: generation interrupted by user]'
-            });
-            continue;
-          }
-
-          emit({ type: 'tool_start', name: toolName, args: toolArgs, agentLabel: this.agentLabel });
-
-          const result = await this.registry.executeTool(
-            toolName,
-            toolArgs,
-            this.permissionManager,
-            this.provider,
-            this.agentLabel,
-            this.commandCtx,
-            onChunk,
-            onStats,
-            emit,
-            signal,
-            this
-          );
-
-          this.messages.push({
-            role: 'tool',
-            tool_call_id: toolCall.id,
-            name: toolName,
-            content: result.output
-          });
-
-          emit({ type: 'tool_end', name: toolName, args: toolArgs, success: result.success, output: result.output, agentLabel: this.agentLabel });
-        }
+        const toolRound = await executeToolRound(toolCalls, parsedArgsList, {
+          registry: this.registry,
+          permissionManager: this.permissionManager,
+          provider: this.provider,
+          requesterLabel: this.agentLabel,
+          workflowDispatcher: this.workflowDispatcher,
+          onChunk,
+          onStats,
+          onEvent: emit,
+          signal,
+          toolSet: this
+        });
+        this.messages.push(...toolRound.messages);
 
         if (signal?.aborted) break;
 
-        toolRounds++;
+        const toolRounds = markToolRound(reactState);
         if (toolRounds >= this.maxToolRounds) {
           if (this.toolRoundsPromptHandler && !signal?.aborted) {
             try {
               const decision = await this.toolRoundsPromptHandler({
-                currentRounds: toolRounds,
+                currentRounds: reactState.toolRounds,
                 maxRounds: this.maxToolRounds,
                 agentLabel: this.agentLabel,
               });
@@ -586,7 +500,7 @@ export class Agent implements ToolSetController {
                   role: 'user',
                   content: 'You have reached the requested tool rounds limit. Please synthesize and output your final response now without calling additional tools.'
                 });
-                noToolNudgeUsed = true;
+                reactState.noToolNudgeUsed = true;
                 continue;
               }
             } catch {}

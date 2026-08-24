@@ -5,6 +5,7 @@ import { MemoryStore, MemoryFact } from '../../core/memory';
 import { getEffortPin, setEffortPin } from '../../core/effortControl';
 import { probeProvider } from '../../core/discovery';
 import { warmUpIfNeeded } from '../../cli/commands/provider';
+import { filterOpenRouterModels, ModelCatalogFilter } from '../../core/modelCatalog';
 import commandsData from '../commands/menu.json';
 
 /**
@@ -21,6 +22,10 @@ function formatFactDate(iso: string): string {
 }
 
 export class SystemModals {
+  private static readonly CHANGE_PROVIDER = '__change_provider__';
+  private static readonly SHOW_FREE_MODELS = '__show_free_models__';
+  private static readonly SHOW_ALL_MODELS = '__show_all_models__';
+
   static openMemoryModal(store: TuiStore): void {
     const memoryStore = MemoryStore.getInstance();
     const facts: MemoryFact[] = memoryStore.getRecent(100);
@@ -111,7 +116,8 @@ export class SystemModals {
     configManager: ConfigManager,
     onAgentRecreate: () => void,
     onSyncState: () => void,
-    onProbeCtx: () => Promise<void>
+    onProbeCtx: () => Promise<void>,
+    catalogFilter: ModelCatalogFilter = 'all'
   ): Promise<void> {
     try {
       // probeProvider (not the plain provider.listModels()) also reports what the server has
@@ -121,25 +127,74 @@ export class SystemModals {
       const activeConfig = configManager.getActiveProviderConfig();
       const apiKey = configManager.getApiKey();
       const scan = await probeProvider(providerName, activeConfig, apiKey);
-      const models = scan ? scan.models : await provider.listModels();
+      const allModels = scan ? scan.models : await provider.listModels();
+      const models = filterOpenRouterModels(
+        providerName,
+        allModels,
+        catalogFilter,
+        scan?.zeroPricedModels
+      );
       const loadedModel = scan?.loadedModel ?? null;
       const current = provider.getCurrentModel();
 
-      const options = models.map((m) => {
+      if (models.length === 0) {
+        if (providerName === 'openrouter' && catalogFilter === 'free') {
+          store.notify('OpenRouter returned no free models.', 'warn');
+          await SystemModals.openModelModal(
+            store, provider, configManager, onAgentRecreate, onSyncState, onProbeCtx, 'all'
+          );
+          return;
+        }
+        store.notify(`No models available from '${providerName}'. Choose another provider.`, 'warn');
+        SystemModals.openProviderModal(
+          store, configManager, provider, onAgentRecreate, onSyncState, onProbeCtx,
+          () => { void SystemModals.openModelModal(store, provider, configManager, onAgentRecreate, onSyncState, onProbeCtx); }
+        );
+        return;
+      }
+
+      const options = [{
+        label: '⇄ Change provider…',
+        value: SystemModals.CHANGE_PROVIDER,
+        hint: `Currently using ${providerName}`,
+      }, ...(providerName === 'openrouter' ? [{
+        label: catalogFilter === 'free' ? '◉ Show all models' : '○ Free models only',
+        value: catalogFilter === 'free' ? SystemModals.SHOW_ALL_MODELS : SystemModals.SHOW_FREE_MODELS,
+        hint: catalogFilter === 'free' ? 'Free filter active' : 'Filter OpenRouter catalogue',
+      }] : []), ...models.map((m) => {
         const tags = [m === loadedModel ? '● loaded' : '', m === current ? '(active)' : ''].filter(Boolean).join(' ');
         return {
           label: `${m === current ? '● ' : '  '}${m}`,
           value: m,
           hint: tags || 'Available',
         };
-      });
+      })];
 
       store.showModal({
         type: 'slash_menu',
         title: 'Select Backend LLM Model',
-        selectedIndex: Math.max(0, models.indexOf(current)),
+        selectedIndex: Math.max(0, models.indexOf(current) + (providerName === 'openrouter' ? 2 : 1)),
         options,
         onSelect: (chosen) => {
+          if (chosen === SystemModals.CHANGE_PROVIDER) {
+            SystemModals.openProviderModal(
+              store, configManager, provider, onAgentRecreate, onSyncState, onProbeCtx,
+              () => { void SystemModals.openModelModal(store, provider, configManager, onAgentRecreate, onSyncState, onProbeCtx); }
+            );
+            return;
+          }
+          if (chosen === SystemModals.SHOW_FREE_MODELS || chosen === SystemModals.SHOW_ALL_MODELS) {
+            void SystemModals.openModelModal(
+              store,
+              provider,
+              configManager,
+              onAgentRecreate,
+              onSyncState,
+              onProbeCtx,
+              chosen === SystemModals.SHOW_FREE_MODELS ? 'free' : 'all'
+            );
+            return;
+          }
           provider.setCurrentModel(chosen);
           configManager.updateActiveModel(chosen);
           onAgentRecreate();
@@ -156,7 +211,12 @@ export class SystemModals {
         },
       });
     } catch (err: any) {
-      store.notify(`Failed to fetch models: ${err.message}`, 'error');
+      const providerName = configManager.getActiveProviderName();
+      store.notify(`Failed to fetch models from '${providerName}': ${err.message}`, 'error');
+      SystemModals.openProviderModal(
+        store, configManager, provider, onAgentRecreate, onSyncState, onProbeCtx,
+        () => { void SystemModals.openModelModal(store, provider, configManager, onAgentRecreate, onSyncState, onProbeCtx); }
+      );
     }
   }
 
@@ -229,14 +289,23 @@ export class SystemModals {
     provider: ILLMProvider,
     onAgentRecreate: () => void,
     onSyncState: () => void,
-    onProbeCtx: () => Promise<void>
+    onProbeCtx: () => Promise<void>,
+    onProviderSelected?: () => void
   ): void {
     const current = configManager.getActiveProviderName();
-    const options = [
-      { label: `${current === 'ollama' ? '● ' : '  '}Ollama`, value: 'ollama', hint: 'Local inference on http://localhost:11434' },
-      { label: `${current === 'openrouter' ? '● ' : '  '}OpenRouter`, value: 'openrouter', hint: 'Cloud gateway on https://openrouter.ai/api' },
-      { label: `${current === 'unsloth' ? '● ' : '  '}Unsloth Studio`, value: 'unsloth', hint: 'Local unsloth server' },
-    ];
+    const displayNames: Record<string, string> = {
+      ollama: 'Ollama',
+      openrouter: 'OpenRouter',
+      unsloth: 'Unsloth Studio',
+    };
+    const options = configManager.getProviderNames().map((name) => {
+      const cfg = configManager.getProviderConfig(name)!;
+      return {
+        label: `${current === name ? '● ' : '  '}${displayNames[name] ?? name}`,
+        value: name,
+        hint: cfg.baseUrl,
+      };
+    });
 
     store.showModal({
       type: 'slash_menu',
@@ -252,6 +321,7 @@ export class SystemModals {
         store.closeModal();
         store.notify(`Provider switched to: ${chosen.toUpperCase()}`, 'success');
         onProbeCtx().catch(() => {});
+        onProviderSelected?.();
       },
     });
   }

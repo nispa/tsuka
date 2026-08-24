@@ -4,7 +4,7 @@
   <p>Leggi in <a href="architecture-it.md">🇮🇹 Italiano</a></p>
 </div>
 
-> This document describes the technical architecture, design principles, and modular structure of the **TSUKA** framework (v0.6.0). For codebase contribution guidelines, see [`AGENTS.md`](../AGENTS.md); for completed and upcoming task backlogs, see [`TASKS.md`](../TASKS.md).
+> This document describes the technical architecture, design principles, and modular structure of the **TSUKA** framework (v0.7.0). For codebase contribution guidelines, see [`AGENTS.md`](../AGENTS.md); for completed and upcoming task backlogs, see [`TASKS.md`](../TASKS.md).
 >
 > 📊 **System Metrics**: 30 native tools · 20 REPL commands · 21 roles · 9 traits · 24 characters (agents) · 10 preconfigured teams · 80 automated test suites · Dual CLI & TUI interfaces.
 
@@ -98,6 +98,7 @@ The codebase is organized into four independent layers with clear separation of 
 The core engine never writes directly to `console.log` or TTY streams:
 * Agent runs broadcast life-cycle updates through event contracts (`onChunk`, `onStats`, `onEvent`, `AbortSignal` in `agentEvents.ts`).
 * Internal service modules (`MemoryStore`, `ConfigManager`, `ToolRegistry`) emit diagnostics through an injectable log sink ([`src/core/logSink.ts`](../src/core/logSink.ts)), paving the way for headless servers or web UIs without core refactoring.
+* `PermissionManager` owns policy and queue serialization, not terminal rendering: CLI and TUI inject a `PermissionPromptHandler`. Without a renderer, non-`SAFE` requests fail closed. Workflow escalation tools likewise depend on the narrow `WorkflowDispatcher` contract instead of importing CLI command handlers.
 
 ---
 
@@ -105,7 +106,7 @@ The core engine never writes directly to `console.log` or TTY streams:
 
 Every user iteration in the REPL or within a workflow follows six deterministic stages:
 
-1. **Dynamic Prompt Assembly (`loadSystemPrompt`)**: Concatenates character identity, role system prompt, trait stylistic directives, semantically relevant memory facts, and the textual tool catalog (omitted if the model has verified native function calling).
+1. **Dynamic Prompt Assembly (`loadSystemPrompt`, `src/core/personas.ts`)**: Concatenates character identity, role system prompt, trait stylistic directives, semantically relevant memory facts, and the textual tool catalog (omitted if the model has verified native function calling). The persona catalog belongs to core; `src/cli/shared.ts` remains only as a compatibility barrel.
 2. **Adaptive Tool Filtering (`registry.listForLLM`)**: Applies a dual-filter: tools must belong to the active role's `allowedTools` list and satisfy the model's capability tier at the current reasoning effort level.
 3. **Token-Driven History Pruning (`pruneHistory`)**: Verifies that total history tokens fit within `maxHistoryTokens`. Removes older messages while strictly maintaining integrity between `tool_call` and `tool` response pairs.
 4. **Streaming LLM Invocation (`provider.chatWithTools`)**: Sends payload to the OpenAI-compatible backend, parsing `<think>` reasoning chunks separately from visible `content`.

@@ -11,6 +11,7 @@ import { createDefaultRegistry } from '../tools/index';
 import { connectMcpServers } from '../core/mcp/connectMcpServers';
 import { PermissionManager } from '../safety/permissions';
 import { TuiApp } from './app';
+import { logSink } from '../core/logSink';
 
 dotenv.config({ path: homePath('.env') });
 dotenv.config();
@@ -42,7 +43,7 @@ export async function launchTui(): Promise<void> {
 // Auto-start if executed directly as main script
 if (require.main === module) {
   launchTui().catch((err) => {
-    console.error('Fatal TUI error:', err);
+    logSink.error(`Fatal TUI error: ${err instanceof Error ? err.message : String(err)}`);
     process.exit(1);
   });
 }

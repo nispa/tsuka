@@ -1,6 +1,5 @@
 import { Tool, ToolExecutionContext } from '../registry';
 import { WorkflowScope } from '../../core/workflowScope';
-import { handleCall } from '../../cli/commands/call';
 import { logSink } from '../../core/logSink';
 
 export const requestCallTool: Tool = {
@@ -27,8 +26,8 @@ export const requestCallTool: Tool = {
     const reason = args.reason ? ` Reason: ${args.reason}` : '';
     logSink.log(`\n📞 [CONFERENCE CALL AUTHORIZED BY USER]${reason}`);
 
-    if (context?.commandCtx) {
-      await handleCall(context.commandCtx, participants.join(' '), topic);
+    if (context?.workflowDispatcher) {
+      await context.workflowDispatcher.runCall(participants, topic);
       return `Conference call finished between ${participants.join(', ')} on: "${topic}".`;
     }
 

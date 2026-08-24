@@ -1,6 +1,5 @@
 import { Tool, ToolExecutionContext } from '../registry';
 import { WorkflowScope } from '../../core/workflowScope';
-import { handleGoal } from '../../cli/commands/goal';
 import { logSink } from '../../core/logSink';
 
 export const requestGoalTool: Tool = {
@@ -22,8 +21,8 @@ export const requestGoalTool: Tool = {
     const reason = args.reason ? ` Reason: ${args.reason}` : '';
     logSink.log(`\n🎯 [ESCALATION TO /GOAL AUTHORIZED BY USER]${reason}`);
 
-    if (context?.commandCtx) {
-      await handleGoal(context.commandCtx, goal);
+    if (context?.workflowDispatcher) {
+      await context.workflowDispatcher.runGoal(goal);
       return `Workflow /goal completed for goal: "${goal}".`;
     }
 

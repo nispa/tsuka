@@ -303,6 +303,7 @@ export class TuiBridge {
         const toolId = this.store.startTool(displayToolName, args);
         this.currentToolExecMap.set(ev.name, toolId);
 
+        this.ensureCurrentAssistantMessage();
         this.patchCurrentToolCalls((toolCalls) => [
           ...toolCalls,
           { id: toolId, name: ev.name, args, status: 'running' as const },
@@ -358,6 +359,25 @@ export class TuiBridge {
         phase: state.activeReasoningEffort === 'none' ? 'streaming' : 'reasoning',
         agentName: agentName || state.activeAiName,
       },
+    });
+  }
+
+  /**
+   * Guarantees a live assistant message exists before attaching tool calls. A
+   * non-thinking model that calls a tool emits no chunk first, so without this
+   * anchor the tool activity would appear in the Tools page but never in chat.
+   */
+  private ensureCurrentAssistantMessage(): void {
+    if (this.currentAssistantMsgId) {
+      const exists = this.store.getState().messages.some((m) => m.id === this.currentAssistantMsgId);
+      if (exists) return;
+      this.currentAssistantMsgId = undefined;
+    }
+    this.currentAssistantMsgId = this.store.addMessage({
+      role: 'assistant',
+      authorName: this.store.getState().activeAiName,
+      content: '',
+      isStreaming: true,
     });
   }
 

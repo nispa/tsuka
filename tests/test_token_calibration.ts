@@ -11,6 +11,7 @@ import { Agent } from '../src/core/agent';
 import { ToolRegistry } from '../src/tools/registry';
 import { PermissionManager } from '../src/safety/permissions';
 import { MockLLMProvider } from './mocks/mockProvider';
+import { createTokenCalibrationState, estimateTokensFromChars, observePromptTokens } from '../src/core/tokenCalibration';
 
 let passed = 0;
 let failed = 0;
@@ -27,6 +28,16 @@ function check(id: string, condition: boolean, detail: string) {
 
 async function main() {
   console.log('=== Test Calibrazione Stima Token ===\n');
+
+  // Pure calibration contract: invalid usage must never poison a live estimator.
+  {
+    const state = createTokenCalibrationState();
+    observePromptTokens(state, 100, 0);
+    check('C0a', state.charsPerToken === 3.5, 'invalid provider usage leaves the seed unchanged');
+    observePromptTokens(state, 100, 20, 1);
+    check('C0b', state.charsPerToken === 5, 'one observation updates the pure calibration state');
+    check('C0c', estimateTokensFromChars(25, state) === 5, 'the pure estimator uses the calibrated ratio');
+  }
 
   // --- C1: senza osservazioni, il rapporto di default è il seed storico 3,5 ---
   {

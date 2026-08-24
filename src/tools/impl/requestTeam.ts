@@ -1,6 +1,5 @@
 import { Tool, ToolExecutionContext } from '../registry';
 import { WorkflowScope } from '../../core/workflowScope';
-import { handleTeam } from '../../cli/commands/team';
 import { logSink } from '../../core/logSink';
 
 export const requestTeamTool: Tool = {
@@ -23,8 +22,8 @@ export const requestTeamTool: Tool = {
     const reason = args.reason ? ` Reason: ${args.reason}` : '';
     logSink.log(`\n🚀 [TEAM CONVENTION AUTHORIZED BY USER]${reason}`);
 
-    if (context?.commandCtx) {
-      await handleTeam(context.commandCtx, teamName, task);
+    if (context?.workflowDispatcher) {
+      await context.workflowDispatcher.runTeam(teamName, task);
       return `Team workflow completed for task: "${task}".`;
     }
 

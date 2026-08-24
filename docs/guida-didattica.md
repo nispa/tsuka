@@ -91,6 +91,13 @@ Il nucleo operativo dell'harness segue il pattern **ReAct** (*Reason + Act*), ar
 3. **Integrazione dei risultati**: gli output dei tool vengono aggiunti alla cronologia come messaggi con ruolo `tool`.
 4. **Ciclo ricorsivo**: la cronologia aggiornata viene re-inviata al modello, ripetendo il processo fino a quando l'LLM non produce una risposta finale puramente testuale.
 
+La facade `Agent` coordina il ciclo senza possederne più tutte le invarianti: la
+cronologia, il round dei tool, la calibrazione token, lo stato ReAct e la persistenza
+delle trace sono moduli separati (`conversationHistory.ts`, `toolRound.ts`,
+`tokenCalibration.ts`, `reactState.ts`, `reasoningTrace.ts`). Questo mantiene il
+contratto pubblico stabile mentre ogni responsabilità può essere verificata in modo
+isolato.
+
 ```
                   ┌──────────────────────┐
                   │ Input Utente/Prompt  │
@@ -229,6 +236,13 @@ Per rendere l'harness davvero modulare, il motore logico (Core, Memoria, Tool) *
        │    (npm run tui)       │  │   di comando        │
        └────────────────────────┘  └─────────────────────┘
 ```
+
+Lo stesso confine vale per le richieste di autorizzazione: `PermissionManager`
+decide se una richiesta è ammessa e serializza i prompt concorrenti, ma non conosce
+menu o terminale. CLI e TUI iniettano un `PermissionPromptHandler`; in un contesto
+headless privo di renderer, le operazioni non `SAFE` vengono negate per default.
+Anche i tool di escalation richiedono workflow tramite il contratto
+`WorkflowDispatcher`, senza importare i command handler di una specifica interfaccia.
 
 #### 3. La prova pratica: da CLI a TUI senza toccare il Core
 Grazie a questo disaccoppiamento, TSUKA può offrire due interfacce completamente diverse usando esattamente lo stesso motore:

@@ -91,6 +91,12 @@ The execution core follows the **ReAct** (*Reason + Act*) pattern across four se
 3. **Result Injection**: append tool outputs to the conversation history as messages with `role: "tool"`.
 4. **Recursive Turn**: re-invoke the model with the enriched history until it returns a plain text response.
 
+The `Agent` facade coordinates the loop without owning every invariant itself:
+conversation history, tool rounds, token calibration, ReAct state, and reasoning-trace
+persistence live in focused modules (`conversationHistory.ts`, `toolRound.ts`,
+`tokenCalibration.ts`, `reactState.ts`, `reasoningTrace.ts`). The public contract stays
+stable while each responsibility remains independently testable.
+
 ```
                   ┌──────────────────────┐
                   │ User Input / Prompt  │
@@ -206,6 +212,13 @@ A truly modular harness core (Core, Memory, Tools) **never prints directly to th
        │    (npm run tui)       │  │   interface         │
        └────────────────────────┘  └─────────────────────┘
 ```
+
+The same boundary applies to authorization requests: `PermissionManager` decides
+whether a request is allowed and serializes concurrent prompts, but it knows nothing
+about menus or terminals. CLI and TUI inject a `PermissionPromptHandler`; in a
+headless context without a renderer, non-`SAFE` operations are denied by default.
+Workflow escalation tools similarly request execution through the
+`WorkflowDispatcher` contract instead of importing command handlers from a specific UI.
 
 #### 3. Practical Payoff: CLI to TUI with Zero Core Rewrites
 Thanks to this decoupling, TSUKA powers two completely different interfaces using the exact same underlying engine:

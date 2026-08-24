@@ -50,6 +50,7 @@ const suites = [
   'test_mock_provider.ts',
   'test_protocol_parsing.ts',
   'test_token_calibration.ts',
+  'test_react_state.ts',
   'test_team_modes.ts',
   'test_goal_orchestrator.ts',
   'test_permission_queue.ts',
@@ -96,6 +97,7 @@ const suites = [
   'test_tui_data_driven.ts',
   'test_cli_spinner.ts',
   'test_model_warmup.ts',
+  'test_provider_model_fallback.ts',
   'test_memory_summary.ts',
   'test_memory_persistence.ts',
   'test_memory_tools.ts',
@@ -105,7 +107,8 @@ const suites = [
   'test_files_explorer.ts',
   'test_wiki_build.ts',
   'test_mcp_client.ts',
-  'test_mcp_registry.ts'
+  'test_mcp_registry.ts',
+  'test_architecture_boundaries.ts'
 ];
 
 let passed = 0;

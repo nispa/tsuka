@@ -257,8 +257,8 @@ export class TuiApp {
    * or the configured one no longer served — and nothing short of manually running `/provider`
    * used to notice. This reconciles config against what the server actually reports,
    * with the SAME precedence as the CLI startup (cli/index.ts):
-   *  - configured provider unreachable → fail over to the first reachable local one
-   *    (scanProviders probes the active first, then the remaining local servers);
+   *  - configured provider unreachable → fail over to the first reachable local server,
+   *    or an authenticated remote provider such as OpenRouter;
    *  - a model already loaded in server RAM wins: attaching to it avoids forcing a slow
    *    reload of the server;
    *  - otherwise keep the configured model if still served, else fall back to the first

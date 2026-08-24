@@ -8,6 +8,7 @@ import { logSink } from '../core/logSink';
 import { WorkflowScope } from '../core/workflowScope';
 import type { StreamChannel } from '../core/thinkParser';
 import type { AgentEventHandler } from '../core/agentEvents';
+import type { WorkflowDispatcher } from '../core/workflowDispatcher';
 
 /**
  * Optional execution context passed into tool executors (e.g. registry access
@@ -31,7 +32,7 @@ export interface ToolExecutionContext {
   registry?: ToolRegistry;
   provider?: any;
   permissionManager?: PermissionManager;
-  commandCtx?: any;
+  workflowDispatcher?: WorkflowDispatcher;
   /** Calling Agent's tool set (T14.14): present only when the Agent exposes one. */
   toolSet?: ToolSetController;
   /** Requesting agent label (e.g. character aiName) for logging and note authorship attribution. */
@@ -317,7 +318,7 @@ export class ToolRegistry {
     permissionManager: PermissionManager,
     provider?: any,
     requesterLabel?: string,
-    commandCtx?: any,
+    workflowDispatcher?: WorkflowDispatcher,
     onChunk?: (chunk: string, channel?: StreamChannel, authorName?: string) => void,
     onStats?: (stats: any, agentLabel?: string) => void,
     onEvent?: AgentEventHandler,
@@ -377,7 +378,7 @@ export class ToolRegistry {
         provider,
         permissionManager,
         requesterLabel,
-        commandCtx,
+        workflowDispatcher,
         toolSet,
         onChunk,
         onStats,

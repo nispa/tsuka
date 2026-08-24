@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
 import { Tool, ToolExecutionContext } from '../registry';
-import { loadSystemPrompt, resolveCharacter, loadRole, loadTrait } from '../../cli/shared';
+import { loadSystemPrompt, resolveCharacter, loadRole, loadTrait } from '../../core/personas';
 import { Agent } from '../../core/agent';
 import { ReasoningEffort } from '../../core/provider';
 import { ConfigManager } from '../../core/config';

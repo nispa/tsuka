@@ -1,4 +1,6 @@
 import { ProviderConfig } from './config';
+import { DISCOVERY_DEFAULTS } from './constants';
+import { hasZeroTokenPricing } from './modelCatalog';
 
 /**
  * Startup scan for LLM servers: probes configured providers to determine
@@ -15,6 +17,8 @@ export interface ProviderScanResult {
   name: string;
   config: ProviderConfig;
   models: string[];
+  /** Models whose OpenRouter prompt and completion token prices are both zero. */
+  zeroPricedModels: string[];
   /** Currently loaded model in RAM (e.g. Ollama's /api/ps endpoint), if detectable. */
   loadedModel: string | null;
   /** Dynamically detected context window length for the active model. */
@@ -37,7 +41,7 @@ export async function detectContextWindow(
   baseUrl: string,
   apiKey: string = '',
   model: string = '',
-  timeoutMs = 2500
+  timeoutMs = DISCOVERY_DEFAULTS.probeTimeoutMs
 ): Promise<number | null> {
   const base = baseUrl.replace(/\/+$/, '');
   const baseRoot = base.replace(/\/v1\/?$/, '');
@@ -126,10 +130,11 @@ export async function probeProvider(
   name: string,
   config: ProviderConfig,
   apiKey: string,
-  timeoutMs = 2500
+  timeoutMs = DISCOVERY_DEFAULTS.probeTimeoutMs
 ): Promise<ProviderScanResult | null> {
   const base = config.baseUrl.replace(/\/+$/, '');
   let models: string[] = [];
+  let zeroPricedModels: string[] = [];
   let loadedModel: string | null = null;
 
   try {
@@ -138,6 +143,10 @@ export async function probeProvider(
     const data = await fetchJson(`${base}/models`, timeoutMs, auth);
     const entries = Array.isArray(data?.data) ? data.data : [];
     models = entries.map((m: any) => m.id).sort();
+    zeroPricedModels = entries
+      .filter((m: any) => typeof m.id === 'string' && hasZeroTokenPricing(m.pricing))
+      .map((m: any) => m.id)
+      .sort();
     // Unsloth Studio marks RAM model with "loaded": true; LM Studio uses "state": "loaded"
     const loadedEntry = entries.find((m: any) => m.loaded === true || m.state === 'loaded');
     if (loadedEntry?.id) loadedModel = loadedEntry.id;
@@ -156,7 +165,7 @@ export async function probeProvider(
   // Ollama exposes loaded RAM models on /api/ps
   if (loadedModel === null && isLocalUrl(base)) {
     try {
-      const ps = await fetchJson(base.replace(/\/v1$/, '') + '/api/ps', 1500);
+      const ps = await fetchJson(base.replace(/\/v1$/, '') + '/api/ps', DISCOVERY_DEFAULTS.metadataTimeoutMs);
       if (Array.isArray(ps?.models) && ps.models.length > 0 && ps.models[0]?.name) {
         loadedModel = ps.models[0].name;
       }
@@ -164,9 +173,9 @@ export async function probeProvider(
   }
 
   const activeModel = loadedModel ?? config.model ?? (models.length > 0 ? models[0] : '');
-  const contextWindow = await detectContextWindow(config.baseUrl, apiKey, activeModel, 1500);
+  const contextWindow = await detectContextWindow(config.baseUrl, apiKey, activeModel, DISCOVERY_DEFAULTS.metadataTimeoutMs);
 
-  return { name, config, models, loadedModel, contextWindow };
+  return { name, config, models, zeroPricedModels, loadedModel, contextWindow };
 }
 
 /**
@@ -176,7 +185,7 @@ export async function warmUpModel(
   baseUrl: string,
   apiKey: string,
   model: string,
-  timeoutMs = 300_000
+  timeoutMs = DISCOVERY_DEFAULTS.warmUpTimeoutMs
 ): Promise<boolean> {
   const base = baseUrl.replace(/\/+$/, '');
   try {
@@ -202,7 +211,8 @@ export async function warmUpModel(
 
 /**
  * Scans candidate providers: first the configured active provider, then
- * remaining local servers in parallel.
+ * remaining eligible providers in parallel. Remote fallbacks require an API key:
+ * probing an anonymous cloud catalogue would falsely mark a provider as chat-ready.
  */
 export async function scanProviders(
   candidates: ScanCandidate[],
@@ -211,14 +221,16 @@ export async function scanProviders(
   const active = candidates.find((c) => c.name === activeName);
   if (active) {
     const result = await probeProvider(active.name, active.config, active.apiKey);
-    if (result) return result;
+    // A reachable server with an empty catalogue cannot serve a chat request.
+    // Continue discovery so an authenticated cloud provider can recover the session.
+    if (result && result.models.length > 0) return result;
   }
 
-  const localOthers = candidates.filter(
-    (c) => c.name !== activeName && isLocalUrl(c.config.baseUrl)
+  const fallbackCandidates = candidates.filter(
+    (c) => c.name !== activeName && (isLocalUrl(c.config.baseUrl) || c.apiKey.trim().length > 0)
   );
   const results = await Promise.all(
-    localOthers.map((c) => probeProvider(c.name, c.config, c.apiKey))
+    fallbackCandidates.map((c) => probeProvider(c.name, c.config, c.apiKey))
   );
-  return results.find((r): r is ProviderScanResult => r !== null) ?? null;
+  return results.find((r): r is ProviderScanResult => r !== null && r.models.length > 0) ?? null;
 }

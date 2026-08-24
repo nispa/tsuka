@@ -4,9 +4,9 @@
   <p>Read in <a href="architecture.md">🇬🇧 English</a></p>
 </div>
 
-> Questo documento descrive l'architettura tecnica, i principi di progettazione e l'organizzazione modulare del framework **TSUKA** (v0.6.0). Per le linee guida operative di contribuzione al codice si rimanda ad [`AGENTS.md`](../AGENTS.md); per l'elenco dei task completati e pianificati, consultare [`TASKS.md`](../TASKS.md).
+> Questo documento descrive l'architettura tecnica, i principi di progettazione e l'organizzazione modulare del framework **TSUKA** (v0.7.0). Per le linee guida operative di contribuzione al codice si rimanda ad [`AGENTS.md`](../AGENTS.md); per l'elenco dei task completati e pianificati, consultare [`TASKS.md`](../TASKS.md).
 >
-> 📊 **Metriche di sistema**: 30 tool · 20 comandi REPL · 21 ruoli · 9 tratti · 24 personaggi (agenti) · 10 team configurati · 80 suite di test automatici · Doppia interfaccia CLI & TUI.
+> 📊 **Metriche di sistema**: 30 tool · 20 comandi REPL · 21 ruoli · 9 tratti · 24 personaggi (agenti) · 10 team configurati · 81 suite di test automatici · Doppia interfaccia CLI & TUI.
 
 ---
 
@@ -98,6 +98,7 @@ La codebase è organizzata in quattro layer indipendenti con chiare responsabili
 Il livello core non invoca mai direttamente `console.log` o stream TTY:
 * Le esecuzioni dell'agente notificano gli avanzamenti all'interfaccia tramite contratti di evento (`onChunk`, `onStats`, `onEvent`, `AbortSignal` in `agentEvents.ts`).
 * I moduli infrastrutturali di servizio (`MemoryStore`, `ConfigManager`, `ToolRegistry`) utilizzano un sink iniettabile e intercettabile ([`src/core/logSink.ts`](../src/core/logSink.ts)), consentendo una futura integrazione con interfacce web o server headless senza dover rifattorizzare il motore logico.
+* `PermissionManager` possiede policy e serializzazione della coda, ma non il terminale: CLI e TUI iniettano un `PermissionPromptHandler`. Senza renderer, una richiesta non `SAFE` fallisce in modo conservativo. Analogamente, i tool di escalation dipendono dal contratto `WorkflowDispatcher`, non dai command handler della CLI.
 
 ---
 
@@ -105,7 +106,7 @@ Il livello core non invoca mai direttamente `console.log` o stream TTY:
 
 Ogni iterazione dell'utente all'interno del REPL o di un workflow attraversa sei fasi deterministiche:
 
-1. **Assemblaggio dinamico del prompt (`loadSystemPrompt`)**: Concatena l'identità del personaggio, il system prompt del ruolo, le direttive stilistiche del tratto, i fatti estratti dalla memoria per rilevanza semantica e l'elenco testuale dei tool abilitati (omesso se il modello dispone di function calling nativo certificato).
+1. **Assemblaggio dinamico del prompt (`loadSystemPrompt`, `src/core/personas.ts`)**: Concatena l'identità del personaggio, il system prompt del ruolo, le direttive stilistiche del tratto, i fatti estratti dalla memoria per rilevanza semantica e l'elenco testuale dei tool abilitati (omesso se il modello dispone di function calling nativo certificato). Il catalogo persona appartiene al core; `src/cli/shared.ts` è soltanto un barrel compatibile.
 2. **Filtraggio adattivo dei tool (`registry.listForLLM`)**: Applica un doppio filtro su ciascun tool: deve appartenere alla lista `allowedTools` del ruolo attivo e rispettare il `requiredTier` associato al modello corrente per il livello di reasoning effort selezionato.
 3. **Potatura della cronologia (`pruneHistory`)**: Verifica che i token totali della cronologia rientrino nel budget (`maxHistoryTokens`). In caso di eccedenza, elimina progressivamente i messaggi più remoti preservando rigorosamente la coerenza tra coppie `tool_call` e risposte `tool`.
 4. **Invocazione LLM in streaming (`provider.chatWithTools`)**: Trasmette il payload al backend OpenAI-compatible, separando in tempo reale il flusso di reasoning (`<think>`) dal contenuto effettivo (`content`).
