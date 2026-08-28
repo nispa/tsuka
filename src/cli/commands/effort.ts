@@ -27,7 +27,8 @@ function toolNamesAt(ctx: CommandCtx, allowedTools: string[] | undefined, effort
     ctx.provider.getCurrentModel(),
     allowedTools,
     effort,
-    ctx.provider.getBaseUrl()
+    ctx.provider.getBaseUrl(),
+    ctx.provider.getProviderClass?.()
   )
     .map((t) => t.function.name)
     .sort();
@@ -37,7 +38,7 @@ function printStatus(ctx: CommandCtx): void {
   const { char, role } = activeRoleAndCharacter(ctx);
   const configDefault = ctx.configManager.getDefaultReasoningEffort();
   const { effort, source } = describeEffortSource(char, role, configDefault);
-  const tier = getModelTier(ctx.provider.getCurrentModel(), effort, ctx.provider.getBaseUrl());
+  const tier = getModelTier(ctx.provider.getCurrentModel(), effort, ctx.provider.getBaseUrl(), ctx.provider.getProviderClass?.());
   const tierColor = tier === 'large' ? chalk.green : tier === 'medium' ? chalk.yellow : chalk.red;
 
   const sourceLabel: Record<string, string> = {

@@ -1,17 +1,8 @@
 {
   "activeProvider": "ollama",
-  "providers": {
+  "providerOverrides": {
     "ollama": {
-      "baseUrl": "http://localhost:11434/v1",
       "model": "qwen2.5-coder:7b"
-    },
-    "openrouter": {
-      "baseUrl": "https://openrouter.ai/api/v1",
-      "model": "meta-llama/llama-3.3-70b-instruct"
-    },
-    "unsloth": {
-      "baseUrl": "http://127.0.0.1:8888/v1",
-      "model": "default"
     }
   },
   "maxToolRounds": 15,

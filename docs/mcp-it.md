@@ -78,7 +78,7 @@ I tool MCP sono completamente integrati nel perimetro di sicurezza di TSUKA:
 1. **Richiesta di autorizzazione interattiva**: ogni chiamata a un tool MCP passa dal `PermissionManager`. Con il livello predefinito `RESTRICTED`, l'utente visualizza a schermo il nome completo del server, il tool e i parametri prima di confermare l'esecuzione `[y/N/sempre]`.
 2. **Validazione preventiva degli argomenti**: lo schema JSON dei parametri (`inputSchema`) servito dal server MCP viene validato localmente da TSUKA prima dell'invio, bloccando alla radice parametri errati o malformati.
 3. **Isolamento e resilienza ai guasti**: se un server MCP non si avvia o va in crash, TSUKA emette un avviso diagnostico tramite `logSink` e prosegue l'avvio degli altri moduli. Un server MCP difettoso non blocca mai l'harness.
-4. **Terminazione pulita dei processi**: alla chiusura dell'applicazione (CLI o TUI), un gestore sincrono termina immediatamente tutti i processi figli generati dai server MCP, evitando processi orfani in background.
+4. **Ciclo di vita con ownership**: ogni runtime chiude soltanto i client MCP che ha creato; CLI e TUI attendono la chiusura. Un gestore sincrono di uscita resta come ultima protezione per le terminazioni improvvise.
 
 > ⚠️ **Nota sul Workspace Jail**: i server MCP operano come processi indipendenti di sistema. Ad esempio, un server filesystem esterno configurato dall'utente ha accesso ai percorsi che gli vengono assegnati, superando la root del workspace locale. Il controllo di sicurezza è garantito dal livello di autorizzazione `riskLevel`.
 

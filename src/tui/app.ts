@@ -13,7 +13,7 @@ import { Agent, ToolRoundsAction, resolveReasoningEffort } from '../core/agent';
 import { resolveToolSet } from '../core/toolSet';
 import { ConfigManager } from '../core/config';
 import { ILLMProvider, setTimeoutPromptHandler, TimeoutAction } from '../core/provider';
-import { ToolRegistry } from '../tools/registry';
+import { IToolRegistry } from '../tools/registry';
 import { PermissionManager } from '../safety/permissions';
 import { loadCharacter, loadRole, loadTrait, loadSystemPrompt } from '../cli/shared';
 import { withEffortPin, describeEffortSource, setEffortPin } from '../core/effortControl';
@@ -39,8 +39,9 @@ import { setProgressSink } from '../core/progressSink';
 export interface TuiAppOptions {
   configManager: ConfigManager;
   provider: ILLMProvider;
-  registry: ToolRegistry;
+  registry: IToolRegistry;
   permissionManager: PermissionManager;
+  onShutdown?: () => void | Promise<void>;
 }
 
 export class TuiApp {
@@ -49,19 +50,22 @@ export class TuiApp {
   private bridge: TuiBridge;
   private configManager: ConfigManager;
   private provider: ILLMProvider;
-  private registry: ToolRegistry;
+  private registry: IToolRegistry;
   private permissionManager: PermissionManager;
   private agent: Agent;
   private activeTab: 'chat' | 'tools' = 'chat';
   private layoutConfig: TuiLayoutConfig;
   private commandController: TuiCommandController;
   private turnRunner: TuiTurnRunner;
+  private onShutdown?: () => void | Promise<void>;
+  private stopPromise?: Promise<void>;
 
   constructor(options: TuiAppOptions) {
     this.configManager = options.configManager;
     this.provider = options.provider;
     this.registry = options.registry;
     this.permissionManager = options.permissionManager;
+    this.onShutdown = options.onShutdown;
     this.layoutConfig = LayoutConfigManager.load();
 
     this.screen = new TuiScreen();
@@ -138,7 +142,8 @@ export class TuiApp {
         char,
         undefined,
         reasoningEffort,
-        this.provider.getBaseUrl()
+        this.provider.getBaseUrl(),
+        this.provider.getProviderClass?.()
       ),
       toolSet.active,
       this.configManager.getMaxHistoryMessages(),
@@ -263,11 +268,19 @@ export class TuiApp {
     this.discoverModelAtStartup().catch(() => {});
   }
 
-  stop(): void {
-    delete process.env.TSUKA_TUI;
-    this.screen.stop();
-    resetLogSink();
-    setProgressSink(null);
+  stop(): Promise<void> {
+    if (this.stopPromise) return this.stopPromise;
+    this.stopPromise = (async () => {
+      delete process.env.TSUKA_TUI;
+      this.screen.stop();
+      try {
+        await this.onShutdown?.();
+      } finally {
+        resetLogSink();
+        setProgressSink(null);
+      }
+    })();
+    return this.stopPromise;
   }
 
   /**
@@ -301,7 +314,7 @@ export class TuiApp {
       if (scan.name !== providerName) {
         this.configManager.setActiveProvider(scan.name);
         const newCfg = this.configManager.getActiveProviderConfig();
-        this.provider.reconfigure(newCfg.baseUrl, this.configManager.getApiKey(), newCfg.model);
+        this.provider.reconfigure(newCfg.baseUrl, this.configManager.getApiKey(), newCfg.model, newCfg.class);
         this.agent = this.recreateAgent();
         this.store.notify(`Configured provider '${providerName}' unreachable — switched to '${scan.name}'`, 'warn');
       }
@@ -400,8 +413,8 @@ export class TuiApp {
     const state = this.store.getState();
 
     if (key.ctrl && key.name === 'c') {
-      this.stop();
-      process.exit(0);
+      void this.stop().finally(() => process.exit(0));
+      return;
     }
 
     // Navigation: F1..F7 and F12 come from the tab table, plus '?' where it cannot be a

@@ -32,6 +32,7 @@
     "presets",
     "tools_schemas",
     "benchmarks",
+    "providers.json",
     "tsuka.config.json",
     "tsuka.config.json.example",
     "README.md",

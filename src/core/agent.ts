@@ -1,5 +1,5 @@
 import { ILLMProvider, ChatOptions, ChatStats, ReasoningEffort } from './provider';
-import { ToolRegistry, ToolSetController } from '../tools/registry';
+import { IToolRegistry, ToolSetController } from '../tools/registry';
 import { PermissionManager } from '../safety/permissions';
 import { AgentEvent, AgentEventHandler } from './agentEvents';
 import { StreamChannel } from './thinkParser';
@@ -91,7 +91,7 @@ export class Agent implements ToolSetController {
   private static readonly DEFAULT_MAX_TOOL_ROUNDS = AGENT_DEFAULTS.maxToolRounds;
 
   private provider: ILLMProvider;
-  private registry: ToolRegistry;
+  private registry: IToolRegistry;
   private permissionManager: PermissionManager;
   private history = new ConversationHistory();
   private allowedTools?: string[];
@@ -108,7 +108,7 @@ export class Agent implements ToolSetController {
 
   constructor(
     provider: ILLMProvider,
-    registry: ToolRegistry,
+    registry: IToolRegistry,
     permissionManager: PermissionManager,
     systemPrompt: string,
     allowedTools?: string[],
@@ -405,7 +405,8 @@ export class Agent implements ToolSetController {
         this.provider.getCurrentModel(),
         this.allowedTools,
         effectiveEffort,
-        this.provider.getBaseUrl()
+        this.provider.getBaseUrl(),
+        this.provider.getProviderClass?.()
       );
       const toolsForRequest = tools.length > 0 ? tools : undefined;
 

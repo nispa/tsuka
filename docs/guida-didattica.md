@@ -377,6 +377,19 @@ TSUKA adotta una **risoluzione gerarchica**: se nella cartella corrente è prese
 
 ---
 
+### Tappa 11 — Invarianti del Core, Composition Root e Contratti Stretti (Fase 8)
+
+*Riferimenti nel codice: `src/core/runtime.ts`, `src/core/agent.ts`, `src/core/provider/`, `src/tools/`, `src/core/memory/`*
+
+Quando un harness agentico cresce oltre le 80 suite di test, la sfida principale diventa la **manutenibilità nel tempo** (Direttive 8, 9, 10 di `AGENTS.md`):
+
+1. **La Composition Root Unificata (`createHarnessRuntime`)**: Inizializzare separatamente configurazioni, provider, registry e permessi nella CLI e nella TUI porta a derive silenziose. Un'unica factory nel core (`runtime.ts`) istanzia l'albero delle dipendenze e garantisce il cleanup idempotente delle risorse (chiusura processi figli MCP, flush memoria) sia su uscita normale che su segnali di interruzione (`SIGINT`, `SIGTERM`).
+2. **Isolamento delle Invarianti dell'Agente**: La classe `Agent` non deve essere un monolite che calcola token, gestisce la cronologia, lancia tool e salva tracce contemporaneamente. Lo scorporo in moduli puri (`tokenCalibration.ts`, `conversationHistory.ts`, `toolRound.ts`, `reactState.ts`, `reasoningTrace.ts`) rende ogni invariante isolabile, testabile a livello unitario e priva di effetti collaterali non intenzionali.
+3. **Contratti Stretti tra i Layer**: Il motore ReAct non deve conoscere la struttura su disco dei file `.json` dei tool o il protocollo HTTP di streaming del server LLM. La definizione dell'interfaccia `IToolRegistry` e l'incapsulamento del wire format OpenAI in `provider/wireFormat.ts` e `provider/streamAccumulator.ts` consentono di sostituire il backend o il formato dei messaggi senza toccare una sola riga del loop decisionale.
+4. **Disaccoppiamento di Codec e Storage nella Memoria**: Nel backend di memoria JSON, la serializzazione dei fatti, la deduplica e la derivazione del summary risiedono in `codec.ts`, mentre l'I/O atomico (scrittura con file temporaneo e `renameSync`) e il recovery automatico da corruzione risiedono in `storage.ts`. `JsonMemoryBackend` orchestra unicamente lo stato RAM e l'interfaccia `MemoryBackend`.
+
+---
+
 ## 3. Riepilogo architetturale: componenti universali e scelte di TSUKA
 
 ### Componenti comuni a qualsiasi harness agentico

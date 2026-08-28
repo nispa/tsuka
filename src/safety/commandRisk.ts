@@ -48,7 +48,10 @@ const SAFE_COMMANDS: RegExp[] = [
  * confirmation instead of one per iteration. That is the whole point of the tier split.
  */
 const WORKSPACE_COMMANDS: RegExp[] = [
-  /^npm\s+(test|run\s+[a-z0-9:_-]+|ci|install|i)\s*[a-z0-9@/._-]*\s*$/,
+  // Dependency flags are intentionally enumerated. A broad "npm install --anything" rule
+  // would make options that redirect npm outside the workspace look project-confined.
+  /^npm\s+(?:test|run\s+[a-z0-9:_-]+|ci)\s*$/,
+  /^npm\s+(?:install|i)(?:\s+(?:[a-z0-9@/._^~-]+|-D|-P|-O|--save-dev|--save-prod|--save-optional|--no-save))*\s*$/,
   /^(npx|yarn|pnpm)\s+[a-z0-9@/._-]+\s*[a-z0-9@/._:-]*\s*$/,
   /^git\s+(add|commit|checkout|switch|restore|stash|fetch|merge|rebase)\b/,
   /^(mkdir|touch|cp|mv)\s+\S+/,

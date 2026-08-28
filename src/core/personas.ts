@@ -189,6 +189,7 @@ export function resolveCharacter(nameOrAiName: string): CharacterConfig | null {
 }
 
 import type { CreativityLevel, ReasoningEffort } from './provider';
+import type { ProviderClass } from './cloudProvider';
 
 /**
  * Resolves creativity sampling level: character -> active role -> config default.
@@ -210,18 +211,19 @@ export function resolveCreativity(
 // ── System Prompt Assembly ──
 
 import { MemoryStore } from './memory';
-import { ToolRegistry } from '../tools/registry';
+import { IToolRegistry } from '../tools/registry';
 import { resolveToolSet } from './toolSet';
 
 export function loadSystemPrompt(
   role: RoleConfig,
   trait: TraitConfig,
   modelName: string,
-  registry?: ToolRegistry,
+  registry?: IToolRegistry,
   character?: CharacterConfig | null,
   taskText?: string,
   effort?: ReasoningEffort,
-  providerBaseUrl?: string
+  providerBaseUrl?: string,
+  providerClass: ProviderClass = 'LOCAL'
 ): string {
   let prompt = '';
 
@@ -249,7 +251,7 @@ export function loadSystemPrompt(
 
   if (registry) {
     const toolSet = resolveToolSet(role);
-    const tools = registry.listForLLM(modelName, toolSet.active, effort, providerBaseUrl);
+    const tools = registry.listForLLM(modelName, toolSet.active, effort, providerBaseUrl, providerClass);
     if (tools.length > 0) {
       if (!hasNativeFunctionCalling(modelName, effort)) {
         // Names only (T14.14): every description already travels in the `tools` array of
@@ -266,7 +268,7 @@ export function loadSystemPrompt(
       // request applies, so the prompt never advertises a tool the model cannot receive.
       // Tools registered as alwaysAllow bypass that filter, hence the final intersection.
       const loadable = registry
-        .listForLLM(modelName, toolSet.deferred, effort, providerBaseUrl)
+        .listForLLM(modelName, toolSet.deferred, effort, providerBaseUrl, providerClass)
         .map((t) => t.function.name)
         .filter((name) => toolSet.deferred.includes(name));
       if (loadable.length > 0) {

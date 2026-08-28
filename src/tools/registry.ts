@@ -1,270 +1,37 @@
-import * as fs from 'fs';
-import { homePath, localWorkspacePath } from '../core/apphome';
-import { RiskLevel, PermissionManager } from '../safety/permissions';
-import { getModelProfile } from '../core/modelProfile';
-import type { ReasoningEffort } from '../core/provider';
-import { sanitizeToolCallArguments } from './jsonRepair';
-import { logSink } from '../core/logSink';
-import { WorkflowScope } from '../core/workflowScope';
+import type { PermissionManager } from '../safety/permissions';
+import type { ILLMProvider, ChatStats, ReasoningEffort } from '../core/provider';
 import type { StreamChannel } from '../core/thinkParser';
 import type { AgentEventHandler } from '../core/agentEvents';
 import type { WorkflowDispatcher } from '../core/workflowDispatcher';
 
-/**
- * Optional execution context passed into tool executors (e.g. registry access
- * for hot-registering tools created by create_tool, or subagent event/chunk forwarding).
- */
-/**
- * Minimal view the calling Agent exposes over its own active tool set (T14.14).
- * Lets `load_tools` promote a deferred tool without the registry — shared by every
- * agent — having to know about the concrete Agent.
- */
-export interface ToolSetController {
-  /** Tools whose full schema travels in the `tools` array on every round. */
-  getAllowedTools(): string[] | undefined;
-  /** Tools available on demand, not yet sent to the model. */
-  getDeferredTools(): string[];
-  /** Moves the named tools from deferred to active. */
-  activateTools(names: string[]): { activated: string[]; alreadyActive: string[]; unknown: string[] };
-}
+import type {
+  Tool,
+  ToolResult,
+  ToolSchemaData,
+  ToolExecutionContext,
+  ToolSetController,
+  ModelCapabilityTier,
+  ToolLLMDescriptor,
+  IToolRegistry,
+} from './types';
+import { loadToolSchema, validateToolArgs, fallbackSchema } from './schema';
+import {
+  getModelTier,
+  hasNativeFunctionCalling,
+  isToolEligibleForLLM,
+  TIER_HIERARCHY,
+  LARGE_MODEL_PATTERNS,
+  WORKFLOW_ESCALATION_TOOLS,
+} from './tierPolicy';
+import {
+  executeAuthorizedTool,
+  formatPermissionDetails,
+  type ExecuteAuthorizedToolOptions,
+} from './execution';
 
-export interface ToolExecutionContext {
-  registry?: ToolRegistry;
-  provider?: any;
-  permissionManager?: PermissionManager;
-  workflowDispatcher?: WorkflowDispatcher;
-  /** Calling Agent's tool set (T14.14): present only when the Agent exposes one. */
-  toolSet?: ToolSetController;
-  /** Requesting agent label (e.g. character aiName) for logging and note authorship attribution. */
-  requesterLabel?: string;
-  onChunk?: (chunk: string, channel?: StreamChannel, authorName?: string) => void;
-  onStats?: (stats: any, agentLabel?: string) => void;
-  onEvent?: AgentEventHandler;
-  signal?: AbortSignal;
-}
-
-export interface Tool {
-  name: string;
-  /** Static worst-case risk of the tool as a capability. Always the fallback. */
-  riskLevel: RiskLevel;
-  /**
-   * Inline schema for tools whose definition does not live in tools_schemas/
-   * (T20.1: MCP tools receive it from their server). When present it takes
-   * precedence over `loadToolSchema(name)`; native tools leave it unset.
-   */
-  schema?: ToolSchemaData;
-  /**
-   * Optional per-invocation refinement (T18.1). `execute_command` is DANGEROUS as a capability,
-   * but `git status` and `curl … | sh` are not the same request; a tool that can tell them apart
-   * implements this so the permission tier follows the actual arguments. Implementations must
-   * deny by default: anything they do not positively recognize stays at `riskLevel`.
-   */
-  classifyRisk?: (args: any) => RiskLevel;
-  execute: (args: any, context?: ToolExecutionContext) => Promise<string>;
-}
-
-export interface ToolResult {
-  success: boolean;
-  output: string;
-}
-
-const TIER_HIERARCHY: Record<'small' | 'medium' | 'large', number> = {
-  small: 1,
-  medium: 2,
-  large: 3,
-};
-
-const LARGE_MODEL_PATTERNS = ['gpt-', 'claude-', 'gemini-', 'meta-llama/llama-3.3-70b', 'deepseek-'];
-
-const WORKFLOW_ESCALATION_TOOLS = new Set(['request_goal', 'request_team', 'request_call']);
-
-type DetailFormatter = (args: any) => string | undefined;
-
-const TOOL_DETAIL_FORMATTERS: Record<string, DetailFormatter> = {
-  execute_command: (a) => a?.command,
-  write_file: (a) => (a?.path ? `Write/overwrite ${a.path}` : undefined),
-  edit_file: (a) => (a?.path ? `Edit ${a.path}` : undefined),
-  delete_file: (a) => (a?.path ? `Delete ${a.path}` : undefined),
-  request_goal: (a) => (a?.goal ? `Escalate to /goal: "${a.goal}" (Reason: ${a.reason || 'unspecified'})` : undefined),
-  request_team: (a) => (a?.team_name || a?.task ? `Convene team ${a.team_name || ''}: "${a.task}" (Reason: ${a.reason || 'unspecified'})` : undefined),
-  request_call: (a) => (a?.topic ? `Start call on "${a.topic}" (Reason: ${a.reason || 'unspecified'})` : undefined),
-};
-
-function formatPermissionDetails(toolName: string, args: any): string {
-  const custom = TOOL_DETAIL_FORMATTERS[toolName]?.(args);
-  if (custom) return custom;
-  try {
-    return JSON.stringify(args);
-  } catch {
-    return 'complex arguments';
-  }
-}
-
-/**
- * Resolves the model capability tier (small, medium, large).
- * Uses measured benchmark capability fingerprinting if available;
- * otherwise falls back to model name heuristics.
- */
-/**
- * OpenRouter is a curated cloud gateway: its hosted models receive the full tool
- * tier without requiring an expensive local capability sweep first. The gateway
- * identity comes from provider context, never from model-name heuristics.
- */
-export function isOpenRouterProvider(baseUrl?: string): boolean {
-  if (!baseUrl) return false;
-  try {
-    const hostname = new URL(baseUrl).hostname.toLowerCase();
-    return hostname === 'openrouter.ai' || hostname.endsWith('.openrouter.ai');
-  } catch {
-    return false;
-  }
-}
-
-export function getModelTier(
-  modelName: string,
-  effort?: ReasoningEffort,
-  providerBaseUrl?: string
-): 'small' | 'medium' | 'large' {
-  if (isOpenRouterProvider(providerBaseUrl)) {
-    return 'large';
-  }
-
-  const profile = getModelProfile(modelName, effort);
-  if (profile) {
-    return profile.tier;
-  }
-
-  const lower = modelName.toLowerCase();
-  if (LARGE_MODEL_PATTERNS.some((p) => lower.includes(p))) {
-    return 'large';
-  }
-
-  const match = lower.match(/(\d+)b/);
-  if (match) {
-    const size = parseInt(match[1], 10);
-    return size <= 12 ? 'small' : size <= 35 ? 'medium' : 'large';
-  }
-
-  return 'small';
-}
-
-const NATIVE_FUNCTION_CALLING_THRESHOLD = 0.9;
-
-/**
- * Checks whether the model possesses reliably measured native function calling capability (T8.9).
- */
-export function hasNativeFunctionCalling(modelName: string, effort?: ReasoningEffort): boolean {
-  const profile = getModelProfile(modelName, effort);
-  return !!profile && profile.scores.toolCalling >= NATIVE_FUNCTION_CALLING_THRESHOLD;
-}
-
-export interface ToolSchemaData {
-  description: string;
-  schema: any;
-  requiredTier: 'small' | 'medium' | 'large';
-}
-
-/**
- * Lightweight tool arguments validation against parameter JSON schema.
- */
-function validateToolArgs(args: any, schema: any, toolName: string): string | null {
-  if (!args || typeof args !== 'object') {
-    return "Missing or invalid arguments (expected JSON object)";
-  }
-
-  if (args._error === 'invalid_json_arguments') {
-    return `Invalid or malformed JSON arguments (expected valid JSON object). Re-try calling '${toolName}' with valid JSON syntax`;
-  }
-
-  const required: string[] = schema.required || [];
-  for (const field of required) {
-    if (args[field] === undefined || args[field] === null) {
-      return `Missing required parameter '${field}'`;
-    }
-  }
-
-  const properties = schema.properties || {};
-  for (const [field, propSchema] of Object.entries(properties) as [string, any][]) {
-    const value = args[field];
-    if (value === undefined || value === null) continue;
-
-    const expectedType = propSchema.type;
-    if (!expectedType) continue;
-
-    const actualType = typeof value;
-    if (expectedType === 'string' && actualType !== 'string') {
-      return `'${field}' must be a string, received ${actualType}`;
-    }
-    if ((expectedType === 'integer' || expectedType === 'number') && actualType !== 'number' && actualType !== 'string') {
-      return `'${field}' must be a number, received ${actualType}`;
-    }
-    if (expectedType === 'integer' && typeof value === 'string' && !/^-?\d+$/.test(value)) {
-      return `'${field}' must be an integer, received "${value}"`;
-    }
-  }
-
-  return null;
-}
-
-function fallbackSchema(name: string): ToolSchemaData {
-  return {
-    description: `Tool ${name}`,
-    schema: { type: 'object', properties: {} },
-    requiredTier: 'small'
-  };
-}
-
-const schemaCache = new Map<string, { mtimeMs: number; data: ToolSchemaData }>();
-
-/**
- * Loads tool description, parameter schema, and minimum required tier from tools_schemas/*.json.
- */
-export function loadToolSchema(name: string): ToolSchemaData {
-  try {
-    const localCustomSchemaPath = localWorkspacePath('custom_tools_schemas', `${name}.json`);
-    const globalCustomSchemaPath = homePath('custom_tools_schemas', `${name}.json`);
-    const coreSchemaPath = homePath('tools_schemas', `${name}.json`);
-
-    let schemaPath = coreSchemaPath;
-    if (localCustomSchemaPath && fs.existsSync(localCustomSchemaPath)) {
-      schemaPath = localCustomSchemaPath;
-    } else if (fs.existsSync(globalCustomSchemaPath)) {
-      schemaPath = globalCustomSchemaPath;
-    }
-
-    if (!fs.existsSync(schemaPath)) {
-      return fallbackSchema(name);
-    }
-
-    const mtimeMs = fs.statSync(schemaPath).mtimeMs;
-    const cached = schemaCache.get(name);
-    if (cached && cached.mtimeMs === mtimeMs) {
-      return cached.data;
-    }
-
-    const raw = fs.readFileSync(schemaPath, 'utf-8');
-    const data = JSON.parse(raw);
-    const schemaData: ToolSchemaData = {
-      description: data.description || '',
-      // 'schema' is a legacy alias of 'parameters': some schema files (and hand-written
-      // user tools) use that key. Without the alias the tool reaches the model with EMPTY
-      // parameters and nothing to validate against — silent and hard to spot.
-      schema: data.parameters || data.schema || { type: 'object', properties: {} },
-      requiredTier: data.requiredTier || 'small'
-    };
-    schemaCache.set(name, { mtimeMs, data: schemaData });
-    return schemaData;
-  } catch (error: any) {
-    logSink.error(`Error loading JSON schema for '${name}': ${error.message}`);
-    return fallbackSchema(name);
-  }
-}
-
-export class ToolRegistry {
+export class ToolRegistry implements IToolRegistry {
   private tools: Map<string, Tool> = new Map();
   private alwaysAllow: Set<string> = new Set();
-
-  constructor() {}
 
   register(tool: Tool, options?: { alwaysAllow?: boolean }): void {
     if (this.tools.has(tool.name)) {
@@ -296,34 +63,16 @@ export class ToolRegistry {
     modelName: string,
     allowedTools?: string[],
     effort?: ReasoningEffort,
-    providerBaseUrl?: string
-  ): Array<{
-    type: 'function';
-    function: {
-      name: string;
-      description: string;
-      parameters: any;
-    };
-  }> {
-    const modelTier = getModelTier(modelName, effort, providerBaseUrl);
+    providerBaseUrl?: string,
+    providerClass?: import('../core/cloudProvider').ProviderClass
+  ): ToolLLMDescriptor[] {
+    const modelTier = getModelTier(modelName, effort, providerBaseUrl, providerClass);
     const currentTierLevel = TIER_HIERARCHY[modelTier];
-    const result: Array<{
-      type: 'function';
-      function: { name: string; description: string; parameters: any };
-    }> = [];
+    const result: ToolLLMDescriptor[] = [];
 
     for (const tool of this.tools.values()) {
-      if (allowedTools && !allowedTools.includes(tool.name) && !this.alwaysAllow.has(tool.name)) {
-        continue;
-      }
-
       const schemaData = tool.schema ?? loadToolSchema(tool.name);
-      const requiredTierLevel = TIER_HIERARCHY[schemaData.requiredTier || 'small'];
-      if (currentTierLevel < requiredTierLevel) {
-        continue;
-      }
-
-      if (WorkflowScope.isInsideWorkflow() && WORKFLOW_ESCALATION_TOOLS.has(tool.name)) {
+      if (!isToolEligibleForLLM(tool, schemaData, currentTierLevel, allowedTools, this.alwaysAllow)) {
         continue;
       }
 
@@ -332,8 +81,8 @@ export class ToolRegistry {
         function: {
           name: tool.name,
           description: schemaData.description,
-          parameters: schemaData.schema
-        }
+          parameters: schemaData.schema,
+        },
       });
     }
 
@@ -342,13 +91,13 @@ export class ToolRegistry {
 
   async executeTool(
     name: string,
-    args: any,
+    args: unknown,
     permissionManager: PermissionManager,
-    provider?: any,
+    provider?: ILLMProvider,
     requesterLabel?: string,
     workflowDispatcher?: WorkflowDispatcher,
     onChunk?: (chunk: string, channel?: StreamChannel, authorName?: string) => void,
-    onStats?: (stats: any, agentLabel?: string) => void,
+    onStats?: (stats: ChatStats, agentLabel?: string) => void,
     onEvent?: AgentEventHandler,
     signal?: AbortSignal,
     toolSet?: ToolSetController
@@ -357,71 +106,48 @@ export class ToolRegistry {
     if (!tool) {
       return {
         success: false,
-        output: `Error: Tool '${name}' is not registered.`
+        output: `Error: Tool '${name}' is not registered.`,
       };
     }
 
-    const effectiveArgs = typeof args === 'string' ? sanitizeToolCallArguments(args).parsed : args;
-
-    const schemaData = tool.schema ?? loadToolSchema(name);
-    if (schemaData.schema?.type === 'object' && schemaData.schema?.properties) {
-      const validationError = validateToolArgs(effectiveArgs, schemaData.schema, name);
-      if (validationError) {
-        return {
-          success: false,
-          output: `Validation error for tool '${name}': ${validationError}. Please review parameters and retry.`
-        };
-      }
-    }
-
-    const details = formatPermissionDetails(name, effectiveArgs);
-
-    // T18.1: a tool may refine its own risk for this specific call. The refinement is trusted
-    // only to the extent the tool is: it ships with the tool's own source, so it is exactly as
-    // reviewable as `riskLevel` itself. A throwing or malformed classifier falls back to the
-    // static level rather than to something permissive.
-    let effectiveRisk = tool.riskLevel;
-    if (tool.classifyRisk) {
-      try {
-        const refined = tool.classifyRisk(effectiveArgs);
-        if (refined === 'SAFE' || refined === 'RESTRICTED' || refined === 'DANGEROUS') {
-          effectiveRisk = refined;
-        }
-      } catch {
-        effectiveRisk = tool.riskLevel;
-      }
-    }
-
-    const isApproved = await permissionManager.checkPermission(name, details, effectiveRisk, requesterLabel);
-    if (!isApproved) {
-      return {
-        success: false,
-        output: `Error: Operation '${name}' denied by user. Request cancelled.`
-      };
-    }
-
-    try {
-      const output = await tool.execute(effectiveArgs, {
-        registry: this,
-        provider,
-        permissionManager,
-        requesterLabel,
-        workflowDispatcher,
-        toolSet,
-        onChunk,
-        onStats,
-        onEvent,
-        signal
-      });
-      return {
-        success: true,
-        output
-      };
-    } catch (error: any) {
-      return {
-        success: false,
-        output: `Error executing tool '${name}': ${error.message}`
-      };
-    }
+    return executeAuthorizedTool(tool, args, {
+      registry: this,
+      permissionManager,
+      provider,
+      requesterLabel,
+      workflowDispatcher,
+      toolSet,
+      onChunk,
+      onStats,
+      onEvent,
+      signal,
+    });
   }
 }
+
+// Re-exports for backward compatibility
+export type {
+  Tool,
+  ToolResult,
+  ToolSchemaData,
+  ToolExecutionContext,
+  ToolSetController,
+  ModelCapabilityTier,
+  ToolLLMDescriptor,
+  IToolRegistry,
+  ExecuteAuthorizedToolOptions,
+};
+
+export {
+  loadToolSchema,
+  validateToolArgs,
+  fallbackSchema,
+  getModelTier,
+  hasNativeFunctionCalling,
+  isToolEligibleForLLM,
+  TIER_HIERARCHY,
+  LARGE_MODEL_PATTERNS,
+  WORKFLOW_ESCALATION_TOOLS,
+  executeAuthorizedTool,
+  formatPermissionDetails,
+};

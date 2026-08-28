@@ -1,17 +1,18 @@
 export type ModelCatalogFilter = 'all' | 'free';
+import type { FreeModelsCapability } from './providerCatalog';
 
 export interface ModelPricing {
   prompt?: string | number;
   completion?: string | number;
 }
 
-/** OpenRouter publishes free variants with a `:free` suffix and a free router alias. */
-export function isFreeOpenRouterModel(modelId: string): boolean {
+export function isFreeModel(modelId: string, capability: FreeModelsCapability): boolean {
   const normalized = modelId.trim().toLowerCase();
-  return normalized === 'openrouter/free' || normalized.endsWith(':free');
+  return (capability.aliases ?? []).some((alias) => normalized === alias.toLowerCase()) ||
+    (capability.suffixes ?? []).some((suffix) => normalized.endsWith(suffix.toLowerCase()));
 }
 
-/** OpenRouter may publish temporary free models without adding `:free` to their IDs. */
+/** Some catalogues report zero pricing independently from model naming. */
 export function hasZeroTokenPricing(pricing: ModelPricing | null | undefined): boolean {
   if (!pricing) return false;
   const prompt = Number(pricing.prompt);
@@ -19,13 +20,14 @@ export function hasZeroTokenPricing(pricing: ModelPricing | null | undefined): b
   return Number.isFinite(prompt) && Number.isFinite(completion) && prompt === 0 && completion === 0;
 }
 
-export function filterOpenRouterModels(
-  providerName: string,
+export function filterProviderModels(
   models: string[],
   filter: ModelCatalogFilter,
+  capability?: FreeModelsCapability,
   zeroPricedModels: readonly string[] = []
 ): string[] {
-  if (providerName !== 'openrouter' || filter !== 'free') return models;
+  if (!capability || filter !== 'free') return models;
   const zeroPriced = new Set(zeroPricedModels);
-  return models.filter((model) => isFreeOpenRouterModel(model) || zeroPriced.has(model));
+  return models.filter((model) => isFreeModel(model, capability) ||
+    (capability.includeZeroPriced === true && zeroPriced.has(model)));
 }

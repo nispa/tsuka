@@ -2,7 +2,7 @@
 [![Node.js](https://img.shields.io/badge/Node.js-20+-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![Ollama](https://img.shields.io/badge/Ollama-nativo-black?logo=ollama&logoColor=white)](https://ollama.com/)
 [![OpenRouter](https://img.shields.io/badge/OpenRouter-pronto-FF6B35?logo=openai&logoColor=white)](https://openrouter.ai/)
-[![Test](https://img.shields.io/badge/Test-80%20superati-brightgreen?logo=vitest&logoColor=white)](tests/)
+[![Test](https://img.shields.io/badge/Test-90%20superati-brightgreen?logo=vitest&logoColor=white)](tests/)
 [![Licenza](https://img.shields.io/badge/Licenza-MIT-blue.svg)](LICENSE)
 [![PR benvenute](https://img.shields.io/badge/PR-benvenute-brightgreen.svg)](https://github.com/nispa/tsuka/pulls)
 
@@ -117,6 +117,51 @@ TSUKA include **30 tool nativi** (`src/tools/impl/*.ts`) suddivisi per area:
 * **Estensione & SAST**: `create_tool` (isolato in `node:vm`), `audit_code` (analizzatore statico di vulnerabilità di sicurezza CWE).
 
 > 📚 Approfondimenti: [Specifica di Sicurezza](docs/security-it.md) · [Architettura di Sistema](docs/architecture-it.md)
+
+---
+
+## 🌐 Gestione Provider & Modelli LLM
+
+TSUKA disaccoppia i provider LLM dal codice dell'harness tramite un catalogo dichiarativo in `providers.json`. Qualsiasi endpoint compatibile con lo standard OpenAI (`/v1/chat/completions`) può essere configurato senza modificare il sorgente:
+
+```json
+{
+  "providers": {
+    "ollama": {
+      "displayName": "Ollama",
+      "class": "LOCAL",
+      "baseUrl": "http://localhost:11434/v1",
+      "defaultModel": "qwen2.5-coder:7b"
+    },
+    "openrouter": {
+      "displayName": "OpenRouter",
+      "class": "CLOUD",
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "defaultModel": "meta-llama/llama-3.3-70b-instruct",
+      "apiKeyEnv": "OPENROUTER_API_KEY",
+      "capabilities": {
+        "freeModels": {
+          "aliases": ["openrouter/free"],
+          "suffixes": [":free"],
+          "includeZeroPriced": true
+        }
+      }
+    },
+    "custom-vllm": {
+      "displayName": "vLLM Server",
+      "class": "LOCAL",
+      "baseUrl": "http://127.0.0.1:8000/v1",
+      "defaultModel": "meta-llama/Llama-3.1-8B-Instruct"
+    }
+  }
+}
+```
+
+* **Architettura Data-Driven**: Aggiungi qualsiasi backend (Ollama, llama.cpp, Unsloth, LM Studio, vLLM, Groq, Bailu, OpenRouter) senza modificare una sola riga di TypeScript.
+* **Separazione dei Ruoli**: `providers.json` definisce gli endpoint, le classi e i puntatori alle variabili d'ambiente delle API key; `tsuka.config.json` seleziona il provider attivo per il workspace corrente.
+* **Rilevamento Dinamico & Warmup RAM**: Quando cambi modello (`/models` o `/provider`), l'harness interroga il server per rilevare la context window effettiva e gestisce il warm-up automatico o il cambio di modello in memoria (`● loaded`).
+* **Policy Cloud vs Local**: I provider di classe `CLOUD` ottengono automaticamente il tier `LARGE`, evitando inutili sweep di benchmark locali.
+* **Filtro Modelli Gratuiti**: Per i provider con supporto `freeModels` (come OpenRouter), il menu `/models` offre un filtro istantaneo per mostrare solo i modelli a costo zero (`:free`).
 
 ---
 

@@ -153,7 +153,8 @@ export async function runMemberTurn(
     memberChar,
     task,
     reasoningEffort,
-    ctx.provider.getBaseUrl()
+    ctx.provider.getBaseUrl(),
+    ctx.provider.getProviderClass?.()
   );
   sysPrompt += `\n\n[COLLABORATIVE CONTEXT]: You are working on a team task: "${task}".
     This is your active work turn (round ${round}/${maxRounds}). Analyze the task and what previous colleagues did (inspect workspace files and history if needed).

@@ -15,6 +15,7 @@
  */
 import { ChatMessageLike, ChatOptions, ChatResponse, ChatStats, ILLMProvider } from '../../src/core/provider';
 import { StreamChannel } from '../../src/core/thinkParser';
+import type { ProviderClass } from '../../src/core/cloudProvider';
 
 export interface MockToolCall {
   id: string;
@@ -73,10 +74,12 @@ export class MockLLMProvider implements ILLMProvider {
   private cursor = 0;
   private currentModel: string;
   private baseUrl: string;
+  private providerClass: ProviderClass;
 
-  constructor(private readonly script: ScriptedResponse[], opts?: { model?: string; baseUrl?: string }) {
+  constructor(private readonly script: ScriptedResponse[], opts?: { model?: string; baseUrl?: string; providerClass?: ProviderClass }) {
     this.currentModel = opts?.model ?? 'mock-model-9b';
     this.baseUrl = opts?.baseUrl ?? 'mock://local';
+    this.providerClass = opts?.providerClass ?? 'LOCAL';
   }
 
   /** Numero di risposte del copione non ancora consumate. */
@@ -147,12 +150,17 @@ export class MockLLMProvider implements ILLMProvider {
     return this.baseUrl;
   }
 
+  getProviderClass(): ProviderClass {
+    return this.providerClass;
+  }
+
   async listModels(): Promise<string[]> {
     return [this.currentModel];
   }
 
-  reconfigure(baseUrl: string, _apiKey: string, defaultModel: string): void {
+  reconfigure(baseUrl: string, _apiKey: string, defaultModel: string, providerClass: ProviderClass = 'LOCAL'): void {
     this.baseUrl = baseUrl;
     this.currentModel = defaultModel;
+    this.providerClass = providerClass;
   }
 }

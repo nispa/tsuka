@@ -143,7 +143,8 @@ export async function runOrchestrated(
     ctx.provider.getCurrentModel(),
     ['route_next'],
     undefined,
-    ctx.provider.getBaseUrl()
+    ctx.provider.getBaseUrl(),
+    ctx.provider.getProviderClass?.()
   );
 
   outer:

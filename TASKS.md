@@ -16,6 +16,28 @@
 > - Se il task modifica un meccanismo descritto in `docs/guida-didattica.md`, aggiornare
 >   il paragrafo corrispondente nello stesso task.
 
+---
+
+## 📊 Dashboard di Progetto & Stato Avanzamento
+
+- **Test Suite Totali**: **90 suite automatizzate** (100% pass rate)
+- **Fase Attuale**: **Fase 8 — Refactoring Architetturale e Core Sharp** (Completata: 10/10 completati)
+- **Gate di Qualità**: TypeScript strict compilato su `dist/`, zero cicli di dipendenza, I/O logging disaccoppiato via `logSink`, memory jail attiva.
+
+### 🧭 Indice Navigabile delle Fasi
+
+- [Fase 0 — Baseline e Sanity Check](#fase-0--baseline-e-sanity-check) (T0.1 – T0.2)
+- [Fase 1 — Contratti del Core e Scenari Deterministi](#fase-1--contratti-del-core-e-scenari-deterministi) (T1.1 – T1.3)
+- [Fase 2 — Protocollo Multi-Agente a Tool Call](#fase-2--protocollo-multi-agente-a-tool-call) (T2.1)
+- [Fase 3 — Isolamento della Concorrenza](#fase-3--isolamento-della-concorrenza) (T3.1 – T3.2)
+- [Fase 4 — Pulizia del Core e Tipizzazione](#fase-4--pulizia-del-core-e-tipizzazione) (T4.1 – T4.2)
+- [Fase 5 — Test e Documentazione](#fase-5--test-e-documentazione) (T5.1 – T5.3)
+- [Fasi Intermedie (T8..T20) — TUI, MCP, Memory BM25, Escalation, SAST](#t141---piano-fase-5-polish-architetturale-e-didattica-qualità)
+- [Fase 8 — Refactoring Architetturale e Core Sharp](#fase-8--refactoring-architetturale-e-core-sharp) (T21.1 – T21.10)
+- [Fase 9 — Context Scheduler e Memoria Pluggable](#fase-9--context-scheduler-e-memoria-pluggable) (T22.1 – T22.17)
+
+---
+
 ## Stato
 
 | Task | Stato | Note |
@@ -124,13 +146,30 @@
 | T21.2a | ✅ Fatto | **Chiuse le eccezioni I/O note**: `PermissionManager` non importa più menu/chalk/prompts e riceve un `PermissionPromptHandler`; la CLI possiede il renderer in `permissionPrompt.ts`, la TUI continua a iniettare il proprio handler. Senza renderer le richieste non-SAFE falliscono chiuse. Il fatal startup TUI passa da `logSink`. La guardia consente `console.*` solo nell'infrastruttura `logSink`/`logBuffer`. Test coda esteso a 10 casi. 81 suite verdi, build e typecheck puliti. |
 | T21.2b | ✅ Fatto | **Invertite le dipendenze tool → CLI**: nuovo contratto core `WorkflowDispatcher`, iniettato nell'`Agent` dalla composition root CLI; i tool `request_goal/team/call` non importano più command handler. Catalogo, risoluzione persona e prompt assembly spostati in `core/personas.ts`; `cli/shared.ts` resta barrel compatibile. La guardia architetturale non contiene più eccezioni di dipendenza. Test escalation esteso a 16 casi con verifica delle tre deleghe. Guide architetturali/didattiche IT/EN aggiornate. 81 suite verdi, build e typecheck puliti. |
 | T21.3 | ✅ Fatto | **Split di `Agent` per invarianti**: mantenuta `Agent` come facade compatibile ed estratte calibrazione token, history/pruning, tool round, macchina ReAct e persistenza del reasoning in moduli focalizzati (`tokenCalibration.ts`, `conversationHistory.ts`, `toolRound.ts`, `reactState.ts`, `reasoningTrace.ts`). Tunable centralizzati, accessor mutabili compatibili preservati, invarianti system/tool history isolate. 82 suite OK, build e typecheck puliti. |
-| T21.4 | ⬜ Da fare | **Contratti stretti per i tool**: separare contratti, catalogo, schema, tier policy ed esecuzione; sostituire gli `any` ai confini senza duplicare il percorso fra tool nativi e MCP. |
-| T21.5 | ⬜ Da fare | **Boundary provider normalizzato**: confinare payload OpenAI-compatible, streaming, tool-call assembly, usage ed error mapping nel package provider, lasciando al core un solo protocollo tipizzato. |
-| T21.6 | ⬜ Da fare | **Composition root condivisa**: alleggerire CLI e TUI con un runtime applicativo stretto e lifecycle idempotente, includendo la chiusura MCP senza esporre process internals. |
-| T21.7 | ⬜ Da fare | **Backend JSON focalizzato**: separare codec/recovery/persistenza atomica dalle operazioni di memoria senza aggiungere contratti speculativi e senza cambiare il formato su disco. |
-| T21.8 | ⬜ Da fare | **Audit delle varianti dietro flag**: classificare configurazione di prodotto, compatibilità, diagnostica e migrazioni concluse; convergere su un solo percorso dove sopravvivono varianti temporanee. |
-| T21.9 | ⬜ Da fare | **Navigabilità di `TASKS.md` e guida didattica**: mantenere un unico file come registro storico, aggiungere indice e viste di stato senza archivi separati, quindi raccontare nella guida le decisioni realmente emerse dal refactoring senza trasformarla in un corso. |
-| T21.10 | ⬜ Da fare | **Esecuzione shell per developer solo su tier large**: rendere `execute_command` direttamente disponibile al developer soltanto per modelli classificati `large`; build, test e installazione dipendenze restano operazioni RESTRICTED con consenso, mai un privilegio implicito per modelli piccoli o medi. |
+| T21.4 | ✅ Fatto | **Contratti stretti per i tool**: estratti contratti `IToolRegistry`/`Tool`/`ToolExecutionContext`/`ToolSchemaData` in `types.ts`, validazione/caricamento schema in `schema.ts`, tier policy in `tierPolicy.ts`, pipeline di esecuzione autorizzata in `execution.ts`; `ToolRegistry` ridotto a facade compatibile (Direttiva 8); sostituiti gli `any` ai confini con `unknown`, `ILLMProvider`, `ChatStats` e tipi JSON; nuova suite `test_tool_registry.ts` (25 check). 85 suite verdi, build e typecheck puliti. |
+| T21.5 | ✅ Fatto | **Boundary provider normalizzato**: confinato nel package `src/core/provider/` il wire format OpenAI (`wireFormat.ts`), l'accumulatore di streaming SSE con merge incrementale di tool calls/logprobs/usage (`streamAccumulator.ts`) e la classificazione errori con arricchimento reasoning (`errorClassification.ts`); rimossi i `process.stdout.write` diretti a favore di `logSink`; stretta la firma di `ILLMProvider.chatWithTools` (`tools?: unknown[]`); nuova suite `test_provider_boundary.ts` (21 check). 86 suite verdi, build e typecheck puliti. |
+| T21.6 | ✅ Fatto | **Composition root condivisa**: introdotto il modulo `src/core/runtime.ts` (`createHarnessRuntime`, `HarnessRuntime`) per unificare il bootstrap di configurazione, provider, tool registry (nativi + MCP) e permission manager tra CLI e TUI, con lifecycle idempotente `close()`; semplificati `cli/index.ts` e `tui/index.ts`; nuova suite `test_harness_runtime.ts` (12 check). 87 suite verdi, build e typecheck puliti. |
+| T21.7 | ✅ Fatto | **Backend JSON focalizzato**: separati codec/normalizzazione/deduplica (`codec.ts`) e persistenza atomica con backup anti-corruzione (`storage.ts`) da `JsonMemoryBackend`; `MemoryBackend` preservato come unico contratto pubblico senza alterazioni al formato `memory.json`; nuova suite `test_memory_codec_storage.ts` (18 check). 88 suite verdi, build e typecheck puliti. |
+| T21.8 | ✅ Fatto | **Audit delle varianti dietro flag**: inventario derivato direttamente dal sorgente per tutte le opzioni di `AppConfig` e le variabili d'ambiente nominate, classificate come prodotto, compatibilità, diagnostica o presentazione; i tunable verificati convergono su `src/core/constants.ts` (Direttive 9 e 10). La suite `test_flags_audit.ts` fallisce quando compare una voce non classificata (24 check). |
+| T21.9 | ✅ Fatto | **Navigabilità di `TASKS.md` e guida didattica**: integrati dashboard di progetto e indice per fasi ad ancore interne in `TASKS.md` mantenendo l'unicità del diario storico; aggiornate le guide architetturali e didattiche (`docs/architecture-it.md`, `docs/architecture.md`, `docs/guida-didattica.md`, `docs/educational-guide.md`, `docs/memory-it.md`, `docs/memory.md`) con le motivazioni e decisioni reali di Fase 8. 89 suite verdi, build e typecheck puliti. |
+| T21.10 | ✅ Fatto | **Esecuzione shell per developer solo su tier large**: `execute_command` è core tool del developer ma lo schema richiede tier `large`; OpenRouter è classificato large dal contesto provider. Build, test, `npm ci` e installazioni npm comuni (incluse `-D`/`--save-dev`) sono RESTRICTED, composizioni e comandi ignoti DANGEROUS; l'output passa da `logSink`. |
+| T22.1 | ⬜ Da fare | **Baseline context, handoff e memoria**: characterization test dei percorsi correnti prima di cambiare policy o contratti. |
+| T22.2 | ⬜ Da fare | **Proiezione `ContextPressure`**: derivare la pressione dai dati già prodotti da `contextBudget.ts` e dalla calibrazione dell'`Agent`. |
+| T22.3 | ⬜ Da fare | **Pressione in `/context`**: estendere `ContextTracker` e le viste CLI/TUI senza introdurre nuova telemetria. |
+| T22.4 | ⬜ Da fare | **Policy pura dello scheduler**: scegliere soltanto `continue`, `prepare` o `delegate` con due soglie centralizzate. |
+| T22.5 | ⬜ Da fare | **Contratto `TaskPacket`**: contenuto minimo del briefing, separato da run ID e bookkeeping del workflow. |
+| T22.6 | ⬜ Da fare | **Contratto `AgentResult`**: risultato child compatto e strutturato, senza transcript o reasoning. |
+| T22.7 | ⬜ Da fare | **Runner sub-agent condiviso**: estrarre da `spawn_agent` un solo percorso applicativo riusabile anche dallo scheduler. |
+| T22.8 | ⬜ Da fare | **Delega nel ReAct loop**: integrare la policy dopo pruning e fuori dai tool round, con guard anti-spawn e fallback al parent. |
+| T22.9 | ⬜ Da fare | **Budget strutturale di `AgentResult`**: ridurre il risultato senza troncare JSON o campi indispensabili. |
+| T22.10 | ⬜ Da fare | **Audit capability di `MemoryBackend`**: evolvere il contratto esistente soltanto per differenze operative dimostrate. |
+| T22.11 | ⬜ Da fare | **Budget memory unificato**: riusare `memoryMaxChars`, formatter e capping esistenti prima di aggiungere nuove forme di recall. |
+| T22.12 | ⬜ Da fare | **`ShadowMemoryBackend`**: wrapper primary/shadow non influente con degradazione sicura. |
+| T22.13 | ⬜ Da fare | **Metriche memory minime**: recall, latenza, errori, dimensione e overlap nell'osservabilità esistente. |
+| T22.14 | ⬜ Da fare | **Feasibility memoria esterna**: risolvere esplicitamente il mismatch fra `MemoryBackend` sincrono e MCP asincrono. |
+| T22.15 | ⬜ Da fare | **Backend alternativo sperimentale**: una sola implementazione semplice, prima validata in shadow mode. |
+| T22.16 | ⬜ Da fare | **Metriche scheduler**: pressione, deleghe, token, handoff e context amplification senza policy adattiva. |
+| T22.17 | ⬜ Da fare | **Documentazione verificata**: allineare guide IT/EN, architettura e configurazione soltanto dopo i checkpoint reali. |
 
 Tutti i task pianificati e di backlog sono completati; la serie T15 (memoria, modelli <30B) è implementata e chiusa con 72 suite di test verdi. Pianificata la serie **T16 (benchmark significativi)** su architettura a due velocità: **`/benchmark` fast** (1 colpo/test, deterministico — resta il gate del tier) e **`/benchmark --deep`** (repliche con variazione del prompt, mediana+varianza, per validazione/calibrazione). Pianificato anche **T17.1** (retrieval BM25/TF-IDF), il primo livello del percorso di apprendimento documentato in `docs/memory.md` §12. Valore di ritorno — i benchmark attuali saturano in alto e non discriminano tra i modelli, ma il gating dei tool (`registry.ts`) dipende proprio da quel tier: se tutto diventa `large` il gating è codice morto. Restano da fare T14.24 (commenti tests/ in inglese), T14.25 (token di protocollo multi-agente) e le serie T16/T17.
 
@@ -3659,6 +3698,8 @@ dei tier o dei payload visibili al modello.
 **Accettazione:** facade backward-compatible, schema inline MCP invariato, permessi e
 tier applicati una sola volta, test esistenti non indeboliti, tre gate verdi.
 
+**Esito:** package `src/tools/` decomposto in moduli focalizzati (`types.ts` per contratti `IToolRegistry`/`Tool`/`ToolExecutionContext`/`ToolSchemaData`, `schema.ts` per risoluzione/validazione/caching, `tierPolicy.ts` per tiering/OpenRouter/escalation guard, `execution.ts` per la pipeline autorizzata e gestione permessi, `registry.ts` facade compatibile). Sostituiti gli `any` ai confini con `unknown`, `ILLMProvider`, `ChatStats` e tipi JSON. Aggiunta suite `tests/test_tool_registry.ts` (25 check). Gate finali: **85 suite OK, `npm run build` e `npm run typecheck` verdi**.
+
 ## T21.5 — Boundary provider normalizzato
 
 **Dipende da:** T21.2 · **Sforzo:** medio · **Priorità:** media
@@ -3671,6 +3712,8 @@ logprobs ed error mapping. Il core deve consumare esclusivamente i tipi del cont
 **Accettazione:** nessun wire-format cast fuori dal package provider; payload e
 telemetria invariati nei test; retry e timeout conservano ordering e cleanup; tre
 gate verdi.
+
+**Esito:** package `src/core/provider/` normalizzato con moduli dedicati: `wireFormat.ts` (conversione tipizzata di `ChatMessage` e tool descriptor in messaggi e payload OpenAI `ChatCompletionCreateParams`), `streamAccumulator.ts` (gestione dei chunk SSE, parsing streaming di `<think>`, unione frammenti di tool calls per indice, estrazione logprobs e calcolo metriche `ChatStats`), `errorClassification.ts` (rilevamento errori JSON malformato, rifiuto reasoning effort, fabbrica errori arricchiti con `partialReasoning`). Rimossi `process.stdout.write` diretti a favore di `logSink`. Nuova suite `tests/test_provider_boundary.ts` (21 check). Gate finali: **86 suite OK, `npm run build` e `npm run typecheck` verdi**.
 
 ## T21.6 — Composition root condivisa e lifecycle
 
@@ -3685,6 +3728,8 @@ non ad `Agent`, registry o renderer.
 core diretto al terminale; shutdown normale, segnale e startup parziale chiudono una
 sola volta le risorse; tre gate verdi.
 
+**Esito:** creato il modulo `src/core/runtime.ts` con la composition root unificata `createHarnessRuntime` e l'interfaccia `HarnessRuntime`. `cli/index.ts` e `tui/index.ts` ora condividono lo stesso caricamento di configurazione, inizializzazione provider, montaggio del tool registry e connessione automatica dei server MCP. La chiusura delle risorse e dei processi figli MCP è incapsulata nel metodo idempotente `close()`. Nuova suite `tests/test_harness_runtime.ts` (12 check). Gate finali: **87 suite OK, `npm run build` e `npm run typecheck` verdi**.
+
 ## T21.7 — Backend JSON focalizzato
 
 **Dipende da:** T21.2 · **Sforzo:** medio · **Priorità:** media
@@ -3696,6 +3741,8 @@ interfaccia per helper che hanno un solo consumatore.
 
 **Accettazione:** formato e ordering di `memory.json` invariati nei casi normali;
 backup, recovery, deduplica, retrieval ed eviction invariati; tre gate verdi.
+
+**Esito:** estratti dal backend JSON i moduli `src/core/memory/codec.ts` (normalizzazione e derivazione del summary, sanitizzazione fact, deduplica a scrittura/caricamento, rendering sezioni prompt con cap caratteri) e `src/core/memory/storage.ts` (salvataggio atomico via file temporaneo, caricamento sicuro con rilevamento e backup file corrotti `.corrupt-<timestamp>`). `JsonMemoryBackend` focalizzato esclusivamente sull'orchestrazione dello stato RAM e sulle operazioni del contratto `MemoryBackend`. Nuova suite `tests/test_memory_codec_storage.ts` (18 check). Gate finali: **88 suite OK, `npm run build` e `npm run typecheck` verdi**.
 
 ## T21.8 — Audit delle varianti semantiche dietro flag
 
@@ -3709,6 +3756,8 @@ dedicato, non una pulizia silenziosa.
 
 **Accettazione:** inventario con proprietario e test; nessuna coppia permanente
 old/new non giustificata; tre gate verdi per ogni rimozione.
+
+**Esito:** completato l'audit delle opzioni di configurazione `AppConfig`, dei tunable di sistema e delle variabili d'ambiente. L'inventario viene estratto dal sorgente durante il test e confrontato con una classificazione esplicita in 4 categorie (Prodotto, Compatibilità provider/chiavi, Diagnostica/Test, Presentazione): una nuova opzione o variabile non classificata rende la suite rossa. I fallback coperti dal contratto convergono su `src/core/constants.ts` (Direttive 9 e 10). Nuova suite `tests/test_flags_audit.ts` (24 check).
 
 ## T21.9 — Rendere navigabile `TASKS.md` e aggiornare la guida didattica
 
@@ -3730,6 +3779,8 @@ perché e un solo percorso di produzione. Non convertirla in lezioni o esercizi.
 
 **Accettazione:** un solo `TASKS.md`, nessun task storico perso; link e Wiki verdi;
 backlog corrente rapidamente leggibile; guide IT/EN allineate; tre gate verdi.
+
+**Esito:** integrati in testa a `TASKS.md` il dashboard di stato e l'indice navigabile delle fasi con link interni, preservando l'integrità del registro storico come file unico. Aggiornate le guide architetturali (`docs/architecture-it.md`, `docs/architecture.md`), didattiche (`docs/guida-didattica.md`, `docs/educational-guide.md`) e di memoria (`docs/memory-it.md`, `docs/memory.md`) documentando la composition root `HarnessRuntime`, lo split delle invarianti dell'`Agent`, i contratti stretti del `ToolRegistry`, l'incapsulamento del wire format nel provider e la separazione tra codec e storage nel backend JSON. Gate finali: **89 suite OK, `npm run build` e `npm run typecheck` verdi**.
 
 ## T21.10 — Esecuzione shell per developer solo su tier large
 
@@ -3761,3 +3812,585 @@ solo con un modello/profilo `large`; small e medium non lo ricevono; build/test/
 install richiedono consenso RESTRICTED, le composizioni restano DANGEROUS; un modello
 OpenRouter riceve il tool come tier `large`; il TUI non riceve scritture raw; test
 mirati e i tre gate `npm test`, `npm run build`, `npm run typecheck` verdi.
+
+# FASE 9 — Context Scheduler e Memoria Pluggable
+
+## Obiettivo e modello operativo
+
+Evolvere TSUKA trattando la context window come working set temporaneo, non come una
+seconda memoria. La fase aggiunge una proiezione e una policy piccole sopra i dati che
+`Agent`, `contextBudget.ts`, `ConversationHistory` e `ContextTracker` producono già.
+Quando la pressione cresce, TSUKA può consegnare il task a un child con contesto
+fresco usando lo stesso runner applicativo di `spawn_agent`. `MemoryBackend` resta
+l'unico contratto della memoria; il backend registrato `json` conserva JSON come
+storage e BM25 come ranking interno.
+
+```text
+                     TSUKA
+              Context projection + policy
+            continue / prepare / delegate
+                    |          |
+                 Agent A     Agent B (fresh context)
+                    \          /
+                       State
+                         |
+                  MemoryBackend contract
+                 /         |         \
+           JSON/BM25    Shadow    External/MCP
+```
+
+- **State:** ciò che il runtime deve mantenere vero durante il task.
+- **Working set:** il contesto consegnato ora a uno specifico agente; è sacrificabile
+  e ricostruibile.
+- **Memory:** conoscenza persistente recuperabile tramite contratto; restituisce
+  risultati, ma non decide cosa entra nel working set.
+
+## Invarianti della fase
+
+1. La pressione è una proiezione del working set che l'`Agent` sta per inviare dopo
+   selezione dei tool e pruning; non è un nuovo contatore globale.
+2. La memoria è sostituibile: il core non dipende da BM25, database, embedding o un
+   backend specifico.
+3. La memoria non possiede il contesto: budgeting e assemblaggio appartengono al
+   runtime; `memoryMaxChars` continua a governare le sezioni memory del prompt.
+4. La delega passa intento, non conversation history: il child riceve obiettivo,
+   vincoli e criteri di accettazione.
+5. L'output del child è compatto e strutturato: niente transcript, tool history o
+   reasoning completo.
+6. `TaskPacket` è contenuto del briefing. Run ID, parent/child ID, profondità e guard
+   anti-ripetizione appartengono allo scope del workflow o allo stato del singolo
+   `Agent.run()`, non al prompt del child.
+7. Esiste un solo percorso di creazione dei child: il tool `spawn_agent` e lo
+   scheduler dipendono dallo stesso runner, senza importarsi fra loro.
+8. Errori di policy, child, shadow memory o adapter esterni degradano in modo visibile
+   e non bloccano il task.
+
+Per tutta la fase: riusare `calculateReasoningBudget()`, calibrazione token,
+`ConversationHistory.prune()`, `executeToolRound()`, `ContextTracker`, composition
+root, `WorkflowScope`, blackboard e infrastruttura sub-agent esistenti. Non introdurre
+un secondo orchestratore, un secondo tracker, un service locator o un contratto che
+duplichi `MemoryBackend`. Tunable configurabili vivono in `src/core/constants.ts` e
+passano da `ConfigManager`. Ogni modifica funzionale aggiorna test e documentazione
+IT/EN nello stesso diff; una funzione futura non viene documentata come disponibile.
+
+## T22.1 — Baseline protetta per context, handoff e memoria
+
+**Dipende da:** T21.3, T19.2 · **Sforzo:** basso · **Priorità:** alta
+
+Aggiungere characterization test sui percorsi che la fase toccherà:
+
+- stima calibrata di messaggi più schema tool, pruning delle coppie tool call/tool e
+  riduzione corrente del reasoning;
+- valori reali `promptTokens` del provider e attività registrate da `ContextTracker`;
+- output corrente di `/context` in CLI e TUI;
+- `spawn_agent` dentro e fuori blackboard, propagazione eventi/statistiche e failure;
+- registry `MemoryBackend`, nome predefinito `json`, backend ignoto, operazioni
+  add/search/update/forget e cap `memoryMaxChars` di `formatForPrompt`/
+  `formatRelevant`.
+
+**Fuori scope:** refactor, modifiche funzionali, nuove astrazioni, backend o librerie.
+
+**Accettazione:** il diff contiene soltanto test e fixture minime; ogni comportamento
+elencato è protetto senza aggiornare snapshot per nascondere regressioni; tre gate
+verdi.
+
+## T22.2 — Proiettare `ContextPressure` dai budget esistenti
+
+**Dipende da:** T22.1 · **Sforzo:** basso · **Priorità:** alta
+
+Estendere `src/core/contextBudget.ts` con una piccola proiezione pura; non creare un
+package o tracker parallelo:
+
+```ts
+export interface ContextPressure {
+  usedTokens: number;
+  limitTokens: number;
+  remainingTokens: number;
+  ratio: number;
+}
+
+export function getContextPressure(
+  usedTokens: number,
+  limitTokens: number,
+): ContextPressure;
+```
+
+`usedTokens` usa la stessa unità di `calculateReasoningBudget()`. Nell'integrazione
+runtime rappresenterà messaggi più schema tool dopo `updateToolsSize()` e pruning,
+con il rapporto calibrato dell'`Agent`; il `promptTokens` reale resta un'osservazione
+del round appena completato, non viene confuso con la stima del round successivo.
+`ratio` è normalizzato fra `0` e `1`; input negativi, limite non valido e overflow
+sono definiti e testati senza `NaN` o divisioni implicite.
+
+**Fuori scope:** delega, compaction, modifiche alla memoria, chiamate LLM, scoring
+complesso e stato globale.
+
+**Accettazione:** `contextBudget.ts` resta l'unica autorità del calcolo; casi limite
+coperti; nessuna nuova configurazione e nessun cambiamento nel comportamento
+dell'agente; tre gate verdi.
+
+## T22.3 — Rendere la pressione osservabile in `/context`
+
+**Dipende da:** T22.2 · **Sforzo:** basso · **Priorità:** alta
+
+Estendere in modo retrocompatibile `ContextEntry` con working-set usato, limite,
+rapporto e sorgente della misura (`estimated` o `observed`). Riutilizzare il ring
+buffer di `ContextTracker`; non aggiungere singleton o log paralleli. Aggiornare il
+comando `/context` reale in `src/cli/commands/session.ts` e la corrispondente vista
+TUI, mantenendo la stessa semantica nelle due interfacce.
+
+```text
+Context: 68% (estimated)
+Used: 21,760 / 32,000 tokens
+```
+
+Le entry storiche o i call site che non possiedono i nuovi campi continuano a
+funzionare. La pressione è visibile soltanto su richiesta e non cambia le decisioni
+runtime.
+
+**Accettazione:** `/context` CLI/TUI mostra dati coerenti; il tracker resta bounded;
+nessun output normale aggiuntivo; test dei due frontend e tre gate verdi.
+
+## T22.4 — Policy pura del context scheduler
+
+**Dipende da:** T22.2, T22.3 · **Sforzo:** medio · **Priorità:** alta
+
+Introdurre una funzione pura:
+
+```ts
+export type ContextAction = "continue" | "prepare" | "delegate";
+
+export interface ContextSchedulerConfig {
+  prepareAt: number;
+  delegateAt: number;
+}
+
+export function scheduleContext(
+  pressure: ContextPressure,
+  config: ContextSchedulerConfig,
+): ContextAction;
+```
+
+Default centralizzati: `prepareAt = 0.60`, `delegateAt = 0.70`. Policy iniziale:
+sotto `prepareAt` restituisce `continue`; da `prepareAt` a prima di `delegateAt`
+restituisce `prepare`; da `delegateAt` restituisce `delegate`. Non dichiarare
+`compact`, `hardLimit` o altre azioni senza una semantica runtime implementata.
+Configurazioni non finite, fuori intervallo o non strettamente ordinate falliscono
+la validazione e non vengono corrette silenziosamente.
+
+**Fuori scope:** trajectory detection, euristiche sul task, soglie dinamiche o
+per-agent, reinforcement e decisioni affidate a un modello.
+
+**Accettazione:** funzione pura; test sotto, sulle e sopra le due soglie; test della
+configurazione invalida; nessun import da `Agent`, provider o frontend; tre gate
+verdi.
+
+## T22.5 — Contratto minimo `TaskPacket`
+
+**Dipende da:** T22.4 · **Sforzo:** basso · **Priorità:** alta
+
+```ts
+export interface TaskPacket {
+  objective: string;
+  constraints?: string[];
+  acceptanceCriteria?: string[];
+}
+```
+
+Il packet deve bastare ad avviare un task con contesto fresco. Non aggiungere
+conversation history, memory dump, parent prompt, reasoning, tool history, l'intero
+`AgentState` o metadata arbitrari. Il costruttore del packet riceve soltanto dati
+espliciti già disponibili al runtime; non tenta di inferire il task rileggendo tutta
+la history e non effettua una seconda chiamata LLM. Nei workflow, stato operativo e
+artefatti restano nel blackboard e nel workspace.
+
+`runId`, parent/child ID, profondità e contatori di delega appartengono al workflow
+scope o allo stato del singolo `Agent.run()` e non vengono serializzati nel briefing.
+
+**Accettazione:** serializzazione deterministica e bounded; un child riceve obiettivo,
+vincoli e verifica senza history; nessun nuovo store condiviso; tre gate verdi.
+
+## T22.6 — Contratto compatto `AgentResult`
+
+**Dipende da:** T22.5 · **Sforzo:** basso · **Priorità:** alta
+
+```ts
+export interface AgentResult {
+  status: "done" | "blocked" | "failed";
+  summary: string;
+  changes?: string[];
+  decisions?: string[];
+  unresolved?: string[];
+  evidence?: { files?: string[]; tests?: string[] };
+}
+```
+
+`summary` descrive il risultato, non il reasoning. Transcript, tool history e history
+conversazionale sono esclusi.
+
+**Accettazione:** parsing e validazione non dipendono dal wire format del provider;
+il parent può proseguire dal risultato senza ricevere la history del child; output
+malformato produce un `failed` esplicito o un fallback tipizzato, mai un cast cieco;
+tre gate verdi.
+
+## T22.7 — Estrarre un runner sub-agent condiviso
+
+**Dipende da:** T22.4, T22.5, T22.6 · **Sforzo:** alto · **Priorità:** alta
+
+Estrarre da `src/tools/impl/spawnAgent.ts` la costruzione ed esecuzione del child in
+un contratto applicativo stretto, per esempio `SubagentRunner`. Il runner riceve il
+briefing e dipendenze già composte (`ILLMProvider`, `IToolRegistry`, permission,
+eventi, signal e scope), poi restituisce un'esecuzione tipizzata con output completo,
+statistiche e riferimento al report persistito. La composition root crea/inietta
+l'implementazione predefinita.
+
+`spawn_agent` resta una facade tool: valida gli argomenti specifici dello schema,
+costruisce il briefing e chiama il runner, continuando a mostrare l'output testuale
+come oggi. Lo scheduler passa un `TaskPacket`, richiede il formato `AgentResult` nel
+briefing del child e valida l'output con il contratto T22.6. Il runner non falsifica
+un risultato strutturato a partire da testo arbitrario. Tool e scheduler non si
+importano fra loro. Conservare selezione persona, tool set, effort, forwarding
+eventi/statistiche, blackboard, persistenza report e workspace jail. Spostare i
+limiti oggi locali a `src/core/constants.ts` se restano tunable.
+
+**Fuori scope:** decisioni di pressione, modifica dell'output visibile del tool,
+nuovo orchestratore o service locator.
+
+**Accettazione:** un solo percorso produttivo crea i child; i test correnti di
+`spawn_agent` restano verdi; runner testabile con mock senza scrivere nella memoria
+utente; lifecycle e failure tipizzati; tre gate verdi.
+
+## T22.8 — Collegare la policy al ReAct loop
+
+**Dipende da:** T22.3, T22.4, T22.5, T22.6, T22.7 · **Sforzo:** alto ·
+**Priorità:** alta
+
+Integrare la decisione dentro `Agent.run()` senza sostituire i meccanismi esistenti.
+Il punto di valutazione è prima di una chiamata provider, dopo selezione/schema dei
+tool, `updateToolsSize()` e `ConversationHistory.prune()`, oppure subito dopo un tool
+round completato prima del round LLM successivo. Non interrompere una tool call, una
+scrittura atomica o una sequenza assistant/tool non ancora chiusa.
+
+- `continue`: percorso corrente invariato;
+- `prepare`: registra la decisione in `ContextTracker` e predispone il packet con i
+  dati espliciti del turno, senza nuova chiamata LLM e senza compattare la history;
+- `delegate`: usa il packet preparato, oppure lo costruisce deterministicamente se il
+  turno entra già sopra `delegateAt`, e chiama il `SubagentRunner`; il risultato
+  strutturato viene aggiunto come nuovo input compatto del parent, poi il loop
+  prosegue.
+
+La feature è disabilitata per default. Applicare come invariante per singolo
+`Agent.run()` una sola delega automatica; il child automatico parte con delega automatica
+disabilitata o con profondità incrementata; il parent marca l'episodio come già
+gestito prima di avviare il child. Se packet, spawn o child falliscono, emettere un
+evento/warning via `logSink` e continuare col parent. Il tool manuale `spawn_agent`
+non consuma la quota automatica.
+
+**Accettazione:** sotto soglia e con feature disabilitata il comportamento è
+caratterizzato come identico; nessuno spawn ripetuto se la pressione resta alta;
+nessuna delega ricorsiva automatica; failure non bloccanti; ordering dei messaggi
+valido; test d'integrazione con mock provider/runner e tre gate verdi.
+
+## T22.9 — Applicare un budget strutturale a `AgentResult`
+
+**Dipende da:** T22.8 · **Sforzo:** medio · **Priorità:** alta
+
+Applicare al risultato già strutturato un budget configurabile centralizzato. Non
+passare `AgentResult` a `capForContext()` come stringa JSON e non troncare JSON alla
+cieca: limitare numero e lunghezza degli elementi con una funzione pura, riducendo
+prima dettagli secondari, poi evidence eccedente. Preservare sempre `status`, un
+`summary` valido, `unresolved` e almeno i riferimenti essenziali a file e test.
+
+Il report completo può restare nell'artefatto già prodotto dal runner; al parent
+arriva solo il risultato bounded e il riferimento al report.
+
+**Accettazione:** output deterministico e JSON valido sotto budget; casi con Unicode,
+molti file/test e summary eccessivo; nessuna perdita silenziosa dello stato blocked o
+failed; tre gate verdi.
+
+### Checkpoint A obbligatorio dopo T22.9
+
+Provare l'MVP su task reali prima di modificare ulteriormente il contratto di memoria
+o aggiungere backend. Registrare casi riusciti, handoff falliti, dimensione dei
+report, pressione prima/dopo e regressioni. T22.10 non parte senza evidenza utile del
+checkpoint. Se il parent non riesce a proseguire dal packet/result o la delega non
+riduce il working set, correggere o fermare l'esperimento senza espandere la memoria.
+
+## T22.10 — Audit ed eventuali capability di `MemoryBackend`
+
+**Dipende da:** checkpoint A · **Sforzo:** medio · **Priorità:** media
+
+Partire dal contratto già pluggable in `src/core/memory/types.ts`, dal registry, dalla
+facade `MemoryStore` e dal backend `json`. Mappare ogni metodo e consumatore prima di
+modificare l'interfaccia. `name` esiste già e resta l'identità del backend; BM25 non è
+un backend registrato, ma il ranking interno di `json`.
+
+Aggiungere capability soltanto se shadow o adapter esterno dimostrano una differenza
+operativa reale, per esempio un backend read-only. In quel caso descrivere soltanto
+operazioni già presenti nel contratto:
+
+```ts
+export interface MemoryCapabilities {
+  read: boolean;
+  write: boolean;
+  update: boolean;
+  forget: boolean;
+  clear: boolean;
+}
+
+readonly capabilities: MemoryCapabilities;
+```
+
+Non aggiungere `id` duplicato di `name`, `protocolVersion` al contratto in-process o
+capability speculative come `maintenance`. L'eventuale versione del protocollo
+appartiene all'handshake dell'adapter esterno.
+
+**Fuori scope:** nuovo registry, vector DB, embedding, SQLite, persistenza o ranking.
+
+**Accettazione:** nessuna modifica al contratto è preferibile a una capability senza
+consumer; se introdotte, facade, backend `json`, mock e messaggi diagnostici sono
+coerenti; `memoryBackend: "json"` resta il default; tre gate verdi.
+
+## T22.11 — Unificare il budget della memoria recuperata
+
+**Dipende da:** T22.10 · **Sforzo:** medio · **Priorità:** media
+
+Non introdurre subito una seconda API `MemoryRecallRequest`: oggi il backend possiede
+già `formatForPrompt(limit, maxChars, sources)`, `formatRelevant(taskText, limit,
+maxChars, sources)` e il default `memoryMaxChars`; `recall_memory`, invece, formatta
+direttamente i risultati di `search()` e va reso bounded esplicitamente. Prima
+caratterizzare questi confini e scegliere un'unica unità al boundary di rendering.
+
+Se serve un budget espresso in token, convertirlo una sola volta tramite le utility
+di stima esistenti e passare al backend il cap di rendering risultante. `search()`
+continua a restituire `MemoryFact[]` e a occuparsi di ranking/touch, non del budget
+globale dello scheduler. Rendere bounded anche l'output esplicito di `recall_memory`
+senza duplicare renderer o troncare una singola fact senza indicazione.
+
+**Fuori scope:** tokenizer o LLM aggiuntivo, cambiamento del ranking BM25, nuovo
+request object se i parametri correnti bastano.
+
+**Accettazione:** comportamento senza cap esplicito retrocompatibile; prompt memory e
+tool recall rispettano limiti deterministici e segnalano omissioni; una sola
+conversione token/caratteri; tre gate verdi.
+
+## T22.12 — `ShadowMemoryBackend`
+
+**Dipende da:** T22.10, T22.11 · **Sforzo:** medio · **Priorità:** media
+
+Implementare un wrapper conforme allo stesso `MemoryBackend`, costruito dal registry
+con un primary e uno shadow distinti. Il primary è l'unico risultato osservabile dai
+consumer. Letture e formattazione eseguono entrambi per confronto ma restituiscono
+solo il primary; add/update/forget/clear replicano sullo shadow. Se T22.10 ha
+introdotto capability, il wrapper le rispetta; altrimenti tutti i metodi del contratto
+restano obbligatori. Evitare ricorsione di configurazione (`shadow` non può costruire
+un altro shadow) e impedire che primary e shadow risolvano accidentalmente alla
+stessa istanza.
+
+Errori e timeout dello shadow producono diagnostica via `logSink` e non modificano il
+risultato primary. Non ingoiare errori del primary: conserva la semantica corrente.
+
+**Accettazione:** con shadow disabilitato il comportamento è indistinguibile; con
+shadow abilitato l'output dell'agente dipende soltanto dal primary; write replication
+e failure sono testati con fake backend deterministici; tre gate verdi.
+
+## T22.13 — Metriche memory minime
+
+**Dipende da:** T22.12 · **Sforzo:** basso · **Priorità:** media
+
+Definire eventi diagnostici stretti o entry compatibili con l'osservabilità corrente;
+non inserire metriche memory in `ContextTracker` se non descrivono il working set.
+Misurare per primary/shadow: operazione, durata, successo, numero risultati e
+dimensione stimata. Per le ricerche calcolare overlap sugli ID delle fact senza
+registrarne il contenuto e senza mutare hits/`lastUsed` nello shadow.
+
+**Accettazione:** metriche diagnostiche disponibili senza un secondo sistema di
+telemetria, senza dati sensibili e senza influire sui risultati del backend primary;
+tre gate verdi.
+
+## T22.14 — Feasibility gate per memoria esterna su MCP stdio
+
+**Dipende da:** T22.10, T22.13 · **Sforzo:** alto · **Priorità:** media
+
+Il contratto `MemoryBackend` corrente è sincrono, mentre `IMcpClient` e
+`StdioTransport` sono asincroni. Prima di implementare un bridge, produrre uno spike
+con test che valuti soltanto tre strade:
+
+```text
+A. migrazione esplicita del contratto e dei call site ad async
+B. mirror/cache locale sincrona con replica MCP asincrona e consistenza dichiarata
+C. stop: nessun adapter esterno in questa fase
+```
+
+Lo spike mappa l'impatto su `MemoryStore`, `personas.ts`, tool memory, CLI/TUI,
+composition root e test. Sono vietati `deasync`, busy wait, `Atomics.wait()` sul main
+thread, child process sincroni per ogni recall e metodi Promise mascherati con cast.
+Non modificare il contratto durante lo spike.
+
+Se viene approvata A o B, l'implementazione riusa il package `src/core/mcp/`, il suo
+lifecycle e la composition root; non crea un secondo client JSON-RPC. Wire types e
+versione restano confinati nell'adapter. Health, timeout, consistenza/freshness,
+recovery e fallback devono essere espliciti: mai crash dell'agent loop e mai fallback
+silenzioso a un backend differente.
+
+### Checkpoint C obbligatorio
+
+Non implementare l'adapter senza scelta esplicita A/B e accettazione del relativo
+costo. La scelta C chiude correttamente il task senza codice di produzione.
+
+**Accettazione:** documento/spike riproducibile con una raccomandazione e test minimi
+del vincolo sync/async; nessun nuovo trasporto, nessun blocking hack e tre gate verdi.
+
+## T22.15 — Backend alternativo sperimentale
+
+**Dipende da:** T22.12 e checkpoint C soltanto se rilevante · **Sforzo:** alto ·
+**Priorità:** bassa
+
+Scegliere una sola implementazione che risponda a un limite osservato nel checkpoint,
+non da una lista astratta. Preferire la variante più piccola che esercita davvero il
+contratto, per esempio SQLite locale o ranking differente, senza embedding. Provarla
+prima esclusivamente come shadow. Confrontare a parità di fixture, task, modello e
+configurazione: risultati/overlap, latenza, dimensione restituita, errori, token totali
+e deleghe.
+
+### Checkpoint B obbligatorio prima della promozione
+
+Promuovere il backend a primary soltanto con evidenza di un vantaggio operativo e
+senza regressioni di affidabilità. In assenza di vantaggio, mantenerlo come esperimento
+o rimuoverlo; non aggiungere embedding o un terzo backend per inseguire il benchmark.
+
+**Accettazione:** backend registrato e selezionabile senza modificare core/call site;
+shadow comparison riproducibile; decisione go/no-go documentata; tre gate verdi.
+
+## T22.16 — Metriche del context scheduler
+
+**Dipende da:** T22.8, T22.9 · **Sforzo:** medio · **Priorità:** media
+
+Estendere l'osservabilità usata da `/context` ed eventi agent, senza un nuovo
+collector: peak pressure stimata, ultima pressione osservata dal provider, decisioni
+`prepare`/`delegate`, deleghe tentate/completate/fallite, token parent/child e
+dimensione di `AgentResult`. Calcolare a solo scopo diagnostico:
+
+```text
+context amplification = child tokens consumed / tokens returned to parent
+```
+
+Il denominatore zero restituisce un valore non ambiguo (`null`/non disponibile), non
+infinito. Nessuna metrica contiene prompt, reasoning, memory content o credenziali.
+
+**Accettazione:** metriche CLI/TUI coerenti e bounded; feature disabilitata non genera
+eventi spuri; nessuna metrica cambia automaticamente soglie o policy; tre gate verdi.
+
+## T22.17 — Documentare soltanto il comportamento verificato
+
+**Dipende da:** checkpoint A, T22.11, T22.13, esito del checkpoint C, T22.16 e
+checkpoint B se il backend viene promosso · **Sforzo:** medio · **Priorità:** media
+
+Consolidare la documentazione dopo le prove reali dell'MVP. Aggiornare le guide
+didattiche IT/EN e la documentazione architetturale spiegando la separazione fra
+state, working set e memory, il riuso di context budget/pruning/reasoning, le soglie
+deterministiche, il punto sicuro di handoff, le guard anti-ricorsione, i contratti
+`TaskPacket`/`AgentResult`, la degradazione su failure e la regola per cui solo il
+backend primary influenza l'agente. Chiarire che il backend built-in si chiama
+`json` e usa BM25 internamente.
+
+Aggiornare README o riferimento di configurazione con le sole opzioni effettivamente
+implementate e con i nomi reali di `AppConfig`/`ConfigManager`; non documentare lo
+snippet target come se fosse già supportato.
+
+Usare metriche e almeno un task reale come evidenza; descrivere limiti e checkpoint,
+senza presentare trajectory scheduling, delega ricorsiva, retrieval semantico,
+capability scartate o backend bocciati come funzionalità disponibili.
+
+**Accettazione:** documentazione IT/EN coerente col codice e fra le due lingue; link e
+snippet validi; nessuna opzione inventata o duplicazione della fonte dei default; i
+tre gate verdi.
+
+## Configurazione target minima
+
+La configurazione segue la forma piatta di `AppConfig`; questi campi diventano
+validi solo nel task che implementa i relativi getter. La scheduler feature resta
+opt-in durante l'esperimento:
+
+```json
+{
+  "contextSchedulerEnabled": false,
+  "contextPrepareAt": 0.60,
+  "contextDelegateAt": 0.70,
+  "agentResultMaxTokens": 1200,
+  "memoryBackend": "json"
+}
+```
+
+Per una prova esplicita si imposta `contextSchedulerEnabled: true`. Non aggiungere
+`hardLimit` o `compact` finché non esiste una relativa azione runtime. Per gli
+esperimenti shadow, soltanto dopo T22.12:
+
+```json
+{
+  "memoryBackend": "json",
+  "memoryShadowBackend": "experimental"
+}
+```
+
+`json` è il nome registrato reale; BM25 resta un dettaglio di ranking del backend.
+Non aggiungere altre opzioni finché un call site e un test non ne dimostrano l'uso.
+
+## Sequenza di consegna della fase
+
+| Ordine | Titolo suggerito | Task inclusi | Gate |
+|---:|---|---|---|
+| 1 | `test: characterize context handoff and memory` | T22.1 | Baseline verde, nessuna modifica funzionale |
+| 2 | `feat: project and expose context pressure` | T22.2, T22.3 | `contextBudget` e `/context`, comportamento invariato |
+| 3 | `feat: add deterministic context policy` | T22.4 | Tre azioni reali e sole due soglie |
+| 4 | `feat: add minimal agent handoff contracts` | T22.5, T22.6 | Contratti senza history o reasoning |
+| 5 | `refactor: share the subagent runner` | T22.7 | `spawn_agent` invariato sopra un runner riusabile |
+| 6 | `feat: delegate safely on context pressure` | T22.8 | Opt-in, punto sicuro e guard anti-spawn |
+| 7 | `feat: bound structured child results` | T22.9 | `AgentResult` valido e bounded |
+| 8 | `feat: expose scheduler diagnostics` | T22.16 | Metriche diagnostiche per la prova reale |
+| — | **Checkpoint A** | Prove reali dell'MVP | Go/no-go prima di toccare la memoria |
+| 9 | `refactor: audit memory capabilities and budgets` | T22.10, T22.11 | Contratto esistente e `memoryMaxChars` riusati |
+| 10 | `feat: add shadow memory comparison` | T22.12, T22.13 | Shadow non influenza il primary |
+| 11 | `spike: evaluate external memory over MCP` | T22.14 | Checkpoint C sul mismatch sync/async |
+| 12 | `experiment: validate one alternative memory backend` | T22.15 | Shadow benchmark e checkpoint B |
+| 13 | `docs: explain verified scheduling and memory behavior` | T22.17 | Guide IT/EN e configurazione reali |
+
+Non accorpare consegne adiacenti oltre ai raggruppamenti indicati nella tabella.
+
+## Stop condition e fuori scope iniziale
+
+Fermarsi e richiedere una decisione se servono un framework o database per lo
+scheduler, un LLM per decidere normalmente, una seconda astrazione sovrapposta a
+`MemoryBackend`, un secondo percorso per creare child, la history completa del parent
+nel child, decine di opzioni, un refactor trasversale sproporzionato o un backend
+capace di bloccare il loop. Fermarsi anche se si sta aggiungendo un request object di
+recall che replica `maxChars`, oppure se il core deve importare `spawnAgentTool`.
+
+Restano fuori dalla prima implementazione: trajectory-aware scheduling, soglie o
+lease per modello, delega ricorsiva, memory candidates con promotion/demotion,
+curator locale, retrieval semantico/ibrido e provider in stile Letta.
+
+## Definition of Done dell'esperimento
+
+L'esperimento è concluso con successo quando test d'integrazione e almeno un task
+reale dimostrano che:
+
+1. la feature disabilitata conserva il comportamento caratterizzato in T22.1;
+2. un parent raggiunge la soglia configurata del working-set budget su un task
+   complesso e la misura include gli schema tool effettivamente inviati;
+3. la policy decide deterministicamente `delegate` dopo pruning e fuori da un tool
+   round;
+4. il parent esegue al massimo una delega automatica per `Agent.run()` e il child non
+   delega automaticamente a sua volta;
+5. TSUKA crea un `TaskPacket` compatto e avvia un child con contesto fresco usando lo
+   stesso runner di `spawn_agent`, senza copiare la history del parent;
+6. il child restituisce un `AgentResult` valido entro il budget e il parent può
+   proseguire o completare basandosi su quello;
+7. fallimenti di packet, runner, child o shadow memory non interrompono il task e
+   producono una degradazione visibile;
+8. con shadow memory attiva, soltanto il primary influenza l'output dell'agente;
+9. le metriche consentono di confrontare costo e beneficio senza policy automatica o
+   infrastruttura aggiuntiva.
+
+Se questi punti non mostrano un vantaggio operativo, fermarsi al checkpoint MVP
+invece di costruire una memoria più complessa.

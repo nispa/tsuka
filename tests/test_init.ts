@@ -36,6 +36,7 @@ async function main() {
     const tsukaDir = path.join(tempDir, '.tsuka');
     check('IT2b', fs.existsSync(tsukaDir), 'cartella .tsuka/ creata con successo');
     check('IT2c', fs.existsSync(path.join(tsukaDir, 'config.json')), '.tsuka/config.json creato');
+    check('IT2c2', fs.existsSync(path.join(tsukaDir, 'providers.json')), '.tsuka/providers.json created for workspace-local provider definitions');
 
     const subDirs = ['memory', 'workflow_logs', 'output', 'roles', 'traits', 'characters', 'teams'];
     const allDirsExist = subDirs.every((d) => fs.existsSync(path.join(tsukaDir, d)));

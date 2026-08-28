@@ -6,7 +6,7 @@
 
 > Questo documento descrive l'architettura tecnica, i principi di progettazione e l'organizzazione modulare del framework **TSUKA** (v0.7.0). Per le linee guida operative di contribuzione al codice si rimanda ad [`AGENTS.md`](../AGENTS.md); per l'elenco dei task completati e pianificati, consultare [`TASKS.md`](../TASKS.md).
 >
-> 📊 **Metriche di sistema**: 30 tool · 20 comandi REPL · 21 ruoli · 9 tratti · 24 personaggi (agenti) · 10 team configurati · 81 suite di test automatici · Doppia interfaccia CLI & TUI.
+> 📊 **Metriche di sistema**: 30 tool · 20 comandi REPL · 21 ruoli · 9 tratti · 24 personaggi (agenti) · 10 team configurati · 89 suite di test automatici · Doppia interfaccia CLI & TUI.
 
 ---
 
@@ -306,6 +306,10 @@ TSUKA adotta un client unificato basato sull'SDK ufficiale **OpenAI**, interfacc
 2. In caso di mancata risposta, esegue il probe parallelo degli altri server locali configurati.
 3. **Priorità di allocazione**: aggancia prioritariamente il modello già caricato nella memoria RAM/VRAM del server (rilevato tramite `/api/ps` per Ollama, o flag `loaded` per Unsloth/LM Studio), evitando ricaricamenti costosi di file GGUF.
 
+Il catalogo è interamente dichiarativo in `providers.json`: ogni voce definisce nome visualizzato, endpoint, modello predefinito, classe `LOCAL`/`CLOUD`, variabile d'ambiente della API key e capability opzionali. Il core vede soltanto la classe e i contratti delle capability; `tsuka.config.json` conserva provider attivo e override locali di modello/endpoint.
+
+La capability `capabilities.freeModels` abilita il filtro dei modelli gratuiti tramite alias, suffissi e metadati di prezzo zero. Se non è dichiarata, CLI e TUI non mostrano l'opzione: nessuna policy confronta il nome del provider.
+
 ---
 
 ## 11. Mappa dei Moduli Core
@@ -316,6 +320,7 @@ TSUKA adotta un client unificato basato sull'SDK ufficiale **OpenAI**, interfacc
 | **Provider Client** | `src/core/provider/` | Client HTTP OpenAI (`llmProvider.ts`), contratti di protocollo (`types.ts`), timeout e rinnovo interattivo (`timeouts.ts`), sink di telemetria (`telemetry.ts`) e profili di sampling (`sampling.ts`). |
 | **Motore Memoria** | `src/core/memory/` | Contratto pluggabile `MemoryBackend` (`types.ts`), scoring BM25 puro (`bm25.ts`), decadimento ed eviction (`retention.ts`), `JsonMemoryBackend` (`jsonBackend.ts`), registro backend (`registry.ts`) e facade `MemoryStore`. |
 | **Configurazione** | `src/core/config/` | Tipi di configurazione applicativa (`types.ts`), validatore dei profili di sampling (`sampling.ts`) e `ConfigManager` (`manager.ts`). |
+| **Catalogo Provider** | `providers.json`, `src/core/providerCatalog.ts` | Definizioni provider, validazione, classe LOCAL/CLOUD, risoluzione API key e capability opzionali. |
 | **Registro Costanti** | `src/core/constants.ts` | Unica sorgente dei valori di default e parametri di tuning (`LLM_DEFAULTS`, `MEMORY_DEFAULTS`, `AGENT_DEFAULTS`, `TUI_DEFAULTS`, `TOOLS_DEFAULTS`, `CLI_DEFAULTS`). |
 | **Blackboard** | `src/core/blackboard.ts` | Lavagna di sessione isolata per workflow tramite `AsyncLocalStorage`. |
 | **Context Budget** | `src/core/contextBudget.ts` | Algoritmi di stima dei token, calibrazione a runtime e troncamento `capForContext`. |
@@ -383,11 +388,61 @@ TSUKA include una dashboard terminale grafica interattiva a componenti puri:
 
 ---
 
-## 14. Roadmap Architetturale e Visione Futura
+## 14. Modularità Architetturale e Invarianti del Core (Fase 8)
+
+In conformità alle **Direttive 8, 9 e 10 di `AGENTS.md`**, la Fase 8 ha trasformato l'architettura interna di TSUKA da monolite a componenti disaccoppiati e sostituibili:
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│               Composition Root Unificata (src/core/runtime.ts)         │
+│          createHarnessRuntime() -> HarnessRuntime (CLI / TUI)          │
+└───────────┬──────────────────────┬──────────────────────┬──────────────┘
+            │                      │                      │
+            ▼                      ▼                      ▼
+┌──────────────────────┐┌──────────────────────┐┌────────────────────────┐
+│  Invarianti Agente   ││   Boundary Provider  ││   Memoria & Storage    │
+│  (src/core/agent.ts) ││(src/core/provider/)  ││  (src/core/memory/)    │
+│                      ││                      ││                        │
+│ ├─ tokenCalibration  ││ ├─ wireFormat        ││ ├─ codec & dedup       │
+│ ├─ conversationHist. ││ ├─ streamAccumulator ││ ├─ storage & recovery  │
+│ ├─ toolRound         ││ ├─ errorClassific.   ││ ├─ bm25 ranking        │
+│ ├─ reactState        ││ └─ llmProvider       ││ ├─ retention decay     │
+│ └─ reasoningTrace    ││                      ││ └─ jsonBackend         │
+└──────────────────────┘└──────────────────────┘└────────────────────────┘
+            │                      │                      │
+            └──────────────────────┼──────────────────────┘
+                                   │
+                                   ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│                  Tool Registry Modulare (src/tools/)                   │
+│  IToolRegistry -> schema.ts + tierPolicy.ts + execution.ts + registry  │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+1. **Composition Root (`src/core/runtime.ts`)**:
+   - `createHarnessRuntime()` unifica il bootstrap di configurazione, provider LLM, caricamento tool nativi, connessione server MCP e permission manager per CLI e TUI.
+   - Fornisce un metodo `close()` idempotente per il rilascio sicuro delle risorse e la chiusura dei processi stdio MCP.
+2. **Invarianti dell'Agente (`src/core/`)**:
+   - `tokenCalibration.ts`: calcolo e taratura pura del fattore di conversione caratteri/token.
+   - `conversationHistory.ts`: ownership esclusiva della cronologia messaggi e rispetto del budget di contesto.
+   - `toolRound.ts`: esecuzione ordinata delle chiamate a tool ed emissione eventi.
+   - `reactState.ts`: macchina a stati deterministica del ciclo ReAct.
+   - `reasoningTrace.ts`: isolamento della persistenza CoT (`memory/thinking/*.md`).
+3. **Contratti Stretti per i Tool (`src/tools/`)**:
+   - Interfacce `IToolRegistry`, `Tool`, `ToolExecutionContext` e `ToolSchemaData` in `types.ts`.
+   - Pipeline di esecuzione in `execution.ts`, validazione schema in `schema.ts`, tier policy in `tierPolicy.ts`.
+4. **Isolamento del Wire Format Provider (`src/core/provider/`)**:
+   - Confinamento del protocollo OpenAI-compatible in `wireFormat.ts`, dell'accumulatore SSE di streaming in `streamAccumulator.ts` e dell'analisi diagnostica in `errorClassification.ts`.
+5. **Backend JSON Focalizzato (`src/core/memory/`)**:
+   - Separazione delle responsabilità tra codec/normalizzazione/deduplica (`codec.ts`) e persistenza atomica con recupero anti-corruzione (`storage.ts`).
+
+---
+
+## 15. Roadmap Architetturale e Visione Futura
 
 1. **Disaccoppiamento completato**: il motore agentico comunica esclusivamente tramite stream di eventi (`AgentEvents`) e sink sostituibili (`logSink`).
 2. **Doppia Interfaccia Operativa**: supporto trasparente sia per CLI REPL tradizionale che per la Dashboard TUI a schermo intero.
-3. **WebUI / Dashboard Locale**: l'architettura a componenti e lo stato reattivo consentono l'estensione verso una web interface locale basata su WebSocket.
+3. **Ottimizzazione Contesto & Memory Shadowing (Fase 9)**: introduzione di scheduler di contesto a pressione deterministica e capability estese di memoria.
 
 ---
 

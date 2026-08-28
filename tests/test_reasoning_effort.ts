@@ -339,11 +339,12 @@ async function main() {
         null,
         undefined,
         'none',
-        'https://openrouter.ai/api/v1'
+        'https://cloud.example/v1',
+        'CLOUD'
       );
       const promptLocal = loadSystemPrompt(fakeRole, fakeTrait, unprofiledModel, registry, null, undefined, 'none');
       check('RE.10c', promptCloud.includes('execute_command') && !promptLocal.includes('execute_command'),
-        'loadSystemPrompt applies the same OpenRouter large-tier policy used by Agent.run');
+        'loadSystemPrompt applies the same configured CLOUD policy used by Agent.run');
     } finally {
       if (backup !== null) {
         fs.writeFileSync(profilePath, backup, 'utf-8');

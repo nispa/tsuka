@@ -3,6 +3,8 @@ import * as path from 'path';
 import { homePath } from '../apphome';
 import { AGENT_DEFAULTS, CLI_DEFAULTS, LLM_DEFAULTS, MEMORY_DEFAULTS, TOOLS_DEFAULTS } from '../constants';
 import { logSink } from '../logSink';
+import { normalizeProviderClass } from '../cloudProvider';
+import { loadProviderCatalog, type ProviderDefinition } from '../providerCatalog';
 import { matchesModelId, sanitizeSamplingParams } from './sampling';
 import {
   AppConfig,
@@ -22,9 +24,11 @@ export const CONFIG_PATH = homePath('tsuka.config.json');
  */
 export class ConfigManager {
   private config!: AppConfig;
+  private readonly providerCatalog: Record<string, ProviderDefinition>;
   private runtimeContextTokens: number | null = null;
 
   constructor() {
+    this.providerCatalog = loadProviderCatalog();
     this.load();
   }
 
@@ -60,6 +64,11 @@ export class ConfigManager {
       }
     } catch (error: any) {
       logSink.error(`Error loading tsuka.config.json: ${error.message}. Using default fallback configuration.`);
+      this.config = defaultAppConfig();
+    }
+    if (!this.config.activeProvider || !this.getProviderConfig(this.config.activeProvider)) {
+      this.config.activeProvider = this.getProviderNames()[0] ?? '';
+      this.save();
     }
   }
 
@@ -71,18 +80,19 @@ export class ConfigManager {
     }
   }
 
-  getActiveProviderName(): 'ollama' | 'openrouter' | 'unsloth' | string {
+  getActiveProviderName(): string {
     return this.config.activeProvider;
   }
 
-  setActiveProvider(provider: 'ollama' | 'openrouter' | 'unsloth' | string): void {
+  setActiveProvider(provider: string): void {
     this.config.activeProvider = provider;
     this.save();
   }
 
   getActiveProviderConfig(): ProviderConfig {
-    const provider = this.config.activeProvider;
-    return this.config.providers[provider];
+    const config = this.getProviderConfig(this.config.activeProvider);
+    if (!config) throw new Error(`Provider '${this.config.activeProvider}' is not defined in providers.json.`);
+    return config;
   }
 
   getApiKey(): string {
@@ -90,29 +100,39 @@ export class ConfigManager {
   }
 
   getApiKeyFor(provider: string): string {
-    if (provider === 'openrouter') {
-      return process.env.OPENROUTER_API_KEY || '';
-    }
-    if (provider === 'unsloth') {
-      return process.env.UNSLOTH_API_KEY || 'local';
-    }
+    const keyEnv = this.getProviderConfig(provider)?.apiKeyEnv;
+    if (keyEnv && /^[A-Z][A-Z0-9_]*$/.test(keyEnv)) return process.env[keyEnv] || '';
     return 'local';
   }
 
   getProviderNames(): string[] {
-    return Object.keys(this.config.providers);
+    return Array.from(new Set([...Object.keys(this.providerCatalog), ...Object.keys(this.config.providers ?? {})]));
   }
 
   getProviderConfig(name: string): ProviderConfig | undefined {
-    return this.config.providers[name];
+    const definition = this.providerCatalog[name];
+    const legacy = this.config.providers?.[name];
+    if (!definition && (!legacy?.baseUrl || !legacy?.model)) return undefined;
+    const override = this.config.providerOverrides?.[name];
+    const baseUrl = override?.baseUrl ?? legacy?.baseUrl ?? definition?.baseUrl;
+    const model = override?.model ?? legacy?.model ?? definition?.defaultModel;
+    if (!baseUrl || !model) return undefined;
+    return {
+      baseUrl,
+      model,
+      class: normalizeProviderClass(definition?.class ?? legacy?.class),
+      displayName: definition?.displayName ?? legacy?.displayName ?? name,
+      apiKeyEnv: definition?.apiKeyEnv ?? legacy?.apiKeyEnv,
+      capabilities: definition?.capabilities ?? legacy?.capabilities ?? {},
+    };
   }
 
   updateActiveModel(modelName: string): void {
     const provider = this.config.activeProvider;
-    if (this.config.providers[provider]) {
-      this.config.providers[provider].model = modelName;
-      this.save();
-    }
+    if (!this.getProviderConfig(provider)) return;
+    this.config.providerOverrides ??= {};
+    this.config.providerOverrides[provider] = { ...this.config.providerOverrides[provider], model: modelName };
+    this.save();
   }
 
   /** MCP stdio servers configured by the user (T20.1); empty when none are set. */
@@ -341,12 +361,12 @@ export class ConfigManager {
   }
 
   /**
-   * OpenRouter can serve independent requests concurrently, so its PARALLEL goal
+   * Trusted cloud gateways can serve independent requests concurrently, so their PARALLEL goal
    * blocks run concurrently without requiring a separate user toggle. Local
    * providers remain serialized unless the explicit opt-in is enabled.
    */
   isParallelExecutionEnabled(): boolean {
-    return this.config.activeProvider === 'openrouter' || this.config.parallelExecutionEnabled === true;
+    return normalizeProviderClass(this.getActiveProviderConfig()?.class) === 'CLOUD' || this.config.parallelExecutionEnabled === true;
   }
 
   /**

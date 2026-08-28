@@ -109,7 +109,13 @@ const suites = [
   'test_wiki_build.ts',
   'test_mcp_client.ts',
   'test_mcp_registry.ts',
-  'test_architecture_boundaries.ts'
+  'test_architecture_boundaries.ts',
+  'test_tool_registry.ts',
+  'test_provider_boundary.ts',
+  'test_provider_catalog.ts',
+  'test_harness_runtime.ts',
+  'test_memory_codec_storage.ts',
+  'test_flags_audit.ts'
 ];
 
 let passed = 0;

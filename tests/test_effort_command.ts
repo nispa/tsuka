@@ -112,6 +112,7 @@ function fakeConfigManager(opts: {
     getActiveRole: () => opts.activeRole ?? 'developer',
     getActiveTrait: () => opts.activeTrait ?? 'professional',
     getDefaultReasoningEffort: () => opts.defaultEffort,
+    getActiveProviderConfig: () => ({ class: 'LOCAL', displayName: 'Test', baseUrl: 'mock://local', model: 'mock', capabilities: {} }),
     setDefaultReasoningEffort: (value: ReasoningEffort | undefined) => { persistedEfforts.push(value); },
     getMaxHistoryMessages: () => 40,
     getMaxHistoryTokens: () => 65536,
@@ -524,6 +525,7 @@ async function main() {
       // not issue the expensive effort sweep or hit endpoints that reject none.
       {
         const configManager = fakeConfigManager({ activeCharacter: 'custom', activeRole: 'developer' });
+        (configManager as any).getActiveProviderConfig = () => ({ class: 'CLOUD', displayName: 'Test Cloud', baseUrl: 'https://cloud.example/v1', model: 'cloud-model', capabilities: {} });
         const provider = new MockLLMProvider([], {
           model: 'stealth/ox-alpha',
           baseUrl: 'https://openrouter.ai/api/v1'

@@ -36,13 +36,24 @@ async function main(): Promise<void> {
     activeTrait: 'professional',
     activeCharacter: 'custom',
   }, null, 2));
+  fs.writeFileSync(path.join(temporaryHome, 'providers.json'), JSON.stringify({
+    version: 1,
+    providers: {
+      ollama: { displayName: 'Local', class: 'LOCAL', baseUrl: 'http://localhost:11434/v1', defaultModel: 'local-model', capabilities: {} },
+      openrouter: {
+        displayName: 'Cloud', class: 'CLOUD', baseUrl: 'https://openrouter.test/api/v1', defaultModel: 'cloud/model',
+        capabilities: { freeModels: { aliases: ['openrouter/free'], suffixes: [':free'], includeZeroPriced: true } }
+      }
+    }
+  }, null, 2));
   process.env.TSUKA_HOME = temporaryHome;
 
   const { scanProviders } = await import('../src/core/discovery');
   const { ConfigManager } = await import('../src/core/config');
   const { TuiStore } = await import('../src/tui/store');
   const { SystemModals } = await import('../src/tui/modals/systemModals');
-  const { hasZeroTokenPricing, isFreeOpenRouterModel, filterOpenRouterModels } = await import('../src/core/modelCatalog');
+  const { hasZeroTokenPricing, isFreeModel, filterProviderModels } = await import('../src/core/modelCatalog');
+  const freeCapability = { aliases: ['openrouter/free'], suffixes: [':free'], includeZeroPriced: true };
   const originalFetch = globalThis.fetch;
 
   try {
@@ -120,21 +131,21 @@ async function main(): Promise<void> {
     const catalogue = ['openrouter/free', 'vendor/paid', 'vendor/model:free'];
     check(
       'PF6',
-      isFreeOpenRouterModel('vendor/model:free') && isFreeOpenRouterModel('openrouter/free') && !isFreeOpenRouterModel('vendor/paid'),
-      'free OpenRouter variants and the free router alias are recognized'
+      isFreeModel('vendor/model:free', freeCapability) && isFreeModel('openrouter/free', freeCapability) && !isFreeModel('vendor/paid', freeCapability),
+      'configured free-model suffixes and aliases are recognized'
     );
     check(
       'PF7',
-      JSON.stringify(filterOpenRouterModels('openrouter', catalogue, 'free')) === JSON.stringify(['openrouter/free', 'vendor/model:free']) &&
-        filterOpenRouterModels('ollama', catalogue, 'free').length === catalogue.length,
-      'the free filter applies only to OpenRouter'
+      JSON.stringify(filterProviderModels(catalogue, 'free', freeCapability)) === JSON.stringify(['openrouter/free', 'vendor/model:free']) &&
+        filterProviderModels(catalogue, 'free').length === catalogue.length,
+      'the free filter applies only when the provider declares the capability'
     );
 
     check(
       'PF7b',
       hasZeroTokenPricing({ prompt: '0', completion: '0' }) &&
         !hasZeroTokenPricing({ prompt: '0', completion: '0.000001' }) &&
-        JSON.stringify(filterOpenRouterModels('openrouter', [...catalogue, 'stealth/ox-alpha'], 'free', ['stealth/ox-alpha'])) ===
+        JSON.stringify(filterProviderModels([...catalogue, 'stealth/ox-alpha'], 'free', freeCapability, ['stealth/ox-alpha'])) ===
           JSON.stringify(['openrouter/free', 'vendor/model:free', 'stealth/ox-alpha']),
       'zero-priced OpenRouter models are free even when their IDs have no :free suffix'
     );

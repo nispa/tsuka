@@ -192,7 +192,7 @@ async function main() {
     registry.register({ name: 'execute_command', riskLevel: 'DANGEROUS', execute: async () => 'command-ok' });
     const cloudProvider = new MockLLMProvider(
       [{ content: 'done' }],
-      { model: '__unprofiled_cloud_model__', baseUrl: 'https://openrouter.ai/api/v1' }
+      { model: '__unprofiled_cloud_model__', baseUrl: 'https://cloud.example/v1', providerClass: 'CLOUD' }
     );
     const cloudAgent = new Agent(cloudProvider, registry, new PermissionManager(), 'sys', ['execute_command']);
     await cloudAgent.run('inspect the project');

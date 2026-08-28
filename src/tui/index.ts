@@ -5,11 +5,7 @@
 
 import * as dotenv from 'dotenv';
 import { homePath } from '../core/apphome';
-import { ConfigManager } from '../core/config';
-import { LLMProvider, setLlmTimeoutMs } from '../core/provider';
-import { createDefaultRegistry } from '../tools/index';
-import { connectMcpServers } from '../core/mcp/connectMcpServers';
-import { PermissionManager } from '../safety/permissions';
+import { createHarnessRuntime } from '../core/runtime';
 import { TuiApp } from './app';
 import { logSink } from '../core/logSink';
 
@@ -17,24 +13,18 @@ dotenv.config({ path: homePath('.env') });
 dotenv.config();
 
 export async function launchTui(): Promise<void> {
-  const configManager = new ConfigManager();
-  setLlmTimeoutMs(configManager.getLlmTimeoutMs());
-
-  const permissionManager = new PermissionManager();
-  const registry = await createDefaultRegistry();
-
-  // T20.1: MCP servers join the registry; failures degrade with a warning,
-  // child processes are killed by the sync 'exit' hook in connectMcpServers.
-  await connectMcpServers(registry, configManager.getMcpServers());
-
-  const activeConfig = configManager.getActiveProviderConfig();
-  const provider = new LLMProvider(activeConfig.baseUrl, configManager.getApiKey(), activeConfig.model);
+  const runtime = await createHarnessRuntime({
+    connectMcp: true,
+  });
 
   const app = new TuiApp({
-    configManager,
-    provider,
-    registry,
-    permissionManager,
+    configManager: runtime.configManager,
+    provider: runtime.provider,
+    registry: runtime.registry,
+    permissionManager: runtime.permissionManager,
+    onShutdown: async () => {
+      await runtime.close();
+    },
   });
 
   app.start();

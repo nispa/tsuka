@@ -8,15 +8,16 @@ export * from '../core/personas';
 
 import chalk from 'chalk';
 import { getModelProfile, getRecommendedEffort } from '../core/modelProfile';
-import { getModelTier, isOpenRouterProvider } from '../tools/registry';
+import { getModelTier } from '../tools/registry';
+import type { ProviderClass } from '../core/cloudProvider';
 import type { ReasoningEffort } from '../core/provider';
 import { CLITheme } from './ui';
 
 /** Warns when the active model has no measured capability profile. */
-export function notifyIfUnprofiled(model: string, effort?: ReasoningEffort, providerBaseUrl?: string): void {
+export function notifyIfUnprofiled(model: string, effort?: ReasoningEffort, providerBaseUrl?: string, providerClass: ProviderClass = 'LOCAL', providerLabel = 'Cloud'): void {
   if (!model) return;
-  if (isOpenRouterProvider(providerBaseUrl)) {
-    CLITheme.info('OpenRouter cloud policy active: tool tier defaults to LARGE; no benchmark is required.');
+  if (providerClass === 'CLOUD') {
+    CLITheme.info(`${providerLabel} policy active: tool tier defaults to LARGE; no benchmark is required.`);
     return;
   }
   const profile = getModelProfile(model, effort);
@@ -30,7 +31,7 @@ export function notifyIfUnprofiled(model: string, effort?: ReasoningEffort, prov
     }
     return;
   }
-  const estimated = getModelTier(model, effort, providerBaseUrl);
+  const estimated = getModelTier(model, effort, providerBaseUrl, providerClass);
   CLITheme.warning(`Model not yet profiled: tier estimated by name = '${estimated}' (higher-tier tools remain hidden).`);
   CLITheme.info(`Run ${chalk.cyan('/benchmark')} to measure real capabilities and calibrate tier.`);
 }

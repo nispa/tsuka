@@ -15,4 +15,7 @@ export * from './types';
 export * from './timeouts';
 export * from './telemetry';
 export * from './sampling';
+export * from './wireFormat';
+export * from './streamAccumulator';
+export * from './errorClassification';
 export { LLMProvider } from './llmProvider';

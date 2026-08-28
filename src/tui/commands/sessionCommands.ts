@@ -88,9 +88,12 @@ export const SESSION_COMMANDS: TuiCommandSpec[] = [
   {
     name: '/exit',
     description: 'Leave the TUI',
-    run: ({ stopApp }) => {
-      stopApp();
-      process.exit(0);
+    run: async ({ stopApp }) => {
+      try {
+        await stopApp();
+      } finally {
+        process.exit(0);
+      }
     },
   },
 

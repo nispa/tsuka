@@ -104,7 +104,8 @@ export const spawnAgentTool: Tool = {
       char,
       task,
       effectiveOverride,
-      provider.getBaseUrl?.()
+      provider.getBaseUrl?.(),
+      provider.getProviderClass?.()
     ) +
       `\n\nThis is a subordinate sub-agent task. Complete the work and report results concisely.`;
 

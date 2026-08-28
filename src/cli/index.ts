@@ -4,14 +4,12 @@ import prompts from 'prompts';
 import chalk from 'chalk';
 import * as fs from 'fs';
 import * as path from 'path';
-import { LLMProvider, setLlmTimeoutMs } from '../core/provider';
+import type { ILLMProvider } from '../core/provider';
 import { homePath } from '../core/apphome';
 import { ConfigManager } from '../core/config';
 import { scanProviders, detectContextWindow } from '../core/discovery';
 import { MemoryStore } from '../core/memory';
-import { createDefaultRegistry } from '../tools/index';
-import { connectMcpServers } from '../core/mcp/connectMcpServers';
-import { PermissionManager } from '../safety/permissions';
+import { createHarnessRuntime } from '../core/runtime';
 import { Agent, resolveReasoningEffort } from '../core/agent';
 import { resolveToolSet } from '../core/toolSet';
 import { getModelProfile, getRecommendedEffort } from '../core/modelProfile';
@@ -80,8 +78,6 @@ async function main() {
   }
 
   const configManager = new ConfigManager();
-  setLlmTimeoutMs(configManager.getLlmTimeoutMs());
-
   const isCliForced = cliArgs.includes('--cli') || cliArgs.includes('--repl');
   const isTuiForced = cliArgs.includes('--tui') || cliArgs.includes('tui');
 
@@ -104,18 +100,15 @@ async function main() {
 
   CLITheme.banner();
 
-  const permissionManager = new PermissionManager(createCliPermissionPromptHandler());
-  const registry = await createDefaultRegistry();
-
-  // T20.1: MCP servers configured in tsuka.config.json join the registry here.
-  // A failing server degrades with a logged warning; startup never blocks on it.
-  // Child processes are killed by the sync 'exit' hook installed in connectMcpServers.
-  await connectMcpServers(registry, configManager.getMcpServers());
+  const runtime = await createHarnessRuntime({
+    configManager,
+    permissionHandler: createCliPermissionPromptHandler(),
+    connectMcp: true,
+  });
+  const { permissionManager, registry, provider } = runtime;
 
   let activeProvider = configManager.getActiveProviderName();
   let activeConfig = configManager.getActiveProviderConfig();
-  
-  let provider = new LLMProvider(activeConfig.baseUrl, configManager.getApiKey(), activeConfig.model);
 
   // Restore the last /effort choice persisted in tsuka.config.json as the startup pin,
   // so it must be set BEFORE the first recreateAgent() bakes effort into the agent.
@@ -143,7 +136,7 @@ async function main() {
       provider,
       registry,
       permissionManager,
-      loadSystemPrompt(role, trait, model, registry, char, undefined, reasoningEffort, provider.getBaseUrl()),
+      loadSystemPrompt(role, trait, model, registry, char, undefined, reasoningEffort, provider.getBaseUrl(), provider.getProviderClass?.()),
       toolSet.active,
       configManager.getMaxHistoryMessages(),
       configManager.getMaxHistoryTokens(),
@@ -181,7 +174,7 @@ async function main() {
       activeProvider = scan.name;
       configManager.setActiveProvider(scan.name);
       activeConfig = configManager.getActiveProviderConfig();
-      provider.reconfigure(activeConfig.baseUrl, configManager.getApiKey(), activeConfig.model);
+      provider.reconfigure(activeConfig.baseUrl, configManager.getApiKey(), activeConfig.model, activeConfig.class);
       agent = recreateAgent();
     } else {
       initSpinner.succeed(chalk.green(`Connection established with ${activeProvider}.`));
@@ -213,13 +206,11 @@ async function main() {
         agent = recreateAgent();
       }
 
-      notifyIfUnprofiled(provider.getCurrentModel(), agent.getReasoningEffort(), provider.getBaseUrl());
+      notifyIfUnprofiled(provider.getCurrentModel(), agent.getReasoningEffort(), provider.getBaseUrl(), activeConfig.class, activeConfig.displayName);
     }
   } else {
-    initSpinner.fail(chalk.red('No LLM server reachable (Ollama, Unsloth, OpenRouter).'));
-    CLITheme.warning('💡 Getting started:');
-    console.log(chalk.gray('  • If using Ollama: start with ') + chalk.cyan('ollama serve') + chalk.gray(' and load a model (e.g. ') + chalk.cyan('ollama run qwen2.5-coder:7b') + chalk.gray(')'));
-    console.log(chalk.gray('  • If using OpenRouter: configure API key in ') + chalk.cyan('.env') + chalk.gray(' or type ') + chalk.cyan('/provider'));
+    initSpinner.fail(chalk.red('No configured LLM provider is reachable.'));
+    CLITheme.warning('Check providers.json endpoints and the configured apiKeyEnv variables.');
     console.log(chalk.gray('  • To initialize a preset roster in workspace: ') + chalk.cyan('tsuka init --preset core\n'));
   }
 
@@ -338,6 +329,7 @@ async function main() {
 
       if (command === '/exit') {
         console.log(chalk.yellow('Exiting... Goodbye!'));
+        await runtime.close();
         process.exit(0);
       }
       if (command === '/clear') {
@@ -506,6 +498,8 @@ async function main() {
 
     CLITheme.printDivider();
   }
+
+  await runtime.close();
 }
 
 main().catch((err) => {

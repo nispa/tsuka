@@ -283,7 +283,7 @@ Rather than taking on heavy third-party SDKs, TSUKA features a **native, zero-de
 1. **Standard I/O Transport (`stdioTransport.ts`)**: launches configured servers from `tsuka.config.json` as child processes communicating over `stdin`/`stdout`.
 2. **JSON-RPC 2.0 Handshake (`client.ts`)**: performs the `initialize` handshake and queries available tools via `tools/list`.
 3. **Adapter Registration (`adapter.ts`)**: registers remote tools into `ToolRegistry` with the `mcp__<server>__<tool>` prefix, using remote JSON schemas directly for validation.
-4. **Safety & Fault Isolation**: MCP tools inherit full `PermissionManager` gating (`RESTRICTED` by default with interactive approval). Crashed or unresponsive MCP servers emit diagnostics via `logSink` without blocking the harness, and child processes are cleaned up synchronously on exit.
+4. **Safety & Fault Isolation**: MCP tools inherit full `PermissionManager` gating (`RESTRICTED` by default with interactive approval). Crashed or unresponsive MCP servers emit diagnostics via `logSink` without blocking the harness. Each runtime awaits cleanup of its own child processes; a synchronous exit hook handles abrupt termination.
 
 ---
 
@@ -294,6 +294,19 @@ Rather than taking on heavy third-party SDKs, TSUKA features a **native, zero-de
 TSUKA resolves configurations hierarchically:
 1. **Local Project (`.tsuka/`)**: configurations initialized via `tsuka init` override global defaults.
 2. **Global App Home (`appHome`)**: fallback to system-wide characters, teams, and settings.
+
+---
+
+### Milestone 11 — Core Invariants, Composition Root & Pluggable Contracts (Phase 8)
+
+*Code references: `src/core/runtime.ts`, `src/core/agent.ts`, `src/core/provider/`, `src/tools/`, `src/core/memory/`*
+
+As an agent harness scales beyond 80 test suites, maintainability becomes paramount (Directives 8, 9, and 10 in `AGENTS.md`):
+
+1. **Unified Composition Root (`createHarnessRuntime`)**: Initializing configuration, providers, registries, and permissions ad-hoc across CLI and TUI leads to behavioral drift. A single factory in `runtime.ts` wires the entire system and provides an idempotent `close()` method for deterministic shutdown (terminating MCP processes and flushing memory).
+2. **Isolating Agent Invariants**: `Agent` is no longer a sprawling monolith. Token calibration (`tokenCalibration.ts`), conversation pruning (`conversationHistory.ts`), tool invocation lifecycles (`toolRound.ts`), state machine transitions (`reactState.ts`), and reasoning trace persistence (`reasoningTrace.ts`) are decomposed into sharp, testable units.
+3. **Strict Layer Contracts**: The ReAct engine never inspects provider wire payloads or file schema paths directly. By coding against `IToolRegistry` and encapsulating OpenAI payloads in `provider/wireFormat.ts` and `provider/streamAccumulator.ts`, providers and tools can be swapped out cleanly without touching agent logic.
+4. **Decoupled Memory Codec & Storage**: In `src/core/memory/`, fact serialization, normalization, summary derivation, and deduplication live in `codec.ts`, while atomic file writes (via `.tmp` + `renameSync`) and corruption recovery backups (`.corrupt-<timestamp>`) live in `storage.ts`. `JsonMemoryBackend` is purely responsible for RAM state orchestration.
 
 ---
 

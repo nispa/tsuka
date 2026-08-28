@@ -41,6 +41,10 @@ function main() {
   // ── Project-scoped writes: RESTRICTED, so "approve for the session" covers the debug loop ──
   expect('C6', 'npm test', 'RESTRICTED');
   expect('C7', 'npm run build', 'RESTRICTED');
+  expect('C7a', 'npm ci', 'RESTRICTED');
+  expect('C7b', 'npm install -D typescript', 'RESTRICTED');
+  expect('C7c', 'npm install --save-dev @types/node', 'RESTRICTED');
+  expect('C7d', 'npm i lodash@^4.17.21 --save-prod', 'RESTRICTED');
   expect('C8', 'git commit', 'RESTRICTED');
   expect('C9', 'node scripts/seed.js', 'RESTRICTED');
 

@@ -3,18 +3,18 @@
  * A server that fails to start or to list its tools degrades visibly (logSink
  * warning) and never blocks startup: the rest of the harness works untouched.
  *
- * Active clients are tracked module-wide so the CLI/TUI entry points can shut
- * every child process down on exit via shutdownMcpServers().
+ * Each returned connection owns the clients created by that call. A process
+ * exit hook remains only as a synchronous last-resort cleanup.
  */
 
-import type { ToolRegistry } from '../../tools/registry';
+import type { IToolRegistry } from '../../tools/types';
 import { logSink } from '../logSink';
 import { McpClient } from './client';
 import { adaptMcpTool } from './adapter';
 import type { IMcpClient, McpServerConfig } from './types';
 import { MCP_DEFAULTS } from '../constants';
 
-const activeClients: IMcpClient[] = [];
+const activeClients = new Set<IMcpClient>();
 let shutdownHookInstalled = false;
 
 export interface McpConnectReport {
@@ -23,17 +23,34 @@ export interface McpConnectReport {
   toolsRegistered: number;
 }
 
+export interface McpConnection extends McpConnectReport {
+  close(): Promise<void>;
+}
+
 /**
  * Connects every enabled server and registers its tools with the
  * `mcp__<server>__<tool>` naming convention. Name collisions (with native
  * tools or across servers) are skipped with a warning.
  */
 export async function connectMcpServers(
-  registry: ToolRegistry,
+  registry: Pick<IToolRegistry, 'register'>,
   servers: Record<string, McpServerConfig> | undefined,
-): Promise<McpConnectReport> {
+): Promise<McpConnection> {
   const report: McpConnectReport = { connected: [], failed: [], toolsRegistered: 0 };
-  if (!servers) return report;
+  const ownedClients: IMcpClient[] = [];
+
+  let closed = false;
+  const close = async (): Promise<void> => {
+    if (closed) return;
+    closed = true;
+    await Promise.all(ownedClients.map(async (client) => {
+      activeClients.delete(client);
+      try { await client.close(); } catch {}
+    }));
+    ownedClients.length = 0;
+  };
+
+  if (!servers) return { ...report, close };
 
   for (const [serverName, serverConfig] of Object.entries(servers)) {
     if (serverConfig.enabled === false) continue;
@@ -67,7 +84,8 @@ export async function connectMcpServers(
         }
       }
 
-      activeClients.push(client);
+      ownedClients.push(client);
+      activeClients.add(client);
       installShutdownHook();
       report.connected.push(serverName);
       report.toolsRegistered += registered;
@@ -79,17 +97,7 @@ export async function connectMcpServers(
     }
   }
 
-  return report;
-}
-
-/** Closes every connected MCP server. Safe to call multiple times. */
-export async function shutdownMcpServers(): Promise<void> {
-  while (activeClients.length > 0) {
-    const client = activeClients.pop()!;
-    try {
-      await client.close();
-    } catch {}
-  }
+  return { ...report, close };
 }
 
 function installShutdownHook(): void {
@@ -97,8 +105,9 @@ function installShutdownHook(): void {
   shutdownHookInstalled = true;
   process.on('exit', () => {
     // Synchronous best-effort kill: 'exit' handlers cannot await.
-    for (const client of activeClients.splice(0)) {
+    for (const client of activeClients) {
       try { (client as McpClient).closeSync(); } catch {}
     }
+    activeClients.clear();
   });
 }

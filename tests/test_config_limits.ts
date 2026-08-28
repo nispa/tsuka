@@ -26,6 +26,7 @@ async function run() {
 
   const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'tsuka-config-limits-'));
   process.env.TSUKA_HOME = tmpHome;
+  fs.copyFileSync(path.join(process.cwd(), 'providers.json'), path.join(tmpHome, 'providers.json'));
 
   const { ConfigManager } = await import('../src/core/config');
   const { Agent } = await import('../src/core/agent');
@@ -127,7 +128,7 @@ async function run() {
       activeProvider: 'openrouter',
       providers: {
         ollama: { baseUrl: 'http://localhost:11434/v1', model: 'local-model' },
-        openrouter: { baseUrl: 'https://openrouter.ai/api/v1', model: 'cloud-model' }
+        openrouter: { baseUrl: 'https://openrouter.ai/api/v1', model: 'cloud-model', class: 'CLOUD' }
       },
       parallelExecutionEnabled: false
     }, null, 2),
@@ -151,6 +152,23 @@ async function run() {
     'utf-8'
   );
   check('CFG.24', new ConfigManager().isParallelExecutionEnabled(), 'the explicit opt-in still enables parallel execution for local providers');
+
+  fs.writeFileSync(
+    customConfigPath,
+    JSON.stringify({
+      activeProvider: 'bailu',
+      providers: {
+        bailu: { baseUrl: 'https://api.bailucode.com/v1', model: 'bailu-apex-2.7', class: 'CLOUD' }
+      },
+      parallelExecutionEnabled: false
+    }, null, 2),
+    'utf-8'
+  );
+  process.env.BAILU_API_KEY = 'bailu-test-key';
+  const bailuConfig = new ConfigManager();
+  check('CFG.24a', bailuConfig.isParallelExecutionEnabled(), 'Bailu inherits the CLOUD parallel-execution policy');
+  check('CFG.24b', bailuConfig.getApiKey() === 'bailu-test-key', 'Bailu resolves BAILU_API_KEY');
+  delete process.env.BAILU_API_KEY;
 
   const { ContextTracker } = await import('../src/core/contextTracker');
   const tracker = new ContextTracker(15);

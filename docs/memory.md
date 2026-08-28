@@ -255,7 +255,11 @@ export interface MemoryBackend {
 }
 ```
 
-* **Default Implementation (`JsonMemoryBackend`)**: Zero external dependencies, pure TypeScript JSON file storage with pure BM25 ranking (`memory/bm25.ts`) and exponential half-life eviction (`memory/retention.ts`).
+* **Default Implementation (`JsonMemoryBackend`)**: Zero external dependencies, pure TypeScript JSON file storage structured across focused modules:
+  * `codec.ts`: normalization, automatic summary derivation from known patterns (goals/traces/subagents), fact validation, deduplication by key/title, badge formatting, and prompt rendering with character budgeting (`promptMaxChars`).
+  * `storage.ts`: atomic persistence via sibling `.tmp` file and `renameSync`, orphan file cleanup at boot, and automatic corruption recovery backup (`.corrupt-<timestamp>`).
+  * `bm25.ts`: pure lexical tokenization, stop-word filtering, and BM25 relevance scoring.
+  * `retention.ts`: category weights (`pinned`, `lesson`, `decision`, `fact`, `run`), half-life decay, and deterministic eviction victim selection.
 * **Pluggable Registry**: Alternative backends (e.g. SQLite with FTS5, vector databases, remote cloud stores) can be registered via `registerMemoryBackend(name, factory)` and selected dynamically through `memoryBackend` in `tsuka.config.json` or the `TSUKA_MEMORY_BACKEND` environment variable.
 * **Unified Facade**: Consumers throughout the harness access memory via the standard `MemoryStore` singleton facade, maintaining 100% backward compatibility.
 

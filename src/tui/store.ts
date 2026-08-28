@@ -16,7 +16,7 @@ export class TuiStore {
       activeCharacterRole: 'developer',
       activeCharacterTrait: 'helpful',
       activeAiName: 'Tsuka',
-      activeProvider: 'ollama',
+      activeProvider: '',
       activeModel: 'llama3',
       activeSpawnedAgent: null,
       spawnedAgentsHistory: [],

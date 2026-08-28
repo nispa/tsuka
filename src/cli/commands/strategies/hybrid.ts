@@ -50,7 +50,8 @@ export async function runDiscussionRound(
         ctx.provider.getCurrentModel(),
         ['cast_vote'],
         undefined,
-        ctx.provider.getBaseUrl()
+        ctx.provider.getBaseUrl(),
+        ctx.provider.getProviderClass?.()
       )
     : [];
 

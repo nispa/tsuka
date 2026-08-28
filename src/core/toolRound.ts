@@ -1,4 +1,4 @@
-import { ToolRegistry, ToolSetController } from '../tools/registry';
+import { IToolRegistry, ToolSetController } from '../tools/registry';
 import { PermissionManager } from '../safety/permissions';
 import { ILLMProvider, ChatStats } from './provider';
 import { AgentEventHandler } from './agentEvents';
@@ -7,7 +7,7 @@ import { ChatMessage, ToolCall } from './types';
 import type { WorkflowDispatcher } from './workflowDispatcher';
 
 export interface ToolRoundContext {
-  registry: ToolRegistry;
+  registry: IToolRegistry;
   permissionManager: PermissionManager;
   provider: ILLMProvider;
   requesterLabel?: string;

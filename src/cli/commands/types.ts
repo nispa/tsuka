@@ -1,6 +1,6 @@
 import { ConfigManager } from '../../core/config';
 import { ChatStats, ILLMProvider } from '../../core/provider';
-import { ToolRegistry } from '../../tools/registry';
+import { IToolRegistry } from '../../tools/registry';
 import { PermissionManager } from '../../safety/permissions';
 import { Agent } from '../../core/agent';
 import { AgentEventHandler } from '../../core/agentEvents';
@@ -26,7 +26,7 @@ export interface WorkflowEventSink {
 export interface CommandCtx {
   configManager: ConfigManager;
   provider: ILLMProvider;
-  registry: ToolRegistry;
+  registry: IToolRegistry;
   permissionManager: PermissionManager;
   agent: { current: Agent };
   availableModels: { current: string[] };

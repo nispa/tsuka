@@ -6,6 +6,15 @@
 export interface ProviderConfig {
   baseUrl: string;
   model: string;
+  class: 'LOCAL' | 'CLOUD';
+  displayName: string;
+  apiKeyEnv?: string;
+  capabilities: import('../providerCatalog').ProviderCapabilities;
+}
+
+export interface ProviderOverride {
+  baseUrl?: string;
+  model?: string;
 }
 
 /**
@@ -52,12 +61,11 @@ export interface McpServerConfigEntry {
 }
 
 export interface AppConfig {
-  activeProvider: 'ollama' | 'openrouter' | 'unsloth' | string;
-  providers: {
-    ollama: ProviderConfig;
-    openrouter: ProviderConfig;
-    [key: string]: ProviderConfig;
-  };
+  activeProvider: string;
+  /** Per-install endpoint/model overrides; provider definitions live in providers.json. */
+  providerOverrides?: Record<string, ProviderOverride>;
+  /** Legacy inline definitions are read for migration compatibility only. */
+  providers?: Record<string, Partial<ProviderConfig>>;
   webSearch: WebSearchConfig;
   activeRole: string;
   activeTrait: string;
@@ -86,7 +94,7 @@ export interface AppConfig {
   commandTimeoutMs?: number;
   /** Default creativity preset ('precise' | 'balanced' | 'creative' | 'low' | 'medium' | 'high'). */
   creativity?: string;
-  /** Enables parallel /goal blocks for local providers; OpenRouter enables them automatically. */
+  /** Enables parallel /goal blocks for local providers; trusted cloud gateways enable them automatically. */
   parallelExecutionEnabled?: boolean;
   /** Maximum number of activity records kept in the in-memory ContextTracker ring buffer. Default: 100. */
   contextTrackerMaxEntries?: number;
@@ -142,21 +150,8 @@ export const SAMPLING_PARAM_KEYS = [
  */
 export function defaultAppConfig(): AppConfig {
   return {
-    activeProvider: 'ollama',
-    providers: {
-      ollama: {
-        baseUrl: 'http://localhost:11434/v1',
-        model: 'qwen2.5-coder:7b',
-      },
-      openrouter: {
-        baseUrl: 'https://openrouter.ai/api/v1',
-        model: 'meta-llama/llama-3.3-70b-instruct',
-      },
-      unsloth: {
-        baseUrl: 'http://127.0.0.1:8888/v1',
-        model: 'default',
-      },
-    },
+    activeProvider: '',
+    providerOverrides: {},
     webSearch: {
       provider: 'duckduckgo'
     },

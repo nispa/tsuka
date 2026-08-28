@@ -4,6 +4,8 @@ import chalk from 'chalk';
 import prompts from 'prompts';
 import { getAppHome } from '../core/apphome';
 import { scanProviders } from '../core/discovery';
+import { loadProviderCatalog } from '../core/providerCatalog';
+import { defaultAppConfig } from '../core/config';
 
 export interface InitOptions {
   preset?: 'core' | 'full';
@@ -143,6 +145,7 @@ export async function handleInitCmd(rawArgs: string[] = [], customTargetDir?: st
   }
 
   const appHome = getAppHome();
+  fs.copyFileSync(path.join(appHome, 'providers.json'), path.join(tsukaDir, 'providers.json'));
 
   // Copy assets based on chosen preset
   if (opts.preset === 'full') {
@@ -186,11 +189,20 @@ export async function handleInitCmd(rawArgs: string[] = [], customTargetDir?: st
   let bestModel: string | null = null;
 
   try {
-    const candidates = [
-      { name: 'unsloth', config: { baseUrl: 'http://127.0.0.1:8888/v1', model: 'unsloth' }, apiKey: 'local' },
-      { name: 'ollama', config: { baseUrl: 'http://localhost:11434/v1', model: 'qwen2.5-coder:7b' }, apiKey: 'local' }
-    ];
-    const found = await scanProviders(candidates, 'unsloth');
+    const catalog = loadProviderCatalog(path.join(appHome, 'providers.json'));
+    const candidates = Object.entries(catalog).map(([name, definition]) => ({
+      name,
+      config: {
+        baseUrl: definition.baseUrl,
+        model: definition.defaultModel,
+        class: definition.class,
+        displayName: definition.displayName,
+        apiKeyEnv: definition.apiKeyEnv,
+        capabilities: definition.capabilities,
+      },
+      apiKey: definition.apiKeyEnv ? process.env[definition.apiKeyEnv] ?? '' : 'local',
+    }));
+    const found = await scanProviders(candidates, candidates[0]?.name ?? '');
     if (found) {
       bestProvider = found.name;
       bestModel = found.loadedModel || found.models[0] || found.config.model;
@@ -198,18 +210,7 @@ export async function handleInitCmd(rawArgs: string[] = [], customTargetDir?: st
   } catch {}
 
   const defaultConfigPath = path.join(appHome, 'tsuka.config.json');
-  let baseConfig: any = {
-    activeProvider: 'unsloth',
-    providers: {
-      ollama: { baseUrl: 'http://localhost:11434/v1', model: 'qwen2.5-coder:7b' },
-      openrouter: { baseUrl: 'https://openrouter.ai/api/v1', model: 'meta-llama/llama-3.3-70b-instruct' },
-      unsloth: { baseUrl: 'http://127.0.0.1:8888/v1', model: 'unsloth' }
-    },
-    webSearch: { provider: 'duckduckgo' },
-    activeRole: 'developer',
-    activeTrait: 'professional',
-    activeCharacter: 'dev'
-  };
+  let baseConfig: any = defaultAppConfig();
 
   if (fs.existsSync(defaultConfigPath)) {
     try {
@@ -219,9 +220,8 @@ export async function handleInitCmd(rawArgs: string[] = [], customTargetDir?: st
 
   if (bestProvider && bestModel) {
     baseConfig.activeProvider = bestProvider;
-    if (baseConfig.providers[bestProvider]) {
-      baseConfig.providers[bestProvider].model = bestModel;
-    }
+    baseConfig.providerOverrides ??= {};
+    baseConfig.providerOverrides[bestProvider] = { model: bestModel };
     console.log(chalk.green(`  ✔ Detected active LLM server: ${bestProvider} (${bestModel})`));
   } else {
     console.log(chalk.yellow('  ⚠️ No local LLM server reachable at the moment. Created default configuration.'));

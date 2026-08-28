@@ -65,7 +65,7 @@ export class CLITheme {
     );
     logSink.log(
       chalk.gray('  🤖 Environment:') + chalk.white(' Multi-Agent CLI Harness') +
-      chalk.gray('  •  Engines:') + chalk.hex('#a855f7')(' Ollama') + chalk.gray(', ') + chalk.hex('#38bdf8')('OpenRouter') + chalk.gray(', ') + chalk.hex('#2dd4bf')('Unsloth')
+      chalk.gray('  •  Engines:') + chalk.hex('#38bdf8')(' configured in providers.json')
     );
     logSink.log(chalk.gray('  ─'.repeat(Math.ceil(w / 2))));
     logSink.log(
@@ -223,7 +223,7 @@ export class CLITheme {
 
       { section: '🧠 Model & Inference' },
       ['/models [name]', 'Lists available models or switches active model'],
-      ['/provider [name]', 'Changes LLM provider (Ollama, Unsloth, OpenRouter)'],
+      ['/provider [name]', 'Changes to a provider configured in providers.json'],
       ['/effort [level|auto|ask]', 'Adjusts reasoning effort (none/low/med/xhigh)'],
       ['/benchmark [model|all]', 'Benchmarks model tier and speed (tok/s)'],
 

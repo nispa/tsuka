@@ -2,7 +2,7 @@
 [![Node.js](https://img.shields.io/badge/Node.js-20+-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![Ollama](https://img.shields.io/badge/Ollama-native-black?logo=ollama&logoColor=white)](https://ollama.com/)
 [![OpenRouter](https://img.shields.io/badge/OpenRouter-ready-FF6B35?logo=openai&logoColor=white)](https://openrouter.ai/)
-[![Tests](https://img.shields.io/badge/Tests-80%20passed-brightgreen?logo=vitest&logoColor=white)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-90%20passed-brightgreen?logo=vitest&logoColor=white)](tests/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/nispa/tsuka/pulls)
 
@@ -117,6 +117,51 @@ TSUKA ships with **30 native tools** (`src/tools/impl/*.ts`) categorized into:
 * **Extension & SAST**: `create_tool` (sandboxed in `node:vm`), `audit_code` (static security analyzer for CWEs).
 
 > 📚 Full documentation: [Security Specification](docs/security.md) · [Architecture Guide](docs/architecture.md)
+
+---
+
+## 🌐 LLM Providers & Model Management
+
+TSUKA decouples provider definitions from harness code via a data-driven catalogue in `providers.json`. Any OpenAI-compatible endpoint (`/v1/chat/completions`) can be configured declaratively without source-code changes:
+
+```json
+{
+  "providers": {
+    "ollama": {
+      "displayName": "Ollama",
+      "class": "LOCAL",
+      "baseUrl": "http://localhost:11434/v1",
+      "defaultModel": "qwen2.5-coder:7b"
+    },
+    "openrouter": {
+      "displayName": "OpenRouter",
+      "class": "CLOUD",
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "defaultModel": "meta-llama/llama-3.3-70b-instruct",
+      "apiKeyEnv": "OPENROUTER_API_KEY",
+      "capabilities": {
+        "freeModels": {
+          "aliases": ["openrouter/free"],
+          "suffixes": [":free"],
+          "includeZeroPriced": true
+        }
+      }
+    },
+    "custom-vllm": {
+      "displayName": "vLLM Server",
+      "class": "LOCAL",
+      "baseUrl": "http://127.0.0.1:8000/v1",
+      "defaultModel": "meta-llama/Llama-3.1-8B-Instruct"
+    }
+  }
+}
+```
+
+* **Data-Driven Catalogue**: Add custom backends (Ollama, llama.cpp, Unsloth, LM Studio, vLLM, Groq, Bailu, OpenRouter) with zero TypeScript code modifications.
+* **Clean Separation of Concerns**: `providers.json` defines endpoints, classes, and environment key pointers; `tsuka.config.json` stores the active provider and workspace overrides.
+* **Smart Probing & RAM Warmup**: Switching models (`/models` or `/provider`) auto-probes server context limits (`contextWindow`) and notifies or warms up models loaded in RAM (`● loaded`).
+* **Cloud vs Local Tier Policy**: Cloud providers (`class: "CLOUD"`) automatically inherit tier `LARGE` capabilities, avoiding lengthy local capability benchmarks.
+* **Free-Model Discovery**: On providers with `freeModels` capability (e.g. OpenRouter), `/models` provides instant toggling between all models and zero-cost models (`:free`).
 
 ---
 

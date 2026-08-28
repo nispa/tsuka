@@ -5,7 +5,7 @@ import { MemoryStore, MemoryFact } from '../../core/memory';
 import { getEffortPin, setEffortPin } from '../../core/effortControl';
 import { probeProvider } from '../../core/discovery';
 import { warmUpIfNeeded } from '../../cli/commands/provider';
-import { filterOpenRouterModels, ModelCatalogFilter } from '../../core/modelCatalog';
+import { filterProviderModels, ModelCatalogFilter } from '../../core/modelCatalog';
 import commandsData from '../commands/menu.json';
 import { TextViewerModal } from './textViewerModal';
 
@@ -126,18 +126,19 @@ export class SystemModals {
       const apiKey = configManager.getApiKey();
       const scan = await probeProvider(providerName, activeConfig, apiKey);
       const allModels = scan ? scan.models : await provider.listModels();
-      const models = filterOpenRouterModels(
-        providerName,
+      const freeCapability = activeConfig.capabilities.freeModels;
+      const models = filterProviderModels(
         allModels,
         catalogFilter,
+        freeCapability,
         scan?.zeroPricedModels
       );
       const loadedModel = scan?.loadedModel ?? null;
       const current = provider.getCurrentModel();
 
       if (models.length === 0) {
-        if (providerName === 'openrouter' && catalogFilter === 'free') {
-          store.notify('OpenRouter returned no free models.', 'warn');
+        if (freeCapability && catalogFilter === 'free') {
+          store.notify(`${activeConfig.displayName} returned no free models.`, 'warn');
           await SystemModals.openModelModal(
             store, provider, configManager, onAgentRecreate, onSyncState, onProbeCtx, 'all'
           );
@@ -155,10 +156,10 @@ export class SystemModals {
         label: '⇄ Change provider…',
         value: SystemModals.CHANGE_PROVIDER,
         hint: `Currently using ${providerName}`,
-      }, ...(providerName === 'openrouter' ? [{
+      }, ...(freeCapability ? [{
         label: catalogFilter === 'free' ? '◉ Show all models' : '○ Free models only',
         value: catalogFilter === 'free' ? SystemModals.SHOW_ALL_MODELS : SystemModals.SHOW_FREE_MODELS,
-        hint: catalogFilter === 'free' ? 'Free filter active' : 'Filter OpenRouter catalogue',
+        hint: catalogFilter === 'free' ? 'Free filter active' : `Filter ${activeConfig.displayName} catalogue`,
       }] : []), ...models.map((m) => {
         const tags = [m === loadedModel ? '● loaded' : '', m === current ? '(active)' : ''].filter(Boolean).join(' ');
         return {
@@ -171,7 +172,7 @@ export class SystemModals {
       store.showModal({
         type: 'slash_menu',
         title: 'Select Backend LLM Model',
-        selectedIndex: Math.max(0, models.indexOf(current) + (providerName === 'openrouter' ? 2 : 1)),
+        selectedIndex: Math.max(0, models.indexOf(current) + (freeCapability ? 2 : 1)),
         options,
         onSelect: (chosen) => {
           if (chosen === SystemModals.CHANGE_PROVIDER) {
@@ -291,15 +292,10 @@ export class SystemModals {
     onProviderSelected?: () => void
   ): void {
     const current = configManager.getActiveProviderName();
-    const displayNames: Record<string, string> = {
-      ollama: 'Ollama',
-      openrouter: 'OpenRouter',
-      unsloth: 'Unsloth Studio',
-    };
     const options = configManager.getProviderNames().map((name) => {
       const cfg = configManager.getProviderConfig(name)!;
       return {
-        label: `${current === name ? '● ' : '  '}${displayNames[name] ?? name}`,
+        label: `${current === name ? '● ' : '  '}${cfg.displayName}`,
         value: name,
         hint: cfg.baseUrl,
       };
@@ -313,7 +309,7 @@ export class SystemModals {
       onSelect: async (chosen) => {
         configManager.setActiveProvider(chosen as any);
         const newCfg = configManager.getActiveProviderConfig();
-        provider.reconfigure(newCfg.baseUrl, configManager.getApiKey(), newCfg.model);
+        provider.reconfigure(newCfg.baseUrl, configManager.getApiKey(), newCfg.model, newCfg.class);
         onAgentRecreate();
         onSyncState();
         store.closeModal();

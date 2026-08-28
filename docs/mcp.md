@@ -78,7 +78,7 @@ MCP tools are fully governed by TSUKA's defensive safety framework:
 1. **Interactive Permission Prompts**: every MCP tool call passes through `PermissionManager`. With the default `RESTRICTED` level, the user receives an interactive prompt showing the full server name, tool name, and parameters before execution `[y/N/always]`.
 2. **Pre-flight Schema Validation**: the input parameter schema (`inputSchema`) provided by the MCP server is validated locally before dispatch, stopping malformed calls before they leave the harness.
 3. **Fault Isolation & Graceful Degradation**: if an MCP server crashes or fails during startup, a diagnostic warning is logged via `logSink` and TSUKA continues launching. A broken MCP server never blocks the harness.
-4. **Clean Process Lifecycle**: upon exit (CLI or TUI), a synchronous handler terminates all spawned MCP child processes, preventing background orphan processes.
+4. **Owned Process Lifecycle**: each runtime closes only the MCP clients it created; CLI and TUI await that shutdown. A synchronous process-exit hook remains as last-resort cleanup for abrupt exits.
 
 > ⚠️ **Note on Workspace Jail**: MCP servers run as independent host processes. An external filesystem server configured by the user has access to its assigned host paths, outside the local workspace root. Security is governed by the interactive `riskLevel` tier.
 

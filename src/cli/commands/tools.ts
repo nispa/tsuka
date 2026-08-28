@@ -20,7 +20,7 @@ export async function handleTools(ctx: CommandCtx, _arg: string): Promise<void> 
 
   const model = ctx.provider.getCurrentModel();
   const effort = ctx.agent.current.getReasoningEffort();
-  const tier = getModelTier(model, effort, ctx.provider.getBaseUrl());
+  const tier = getModelTier(model, effort, ctx.provider.getBaseUrl(), ctx.provider.getProviderClass?.());
 
   const allRegisteredTools = ctx.registry.getAllTools();
   if (allRegisteredTools.length === 0) {
@@ -46,7 +46,7 @@ export async function handleTools(ctx: CommandCtx, _arg: string): Promise<void> 
     return;
   }
 
-  const visibleForLlm = ctx.registry.listForLLM(model, role.allowedTools, effort, ctx.provider.getBaseUrl());
+  const visibleForLlm = ctx.registry.listForLLM(model, role.allowedTools, effort, ctx.provider.getBaseUrl(), ctx.provider.getProviderClass?.());
   const visibleNames = new Set(visibleForLlm.map((t) => t.function.name));
 
   logSink.log(chalk.bold(`\n🛠️  Agent Toolbox — ${char ? `${char.displayName} (${char.aiName})` : role.displayName}`));

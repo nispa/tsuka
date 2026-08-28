@@ -1,5 +1,6 @@
 import { ChatMessage, ChatRole, ToolCall } from '../types';
 import { StreamChannel } from '../thinkParser';
+import type { ProviderClass } from '../cloudProvider';
 
 export type { ChatRole };
 export type ChatMessageLike = ChatMessage;
@@ -107,13 +108,22 @@ export interface ChatResponse {
   reasoningText?: string;
 }
 
+export interface ChatToolDefinition {
+  type: 'function';
+  function: {
+    name: string;
+    description: string;
+    parameters: Record<string, unknown>;
+  };
+}
+
 /**
  * Minimal contract used by Agent and CLI commands.
  */
 export interface ILLMProvider {
   chatWithTools(
     messages: ChatMessage[],
-    tools?: any[],
+    tools?: ChatToolDefinition[],
     onChunk?: (chunk: string, channel?: StreamChannel) => void,
     signal?: AbortSignal,
     options?: ChatOptions
@@ -121,6 +131,7 @@ export interface ILLMProvider {
   getCurrentModel(): string;
   setCurrentModel(model: string): void;
   getBaseUrl(): string;
+  getProviderClass?(): ProviderClass;
   listModels(): Promise<string[]>;
-  reconfigure(baseUrl: string, apiKey: string, defaultModel: string): void;
+  reconfigure(baseUrl: string, apiKey: string, defaultModel: string, providerClass?: ProviderClass): void;
 }

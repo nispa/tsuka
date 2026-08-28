@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "providers": {
+    "ollama": {
+      "displayName": "Ollama",
+      "class": "LOCAL",
+      "baseUrl": "http://localhost:11434/v1",
+      "defaultModel": "qwen2.5-coder:7b",
+      "capabilities": {}
+    },
+    "unsloth": {
+      "displayName": "Unsloth Studio",
+      "class": "LOCAL",
+      "baseUrl": "http://127.0.0.1:8888/v1",
+      "defaultModel": "default",
+      "apiKeyEnv": "UNSLOTH_API_KEY",
+      "capabilities": {}
+    },
+    "openrouter": {
+      "displayName": "OpenRouter",
+      "class": "CLOUD",
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "defaultModel": "meta-llama/llama-3.3-70b-instruct",
+      "apiKeyEnv": "OPENROUTER_API_KEY",
+      "capabilities": {
+        "freeModels": {
+          "aliases": ["openrouter/free"],
+          "suffixes": [":free"],
+          "includeZeroPriced": true
+        }
+      }
+    },
+    "bailu": {
+      "displayName": "Bailu",
+      "class": "CLOUD",
+      "baseUrl": "https://api.bailucode.com/v1",
+      "defaultModel": "bailu-apex-2.7",
+      "apiKeyEnv": "BAILU_API_KEY",
+      "capabilities": {}
+    }
+  }
+}

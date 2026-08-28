@@ -28,7 +28,7 @@ export class HeaderView {
 
     // Line 2: Active Persona, Model & Token Gauge
     const modelName = state.activeModel || 'default';
-    const providerName = state.activeProvider || 'ollama';
+    const providerName = state.activeProvider || 'provider';
 
     const { usedTokens, subagentUsedTokens = 0, maxTokens, percentage, reasoningEffort } = state.stats;
     const barWidth = Math.min(18, Math.max(6, Math.floor(width / 8)));

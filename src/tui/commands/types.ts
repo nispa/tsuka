@@ -10,7 +10,7 @@ import { ConfigManager } from '../../core/config';
 import { ILLMProvider } from '../../core/provider';
 import { Agent } from '../../core/agent';
 import { TuiLayoutConfig } from '../layoutConfig';
-import { ToolRegistry } from '../../tools/registry';
+import { IToolRegistry } from '../../tools/registry';
 import { PermissionManager } from '../../safety/permissions';
 import { WorkflowEventSink } from '../../cli/commands/types';
 
@@ -23,7 +23,7 @@ export interface CommandControllerContext {
   store: TuiStore;
   configManager: ConfigManager;
   provider: ILLMProvider;
-  registry?: ToolRegistry;
+  registry?: IToolRegistry;
   permissionManager?: PermissionManager;
   layoutConfig: TuiLayoutConfig;
   getAgent: () => Agent;
@@ -34,7 +34,7 @@ export interface CommandControllerContext {
   setActiveTab: (tab: 'chat' | 'tools') => void;
   getTurnRunner?: () => any;
   workflowEvents?: WorkflowEventSink;
-  stopApp: () => void;
+  stopApp: () => void | Promise<void>;
 }
 
 export interface TuiCommandContext extends CommandControllerContext {

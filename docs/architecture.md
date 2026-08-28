@@ -6,7 +6,7 @@
 
 > This document describes the technical architecture, design principles, and modular structure of the **TSUKA** framework (v0.7.0). For codebase contribution guidelines, see [`AGENTS.md`](../AGENTS.md); for completed and upcoming task backlogs, see [`TASKS.md`](../TASKS.md).
 >
-> 📊 **System Metrics**: 30 native tools · 20 REPL commands · 21 roles · 9 traits · 24 characters (agents) · 10 preconfigured teams · 80 automated test suites · Dual CLI & TUI interfaces.
+> 📊 **System Metrics**: 30 native tools · 20 REPL commands · 21 roles · 9 traits · 24 characters (agents) · 10 preconfigured teams · 89 automated test suites · Dual CLI & TUI interfaces.
 
 ---
 
@@ -261,6 +261,8 @@ Global Pin (/effort) ──► Caller Override ──► Character ──► Rol
 A unified client using the **OpenAI SDK** interfaces with local and remote endpoints:
 * **Server auto-discovery (`discovery.ts`)**: probes configured endpoints on launch with a 2.5s timeout.
 * **RAM/VRAM Priority**: automatically attaches to the model already loaded in memory (`/api/ps` in Ollama, `loaded` in Unsloth/LM Studio) to avoid redundant weights reloading.
+* **Data-driven provider catalogue (`providers.json`)**: endpoint, display name, default model, `LOCAL`/`CLOUD` class, API-key environment variable, and optional capabilities are data. Core policy consumes only the class and capability contracts. The active provider and per-install model/endpoint overrides remain in `tsuka.config.json`.
+* **Declarative capabilities**: a provider can expose a free-model filter through `capabilities.freeModels` (aliases, suffixes, and zero-price metadata). Providers without that capability do not show the option; no provider name is checked in core, CLI, or TUI policy.
 
 ---
 
@@ -272,6 +274,7 @@ A unified client using the **OpenAI SDK** interfaces with local and remote endpo
 | **Provider Client** | `src/core/provider/` | OpenAI HTTP client (`llmProvider.ts`), protocol contracts (`types.ts`), timeouts & interactive renewal (`timeouts.ts`), inference telemetry sink (`telemetry.ts`), and sampling profiles (`sampling.ts`). |
 | **Memory Engine** | `src/core/memory/` | Pluggable `MemoryBackend` contract (`types.ts`), pure BM25 scoring (`bm25.ts`), half-life decay & retention (`retention.ts`), `JsonMemoryBackend` (`jsonBackend.ts`), backend registry (`registry.ts`), and `MemoryStore` facade. |
 | **Configuration** | `src/core/config/` | Application configuration types (`types.ts`), model sampling sanitizer (`sampling.ts`), and `ConfigManager` (`manager.ts`). |
+| **Provider Catalogue** | `providers.json`, `src/core/providerCatalog.ts` | Provider definitions, validation, LOCAL/CLOUD classification, API-key indirection, and optional provider capabilities. |
 | **Constants Registry** | `src/core/constants.ts` | Single source of built-in tunable defaults (`LLM_DEFAULTS`, `MEMORY_DEFAULTS`, `AGENT_DEFAULTS`, `TUI_DEFAULTS`, `TOOLS_DEFAULTS`, `CLI_DEFAULTS`). |
 | **Blackboard** | `src/core/blackboard.ts` | Session blackboard scoped per workflow via `AsyncLocalStorage`. |
 | **Context Budget** | `src/core/contextBudget.ts` | Dynamic token estimation, runtime calibration, and `capForContext`. |
@@ -339,4 +342,62 @@ TSUKA features a zero-flicker, Component-Driven terminal user interface:
 
 ---
 
-*For practical tutorials and examples, see the [Educational Guide](guida-didattica.md) and [Multi-Agent Workflows](multi-agent.md).*
+## 14. Architectural Modularity & Core Invariants (Phase 8)
+
+In compliance with **Directives 8, 9, and 10 in `AGENTS.md`**, Phase 8 refactored TSUKA's core from monolithic structures into modular, pluggable components:
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│               Unified Composition Root (src/core/runtime.ts)           │
+│          createHarnessRuntime() -> HarnessRuntime (CLI / TUI)          │
+└───────────┬──────────────────────┬──────────────────────┬──────────────┘
+            │                      │                      │
+            ▼                      ▼                      ▼
+┌──────────────────────┐┌──────────────────────┐┌────────────────────────┐
+│   Agent Invariants   ││   Provider Boundary  ││    Memory & Storage    │
+│  (src/core/agent.ts) ││(src/core/provider/)  ││  (src/core/memory/)    │
+│                      ││                      ││                        │
+│ ├─ tokenCalibration  ││ ├─ wireFormat        ││ ├─ codec & dedup       │
+│ ├─ conversationHist. ││ ├─ streamAccumulator ││ ├─ storage & recovery  │
+│ ├─ toolRound         ││ ├─ errorClassific.   ││ ├─ bm25 ranking        │
+│ ├─ reactState        ││ └─ llmProvider       ││ ├─ retention decay     │
+│ └─ reasoningTrace    ││                      ││ └─ jsonBackend         │
+└──────────────────────┘└──────────────────────┘└────────────────────────┘
+            │                      │                      │
+            └──────────────────────┼──────────────────────┘
+                                   │
+                                   ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│                   Modular Tool Registry (src/tools/)                   │
+│  IToolRegistry -> schema.ts + tierPolicy.ts + execution.ts + registry  │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+1. **Composition Root (`src/core/runtime.ts`)**:
+   - `createHarnessRuntime()` unifies config loading, LLM provider initialization, native tool discovery, MCP server attachment, and permission manager across CLI and TUI.
+   - Provides an idempotent `close()` method to cleanly terminate child MCP stdio processes and release resources.
+2. **Agent Invariants (`src/core/`)**:
+   - `tokenCalibration.ts`: runtime chars-per-token calibration.
+   - `conversationHistory.ts`: history management and pruning enforcing context budget.
+   - `toolRound.ts`: sequenced tool execution and lifecycle telemetry.
+   - `reactState.ts`: deterministic ReAct state machine.
+   - `reasoningTrace.ts`: reasoning artifact persistence (`memory/thinking/*.md`).
+3. **Tight Tool Contracts (`src/tools/`)**:
+   - Explicit `IToolRegistry`, `Tool`, `ToolExecutionContext`, and `ToolSchemaData` interfaces in `types.ts`.
+   - Execution pipeline in `execution.ts`, schema resolution in `schema.ts`, tier policy in `tierPolicy.ts`.
+4. **Provider Boundary Normalization (`src/core/provider/`)**:
+   - Encapsulates OpenAI wire format in `wireFormat.ts`, streaming chunk aggregation in `streamAccumulator.ts`, and error parsing in `errorClassification.ts`.
+5. **Focused JSON Memory Backend (`src/core/memory/`)**:
+   - Clear decoupling between serialization/dedup (`codec.ts`) and atomic disk persistence/recovery (`storage.ts`).
+
+---
+
+## 15. Architectural Roadmap & Future Vision
+
+1. **Decoupled I/O Completed**: core agent loop communicates via structured event interfaces (`AgentEvents`) and injectable sinks (`logSink`).
+2. **Dual Client Interfaces**: seamless support for both interactive CLI and full-screen TUI.
+3. **Context Optimization & Shadow Memory (Phase 9)**: deterministic context pressure scheduling and memory shadow evaluation.
+
+---
+
+*For practical tutorials and examples, see the [Educational Guide](educational-guide.md) and [Multi-Agent Workflows](multi-agent.md).*

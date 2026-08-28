@@ -43,8 +43,6 @@ function personaCommand(name: string, description: string): TuiCommandSpec {
   };
 }
 
-const SUPPORTED_PROVIDERS = ['ollama', 'openrouter', 'unsloth'] as const;
-
 const SEARCH_ENGINES = [
   { value: 'duckduckgo', label: 'DuckDuckGo', hint: 'Free, no API key required' },
   { value: 'google', label: 'Google Search', hint: 'Requires GOOGLE_SEARCH_API_KEY in .env' },
@@ -68,7 +66,7 @@ export const CONFIG_COMMANDS: TuiCommandSpec[] = [
 
   {
     name: '/provider',
-    description: 'Switch LLM provider (Ollama, OpenRouter, Unsloth)',
+    description: 'Switch the configured LLM provider',
     run: (c) => {
       if (!c.arg) {
         SystemModals.openProviderModal(
@@ -82,15 +80,15 @@ export const CONFIG_COMMANDS: TuiCommandSpec[] = [
         return;
       }
 
-      const target = c.arg.toLowerCase().trim() as (typeof SUPPORTED_PROVIDERS)[number];
-      if (!SUPPORTED_PROVIDERS.includes(target)) {
-        c.store.notify(`Supported providers: ${SUPPORTED_PROVIDERS.map((p) => `/provider ${p}`).join(', ')}`, 'warn');
+      const target = c.arg.toLowerCase().trim();
+      if (!c.configManager.getProviderNames().includes(target)) {
+        c.store.notify(`Configured providers: ${c.configManager.getProviderNames().map((p) => `/provider ${p}`).join(', ')}`, 'warn');
         return;
       }
 
       c.configManager.setActiveProvider(target as any);
       const newCfg = c.configManager.getActiveProviderConfig();
-      c.provider.reconfigure(newCfg.baseUrl, c.configManager.getApiKey(), newCfg.model);
+      c.provider.reconfigure(newCfg.baseUrl, c.configManager.getApiKey(), newCfg.model, newCfg.class);
       applyAndSync(c);
       c.store.notify(`Provider switched to: ${target.toUpperCase()}`, 'success');
       c.probeContextWindow().catch(() => {});
