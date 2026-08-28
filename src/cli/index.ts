@@ -5,7 +5,7 @@ import chalk from 'chalk';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { ILLMProvider } from '../core/provider';
-import { homePath } from '../core/apphome';
+import { homePath, loadEnvironmentVariables } from '../core/apphome';
 import { ConfigManager } from '../core/config';
 import { scanProviders, detectContextWindow } from '../core/discovery';
 import { MemoryStore } from '../core/memory';
@@ -60,8 +60,8 @@ function createWorkflowDispatcher(ctx: CommandCtx): WorkflowDispatcher {
   };
 }
 
-// Load environment variables (.env) from app home directory
-dotenv.config({ path: homePath('.env') });
+// Load environment variables (.env) with hierarchical priority (root .env > .tsuka/.env > global .env)
+loadEnvironmentVariables();
 
 // SIGINT handler: resets terminal cursor and status line
 process.on('SIGINT', () => {
@@ -486,9 +486,14 @@ async function main() {
       if (msg.includes('ECONNREFUSED') || msg.includes('fetch failed')) {
         CLITheme.error(`Unable to connect to provider ${activeProvider.toUpperCase()} (${activeConfig.baseUrl}).`);
         CLITheme.warning(`Ensure server is running or use /provider to switch endpoint.`);
-      } else if (msg.includes('401') || msg.includes('Incorrect API key') || msg.includes('Unauthorized')) {
-        CLITheme.error(`Authentication failed for provider ${activeProvider.toUpperCase()}.`);
-        CLITheme.warning(`Verify API key in .env or configure via /provider.`);
+      } else if (msg.includes('401') || msg.includes('403') || msg.includes('Forbidden') || msg.includes('Incorrect API key') || msg.includes('Unauthorized')) {
+        CLITheme.error(`Authentication / Authorization failed for provider ${activeProvider.toUpperCase()}.`);
+        const keyEnv = activeConfig.apiKeyEnv;
+        if (keyEnv) {
+          CLITheme.warning(`Verify that ${keyEnv} is set in your .env or environment variables.`);
+        } else {
+          CLITheme.warning(`Verify API key in .env or configure via /provider.`);
+        }
       } else {
         CLITheme.error(`Error during execution: ${msg}`);
       }

@@ -5,6 +5,8 @@ import type { IToolRegistry } from '../tools/registry';
 import { PermissionManager, type PermissionPromptHandler } from '../safety/permissions';
 import { connectMcpServers, type McpConnection, type McpConnectReport } from './mcp/connectMcpServers';
 
+import { loadEnvironmentVariables } from './apphome';
+
 export interface HarnessRuntimeOptions {
   configManager?: ConfigManager;
   permissionHandler?: PermissionPromptHandler;
@@ -27,6 +29,7 @@ export interface HarnessRuntime {
  * external tools, instantiates provider and safety managers, and manages lifecycle.
  */
 export async function createHarnessRuntime(options?: HarnessRuntimeOptions): Promise<HarnessRuntime> {
+  loadEnvironmentVariables();
   const configManager = options?.configManager ?? new ConfigManager();
   setLlmTimeoutMs(configManager.getLlmTimeoutMs());
 

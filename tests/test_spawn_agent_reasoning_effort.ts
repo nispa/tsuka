@@ -212,7 +212,7 @@ async function main() {
   // ============================================================
   {
     const registry = new ToolRegistry();
-    const provider = new LLMProvider('http://fake.local/v1', 'fake-key', 'modello-finto');
+    const provider = new LLMProvider('http://fake.local/v1', 'fake-key', 'mock-model');
     const capturedParams: any[] = [];
     (provider as any).client.chat.completions.create = async (params: any) => {
       capturedParams.push(params);

@@ -73,6 +73,38 @@ async function runTests(): Promise<void> {
   await customRuntime.close();
   check('RUNTIME.12', true, 'custom runtime closes cleanly');
 
+  // Test 4: Hierarchical .env priority (workspace root .env > global .env)
+  const { loadEnvironmentVariables } = await import('../src/core/apphome');
+  const fs = await import('fs');
+  const path = await import('path');
+  const os = await import('os');
+
+  const tempGlobalHome = fs.mkdtempSync(path.join(os.tmpdir(), 'tsuka-env-global-'));
+  const tempWorkspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'tsuka-env-ws-'));
+
+  fs.writeFileSync(path.join(tempGlobalHome, '.env'), 'TSUKA_TEST_GLOBAL_ONLY=global_value\nTSUKA_TEST_OVERRIDE=global_value\n');
+  fs.writeFileSync(path.join(tempWorkspaceRoot, '.env'), 'TSUKA_TEST_OVERRIDE=workspace_root_value\n');
+
+  const oldTsukaHome = process.env.TSUKA_HOME;
+  const oldCwd = process.cwd();
+
+  process.env.TSUKA_HOME = tempGlobalHome;
+  process.chdir(tempWorkspaceRoot);
+
+  try {
+    loadEnvironmentVariables();
+    check('RUNTIME.13', process.env.TSUKA_TEST_GLOBAL_ONLY === 'global_value', 'global .env provides baseline values');
+    check('RUNTIME.14', process.env.TSUKA_TEST_OVERRIDE === 'workspace_root_value', 'workspace root .env takes priority over global .env');
+  } finally {
+    process.chdir(oldCwd);
+    if (oldTsukaHome !== undefined) process.env.TSUKA_HOME = oldTsukaHome;
+    else delete process.env.TSUKA_HOME;
+    delete process.env.TSUKA_TEST_GLOBAL_ONLY;
+    delete process.env.TSUKA_TEST_OVERRIDE;
+    fs.rmSync(tempGlobalHome, { recursive: true, force: true });
+    fs.rmSync(tempWorkspaceRoot, { recursive: true, force: true });
+  }
+
   console.log(`\nResult: ${passed} passed, ${failed} failed`);
   process.exit(failed > 0 ? 1 : 0);
 }

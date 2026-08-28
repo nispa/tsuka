@@ -69,7 +69,7 @@ async function main() {
   // ============================================================
   {
     __setMaxGenerationMsForTest(300);
-    const provider = new LLMProvider('http://fake.local/v1', 'fake-key', 'modello-finto');
+    const provider = new LLMProvider('http://fake.local/v1', 'fake-key', 'mock-model');
     const capturedParams: any[] = [];
     (provider as any).client.chat.completions.create = async (params: any) => {
       capturedParams.push(params);
@@ -113,7 +113,7 @@ async function main() {
   // ============================================================
   {
     __setMaxGenerationMsForTest(150);
-    const provider = new LLMProvider('http://fake.local/v1', 'fake-key', 'modello-finto');
+    const provider = new LLMProvider('http://fake.local/v1', 'fake-key', 'mock-model');
     (provider as any).client.chat.completions.create = async (_params: any, opts: any) => {
       const signal: AbortSignal = opts?.signal;
       return {
@@ -154,7 +154,7 @@ async function main() {
   // ============================================================
   {
     __setMaxGenerationMsForTest(300);
-    const provider = new LLMProvider('http://fake.local/v1', 'fake-key', 'modello-finto');
+    const provider = new LLMProvider('http://fake.local/v1', 'fake-key', 'mock-model');
     const capturedParams: any[] = [];
     (provider as any).client.chat.completions.create = async (params: any) => {
       capturedParams.push(params);
@@ -178,7 +178,7 @@ async function main() {
   // ============================================================
   {
     __setMaxGenerationMsForTest(5000); // irrilevante qui: si prova la pulizia sull'abort utente, non un timeout
-    const provider = new LLMProvider('http://fake.local/v1', 'fake-key', 'modello-finto');
+    const provider = new LLMProvider('http://fake.local/v1', 'fake-key', 'mock-model');
     const userAbort = new AbortController();
     (provider as any).client.chat.completions.create = async (_params: any, opts: any) => {
       const signal: AbortSignal = opts?.signal;
@@ -216,7 +216,7 @@ async function main() {
     check('GT.5a', typeof timeoutDefault === 'number' && timeoutDefault >= 1000, `getLlmTimeoutMs() ritorna un valore numerico in ms valido (valore: ${timeoutDefault}ms)`);
 
     setLlmTimeoutMs(150);
-    const provider = new LLMProvider('http://fake.local/v1', 'fake-key', 'modello-finto');
+    const provider = new LLMProvider('http://fake.local/v1', 'fake-key', 'mock-model');
     (provider as any).client.chat.completions.create = async (_params: any, opts: any) => {
       const signal: AbortSignal = opts?.signal;
       return {

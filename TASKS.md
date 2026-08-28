@@ -20,7 +20,7 @@
 
 ## 📊 Dashboard di Progetto & Stato Avanzamento
 
-- **Test Suite Totali**: **90 suite automatizzate** (100% pass rate)
+- **Test Suite Totali**: **91 suite automatizzate** (100% pass rate)
 - **Fase Attuale**: **Fase 8 — Refactoring Architetturale e Core Sharp** (Completata: 10/10 completati)
 - **Gate di Qualità**: TypeScript strict compilato su `dist/`, zero cicli di dipendenza, I/O logging disaccoppiato via `logSink`, memory jail attiva.
 

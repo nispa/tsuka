@@ -34,6 +34,7 @@ import {
   isReasoningEffortRejectionError,
   createProviderError,
 } from './errorClassification';
+import { logProviderFailure } from './providerLogger';
 import type { ProviderClass } from '../cloudProvider';
 
 function isAsyncIterable<T>(value: unknown): value is AsyncIterable<T> {
@@ -55,6 +56,9 @@ export class LLMProvider implements ILLMProvider {
     this.client = new OpenAI({
       baseURL: this.baseUrl,
       apiKey: this.apiKey,
+      defaultHeaders: {
+        'User-Agent': 'TSUKA/0.7.0',
+      },
       dangerouslyAllowBrowser: true
     });
   }
@@ -62,14 +66,19 @@ export class LLMProvider implements ILLMProvider {
   /**
    * Reconfigures the provider instance (endpoint/key/model) by recreating the client.
    */
-  reconfigure(baseUrl: string, apiKey: string, defaultModel: string, providerClass: ProviderClass = 'LOCAL'): void {
+  reconfigure(baseUrl: string, apiKey: string, defaultModel: string, providerClass?: ProviderClass): void {
     this.baseUrl = baseUrl;
     this.apiKey = apiKey || 'local';
     this.currentModel = defaultModel;
-    this.providerClass = providerClass;
+    if (providerClass) {
+      this.providerClass = providerClass;
+    }
     this.client = new OpenAI({
       baseURL: this.baseUrl,
       apiKey: this.apiKey,
+      defaultHeaders: {
+        'User-Agent': 'TSUKA/0.7.0',
+      },
       dangerouslyAllowBrowser: true
     });
   }
@@ -98,6 +107,14 @@ export class LLMProvider implements ILLMProvider {
       const response = await this.client.models.list();
       return response.data.map((m) => m.id).sort();
     } catch (error: any) {
+      logProviderFailure({
+        baseUrl: this.baseUrl,
+        apiKey: this.apiKey,
+        operation: 'models.list',
+        status: error?.status,
+        error,
+        responseBody: error?.error ?? error?.response?.data,
+      });
       if (this.baseUrl.includes('localhost') || this.baseUrl.includes('127.0.0.1')) {
         try {
           const directUrl = this.baseUrl.replace(/\/v1\/?$/, '/api/tags');
@@ -194,8 +211,9 @@ export class LLMProvider implements ILLMProvider {
       scheduleFirstTokenTimer();
       scheduleGenerationTimer();
 
+      let payload: unknown = undefined;
       try {
-        const payload = buildChatCompletionParams({
+        payload = buildChatCompletionParams({
           model: this.currentModel,
           messages,
           tools,
@@ -264,6 +282,19 @@ export class LLMProvider implements ILLMProvider {
         }
       } catch (error: any) {
         if (signal?.aborted) break;
+
+        logProviderFailure({
+          baseUrl: this.baseUrl,
+          model: this.currentModel,
+          apiKey: this.apiKey,
+          operation: 'chat.completions',
+          status: error?.status,
+          error,
+          requestPayload: payload,
+          responseBody: error?.error ?? error?.response?.data,
+          attempt,
+          maxRetries,
+        });
 
         attemptReasoningText = streamAccumulator?.getReasoningText() ?? attemptReasoningText;
         if (attemptReasoningText) {

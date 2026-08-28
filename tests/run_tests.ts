@@ -25,6 +25,9 @@ const testsDir = __dirname;
 const testMemoryDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tsuka-test-memory-'));
 process.env.TSUKA_MEMORY_FILE = path.join(testMemoryDir, 'memory.json');
 
+const testLogsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tsuka-test-logs-'));
+process.env.TSUKA_LOGS_DIR = testLogsDir;
+
 const suites = [
   'test_think_parser.ts',
   'test_markdown_render.ts',
@@ -115,7 +118,8 @@ const suites = [
   'test_provider_catalog.ts',
   'test_harness_runtime.ts',
   'test_memory_codec_storage.ts',
-  'test_flags_audit.ts'
+  'test_flags_audit.ts',
+  'test_provider_logger.ts'
 ];
 
 let passed = 0;
@@ -162,10 +166,13 @@ for (const suite of suites) {
 
 console.log(chalk.bold(`\n=== Risultato: ${chalk.green(passed)} suite OK, ${chalk.red(failed)} fallite ===`));
 
-// Pulizia della cartella di memoria temporanea (T6.5): non deve restare nulla nel
+// Pulizia delle cartelle temporanee di memoria e log (T6.5, T21): non deve restare nulla nel
 // filesystem dopo la corsa, successo o fallimento che sia.
 try {
   fs.rmSync(testMemoryDir, { recursive: true, force: true });
+} catch {}
+try {
+  fs.rmSync(testLogsDir, { recursive: true, force: true });
 } catch {}
 
 process.exit(failed > 0 ? 1 : 0);

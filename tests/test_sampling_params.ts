@@ -70,7 +70,7 @@ async function main() {
 
   // Test 6: Inoltro dei parametri di campionamento a LLMProvider
   {
-    const provider = new LLMProvider('http://fake.local/v1', 'fake-key', 'modello-finto');
+    const provider = new LLMProvider('http://fake.local/v1', 'fake-key', 'mock-model');
     const capturedParams: any[] = [];
     (provider as any).client.chat.completions.create = async (params: any) => {
       capturedParams.push(params);

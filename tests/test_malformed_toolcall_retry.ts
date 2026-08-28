@@ -49,7 +49,7 @@ async function main() {
   // GM.1 — primo tentativo rifiutato (JSON malformato), secondo va a buon fine
   // ============================================================
   {
-    const provider = new LLMProvider('http://fake.local/v1', 'fake-key', 'modello-finto');
+    const provider = new LLMProvider('http://fake.local/v1', 'fake-key', 'mock-model');
     let callCount = 0;
     (provider as any).client.chat.completions.create = async () => {
       callCount++;
@@ -82,7 +82,7 @@ async function main() {
   // GM.2 — fallisce per tutti i tentativi: errore distinguibile, non il generico
   // ============================================================
   {
-    const provider = new LLMProvider('http://fake.local/v1', 'fake-key', 'modello-finto');
+    const provider = new LLMProvider('http://fake.local/v1', 'fake-key', 'mock-model');
     let callCount = 0;
     (provider as any).client.chat.completions.create = async () => {
       callCount++;
@@ -104,7 +104,7 @@ async function main() {
   // GM.3 — errore di comunicazione generico: nessun retry, comportamento invariato
   // ============================================================
   {
-    const provider = new LLMProvider('http://fake.local/v1', 'fake-key', 'modello-finto');
+    const provider = new LLMProvider('http://fake.local/v1', 'fake-key', 'mock-model');
     let callCount = 0;
     (provider as any).client.chat.completions.create = async () => {
       callCount++;

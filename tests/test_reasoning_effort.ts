@@ -131,7 +131,7 @@ async function main() {
   // ── LLMProvider reale: reasoning_effort arriva davvero nel payload dell'SDK OpenAI
   //    (nessun mock intermedio: si intercetta solo la create() del client OpenAI) ──
   {
-    const provider = new LLMProvider('http://fake.local/v1', 'fake-key', 'modello-finto');
+    const provider = new LLMProvider('http://fake.local/v1', 'fake-key', 'mock-model');
     const capturedParams: any[] = [];
     (provider as any).client.chat.completions.create = async (params: any) => {
       capturedParams.push(params);

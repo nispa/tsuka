@@ -57,6 +57,7 @@ const CONFIG_CLASSIFICATION: Record<string, FlagCategory> = {
 
 const ENV_CLASSIFICATION: Record<string, FlagCategory> = {
   TSUKA_HOME: 'product',
+  TSUKA_LOGS_DIR: 'compatibility',
   TSUKA_MEMORY_FILE: 'compatibility',
   TSUKA_MEMORY_BACKEND: 'compatibility',
   TSUKA_TUI: 'presentation',

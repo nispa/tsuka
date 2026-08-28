@@ -1,5 +1,6 @@
 import * as path from 'path';
 import * as fs from 'fs';
+import * as dotenv from 'dotenv';
 
 /**
  * Application Home vs Workspace — key distinction for the global CLI command.
@@ -57,4 +58,30 @@ export function resolveAssetPath(...segments: string[]): string {
     return local;
   }
   return homePath(...segments);
+}
+
+/**
+ * Loads environment variables following TSUKA's hierarchical priority:
+ * 1. Global App Home .env (homePath('.env')) - base fallback
+ * 2. Local workspace .tsuka/.env (if present) - overrides global
+ * 3. Workspace root ./.env (process.cwd()/.env) - highest priority (overrides everything)
+ */
+export function loadEnvironmentVariables(): void {
+  // 1. Global fallback from App Home
+  const globalEnv = homePath('.env');
+  if (fs.existsSync(globalEnv)) {
+    dotenv.config({ path: globalEnv });
+  }
+
+  // 2. Project local .tsuka/.env (if present and distinct)
+  const localTsukaEnv = localWorkspacePath('.env');
+  if (localTsukaEnv && fs.existsSync(localTsukaEnv) && localTsukaEnv !== globalEnv) {
+    dotenv.config({ path: localTsukaEnv, override: true });
+  }
+
+  // 3. Workspace root .env (highest priority)
+  const rootEnv = path.join(process.cwd(), '.env');
+  if (fs.existsSync(rootEnv) && rootEnv !== globalEnv && rootEnv !== localTsukaEnv) {
+    dotenv.config({ path: rootEnv, override: true });
+  }
 }

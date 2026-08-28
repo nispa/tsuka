@@ -138,8 +138,11 @@ export async function probeProvider(
   let loadedModel: string | null = null;
 
   try {
-    // Standard OpenAI-compatible endpoint (Ollama, llama.cpp/Unsloth, OpenRouter)
-    const auth = { Authorization: `Bearer ${apiKey || 'local'}` };
+    // Standard OpenAI-compatible endpoint (Ollama, llama.cpp/Unsloth, OpenRouter, Bailu)
+    const auth = {
+      Authorization: `Bearer ${apiKey || 'local'}`,
+      'User-Agent': 'TSUKA/0.7.0',
+    };
     const data = await fetchJson(`${base}/models`, timeoutMs, auth);
     const entries = Array.isArray(data?.data) ? data.data : [];
     models = entries.map((m: any) => m.id).sort();
@@ -154,7 +157,7 @@ export async function probeProvider(
     // Native Ollama fallback for local servers
     if (!isLocalUrl(base)) return null;
     try {
-      const data = await fetchJson(base.replace(/\/v1$/, '') + '/api/tags', timeoutMs);
+      const data = await fetchJson(base.replace(/\/v1$/, '') + '/api/tags', timeoutMs, { 'User-Agent': 'TSUKA/0.7.0' });
       if (!Array.isArray(data?.models)) return null;
       models = data.models.map((m: any) => m.name).sort();
     } catch {
@@ -165,7 +168,7 @@ export async function probeProvider(
   // Ollama exposes loaded RAM models on /api/ps
   if (loadedModel === null && isLocalUrl(base)) {
     try {
-      const ps = await fetchJson(base.replace(/\/v1$/, '') + '/api/ps', DISCOVERY_DEFAULTS.metadataTimeoutMs);
+      const ps = await fetchJson(base.replace(/\/v1$/, '') + '/api/ps', DISCOVERY_DEFAULTS.metadataTimeoutMs, { 'User-Agent': 'TSUKA/0.7.0' });
       if (Array.isArray(ps?.models) && ps.models.length > 0 && ps.models[0]?.name) {
         loadedModel = ps.models[0].name;
       }
@@ -193,6 +196,7 @@ export async function warmUpModel(
       method: 'POST',
       headers: {
         'content-type': 'application/json',
+        'User-Agent': 'TSUKA/0.7.0',
         ...(apiKey && apiKey !== 'local' ? { Authorization: `Bearer ${apiKey}` } : {})
       },
       body: JSON.stringify({

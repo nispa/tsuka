@@ -3,14 +3,12 @@
  * TSUKA TUI — Terminal User Interface Entry Point.
  */
 
-import * as dotenv from 'dotenv';
-import { homePath } from '../core/apphome';
+import { loadEnvironmentVariables } from '../core/apphome';
 import { createHarnessRuntime } from '../core/runtime';
 import { TuiApp } from './app';
 import { logSink } from '../core/logSink';
 
-dotenv.config({ path: homePath('.env') });
-dotenv.config();
+loadEnvironmentVariables();
 
 export async function launchTui(): Promise<void> {
   const runtime = await createHarnessRuntime({

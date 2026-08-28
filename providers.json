@@ -33,7 +33,7 @@
     "bailu": {
       "displayName": "Bailu",
       "class": "CLOUD",
-      "baseUrl": "https://api.bailucode.com/v1",
+      "baseUrl": "https://bailucode.com/openapi/v1",
       "defaultModel": "bailu-apex-2.7",
       "apiKeyEnv": "BAILU_API_KEY",
       "capabilities": {}

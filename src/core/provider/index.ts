@@ -18,4 +18,5 @@ export * from './sampling';
 export * from './wireFormat';
 export * from './streamAccumulator';
 export * from './errorClassification';
+export * from './providerLogger';
 export { LLMProvider } from './llmProvider';
