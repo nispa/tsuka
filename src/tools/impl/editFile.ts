@@ -6,6 +6,15 @@ export const editFileTool: Tool = {
   name: 'edit_file',
   riskLevel: 'RESTRICTED',
   execute: async (args: { path: string; targetContent: string; replacementContent: string }) => {
+    if (!args || typeof args !== 'object') {
+      throw new Error('Invalid arguments: expected an object.');
+    }
+    if (typeof args.path !== 'string' || typeof args.targetContent !== 'string' || typeof args.replacementContent !== 'string') {
+      throw new Error("Invalid arguments: 'path', 'targetContent' and 'replacementContent' must be strings.");
+    }
+    if (args.targetContent.trim().length === 0) {
+      throw new Error("Invalid argument 'targetContent': it must contain non-whitespace text.");
+    }
     const fullPath = resolveSafePath(args.path);
     if (!fs.existsSync(fullPath)) {
       throw new Error(`File '${args.path}' does not exist.`);

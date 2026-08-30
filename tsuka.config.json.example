@@ -22,6 +22,7 @@
   "activeTrait": "creative",
   "activeCharacter": "geordi",
   "parallelExecutionEnabled": false,
+  "selfAuthoringEnabled": false,
   "contextTrackerMaxEntries": 100,
   "cliMaxHistory": 100,
   "goalCondensedHistoryCharLimit": 1500,

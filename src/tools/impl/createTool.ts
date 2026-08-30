@@ -4,6 +4,7 @@ import * as vm from 'vm';
 import { homePath, localWorkspacePath } from '../../core/apphome';
 import { Tool, ToolExecutionContext } from '../registry';
 import { jailedFs } from './jailedFs';
+import { TOOLS_DEFAULTS } from '../../core/constants';
 
 /** Absolute path to the jailedFs module — embedded as a require() target in generated tool code
  *  (see moduleCode below), so it resolves regardless of where the generated .js file itself ends
@@ -13,7 +14,7 @@ const JAILED_FS_MODULE_PATH = path.join(__dirname, 'jailedFs');
 
 /**
  * create_tool: self-authoring of agent tools.
- * Generates and validates an execute function inside a VM sandbox,
+ * Generates and shape-validates an execute function inside a VM context,
  * persists the implementation and schema, and hot-registers into the active registry.
  */
 
@@ -32,8 +33,6 @@ const FORBIDDEN_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
   { pattern: /constructor\s*\.\s*constructor/, reason: 'accessing the Function constructor via a prototype chain is not permitted' },
 ];
 
-const MAX_BODY_LENGTH = 4000;
-
 function toCamelCase(snake: string): string {
   return snake.replace(/_([a-z0-9])/g, (_, c) => c.toUpperCase());
 }
@@ -51,7 +50,7 @@ function hasCoreFileConflict(coreImplDir: string, name: string): boolean {
 
 export const createToolTool: Tool = {
   name: 'create_tool',
-  riskLevel: 'RESTRICTED',
+  riskLevel: 'DANGEROUS',
   execute: async (
     args: {
       name: string;
@@ -95,17 +94,16 @@ export const createToolTool: Tool = {
     if (!body) {
       throw new Error("Function executeBody cannot be empty.");
     }
-    if (body.length > MAX_BODY_LENGTH) {
-      throw new Error(`executeBody exceeds limit (max ${MAX_BODY_LENGTH} characters).`);
+    if (body.length > TOOLS_DEFAULTS.createToolMaxBodyChars) {
+      throw new Error(`executeBody exceeds limit (max ${TOOLS_DEFAULTS.createToolMaxBodyChars} characters).`);
     }
 
     // T14.22: a self-authored tool's own claim about its risk was, until now, the only thing
     // deciding whether the user ever saw a confirmation prompt before it ran — checkPermission()
     // returns true unconditionally for 'SAFE' (permissions.ts), no other check involved. A tool
-    // is welcome to describe itself as harmless; nothing here verifies that's true, so nothing
-    // here is allowed to skip confirmation on the strength of that description alone. Always
-    // RESTRICTED, regardless of what args.riskLevel says — DANGEROUS was never reachable either.
-    const riskLevel: 'RESTRICTED' = 'RESTRICTED';
+    // is welcome to describe itself as harmless; nothing here verifies that's true. Generated
+    // executable code therefore always requires the maximum permission tier.
+    const riskLevel: 'DANGEROUS' = 'DANGEROUS';
 
     // 3. Security blocklist check
     for (const { pattern, reason } of FORBIDDEN_PATTERNS) {
@@ -133,7 +131,7 @@ export const createToolTool: Tool = {
       `  }\n` +
       `};\n`;
 
-    // 5. Sandbox shape validation. `fs` here is the same jailed wrapper the generated file will
+    // 5. VM shape validation, not a security sandbox. `fs` here is the same jailed wrapper the generated file will
     // require on disk — the closures this VM run produces are exactly what gets hot-registered
     // for the rest of this session (step 8), so this must not be more permissive than that.
     const sandbox: { exports: Record<string, any> } = { exports: {} };
@@ -146,7 +144,11 @@ export const createToolTool: Tool = {
       throw new Error(`Module not allowed: ${mod}`);
     };
     try {
-      vm.runInNewContext(moduleCode, { exports: sandbox.exports, require: sandboxRequire, console }, { timeout: 1000 });
+      vm.runInNewContext(
+        moduleCode,
+        { exports: sandbox.exports, require: sandboxRequire, console },
+        { timeout: TOOLS_DEFAULTS.createToolValidationTimeoutMs }
+      );
     } catch (err: any) {
       throw new Error(`Generated code is invalid: ${err.message}`);
     }

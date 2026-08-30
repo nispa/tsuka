@@ -11,7 +11,7 @@
       },
       "targetContent": {
         "type": "string",
-        "description": "The exact block of text to find and replace (including whitespace and newlines)."
+        "description": "The exact non-empty block of text to find and replace (including whitespace and newlines). Whitespace-only targets are rejected."
       },
       "replacementContent": {
         "type": "string",

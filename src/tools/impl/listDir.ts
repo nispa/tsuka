@@ -22,13 +22,24 @@ export const listDirTool: Tool = {
       if (item === '.git' || item === 'node_modules' || item === 'dist') return;
 
       const itemPath = path.join(dirPath, item);
-      const stat = fs.statSync(itemPath);
       const relativePath = path.relative(process.cwd(), itemPath);
+      const linkStat = fs.lstatSync(itemPath);
 
-      if (stat.isDirectory()) {
+      if (linkStat.isSymbolicLink()) {
+        try {
+          const safeTarget = resolveSafePath(itemPath);
+          const targetStat = fs.statSync(safeTarget);
+          result.push(`[LINK] ${relativePath} -> ${targetStat.isDirectory() ? '[DIR]' : '[FILE]'}`);
+        } catch {
+          result.push(`[LINK] ${relativePath} (blocked: target outside workspace or unresolved)`);
+        }
+        return;
+      }
+
+      if (linkStat.isDirectory()) {
         result.push(`[DIR]  ${relativePath}/`);
       } else {
-        result.push(`[FILE] ${relativePath} (${stat.size} bytes)`);
+        result.push(`[FILE] ${relativePath} (${linkStat.size} bytes)`);
       }
     });
 

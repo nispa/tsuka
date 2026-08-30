@@ -96,6 +96,8 @@ export interface AppConfig {
   creativity?: string;
   /** Enables parallel /goal blocks for local providers; trusted cloud gateways enable them automatically. */
   parallelExecutionEnabled?: boolean;
+  /** Enables loading and creating executable custom tools. Default: false. */
+  selfAuthoringEnabled?: boolean;
   /** Maximum number of activity records kept in the in-memory ContextTracker ring buffer. Default: 100. */
   contextTrackerMaxEntries?: number;
   /** Maximum command history lines retained in REPL history file. Default: 100. */

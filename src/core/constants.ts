@@ -88,6 +88,26 @@ export const AGENT_DEFAULTS = {
 
 /** Tool-side defaults (execute_command, browse_url, download_file, ContextTracker). */
 export const TOOLS_DEFAULTS = {
+  /** Maximum characters accepted by one write_file call. */
+  writeFileMaxContentChars: 16_000,
+  /** Maximum recursion depth for workspace scans. */
+  workspaceScanMaxDepth: 32,
+  /** Maximum files visited by one workspace scan. */
+  workspaceScanMaxFiles: 10_000,
+  /** Maximum aggregate file bytes considered by one workspace scan. */
+  workspaceScanMaxBytes: 100 * 1024 * 1024,
+  /** Per-file size ceiling for grep_search. */
+  grepMaxFileBytes: 5 * 1024 * 1024,
+  /** Match count ceiling for grep_search. */
+  grepMaxMatches: 50,
+  /** Per-file size ceiling for audit_code. */
+  auditMaxFileBytes: 2 * 1024 * 1024,
+  /** Finding count used when audit_code receives no explicit maximum. */
+  auditDefaultMaxIssues: 50,
+  /** Maximum JavaScript body accepted by create_tool when self-authoring is enabled. */
+  createToolMaxBodyChars: 4_000,
+  /** Shape-validation timeout for generated tool modules. */
+  createToolValidationTimeoutMs: 1_000,
   /** Shell command execution timeout for execute_command (commandTimeoutMs). */
   commandTimeoutMs: 120_000,
   /** Lowest accepted per-call command timeout override. */
@@ -96,10 +116,14 @@ export const TOOLS_DEFAULTS = {
   commandMaxTimeoutMs: 600_000,
   /** Raw command output retained before context-aware truncation. */
   commandMaxOutputBytes: 50 * 1024,
+  /** Grace period between cooperative and forced process-tree termination. */
+  commandTerminationGraceMs: 750,
   /** HTTP request timeout for browse_url (browseFetchTimeoutMs). */
   browseFetchTimeoutMs: 30_000,
   /** HTTP request timeout for download_file (downloadFetchTimeoutMs). */
   downloadFetchTimeoutMs: 60_000,
+  /** Maximum redirects followed by the shared HTTP safety boundary. */
+  httpMaxRedirects: 5,
   /** Maximum activity records in the ContextTracker ring buffer (contextTrackerMaxEntries). */
   contextTrackerMaxEntries: 100,
 };

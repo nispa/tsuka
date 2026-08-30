@@ -2,7 +2,7 @@
 [![Node.js](https://img.shields.io/badge/Node.js-20+-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![Ollama](https://img.shields.io/badge/Ollama-nativo-black?logo=ollama&logoColor=white)](https://ollama.com/)
 [![OpenRouter](https://img.shields.io/badge/OpenRouter-pronto-FF6B35?logo=openai&logoColor=white)](https://openrouter.ai/)
-[![Test](https://img.shields.io/badge/Test-91%20superati-brightgreen?logo=vitest&logoColor=white)](tests/)
+[![Test](https://img.shields.io/badge/Test-96%20superati-brightgreen?logo=vitest&logoColor=white)](tests/)
 [![Licenza](https://img.shields.io/badge/Licenza-MIT-blue.svg)](LICENSE)
 [![PR benvenute](https://img.shields.io/badge/PR-benvenute-brightgreen.svg)](https://github.com/nispa/tsuka/pulls)
 
@@ -38,7 +38,7 @@
 | 🖥️ **TUI Interattiva a Schermo Intero** | Dashboard terminale zero-flicker a doppio buffer (`tsuka --tui`) con supporto mouse SGR 1006, schede e file explorer del workspace. |
 | 🧠 **Memoria Persistente Pluggabile** | Contratto modulare `MemoryBackend` con backend di default JSON+BM25 in TypeScript puro, stemming, deduplica ed emivita temporale (`memory.json`). |
 | 🧩 **Auto-Discovery Dinamica dei Tool** | Basta rilasciare un file `.ts` in `src/tools/impl/` per registrarlo a caldo all'avvio con validazione JSON Schema automatica. |
-| 🛠️ **Creazione Dinamica di Tool in Sandbox** | Gli agenti possono scrivere, testare in sandbox (`node:vm`) e caricare a caldo nuovi tool durante l'esecuzione per risolvere problemi imprevisti. |
+| 🛠️ **Creazione Dinamica di Tool Opt-in** | Gli agenti possono creare e caricare a caldo nuovi tool con conferma `DANGEROUS`; `node:vm` ne valida la forma ma non è un sandbox di sicurezza. |
 | 👥 **Orchestrazione Multi-Agente** | Pianificazione autonoma di obiettivi (`/goal`), sandbox di staging parallele (`PARALLELO`), team preconfigurati (`/team`) e dibattiti a tavola rotonda (`/call`). |
 | 📊 **Capability Fingerprinting** | Benchmark empirico (`/benchmark`) che misura l'accuratezza di tool-calling dei modelli piccoli per calibrare dinamicamente i tool attivi. |
 | 🛡️ **Sicurezza Graduata dei Permessi** | Workspace jail rigoroso (`resolveSafePath`), classificazione graduata del rischio comandi, coda serializzata di conferme e analisi statica (SAST). |
@@ -114,7 +114,7 @@ TSUKA include **30 tool nativi** (`src/tools/impl/*.ts`) suddivisi per area:
 * **Sistema**: `execute_command` (esecuzione shell cross-platform con conferma interattiva).
 * **Memoria**: `save_memory`, `recall_memory`, `update_memory`, `forget_memory` (algoritmo BM25 + decadimento ad emivita).
 * **Coordinamento**: `post_note`, `read_notes`, `report_status`, `route_next`, `cast_vote`.
-* **Estensione & SAST**: `create_tool` (isolato in `node:vm`), `audit_code` (analizzatore statico di vulnerabilità di sicurezza CWE).
+* **Estensione & SAST**: [`create_tool` opt-in](docs/self-authoring-it.md) (DANGEROUS; `node:vm` valida la forma ma non è un sandbox di sicurezza), `audit_code` (analizzatore statico di vulnerabilità CWE).
 
 > 📚 Approfondimenti: [Specifica di Sicurezza](docs/security-it.md) · [Architettura di Sistema](docs/architecture-it.md)
 

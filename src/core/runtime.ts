@@ -34,7 +34,9 @@ export async function createHarnessRuntime(options?: HarnessRuntimeOptions): Pro
   setLlmTimeoutMs(configManager.getLlmTimeoutMs());
 
   const permissionManager = new PermissionManager(options?.permissionHandler);
-  const registry = options?.customRegistry ?? (await createDefaultRegistry());
+  const registry = options?.customRegistry ?? (await createDefaultRegistry({
+    selfAuthoringEnabled: configManager.isSelfAuthoringEnabled(),
+  }));
 
   let mcpReport: McpConnectReport | undefined;
   let mcpConnection: McpConnection | undefined;

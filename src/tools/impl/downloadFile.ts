@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { Tool } from '../registry';
 import { resolveSafePath } from './utils';
+import { safeFetch } from '../../core/network';
 
 /**
  * Infers a sensible filename from a URL or content-type header.
@@ -48,7 +49,7 @@ export const downloadFileTool: Tool = {
     const timeout = setTimeout(() => controller.abort(), fetchTimeoutMs);
 
     try {
-      const response = await fetch(targetUrl, {
+      const response = await safeFetch(targetUrl, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         },

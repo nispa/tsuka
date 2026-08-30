@@ -1,29 +1,29 @@
 {
   "name": "create_tool",
-  "description": "Crea un NUOVO tool personalizzato che estende le capacità dell'harness. Fornisci nome (snake_case), descrizione, schema dei parametri e il corpo della funzione execute in JavaScript. Nel corpo hai a disposizione 'args' (i parametri), 'fs' (limitato alla workspace corrente — non può leggere o scrivere fuori da essa), 'path' e 'console'; devi fare 'return' di una stringa con il risultato. Il tool viene validato in sandbox e reso subito utilizzabile, ma esegue sempre a livello RESTRICTED: l'utente deve approvare ogni chiamata, indipendentemente da quanto il tool descrive se stesso come innocuo — un tool auto-generato non ha mai la stessa fiducia di uno nativo scritto e revisionato da un umano. Non usare require, eval, child_process, process.env, process.exit o tecniche per accedere al Function constructor.",
+  "description": "Creates a new executable custom tool. Self-authoring must be explicitly enabled in configuration, and generated tools always run at DANGEROUS risk. The VM step validates module shape and timeout only; it is not a security sandbox. The body receives args, workspace-jailed fs, path, and console and must return a string. Do not use require, eval, child_process, process APIs, dynamic imports, or Function-constructor access.",
   "requiredTier": "medium",
   "parameters": {
     "type": "object",
     "properties": {
       "name": {
         "type": "string",
-        "description": "Nome identificativo del tool in snake_case (es. conta_righe)."
+        "description": "Unique tool name in snake_case, for example count_lines."
       },
       "description": {
         "type": "string",
-        "description": "Cosa fa il tool, in una frase chiara (sarà mostrata al modello)."
+        "description": "Clear one-sentence description shown to the model."
       },
       "parameters": {
         "type": "object",
-        "description": "JSON Schema dei parametri del tool: { type: 'object', properties: {...}, required: [...] }."
+        "description": "JSON Schema for the tool arguments: { type: 'object', properties: {...}, required: [...] }."
       },
       "executeBody": {
         "type": "string",
-        "description": "Il corpo JavaScript della funzione execute(args). Deve fare return di una stringa. fs (limitato alla workspace) e path sono già importati come const."
+        "description": "JavaScript body of execute(args). It must return a string. Workspace-jailed fs and path are already available."
       },
       "global": {
         "type": "boolean",
-        "description": "Se true, salva il tool nella cartella globale TSUKA_HOME (accessibile ovunque). Se false o omesso, salva nel progetto locale (.tsuka/custom_tools/)."
+        "description": "If true, stores the tool under global TSUKA_HOME. If false or omitted, stores it under the project-local .tsuka/custom_tools directory."
       }
     },
     "required": ["name", "description", "executeBody"]

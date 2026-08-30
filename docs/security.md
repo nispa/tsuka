@@ -51,8 +51,13 @@ Every native and dynamic tool registered in `ToolRegistry` declares an explicit 
 | Risk Tier | Operational Description | Native Tools | Execution Policy |
 | :--- | :--- | :--- | :--- |
 | **`SAFE`** | Read-only operations, defensive static analysis, internet searches, coordination protocols, and memory operations. | `read_file`, `list_dir`, `grep_search`, `audit_code`, `web_search`, `browse_url`, `get_ps_info`, `save_memory`, `recall_memory`, `update_memory`, `forget_memory`, `read_notes`, `post_note`, `report_status`, `route_next`, `cast_vote`, `send_message`, `load_tools`, `switch_skill` | **Immediate and transparent execution** without interrupting the user. |
-| **`RESTRICTED`** | Modifying/deleting workspace files, network downloads, subagent spawning, escalation, or creating roles and tools. | `write_file`, `edit_file`, `delete_file`, `download_file`, `spawn_agent`, `create_role`, `create_tool`, `request_goal`, `request_team`, `request_call` | **Prompts the user interactively**: `[y/N/always]`. Choosing `always` grants permission for subsequent matching operations during the active session. |
+| **`RESTRICTED`** | Modifying/deleting workspace files, network downloads, subagent spawning, escalation, or creating roles. | `write_file`, `edit_file`, `delete_file`, `download_file`, `spawn_agent`, `create_role`, `request_goal`, `request_team`, `request_call` | **Prompts the user interactively**: `[y/N/always]`. Choosing `always` grants permission for subsequent matching operations during the active session. |
+| **`DANGEROUS`** | Executable self-authored code and other high-impact operations. | `create_tool` and every loaded custom executable tool | Requires the maximum interactive permission tier and remains unavailable unless `selfAuthoringEnabled` is explicitly true. |
 | **`DANGEROUS` (Graduated)** | System shell execution (`execute_command`). Graduated dynamically per command invocation via `classifyRisk()` ([`src/safety/commandRisk.ts`](../src/safety/commandRisk.ts)). | `execute_command` | **Graduated Policy**: harmless read-only commands (`git status`, `ls`) execute as `SAFE`; build/test commands (`npm test`, `cargo build`) run as `RESTRICTED` (allowing session-wide approval); arbitrary/unknown commands remain `DANGEROUS` (always interactive prompt `[y/N]`). |
+
+`execute_command` owns the spawned process tree for its full lifecycle. User cancellation and timeout share an idempotent terminal path that removes listeners and watchdogs, then terminates descendants cooperatively and forcibly if needed (`taskkill /T` on Windows, detached process groups on POSIX).
+
+All built-in HTTP tools use the shared `safeFetch` boundary. It validates HTTP(S), standard ports, every DNS answer, and every redirect hop; private, loopback, link-local, multicast, reserved, and mixed public/private DNS answers fail closed. A residual DNS TOCTOU remains until the transport pins the validated address for the actual socket connection.
 
 ---
 
@@ -60,19 +65,10 @@ Every native and dynamic tool registered in `ToolRegistry` declares an explicit 
 
 All filesystem operations (`read_file`, `write_file`, `edit_file`, `delete_file`, `list_dir`, `grep_search`, `audit_code`) are strictly confined to the active `workspaceRoot` via the secure resolver `resolveSafePath()`:
 
-* **Path Traversal Protection (`CWE-22`)**: Attempts to escape the workspace boundary using relative directory traversal (`..`) or absolute host paths are intercepted and rejected before touching the filesystem.
-* **Host System Isolation**: Agents are unable to read or tamper with host system files, user home directories, SSH keys, or global OS settings.
-
-```typescript
-// src/tools/impl/utils.ts
-export function resolveSafePath(workspaceRoot: string, targetPath: string): string {
-  const resolved = path.resolve(workspaceRoot, targetPath);
-  if (!resolved.startsWith(workspaceRoot)) {
-    throw new Error(`Access denied: path '${targetPath}' is outside the workspace jail.`);
-  }
-  return resolved;
-}
-```
+* **Canonical Path Protection (`CWE-22`)**: Both workspace and existing targets are resolved through `realpath`; new destinations are validated from their nearest existing ancestor. Prefix siblings, `..`, absolute escapes, external symlinks, junctions, and dangling links are denied.
+* **Internal Links and Cycles**: Links resolving inside the workspace are allowed. Recursive tools track visited real directories so link cycles and aliases cannot cause repeated or infinite traversal.
+* **Bounded Scans**: `grep_search` and `audit_code` share centralized depth, file-count, and byte ceilings and report blocked links or truncation.
+* **Residual Race Boundary**: Canonical validation narrows link-based escapes, but Node's path-based synchronous APIs cannot make validation and open one indivisible OS operation. Mutating workspace links concurrently remains outside the guarantee until descriptor-relative APIs are available cross-platform.
 
 ---
 
@@ -102,13 +98,16 @@ During parallel branch execution in the Goal Orchestrator:
 
 ---
 
-## 🛠️ 6. VM Sandbox & User-Space Tool Isolation (`create_tool`)
+## 🛠️ 6. Opt-in Self-Authoring Threat Model (`create_tool`)
 
-TSUKA allows agents to safely author new tools at runtime:
-* **`node:vm` Sandbox Execution**: Generated tool code is evaluated in an isolated virtual machine context with restricted globals (`fs` and `path` only, no `eval()`, `new Function()`, `process.exit`, `process.env`, or unvetted modules).
-* **User-Space Isolation (`custom_tools/`)**: Self-authored tools and JSON schemas are stored in `custom_tools/` and `custom_tools_schemas/` (git-ignored), preventing accidental corruption of the framework's source repository.
-* **Core Protection**: Dynamic tools cannot overwrite or shadow native core tools.
-* **Automatic Versioning & Backup**: Updated custom tools are versioned and backed up in `tools_backup/`.
+The controls in this section remediate findings from an **external security audit** received by the project. The audit identified the tool's self-declared risk level and the use of `node:vm` as a presumed security boundary as inadequate. The complete configuration and usage procedure is in the [self-authoring guide](self-authoring.md).
+
+`node:vm`, blocklists, and a jailed `fs` wrapper validate conventions but do not isolate hostile JavaScript. The immediate mitigation is fail-closed:
+* **Disabled by Default**: `create_tool` is not registered and custom executable modules are not loaded unless `selfAuthoringEnabled: true` is set.
+* **Maximum Permission Tier**: Creation and every loaded custom tool are forced to `DANGEROUS`, regardless of their own declaration.
+* **Bounded Shape Validation**: `node:vm` checks that generated code loads with the expected module shape within a short timeout; it is explicitly not a security sandbox.
+* **Residual Risk**: Enabling self-authoring authorizes executable JavaScript in the TSUKA process. A structural replacement requires a separate OS process/container with explicit filesystem, network, CPU, memory, time, and output capabilities.
+* **Existing Defenses in Depth**: Core-name collision checks, versioned backups, pattern rejection, and canonical workspace-jailed `fs` remain active but do not change the residual trust model.
 
 ---
 

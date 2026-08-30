@@ -24,7 +24,7 @@ This portal is designed to explain **how modern agentic systems work under the h
 * Understand structured debates (`/call`), collaborative teams (`/team`), and the dynamic goal orchestrator (`/goal`) with isolated parallel staging sandboxes.
 
 ### 5. [Security & Permissions Framework](security.md) 🛡️
-* Deep dive into the **User-in-the-Loop** permission manager (`SAFE`, `RESTRICTED`, `DANGEROUS`), workspace jailing (`resolveSafePath`), dynamic tool sandboxing (`node:vm`), and static code auditing.
+* Deep dive into the **User-in-the-Loop** permission manager (`SAFE`, `RESTRICTED`, `DANGEROUS`), canonical workspace confinement, dynamic tool validation, and static code auditing.
 
 ### 6. [Capability Fingerprinting & Benchmarks](benchmark.md) 📊
 * How `/benchmark` empirically measures small-model tool-calling accuracy, driving dynamic active tool set selection.
@@ -34,6 +34,9 @@ This portal is designed to explain **how modern agentic systems work under the h
 
 ### 8. [MCP Integration](mcp.md) 🔌
 * How the native MCP client (stdio, JSON-RPC 2.0, zero dependencies) launches external servers and registers their tools as first-class citizens of the registry — naming convention, permission gating, timeouts, and the safety model.
+
+### 9. [Tool Self-Authoring](self-authoring.md) 🛠️
+* Operational guide to enabling `create_tool`, asking an agent for a tool, managing persistence and roles, disabling it, and understanding the security limits identified by the external audit.
 
 ---
 

@@ -169,7 +169,7 @@ Il catalogo comprende **30 tool integrati**, sviluppati secondo il principio del
 
 ### Classificazione dei Tool per Categoria
 1. **Manipolazione Filesystem**: `read_file`, `write_file` (con supporto append e limite di 16.000 caratteri per chiamata per prevenire troncamenti JSON), `edit_file`, `delete_file`, `list_dir`, `grep_search`.
-2. **Controllo di Sistema**: `execute_command` (esecuzione shell con classificazione graduata del rischio e timeout configurabile), `get_ps_info` (diagnostica processi e risorse).
+2. **Controllo di Sistema**: `execute_command` (esecuzione shell con rischio graduato, timeout configurabile e lifecycle abortibile dell'intero albero processi), `get_ps_info` (diagnostica processi e risorse).
 3. **Ricerca Web e Rete**: `web_search`, `browse_url` (con modalità Reader View e rimozione di elementi superflui), `download_file`.
 4. **Persistenza e Memoria**: `save_memory`, `recall_memory`, `update_memory`, `forget_memory`.
 5. **Coordinamento Multi-Agente**: `report_status`, `route_next`, `cast_vote`, `post_note`, `read_notes`, `send_message`.
@@ -384,7 +384,7 @@ TSUKA include una dashboard terminale grafica interattiva a componenti puri:
 * **Tre livelli di rischio**: `SAFE` (esecuzione immediata), `RESTRICTED` (richiede conferma con facoltà di autorizzazione per l'intera sessione), `DANGEROUS` (richiede sempre autorizzazione puntuale esplicita).
 * **Workspace Jail**: tutte le operazioni su filesystem sono confinate all'interno del percorso `workspaceRoot`.
 * **Protezione Credenziali**: censura preventiva automatica delle variabili d'ambiente riservate (`KEY`, `SECRET`, `TOKEN`, `PASSWORD`, `CREDENTIAL`, `AUTH`).
-* **Sandbox Dinamica**: il codice generato a runtime dal tool `create_tool` viene validato in un contesto `node:vm` isolato dotato di blocklist sui moduli di sistema.
+* **Self-Authoring Opt-in**: `create_tool` e i moduli custom eseguibili sono disabilitati per default. Quando abilitati esplicitamente, tutti i tool generati sono DANGEROUS; `node:vm` esegue soltanto una validazione bounded della forma e non è considerato un confine di sicurezza.
 
 ---
 

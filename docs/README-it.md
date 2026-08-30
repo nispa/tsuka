@@ -24,7 +24,7 @@ Questo portale è strutturato per spiegare **come funzionano davvero i sistemi a
 * Analisi dei dibattiti strutturati (`/call`), dei team collaborativi (`/team`) e dell'orchestratore di obiettivi (`/goal`) con staging parallelo isolato.
 
 ### 5. [Sicurezza & Framework dei Permessi](security-it.md) 🛡️
-* Approfondimento sulla gestione dei permessi **User-in-the-Loop** (`SAFE`, `RESTRICTED`, `DANGEROUS`), confinamento del workspace (`resolveSafePath`), sandboxing dei tool dinamici (`node:vm`) e analisi statica del codice (SAST).
+* Approfondimento sulla gestione dei permessi **User-in-the-Loop** (`SAFE`, `RESTRICTED`, `DANGEROUS`), confinamento canonico del workspace, validazione dei tool dinamici e analisi statica del codice (SAST).
 
 ### 6. [Capability Fingerprinting & Benchmark](benchmark-it.md) 📊
 * Come `/benchmark` misura empiricamente l'accuratezza dei modelli locali nel tool-calling per calibrare dinamicamente i tool attivi.
@@ -34,6 +34,9 @@ Questo portale è strutturato per spiegare **come funzionano davvero i sistemi a
 
 ### 8. [Integrazione MCP](mcp-it.md) 🔌
 * Come il client MCP nativo (stdio, JSON-RPC 2.0, zero dipendenze) avvia i server esterni e registra i loro tool come cittadini di prima classe del registry — convenzione dei nomi, gating dei permessi, timeout e modello di sicurezza.
+
+### 9. [Self-Authoring dei Tool](self-authoring-it.md) 🛠️
+* Guida operativa per abilitare `create_tool`, richiedere un tool a un agente, gestirne persistenza e ruoli, disabilitarlo e comprenderne i limiti di sicurezza emersi dall'audit esterno.
 
 ---
 

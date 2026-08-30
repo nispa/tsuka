@@ -169,7 +169,7 @@ The harness includes **30 native tools** built on schema-execution separation:
  
 ### Tool Catalog Breakdown
 1. **Filesystem**: `read_file`, `write_file` (with append support and 16k char ceiling per call to prevent JSON truncation), `edit_file`, `delete_file`, `list_dir`, `grep_search`.
-2. **System**: `execute_command` (shell runner with graduated risk classification and dynamic timeout), `get_ps_info` (process & system metrics).
+2. **System**: `execute_command` (shell runner with graduated risk classification, dynamic timeout, and abortable process-tree ownership), `get_ps_info` (process & system metrics).
 3. **Web & Network**: `web_search`, `browse_url` (with Reader View extraction), `download_file`.
 4. **Memory**: `save_memory`, `recall_memory`, `update_memory`, `forget_memory`.
 5. **Coordination**: `report_status`, `route_next`, `cast_vote`, `post_note`, `read_notes`, `send_message`.
@@ -338,7 +338,7 @@ TSUKA features a zero-flicker, Component-Driven terminal user interface:
 * **3-tier risk system**: `SAFE` (instant), `RESTRICTED` (prompt with session bypass option), `DANGEROUS` (always interactive manual confirmation).
 * **Workspace Jail**: file operations are restricted to `workspaceRoot`.
 * **Credential Masking**: automatic redaction of sensitive environment keys.
-* **Dynamic Sandbox**: user-created tools (`create_tool`) execute in sandboxed `node:vm` with pattern blocklists.
+* **Opt-in Self-Authoring**: `create_tool` and executable custom modules are disabled by default. When explicitly enabled, all generated tools are DANGEROUS; `node:vm` performs bounded shape validation only and is not treated as a security boundary.
 
 ---
 

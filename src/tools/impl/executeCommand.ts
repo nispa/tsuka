@@ -1,6 +1,6 @@
 import { spawn } from 'child_process';
 import chalk from 'chalk';
-import { Tool } from '../registry';
+import { Tool, ToolExecutionContext } from '../registry';
 import { getShellConfig } from '../../core/platform';
 import { capForContext } from '../../core/contextBudget';
 import { logSink } from '../../core/logSink';
@@ -15,7 +15,11 @@ export const executeCommandTool: Tool = {
   // T18.1: the capability stays DANGEROUS; the individual call is graded by what it actually
   // runs, so a read-only inspection does not cost the same confirmation as an arbitrary script.
   classifyRisk: (args: { command?: string }) => classifyCommandRisk(args?.command),
-  execute: async (args: { command: string; timeout_ms?: number }) => {
+  execute: async (args: { command: string; timeout_ms?: number }, context?: ToolExecutionContext) => {
+    if (context?.signal?.aborted) {
+      return '[ERROR: command cancelled before launch.]';
+    }
+
     return new Promise<string>((resolve) => {
       const shellConfig = getShellConfig();
       const configManager = new ConfigManager();
@@ -31,46 +35,76 @@ export const executeCommandTool: Tool = {
       // a relative path in a command resolved against wherever TSUKA happened to be started.
       // This is containment, not a jail: `cd ..` still leaves, which is precisely why the
       // classifier above escalates anything it does not positively recognize.
-      const child = spawn(
-        shellConfig.shell,
-        shellConfig.buildArgs(args.command),
-        { ...shellConfig.spawnOptions, cwd: configManager.getWorkspaceRoot() }
-      );
+      let child;
+      try {
+        child = spawn(
+          shellConfig.shell,
+          shellConfig.buildArgs(args.command),
+          { ...shellConfig.spawnOptions, cwd: configManager.getWorkspaceRoot() }
+        );
+      } catch (err: any) {
+        resolve(`Error launching command: ${err.message}`);
+        return;
+      }
 
       let combinedOutput = '';
-      let settled = false;
+      let terminalClaimed = false;
+      let watchdog: NodeJS.Timeout | undefined;
 
-      const watchdog = setTimeout(() => {
-        if (settled) return;
-        settled = true;
-        shellConfig.kill(child);
+      const cleanup = () => {
+        if (watchdog) clearTimeout(watchdog);
+        context?.signal?.removeEventListener('abort', onAbort);
+      };
+
+      const claimTerminal = (): boolean => {
+        if (terminalClaimed) return false;
+        terminalClaimed = true;
+        cleanup();
+        return true;
+      };
+
+      const terminateAndResolve = async (message: string, label: string) => {
+        if (!claimTerminal()) return;
+        await shellConfig.terminateTree(child, TOOLS_DEFAULTS.commandTerminationGraceMs);
+        resolve(capForContext(`${combinedOutput}\n${message}`, undefined, { label }));
+      };
+
+      const onAbort = () => {
+        logSink.log(chalk.red('\n[Command cancelled by user]'));
+        void terminateAndResolve(
+          '[ERROR: command cancelled by user.]',
+          `command output for '${args.command}' (cancelled)`
+        );
+      };
+
+      watchdog = setTimeout(() => {
         logSink.log(chalk.red(`\n[Command interrupted: exceeded timeout of ${requestedTimeout / 1000}s]`));
-        resolve(
-          capForContext(
-            `${combinedOutput}\n[ERROR: command timed out after ${requestedTimeout / 1000} seconds. ` +
+        void terminateAndResolve(
+          `[ERROR: command timed out after ${requestedTimeout / 1000} seconds. ` +
             `For long-running tasks, specify a higher timeout_ms; do not launch background servers in foreground.]`,
-            undefined,
-            { label: `command output for '${args.command}' (timed out)` }
-          )
+          `command output for '${args.command}' (timed out)`
         );
       }, requestedTimeout);
 
+      context?.signal?.addEventListener('abort', onAbort, { once: true });
+      if (context?.signal?.aborted) onAbort();
+
       child.stdout.on('data', (data) => {
+        if (terminalClaimed) return;
         const text = data.toString();
         combinedOutput += text;
         logSink.write(chalk.white(text));
       });
 
       child.stderr.on('data', (data) => {
+        if (terminalClaimed) return;
         const text = data.toString();
         combinedOutput += text;
         logSink.write(chalk.red(text));
       });
 
       child.on('close', (code) => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(watchdog);
+        if (!claimTerminal()) return;
         logSink.log(chalk.gray(`[Command completed with code: ${code}]`));
 
         let resultOutput = combinedOutput;
@@ -96,9 +130,7 @@ export const executeCommandTool: Tool = {
       });
 
       child.on('error', (err) => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(watchdog);
+        if (!claimTerminal()) return;
         resolve(`Error launching command: ${err.message}`);
       });
     });

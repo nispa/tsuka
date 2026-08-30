@@ -51,8 +51,13 @@ Ogni tool nativo o dinamico registrato nel `ToolRegistry` dichiara un livello di
 | Livello | Descrizione Operativa | Tool Nativi | Politica di Esecuzione |
 | :--- | :--- | :--- | :--- |
 | **`SAFE`** | Operazioni di sola lettura, analisi statica difensiva, query internet, protocolli di coordinamento e gestione memoria. | `read_file`, `list_dir`, `grep_search`, `audit_code`, `web_search`, `browse_url`, `get_ps_info`, `save_memory`, `recall_memory`, `update_memory`, `forget_memory`, `read_notes`, `post_note`, `report_status`, `route_next`, `cast_vote`, `send_message`, `load_tools`, `switch_skill` | **Esecuzione immediata e trasparente** senza interruzioni per l'utente. |
-| **`RESTRICTED`** | Modifica/cancellazione file nel workspace, download da rete, spawn di sotto-agenti, escalation o creazione ruoli/tool. | `write_file`, `edit_file`, `delete_file`, `download_file`, `spawn_agent`, `create_role`, `create_tool`, `request_goal`, `request_team`, `request_call` | **Richiede conferma interattiva**: `[y/N/sempre]`. L'opzione `sempre` attiva l'approvazione per le operazioni analoghe nella sessione attiva. |
+| **`RESTRICTED`** | Modifica/cancellazione file nel workspace, download da rete, spawn di sotto-agenti, escalation o creazione ruoli. | `write_file`, `edit_file`, `delete_file`, `download_file`, `spawn_agent`, `create_role`, `request_goal`, `request_team`, `request_call` | **Richiede conferma interattiva**: `[y/N/sempre]`. L'opzione `sempre` attiva l'approvazione per le operazioni analoghe nella sessione attiva. |
+| **`DANGEROUS`** | Codice eseguibile auto-generato e altre operazioni ad alto impatto. | `create_tool` e ogni tool custom eseguibile caricato | Richiede il livello massimo di conferma e resta indisponibile finché `selfAuthoringEnabled` non è esplicitamente `true`. |
 | **`DANGEROUS` (Graduato)** | Esecuzione di comandi shell di sistema (`execute_command`). Graduato dinamicamente per singola invocazione tramite `classifyRisk()` ([`src/safety/commandRisk.ts`](../src/safety/commandRisk.ts)). | `execute_command` | **Politica Graduata**: comandi di sola ispezione innocui (`git status`, `ls`) sono `SAFE`; comandi di test/build (`npm test`, `cargo build`) sono `RESTRICTED` (con approvazione di sessione); comandi arbitrari/sconosciuti restano `DANGEROUS` (richiedono sempre conferma esplicita `[y/N]`). |
+
+`execute_command` possiede l'albero generato per tutto il lifecycle. Cancellazione utente e timeout convergono su un percorso terminale idempotente che rimuove listener e watchdog, quindi termina i discendenti prima in modo cooperativo e poi forzato se necessario (`taskkill /T` su Windows, process group detached su POSIX).
+
+Tutti i tool HTTP nativi usano il boundary condiviso `safeFetch`. Esso valida HTTP(S), porte standard, ogni risposta DNS e ogni hop di redirect; indirizzi privati, loopback, link-local, multicast, reserved e DNS misti vengono rifiutati in fail-closed. Resta un TOCTOU DNS fra preflight e resolver interno di `fetch`, finché il trasporto non fissa l'indirizzo validato sulla connessione effettiva.
 
 ---
 
@@ -60,19 +65,10 @@ Ogni tool nativo o dinamico registrato nel `ToolRegistry` dichiara un livello di
 
 Tutte le operazioni sul filesystem (`read_file`, `write_file`, `edit_file`, `delete_file`, `list_dir`, `grep_search`, `audit_code`) sono obbligatoriamente vincolate alla directory del workspace attivo tramite la funzione protetta `resolveSafePath()`:
 
-* **Blocco del Path Traversal (`CWE-77`)**: Tentativi di risalire la gerarchia con `..` o di accedere a percorsi assoluti al di fuori del workspace vengono intercettati e rifiutati prima di raggiungere il filesystem.
-* **Nessun accesso al sistema host**: Gli agenti non possono leggere né modificare file di sistema, chiavi SSH, profili utente o configurazioni globali dell'OS.
-
-```typescript
-// src/tools/impl/utils.ts
-export function resolveSafePath(workspaceRoot: string, targetPath: string): string {
-  const resolved = path.resolve(workspaceRoot, targetPath);
-  if (!resolved.startsWith(workspaceRoot)) {
-    throw new Error(`Access denied: path '${targetPath}' is outside the workspace jail.`);
-  }
-  return resolved;
-}
-```
+* **Protezione Canonica dei Percorsi (`CWE-22`)**: Workspace e target esistenti vengono risolti tramite `realpath`; le nuove destinazioni sono validate partendo dall'antenato esistente più vicino. Sibling con prefisso simile, `..`, path assoluti esterni, symlink, junction e link dangling esterni sono negati.
+* **Link Interni e Cicli**: I link che risolvono dentro il workspace sono consentiti. I tool ricorsivi registrano le directory reali già visitate, impedendo cicli e scansioni duplicate.
+* **Scansioni Bounded**: `grep_search` e `audit_code` condividono limiti centralizzati di profondità, numero file e byte e riportano link bloccati o troncamenti.
+* **Race Residua**: La canonicalizzazione riduce le evasioni tramite link, ma le API sincrone path-based di Node non rendono validazione e apertura una singola operazione OS. La modifica concorrente dei link resta fuori dalla garanzia finché non saranno disponibili API descriptor-relative multipiattaforma.
 
 ---
 
@@ -102,13 +98,16 @@ Quando il Goal Orchestrator esegue rami paralleli:
 
 ---
 
-## 🛠️ 6. Sandbox VM e Isolamento dei Tool Utente (`create_tool`)
+## 🛠️ 6. Threat Model del Self-Authoring Opt-in (`create_tool`)
 
-Il framework consente agli agenti di creare nuovi tool dinamicamente in modo controllato e sicuro:
-* **Esecuzione in Sandbox `node:vm`**: Il codice del tool viene validato ed eseguito in un contesto isolato senza accesso a `eval()`, `new Function()`, `process.exit`, `process.env` o moduli esterni non autorizzati.
-* **Isolamento nello User-Space (`custom_tools/`)**: I tool generati dall'agente e i relativi schemi JSON vengono salvati in `custom_tools/` e `custom_tools_schemas/` (esclusi dal controllo versione tramite `.gitignore`), proteggendo l'integrità del codice sorgente del framework.
-* **Controllo Anti-Sovrascrittura**: È impossibile sovrascrivere o manomettere i 77 tool core nativi.
-* **Versioning e Backup Automatico**: In caso di aggiornamento di un tool custom, la versione precedente viene salvata automaticamente in `tools_backup/`.
+Le misure di questa sezione sono remediation dei rilievi ricevuti da un **audit di sicurezza esterno** del progetto. L'audit ha identificato come insufficienti il livello di rischio autodichiarato dal tool e l'uso di `node:vm` come presunto confine di sicurezza. La procedura completa di configurazione e utilizzo è nella [guida al self-authoring](self-authoring-it.md).
+
+`node:vm`, blocklist e wrapper `fs` jailato validano convenzioni ma non isolano JavaScript ostile. La mitigazione immediata è fail-closed:
+* **Disabilitato per Default**: `create_tool` non viene registrato e i moduli custom eseguibili non vengono caricati finché `selfAuthoringEnabled: true` non è configurato.
+* **Permesso Massimo**: Creazione e tool custom caricati sono sempre forzati a `DANGEROUS`, indipendentemente da quanto dichiarano.
+* **Validazione Bounded della Forma**: `node:vm` verifica entro un timeout breve che il modulo abbia la forma prevista; non è un sandbox di sicurezza.
+* **Rischio Residuo**: Abilitare il self-authoring autorizza JavaScript eseguibile nel processo TSUKA. La soluzione strutturale richiede processo OS/container separato con capability esplicite per filesystem, rete, CPU, memoria, tempo e output.
+* **Defense in Depth Esistente**: Blocco collisioni con tool core, backup versionati, pattern vietati e `fs` confinato dalla jail canonica restano attivi ma non cambiano il modello di fiducia residuo.
 
 ---
 

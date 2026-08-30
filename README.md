@@ -2,7 +2,7 @@
 [![Node.js](https://img.shields.io/badge/Node.js-20+-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![Ollama](https://img.shields.io/badge/Ollama-native-black?logo=ollama&logoColor=white)](https://ollama.com/)
 [![OpenRouter](https://img.shields.io/badge/OpenRouter-ready-FF6B35?logo=openai&logoColor=white)](https://openrouter.ai/)
-[![Tests](https://img.shields.io/badge/Tests-91%20passed-brightgreen?logo=vitest&logoColor=white)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-96%20passed-brightgreen?logo=vitest&logoColor=white)](tests/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/nispa/tsuka/pulls)
 
@@ -38,7 +38,7 @@
 | 🖥️ **Full-Screen Interactive TUI** | Double-buffered zero-flicker terminal dashboard (`tsuka --tui`) with SGR 1006 mouse support, tabs, and workspace file explorer. |
 | 🧠 **Pluggable Persistent Memory** | Modular `MemoryBackend` contract with default pure TypeScript JSON+BM25 ranking, stemming, deduplication, and half-life decay (`memory.json`). |
 | 🧩 **Dynamic Tool Auto-Discovery** | Drop any `.ts` tool into `src/tools/impl/` to hot-register it at boot with automatic JSON Schema validation. |
-| 🛠️ **Sandboxed Self-Authoring Tools** | Agents can write, sandbox-test (`node:vm`), and hot-load new tools during runtime to solve unanticipated problems. |
+| 🛠️ **Opt-in Self-Authoring Tools** | Agents can create and hot-load tools with `DANGEROUS` confirmation; `node:vm` validates module shape but is not a security sandbox. |
 | 👥 **Multi-Agent Orchestration** | Dynamic goal planning (`/goal`), parallel staging sandboxes (`PARALLELO`), preconfigured teams (`/team`), and conference debates (`/call`). |
 | 📊 **Capability Fingerprinting** | Empirical test runner (`/benchmark`) measures small-model tool-calling accuracy to dynamically tailor active tool sets. |
 | 🛡️ **Graduated Permission Safety** | Strict workspace jail (`resolveSafePath`), graduated command risk classification, serialized interactive prompts, credential masking, and SAST. |
@@ -114,7 +114,7 @@ TSUKA ships with **30 native tools** (`src/tools/impl/*.ts`) categorized into:
 * **System**: `execute_command` (cross-platform shell execution with interactive approval).
 * **Memory**: `save_memory`, `recall_memory`, `update_memory`, `forget_memory` (BM25 + half-life retention).
 * **Coordination**: `post_note`, `read_notes`, `report_status`, `route_next`, `cast_vote`.
-* **Extension & SAST**: `create_tool` (sandboxed in `node:vm`), `audit_code` (static security analyzer for CWEs).
+* **Extension & SAST**: opt-in [`create_tool`](docs/self-authoring.md) (DANGEROUS; `node:vm` validates shape but is not a security sandbox), `audit_code` (static security analyzer for CWEs).
 
 > 📚 Full documentation: [Security Specification](docs/security.md) · [Architecture Guide](docs/architecture.md)
 

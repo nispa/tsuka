@@ -1,4 +1,4 @@
-import { ChildProcess } from 'child_process';
+import { ChildProcess, spawn } from 'child_process';
 
 /**
  * System shell abstraction for command execution.
@@ -13,8 +13,47 @@ export interface ShellConfig {
   buildArgs: (command: string) => string[];
   /** Extra spawn options (e.g. detached for process group kill on POSIX) */
   spawnOptions: { detached?: boolean; windowsHide?: boolean };
-  /** Terminates the process (and its process group on POSIX) reliably */
-  kill: (child: ChildProcess) => void;
+  /** Terminates the shell and its descendants, escalating after the grace period. */
+  terminateTree: (child: ChildProcess, gracePeriodMs: number) => Promise<void>;
+}
+
+function hasExited(child: ChildProcess): boolean {
+  return child.exitCode !== null || child.signalCode !== null;
+}
+
+function waitForExit(child: ChildProcess, timeoutMs: number): Promise<boolean> {
+  if (hasExited(child)) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    const onClose = () => finish(true);
+    const timer = setTimeout(() => finish(hasExited(child)), timeoutMs);
+    const finish = (exited: boolean) => {
+      clearTimeout(timer);
+      child.removeListener('close', onClose);
+      resolve(exited);
+    };
+    child.once('close', onClose);
+  });
+}
+
+function runTaskkill(pid: number, force: boolean, timeoutMs: number): Promise<void> {
+  return new Promise((resolve) => {
+    const args = ['/PID', String(pid), '/T'];
+    if (force) args.push('/F');
+    const killer = spawn('taskkill.exe', args, { windowsHide: true, stdio: 'ignore' });
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(() => {
+      try { killer.kill(); } catch {}
+      finish();
+    }, timeoutMs);
+    killer.once('close', finish);
+    killer.once('error', finish);
+  });
 }
 
 export function isWindows(): boolean {
@@ -43,8 +82,12 @@ export function getShellConfig(): ShellConfig {
         command
       ],
       spawnOptions: { windowsHide: true },
-      kill: (child) => {
-        try { child.kill(); } catch {}
+      terminateTree: async (child, gracePeriodMs) => {
+        if (!child.pid || hasExited(child)) return;
+        await runTaskkill(child.pid, false, gracePeriodMs);
+        if (await waitForExit(child, gracePeriodMs)) return;
+        await runTaskkill(child.pid, true, gracePeriodMs);
+        await waitForExit(child, gracePeriodMs);
       }
     };
   }
@@ -55,14 +98,16 @@ export function getShellConfig(): ShellConfig {
     buildArgs: (command: string) => ['-c', command],
     // detached creates a new process group: allows killing entire subtree
     spawnOptions: { detached: true },
-    kill: (child) => {
+    terminateTree: async (child, gracePeriodMs) => {
+      if (!child.pid || hasExited(child)) return;
       try {
-        if (child.pid) {
-          process.kill(-child.pid, 'SIGKILL');
-          return;
-        }
+        process.kill(-child.pid, 'SIGTERM');
       } catch {}
-      try { child.kill('SIGKILL'); } catch {}
+      if (await waitForExit(child, gracePeriodMs)) return;
+      try { process.kill(-child.pid, 'SIGKILL'); } catch {
+        try { child.kill('SIGKILL'); } catch {}
+      }
+      await waitForExit(child, gracePeriodMs);
     }
   };
 }

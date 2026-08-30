@@ -272,7 +272,7 @@ A mature agent harness cannot remain confined to its initial static tool set. TS
 
 #### 9.1 Internal Extensibility: Dynamic Runtime Tool Creation (`create_tool`)
 Agents equipped with development permissions can author new JavaScript/TypeScript tools on the fly:
-* **Sandboxed Validation**: generated code runs inside a `node:vm` sandbox with pattern blocklists.
+* **Opt-in Shape Validation**: self-authoring is disabled by default. With `selfAuthoringEnabled: true`, `node:vm` checks module shape and timeout but is not a security sandbox; creation and loaded custom tools are always DANGEROUS.
 * **Risk Capped**: generated tools can only be assigned `SAFE` or `RESTRICTED` tiers (never `DANGEROUS`).
 * **Core Protection**: native system tools cannot be overwritten, and automated backups are preserved in the workspace.
 
@@ -328,6 +328,9 @@ As an agent harness scales beyond 80 test suites, maintainability becomes paramo
 2. **CJS / ESM Dynamic Imports**: transpiled dynamic `import()` behaves differently between `tsx` dev mode and compiled dist builds. Test both!
 3. **Token Streaming Measurement**: counting raw stream chunks produces erratic metrics; enable `stream_options: { include_usage: true }`.
 4. **Index Shifts During Pruning**: slicing history by numerical indices breaks when pruning occurs mid-run; always track message object identities.
+5. **Unambiguous File Mutations**: `write_file` accepts `append` only as a boolean and rejects strings, numbers, and `null`; `edit_file` rejects empty targets while preserving empty replacements for intentional deletion.
+6. **Configuration Recovery**: invalid `tsuka.config.json` bytes are preserved in a collision-safe backup before defaults are restored atomically; failed recovery blocks later persistence instead of overwriting evidence.
+7. **Canonical, Not Lexical, Jails**: normalized-prefix checks do not stop symlinks or junctions. TSUKA resolves the root, target, or nearest existing ancestor with `realpath`, permits internal links only, and deduplicates real directories during bounded recursive scans.
 5. **HTML Entities in Terminal Rendering**: Markdown parsers convert quotes into HTML entities (`&#39;`); decode them before ANSI terminal output.
 6. **Accidental Credential Leaks**: system diagnostic tools can inadvertently leak environment variables; apply proactive redaction masks.
 7. **Hidden Local Server Queues**: a local model that appears frozen is often waiting in a single-slot inference queue. Always provide visual status and timeouts.

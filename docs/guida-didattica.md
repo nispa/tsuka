@@ -349,8 +349,8 @@ Anziché affidarsi a euristiche basate sul nome del file di modello, TSUKA adott
 Un harness completo non può rimanere vincolato al catalogo iniziale di tool statici. Per consentire all'agente di affrontare compiti imprevisti e interagire con servizi esterni, l'architettura adotta due meccanismi complementari di estensione:
 
 #### 9.1 Estensione Interna: creazione dinamica di tool a runtime (`create_tool`)
-Tramite il tool nativo `create_tool`, un agente con competenze di sviluppo può generare al volo nuove utility JavaScript/TypeScript:
-* **Sandbox sicura**: il codice generato viene validato ed eseguito all'interno di una sandbox isolata (`node:vm`) che impedisce accessi impropri al sistema.
+Con `selfAuthoringEnabled: true`, un agente con competenze di sviluppo può generare nuove utility JavaScript/TypeScript tramite `create_tool`; la capability è disabilitata per default:
+* **Validazione, non sandbox**: `node:vm` verifica forma e timeout del modulo ma non isola codice ostile. Creazione e tool custom caricati sono sempre DANGEROUS; il contenimento reale richiede un processo OS/container separato.
 * **Tiers vincolati**: i tool autogenerati possono assumere al massimo il livello `SAFE` o `RESTRICTED` (mai `DANGEROUS`).
 * **Protezione del Core**: è vietata la sovrascrittura dei tool nativi e viene sempre conservato un backup automatico nella cartella di lavoro prima del caricamento a caldo nel registro.
 
@@ -427,6 +427,9 @@ Quando un harness agentico cresce oltre le 80 suite di test, la sfida principale
 8. **Argomenti JSON sovradimensionati**: passare interi file come parametri inline può causare la generazione di JSON troncati o non validi da parte del modello. È preferibile strutturare i tool per supportare scritture incrementali (*append*) o percorsi su file.
 9. **Corruzione della cronologia da JSON malformati**: una risposta con sintassi JSON errata non deve essere salvata grezza nella cronologia, altrimenti comprometterà tutte le chiamate successive; gli argomenti vanno convalidati e sanificati prima del salvataggio.
 10. **Isolamento della memoria nei test automatici**: i test end-to-end non devono mai scrivere nell'archivio `memory.json` reale dell'utente; l'istanza di test deve operare su percorsi temporanei isolati tramite variabili d'ambiente dedicate.
+11. **Mutazioni file non ambigue**: `write_file` accetta `append` soltanto come booleano e rifiuta stringhe, numeri e `null` senza scegliere implicitamente l'overwrite; `edit_file` rifiuta target vuoti ma consente una sostituzione vuota per cancellare intenzionalmente un blocco.
+12. **Recovery della configurazione**: un `tsuka.config.json` invalido viene conservato byte per byte in un backup collision-safe prima del ripristino dei default. Se il backup o la scrittura atomica falliscono, le persistenze successive vengono bloccate per evitare perdita silenziosa.
+13. **Jail canonica, non lessicale**: controllare soltanto che un path normalizzato inizi con la root non blocca symlink e junction. TSUKA risolve root, target o antenato esistente con `realpath`, consente solo link interni e deduplica le directory reali nelle scansioni ricorsive bounded.
 
 ---
 

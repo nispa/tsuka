@@ -1,6 +1,7 @@
 import { Tool } from '../registry';
 import { capForContext } from '../../core/contextBudget';
 import { NodeHtmlMarkdown } from 'node-html-markdown';
+import { safeFetch } from '../../core/network';
 
 /**
  * Resolves a relative or absolute URL against a base URL.
@@ -167,7 +168,7 @@ export const browseUrlTool: Tool = {
     const timeout = setTimeout(() => controller.abort(), fetchTimeoutMs);
 
     try {
-      const response = await fetch(targetUrl, {
+      const response = await safeFetch(targetUrl, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         },

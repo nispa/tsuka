@@ -56,10 +56,24 @@ async function main() {
     await writeFileTool.execute({ path: tmpFile, content: 'creato da append', append: true });
     check('WA.3', fs.readFileSync(tmpFile, 'utf-8') === 'creato da append', 'append:true su file non esistente lo crea (prima porzione)');
 
-    // WA.4: la STRINGA "false" non deve attivare l'append (trappola truthy)
+    // WA.4: a non-boolean append value is rejected instead of choosing overwrite.
     fs.writeFileSync(tmpFile, 'partenza', 'utf-8');
-    await writeFileTool.execute({ path: tmpFile, content: 'sovrascritto', append: 'false' as any });
-    check('WA.4', fs.readFileSync(tmpFile, 'utf-8') === 'sovrascritto', `append:"false" (stringa) sovrascrive come append assente, non accoda (contenuto: ${JSON.stringify(fs.readFileSync(tmpFile, 'utf-8'))})`);
+    let rejected = false;
+    try {
+      await writeFileTool.execute({ path: tmpFile, content: 'sovrascritto', append: 'false' as any });
+    } catch {
+      rejected = true;
+    }
+    check('WA.4', rejected && fs.readFileSync(tmpFile, 'utf-8') === 'partenza', 'append:"false" is rejected and cannot overwrite the file');
+
+    // WA.5: null is rejected as well, including when it arrives from parsed JSON.
+    let nullRejected = false;
+    try {
+      await writeFileTool.execute({ path: tmpFile, content: 'sovrascritto', append: null as any });
+    } catch {
+      nullRejected = true;
+    }
+    check('WA.5', nullRejected && fs.readFileSync(tmpFile, 'utf-8') === 'partenza', 'append:null is rejected without modifying the file');
   } finally {
     fs.rmSync(tmpFile, { force: true });
   }

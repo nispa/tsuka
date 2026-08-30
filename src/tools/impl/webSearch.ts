@@ -2,6 +2,7 @@ import { Tool } from '../registry';
 import { ConfigManager, CONFIG_PATH } from '../../core/config';
 import { capForContext } from '../../core/contextBudget';
 import * as fs from 'fs';
+import { safeFetch } from '../../core/network';
 
 let cachedConfigManager: ConfigManager | null = null;
 let cachedConfigMtime = -1;
@@ -21,7 +22,7 @@ function getSharedConfigManager(): ConfigManager {
 async function searchDuckDuckGo(query: string): Promise<string> {
   const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
   try {
-    const response = await fetch(url, {
+    const response = await safeFetch(url, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/119.0'
       }
@@ -82,7 +83,7 @@ async function searchGoogle(query: string): Promise<string> {
 
   try {
     const url = `https://www.googleapis.com/customsearch/v1?key=${apiKey}&cx=${cx}&q=${encodeURIComponent(query)}`;
-    const response = await fetch(url);
+    const response = await safeFetch(url);
     if (!response.ok) {
       throw new Error(`Google Custom Search API error: ${response.status}`);
     }
@@ -110,7 +111,7 @@ async function searchTavily(query: string): Promise<string> {
   }
 
   try {
-    const response = await fetch('https://api.tavily.com/search', {
+    const response = await safeFetch('https://api.tavily.com/search', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'

@@ -8,7 +8,8 @@
 > - Codice, nomi, commenti, docstring, test e schemi tool in inglese. I documenti di
 >   pianificazione per il maintainer (`TASKS.md`, `PLANNING-QUALITA.md`) restano in
 >   italiano. TS strict, CommonJS, no Ink.
-> - Prima di dichiarare completato: `npm test` verde + `npm run build` senza errori.
+> - Prima di dichiarare completato: `npm test`, `npm run build` e
+>   `npm run typecheck` tutti verdi.
 > - Non modificare comportamenti non elencati nel task. Se un fix richiede di toccare
 >   altro, segnalarlo nel report finale invece di farlo.
 > - Ogni fallback o degradazione introdotta deve essere visibile (log UI + workflow log),
@@ -20,8 +21,8 @@
 
 ## 📊 Dashboard di Progetto & Stato Avanzamento
 
-- **Test Suite Totali**: **91 suite automatizzate** (100% pass rate)
-- **Fase Attuale**: **Fase 8 — Refactoring Architetturale e Core Sharp** (Completata: 10/10 completati)
+- **Test Suite Totali**: **96 suite automatizzate** (100% pass rate)
+- **Fase Attuale**: **Fase 10 — Audit-Driven Security & Reliability Hardening** (In corso: 5/12 completati)
 - **Gate di Qualità**: TypeScript strict compilato su `dist/`, zero cicli di dipendenza, I/O logging disaccoppiato via `logSink`, memory jail attiva.
 
 ### 🧭 Indice Navigabile delle Fasi
@@ -35,6 +36,7 @@
 - [Fasi Intermedie (T8..T20) — TUI, MCP, Memory BM25, Escalation, SAST](#t141---piano-fase-5-polish-architetturale-e-didattica-qualità)
 - [Fase 8 — Refactoring Architetturale e Core Sharp](#fase-8--refactoring-architetturale-e-core-sharp) (T21.1 – T21.10)
 - [Fase 9 — Context Scheduler e Memoria Pluggable](#fase-9--context-scheduler-e-memoria-pluggable) (T22.1 – T22.17)
+- [Fase 10 — Audit-Driven Security & Reliability Hardening](#fase-10--audit-driven-security--reliability-hardening) (T23.1 – T23.12)
 
 ---
 
@@ -170,6 +172,18 @@
 | T22.15 | ⬜ Da fare | **Backend alternativo sperimentale**: una sola implementazione semplice, prima validata in shadow mode. |
 | T22.16 | ⬜ Da fare | **Metriche scheduler**: pressione, deleghe, token, handoff e context amplification senza policy adattiva. |
 | T22.17 | ⬜ Da fare | **Documentazione verificata**: allineare guide IT/EN, architettura e configurazione soltanto dopo i checkpoint reali. |
+| T23.1 | ✅ Fatto | **Baseline e triage dell'audit**: riprodotto il CI localmente; il solo failure residuo era G8 nel test `/goal`, che assumeva il parallelo pur usando il provider locale seriale. Il fixture abilita ora esplicitamente `isParallelExecutionEnabled()` senza mutare la configurazione persistita. Verificato: 91 suite OK, build e typecheck verdi. |
+| T23.2 | ✅ Fatto | **Config anti-perdita**: JSON root/struttura invalidi vengono caratterizzati, copiati byte per byte in un backup collision-safe e sostituiti con default tramite temp file + rename atomico; se backup o persistenza falliscono, le scritture successive sono bloccate. Suite `test_config_recovery.ts`. Gate: 93 suite OK, build e typecheck verdi. |
+| T23.3 | ✅ Fatto | **Mutazioni file non ambigue**: `write_file` accetta `append` solo se booleano e rifiuta stringhe/numeri/null senza modificare il file; il limite contenuto è centralizzato in `TOOLS_DEFAULTS`; `edit_file` rifiuta target vuoti/whitespace ma conserva replacement vuoto per cancellazioni intenzionali. Suite `test_file_mutation_contracts.ts`; schema aggiornato. Gate: 93 suite OK, build e typecheck verdi. |
+| T23.4 | ⬜ Da fare | **Parser reasoning caratterizzato**: definire e testare tag `<think>` completi, orfani, multipli e malformati. |
+| T23.5 | ✅ Fatto | **Abort idempotente dell'albero processi**: `execute_command` collega `ToolExecutionContext.signal` a un'unica transizione terminale per completamento, errore, timeout e abort; cleanup immediato di watchdog/listener; terminazione gentile e poi forzata dell'albero tramite process group POSIX o `taskkill /T` Windows. Suite reale `test_execute_command_abort.ts` con figlio ritardato, pre-abort, timeout, race e listener cleanup. Gate: 95 suite OK, build e typecheck verdi. |
+| T23.6 | ✅ Fatto | **Workspace jail canonica**: resolver basato su `realpath` per target esistenti e antenato esistente più vicino per destinazioni nuove; link interni ammessi, link esterni/dangling negati; walker condiviso con deduplica dei real path e limiti di profondità/file/byte per `grep_search` e `audit_code`; `list_dir` usa `lstat`. Suite `test_workspace_jail_canonical.ts`. Gate: 94 suite OK, build e typecheck verdi. |
+| T23.7 | 🟨 Mitigato | **Policy SSRF condivisa**: `safeFetch` valida schema, porte, tutti gli indirizzi DNS e ogni redirect per `browse_url`, `download_file` e `web_search`; indirizzi privati, loopback, link-local, multicast, reserved e DNS misti sono negati. Resta un rischio residuo TOCTOU fra preflight DNS e resolver interno di `fetch`; la chiusura strutturale richiede trasporto HTTP con lookup fissato all'indirizzo validato. Suite `test_network_policy.ts` (10 check). |
+| T23.8 | 🟨 Mitigato | **Self-authoring fail-closed**: `create_tool` e il caricamento dei moduli custom sono disabilitati per default tramite `selfAuthoringEnabled`; opt-in forza creazione e tool caricati a DANGEROUS. `node:vm` è documentato e usato solo per shape validation bounded. Resta aperta la sostituzione strutturale con contenimento OS/processo. |
+| T23.9 | ⬜ Da fare | **Download bounded e atomico**: streaming con limite reale, abort e pulizia dei file parziali. |
+| T23.10 | ⬜ Da fare | **Lifecycle provider senza leak**: consolidare timer/listener e provare tutti i percorsi di uscita. |
+| T23.11 | ⬜ Da fare | **I/O e parsing web robusti**: eliminare polling sincrono nei percorsi caldi e verificare il parser HTML corrente. |
+| T23.12 | ⬜ Da fare | **Chiusura architetturale dell'audit**: rimisurare i cicli, aggiornare guard CI e documentare rischio residuo. |
 
 Tutti i task pianificati e di backlog sono completati; la serie T15 (memoria, modelli <30B) è implementata e chiusa con 72 suite di test verdi. Pianificata la serie **T16 (benchmark significativi)** su architettura a due velocità: **`/benchmark` fast** (1 colpo/test, deterministico — resta il gate del tier) e **`/benchmark --deep`** (repliche con variazione del prompt, mediana+varianza, per validazione/calibrazione). Pianificato anche **T17.1** (retrieval BM25/TF-IDF), il primo livello del percorso di apprendimento documentato in `docs/memory.md` §12. Valore di ritorno — i benchmark attuali saturano in alto e non discriminano tra i modelli, ma il gating dei tool (`registry.ts`) dipende proprio da quel tier: se tutto diventa `large` il gating è codice morto. Restano da fare T14.24 (commenti tests/ in inglese), T14.25 (token di protocollo multi-agente) e le serie T16/T17.
 
@@ -4394,3 +4408,296 @@ reale dimostrano che:
 
 Se questi punti non mostrano un vantaggio operativo, fermarsi al checkpoint MVP
 invece di costruire una memoria più complessa.
+
+---
+
+# FASE 10 — Audit-Driven Security & Reliability Hardening
+
+## Obiettivo e regole della fase
+
+Questa fase integra l'audit Lumen del 2026-08-28 senza assumere che ogni finding o
+snippet proposto sia ancora corretto rispetto a `main`. Alcune aree sono già state
+modificate da T8.11, T12.1, T14.22, T19.6 e T21; ogni finding deve quindi essere
+prima riprodotto sul codice corrente con un test di regressione. Un finding non
+riproducibile viene chiuso con evidenza e rischio residuo, non con una modifica
+speculativa.
+
+Invarianti della fase:
+
+- sicurezza fail-closed: input ambiguo o validazione incompleta non autorizzano una
+  mutazione, una richiesta di rete o un accesso filesystem;
+- una policy per confine: path, URL, processi e limiti di output hanno ciascuno una
+  sola implementazione condivisa;
+- nessuna regex viene presentata come sandbox di sicurezza;
+- timeout, dimensioni, profondità e grace period configurabili usano
+  `src/core/constants.ts` e `ConfigManager` secondo la direttiva 9;
+- ogni task chiude con `npm test`, `npm run build` e `npm run typecheck` verdi;
+- i test di exploit non accedono a rete, filesystem o processi reali fuori da
+  directory temporanee e fixture controllate.
+
+## T23.1 — Baseline CI e triage riproducibile dell'audit
+
+**Dipende da:** nessuno · **Sforzo:** medio · **Priorità:** critica
+
+Ripristinare prima la baseline del commit corrente. Caratterizzare i fallimenti di
+`tests/test_goal_orchestrator.ts` e `tests/test_tui_subagent_queue_copy.ts`, inclusa
+la divergenza della stats line di `HeaderView`. Il runner dei test deve riportare
+tutti i file falliti senza nascondere i successivi dietro un `process.exit(1)`
+prematuro quando la struttura della suite consente di aggregare gli errori.
+
+Creare una matrice di triage per tutti i finding dell'audit con: versione/commit,
+percorso reale, prova riproducibile, protezioni già presenti, severità confermata,
+task proprietario e rischio residuo. Verificare in particolare i finding
+potenzialmente superati: cleanup timer T8.11, parser HTML T12.1, hardening parziale
+di `create_tool` T14.22 e guardia sui cicli T21.2.
+
+**Esito:** sul clone `main` corrente `test_tui_subagent_queue_copy.ts` passa; il
+fallimento residuo di `test_goal_orchestrator.ts` era G8a/G8b, causato da un
+assunto non esplicitato del fixture sulla policy di parallelismo. Il fixture ora
+abilita il parallelo soltanto per quello scenario. Verificato il 2026-08-28 con
+`npm test` (91 suite OK), `npm run build` e `npm run typecheck`.
+
+**Accettazione:** CI verde sulla matrice Node 20/22 e tre OS; ogni finding è
+`confirmed`, `partially mitigated`, `not reproducible` oppure `obsolete` con evidenza;
+nessun fix di T23.2–T23.12 parte da una sola lettura statica; tre gate verdi.
+
+## T23.2 — Configurazione anti-perdita e recovery esplicito
+
+**Dipende da:** T23.1 · **Sforzo:** medio · **Priorità:** critica
+
+In `src/core/config/manager.ts` distinguere file assente, file valido, JSON corrotto
+e configurazione semanticamente invalida. Un file esistente che non può essere
+caricato non deve mai essere sovrascritto silenziosamente da un successivo `save()`.
+Riutilizzare, dove coerente, il pattern di storage atomico e backup introdotto per la
+memoria in T15.6/T21.7, senza duplicare una seconda utility incompatibile.
+
+Il recovery conserva byte per byte l'originale con nome collision-safe, rende
+visibile il percorso tramite `logSink`, scrive l'eventuale default con temp file +
+rename atomico e fallisce chiuso se backup o persistenza non riescono. Definire
+esplicitamente se il recovery è automatico o richiede conferma; nessun getter può
+innescare una scrittura nascosta.
+
+**Accettazione:** fixture per JSON troncato, vuoto, trailing comma, schema invalido,
+backup preesistente ed errori simulati di rename/write; l'originale resta
+recuperabile in ogni percorso; nessuna mutazione durante una semplice lettura; tre
+gate verdi.
+
+## T23.3 — Contratti non ambigui per `write_file` ed `edit_file`
+
+**Dipende da:** T23.1 · **Sforzo:** basso · **Priorità:** critica
+
+In `writeFile.ts` e nello schema, un valore `append` presente ma non booleano non può
+cadere implicitamente nel ramo overwrite. Preferire la validazione stretta del
+boundary; se si mantiene compatibilità con stringhe legacy, accettare soltanto una
+mappa documentata e rifiutare qualsiasi altro valore. Valutare un flag esplicito
+`overwrite` per i file esistenti, senza introdurre due percorsi semantici permanenti.
+
+In `editFile.ts` rifiutare `targetContent` vuoto o whitespace prima di cercare le
+occorrenze. Conservare la possibilità di cancellare intenzionalmente un blocco con
+`replacementContent: ""`.
+
+**Accettazione:** matrice `true`, `false`, stringhe, numeri, `null` e proprietà
+assente; nessun input invalido modifica il file; test separati per file nuovo,
+append, overwrite esplicito e rimozione con replacement vuoto; tre gate verdi.
+
+## T23.4 — Contratto del parser `<think>` prima del fix
+
+**Dipende da:** T23.1 · **Sforzo:** basso · **Priorità:** alta
+
+Il finding dell'audit è ambiguo: il titolo cita un `</think>` orfano, il codice cita
+un `<think>` non chiuso e lo snippet proposto conserva sostanzialmente lo stesso
+taglio dall'apertura alla fine. Definire prima la semantica desiderata per blocchi
+chiusi, apertura orfana, chiusura orfana, più blocchi, casing, whitespace e tag
+malformati. Verificare insieme `stripThinkBlocks` e il parser streaming, affinché
+CLI, TUI e persistenza non applichino regole diverse.
+
+Preferire un piccolo parser a stati se le regex non possono esprimere il contratto
+senza casi distruttivi. Reasoning incompleto e testo visibile devono restare
+distinguibili; non rendere visibile reasoning privato come fallback.
+
+**Accettazione:** tabella di verità documentata e testata; nessun contenuto visibile
+precedente o successivo viene perso contro il contratto; streaming e parsing finale
+concordano; tre gate verdi.
+
+## T23.5 — Abort idempotente dell'intero albero di `execute_command`
+
+**Dipende da:** T23.1 · **Sforzo:** alto · **Priorità:** critica
+
+Collegare `ToolExecutionContext.signal` al lifecycle del comando. L'abort deve
+terminare l'albero dei processi su Windows e POSIX, non soltanto la shell padre.
+Centralizzare completion, timeout, abort ed errori in una macchina idempotente per
+evitare doppi resolve, output tardivo e race. Rimuovere sempre listener e watchdog;
+tentare terminazione gentile e poi forzata entro un grace period centralizzato.
+
+**Accettazione:** signal già abortito, abort durante comando, processo con child,
+race abort/completamento/timeout ed errore di spawn; nessun processo, timer o listener
+residuo; messaggio di cancellazione visibile senza dichiarare successo; test
+multipiattaforma e tre gate verdi.
+
+## T23.6 — Workspace jail canonica per symlink, junction e ricorsione
+
+**Dipende da:** T23.1 · **Sforzo:** alto · **Priorità:** critica
+
+Evolvere `src/tools/impl/utils.ts` in un solo boundary di canonicalizzazione usato da
+tutti i tool filesystem. Canonicalizzare root e target; per una destinazione
+inesistente risolvere il più vicino antenato esistente. Usare una verifica robusta di
+appartenenza (`path.relative` o equivalente) che consideri case-insensitivity,
+separatori, UNC e junction Windows. Definire esplicitamente se i link interni sono
+consentiti; i link esterni sono sempre negati. Considerare il TOCTOU fra validazione
+e apertura, senza restituire un path non validato come garanzia sufficiente.
+
+Migrare `grepSearch.ts`, `auditCode.ts` e `listDir.ts` a `lstat`, policy condivisa e
+insieme delle directory reali visitate. Applicare limiti centralizzati di profondità,
+numero file e byte analizzati per impedire cicli e scansioni illimitate.
+
+**Accettazione:** traversal `..`, symlink/junction a file e directory esterni, catene,
+cicli, link interno, file nuovo sotto directory linkata, root stessa e sibling con
+prefisso simile; nessuna lettura o scrittura esce dalla jail; test Windows/POSIX e
+tre gate verdi.
+
+## T23.7 — Policy SSRF condivisa e redirect-safe
+
+**Dipende da:** T23.1 · **Sforzo:** alto · **Priorità:** critica
+
+Creare un boundary di rete condiviso per `browseUrl.ts`, `downloadFile.ts` e futuri
+tool HTTP. Consentire soltanto HTTP(S); normalizzare hostname e porte; risolvere tutti
+gli indirizzi DNS e negare loopback, private, link-local, multicast, unspecified e
+reserved sia IPv4 sia IPv6. Un record misto pubblico/privato fallisce chiuso.
+
+La validazione deve essere ripetuta a ogni redirect e legata, per quanto possibile,
+all'indirizzo effettivamente contattato per mitigare DNS rebinding. Centralizzare
+numero redirect, timeout e policy porte. L'accesso intenzionale a servizi locali
+richiede un'allowlist esplicita e visibile, non un'eccezione hardcoded.
+
+**Accettazione:** fixture deterministiche per localhost, RFC1918, link-local,
+IPv4-mapped IPv6, DNS misto, redirect pubblico→privato, schema/porta non consentiti e
+rebind simulato; nessuna richiesta raggiunge il target vietato; tre gate verdi.
+
+## T23.8 — Sostituire `node:vm` come confine di sicurezza di `create_tool`
+
+**Dipende da:** T23.1 · **Sforzo:** molto alto · **Priorità:** critica
+
+Mitigazione immediata: feature disabilitata per default o soggetta ad approvazione
+esplicita massima, mantenendo il livello RESTRICTED introdotto da T14.22 come minimo.
+Documentare che blocklist, Proxy e `node:vm` validano forma/convenzioni ma non
+costituiscono isolamento contro codice ostile. Ampliare regex può essere defense in
+depth, mai criterio di chiusura del finding.
+
+Soluzione strutturale: eseguire il codice generato fuori dal processo principale con
+protocollo IPC stretto, directory temporanea, capability filesystem esplicite, rete
+negata per default e limiti di tempo, memoria, CPU e output. `worker_threads` da solo
+non è un confine di sicurezza; scegliere il contenimento OS/processo in base alle
+garanzie multipiattaforma effettivamente verificabili. Nessun modulo Node o oggetto
+`process` viene esposto implicitamente.
+
+**Checkpoint obbligatorio:** prima dell'implementazione completa documentare il
+modello di minaccia e confrontare almeno processo isolato, container/OS sandbox e
+disabilitazione permanente. Fermarsi se nessuna opzione offre garanzie coerenti su
+tutti gli OS supportati.
+
+**Accettazione:** payload con bracket notation, constructor chain, prototype,
+dynamic import, require indiretto, process, rete, filesystem esterno e loop infinito;
+il processo TSUKA resta integro e bounded; degradazione visibile; tre gate verdi.
+
+## T23.9 — `download_file` bounded, abortable e atomico
+
+**Dipende da:** T23.7 · **Sforzo:** medio · **Priorità:** critica
+
+Non usare `arrayBuffer()` per il payload completo. Controllare `Content-Length` come
+preflight ma contare sempre i byte reali durante lo streaming, perché l'header può
+mancare o mentire. Scrivere in un file temporaneo nella stessa destinazione e
+rinominare soltanto dopo completamento; su limite, timeout, abort o errore chiudere lo
+stream e rimuovere il parziale. Il limite usa `TOOLS_DEFAULTS`/config e la richiesta
+riusa la policy SSRF di T23.7.
+
+**Accettazione:** header assente, falso, chunked, payload oltre soglia, stream che si
+interrompe, abort a metà e destinazione preesistente; memoria bounded, originale
+intatto e nessun file temporaneo residuo; tre gate verdi.
+
+## T23.10 — Lifecycle unico di timer e listener del provider
+
+**Dipende da:** T23.1 · **Sforzo:** medio · **Priorità:** alta
+
+Partire dai guard introdotti in T8.11 e provare se il leak descritto dall'audit è
+ancora riproducibile. Centralizzare il lifecycle di first-token timer, generation
+timer, retry e listener di abort sotto un unico owner con cleanup in `finally`.
+Rendere idempotente ogni transizione terminale; nessun early return o errore prima
+dello stream può lasciare una decisione timeout pendente.
+
+**Accettazione:** fake timer per 401, errore di rete prima dello stream, errore durante
+lo stream, retry, estensione timeout, abort e successo; zero risorse attive e zero
+prompt tardivi. Se T8.11 copre già tutti i casi, chiudere con test aggiuntivi e senza
+refactor inutile; tre gate verdi.
+
+## T23.11 — Percorsi web/config senza I/O sincrono o parsing fragile
+
+**Dipende da:** T23.1, T23.7 · **Sforzo:** medio · **Priorità:** media
+
+Misurare il costo di `statSync` nei percorsi caldi di `contextBudget.ts` e
+`webSearch.ts`. Sostituire polling per chiamata con cache TTL bounded e invalidazione
+esplicita dopo `ConfigManager.save()`, oppure watcher con fallback multipiattaforma.
+Non creare un secondo singleton di configurazione.
+
+Verificare il finding sullo stripping HTML contro l'implementazione successiva a
+T12.1. Separare fetch, parsing e normalizzazione; usare il parser HTML già dipendente
+dal progetto o una libreria mantenuta, decodificare entità e scartare script/style.
+I risultati restano testo non fidato e bounded. Non aggiungere un provider a
+pagamento come requisito del percorso base.
+
+**Accettazione:** benchmark o contatore dimostra l'eliminazione dello `statSync` per
+tool call; invalidazione config deterministica; fixture HTML malformato, entità,
+script/style e snippet ostili; se il parser corrente è già sicuro, solo guard di
+regressione; tre gate verdi.
+
+## T23.12 — Chiusura architetturale e report del rischio residuo
+
+**Dipende da:** T23.2–T23.11 · **Sforzo:** medio · **Priorità:** alta
+
+Ricalcolare il grafo dei moduli sul codice corrente e riconciliare il claim
+"dipendenze circolari" con la guardia T21.2. Se esistono cicli runtime, spostare
+soltanto i contratti realmente condivisi in moduli leaf e iniettare le implementazioni
+dalla composition root; vietare nuovi cicli nel CI. Non introdurre barrel o
+`interfaces.ts` generici che aumentano l'accoppiamento.
+
+Aggiornare documentazione architetturale e security model con confini reali di path,
+rete, processi e codice generato. Produrre una tabella finale dei finding: prova
+iniziale, fix/decisione, test guard, piattaforme verificate e rischio residuo. Eseguire
+la matrice CI completa e packaging dry-run.
+
+**Accettazione:** nessun ciclo runtime non giustificato; guard CI automatica; ogni
+finding dell'audit ha una chiusura verificabile; `npm test`, `npm run build`,
+`npm run typecheck` e `npm pack --dry-run` verdi sulla matrice supportata.
+
+## Sequenza di consegna della fase
+
+| Ordine | Titolo suggerito | Task inclusi | Gate |
+|---:|---|---|---|
+| 1 | `test: restore CI and reproduce audit findings` | T23.1 | Baseline verde e matrice di triage |
+| 2 | `fix: prevent destructive config and file writes` | T23.2, T23.3 | Nessuna perdita dati |
+| 3 | `test: define reasoning tag recovery semantics` | T23.4 | Contratto parser verificato |
+| 4 | `fix: abort command process trees` | T23.5 | Nessun processo residuo |
+| 5 | `fix: canonicalize the workspace jail` | T23.6 | Nessuna evasione filesystem |
+| 6 | `fix: enforce redirect-safe SSRF policy` | T23.7 | Nessun target privato raggiungibile |
+| 7 | `security: isolate generated tools` | T23.8 | Checkpoint threat model + contenimento |
+| 8 | `fix: stream bounded downloads atomically` | T23.9 | Memoria e file parziali bounded |
+| 9 | `fix: consolidate provider resource lifecycle` | T23.10 | Zero timer/listener tardivi |
+| 10 | `perf: remove hot-path sync I/O and harden web parsing` | T23.11 | Cache e parser caratterizzati |
+| 11 | `docs: close the audit with architectural guards` | T23.12 | Report finale e matrice CI verde |
+
+Non accorpare T23.6, T23.7 e T23.8: sono confini di sicurezza differenti e devono
+avere review e rollback indipendenti. T23.9 dipende dalla policy di rete già chiusa;
+T23.12 non può essere usato per rinviare finding critici senza una mitigazione
+esplicita.
+
+---
+
+# Backlog opzionale — Diagnostica MTP esterna
+
+Unsloth Studio possiede il lifecycle del modello e abilita MTP al caricamento.
+TSUKA usa esclusivamente l'endpoint OpenAI-compatible `/v1/chat/completions` e
+beneficia automaticamente di MTP quando il backend lo ha già attivato.
+
+Non sono pianificati adapter, load/reload automatici o configurazioni lifecycle
+specifiche per Unsloth. Un'eventuale evoluzione futura può limitarsi a una
+diagnostica **read-only** di stato, soltanto se esiste un endpoint stabile e senza
+aggiungere dipendenze proprietarie al percorso di inferenza.

@@ -24,7 +24,9 @@ function check(id: string, condition: boolean, detail: string) {
 async function main() {
   console.log('=== Test Self-Authoring dei Tool ===\n');
 
-  const registry = await createDefaultRegistry();
+  const defaultRegistry = await createDefaultRegistry();
+  check('X4.0', defaultRegistry.getTool('create_tool') === undefined, 'self-authoring is unavailable by default');
+  const registry = await createDefaultRegistry({ selfAuthoringEnabled: true });
   const perm: any = { checkPermission: async () => true };
   const customToolsDir = homePath('custom_tools');
   const generatedPath = path.join(customToolsDir, '__probe_tool.js');
@@ -100,12 +102,12 @@ async function main() {
     check('X4.5', !broken.success, 'codice con sintassi invalida rifiutato dalla sandbox');
 
     // --- T14.22a: la fiducia dell'agente su se stesso non è mai sufficiente ---
-    // Anche dichiarandosi esplicitamente SAFE, il tool creato resta sempre RESTRICTED: nulla
+    // Anche dichiarandosi esplicitamente SAFE, il tool creato resta sempre DANGEROUS: nulla
     // verifica che il codice generato corrisponda davvero al livello di rischio dichiarato,
     // quindi non è mai lecito saltare la conferma dell'utente sulla sola parola dell'agente.
     const claimedSafeTool = registry.getTool('__probe_tool');
-    check('X4.6', claimedSafeTool?.riskLevel === 'RESTRICTED', `riskLevel forzato a RESTRICTED anche se richiesto SAFE (era: ${claimedSafeTool?.riskLevel})`);
-    check('X4.6b', createRes.output.includes('risk: RESTRICTED'), `livello effettivo riportato all'agente, non quello richiesto: ${createRes.output.split('\n')[2]}`);
+    check('X4.6', claimedSafeTool?.riskLevel === 'DANGEROUS', `riskLevel forzato a DANGEROUS anche se richiesto SAFE (era: ${claimedSafeTool?.riskLevel})`);
+    check('X4.6b', createRes.output.includes('risk: DANGEROUS'), `livello effettivo riportato all'agente, non quello richiesto: ${createRes.output.split('\n')[2]}`);
 
     // --- T14.22b: fs iniettato nel tool generato è jailato alla workspace, non il modulo reale ---
     const outsideAttempt = await registry.executeTool('create_tool', {

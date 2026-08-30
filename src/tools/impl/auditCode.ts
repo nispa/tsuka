@@ -1,11 +1,9 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { Tool } from '../registry';
-import { resolveSafePath, isBinaryFile } from './utils';
+import { resolveSafePath, isBinaryFile, walkWorkspaceFiles } from './utils';
 import { capForContext } from '../../core/contextBudget';
-
-const MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024; // 2 MB per file limit
-const DEFAULT_MAX_ISSUES = 50;
+import { TOOLS_DEFAULTS } from '../../core/constants';
 
 export type SecuritySeverity = 'HIGH' | 'MEDIUM' | 'LOW';
 
@@ -255,7 +253,7 @@ export const auditCodeTool: Tool = {
     const targetDir = resolveSafePath(args.targetPath || '.');
     const severityThreshold = args.severityThreshold || 'LOW';
     const allowedExtensions = args.fileExtensions?.map(ext => ext.startsWith('.') ? ext.toLowerCase() : `.${ext.toLowerCase()}`);
-    const maxIssues = args.maxIssues && args.maxIssues > 0 ? args.maxIssues : DEFAULT_MAX_ISSUES;
+    const maxIssues = args.maxIssues && args.maxIssues > 0 ? args.maxIssues : TOOLS_DEFAULTS.auditDefaultMaxIssues;
 
     const issues: SecurityIssue[] = [];
     let filesScanned = 0;
@@ -278,29 +276,20 @@ export const auditCodeTool: Tool = {
       return PLACEHOLDER_KEYWORDS.some(k => lower.includes(k));
     }
 
-    function scan(currentPath: string) {
-      if (issues.length >= maxIssues) return;
-
-      const stat = fs.statSync(currentPath);
-
-      if (stat.isDirectory()) {
-        const basename = path.basename(currentPath);
-        if (IGNORED_DIRECTORIES.has(basename)) return;
-
-        const items = fs.readdirSync(currentPath);
-        for (const item of items) {
-          scan(path.join(currentPath, item));
-          if (issues.length >= maxIssues) break;
-        }
-      } else if (stat.isFile()) {
+    let walkResult: ReturnType<typeof walkWorkspaceFiles>;
+    try {
+      walkResult = walkWorkspaceFiles(targetDir, { ignoredDirectories: IGNORED_DIRECTORIES });
+      for (const file of walkResult.files) {
+        if (issues.length >= maxIssues) break;
+        const currentPath = file.fullPath;
         const filename = path.basename(currentPath);
-        if (IGNORED_FILES.has(filename)) return;
-        if (stat.size > MAX_FILE_SIZE_BYTES) return;
-        if (isBinaryFile(currentPath)) return;
+        if (IGNORED_FILES.has(filename)) continue;
+        if (file.size > TOOLS_DEFAULTS.auditMaxFileBytes) continue;
+        if (isBinaryFile(currentPath)) continue;
 
         if (allowedExtensions && allowedExtensions.length > 0) {
           const ext = path.extname(currentPath).toLowerCase();
-          if (!allowedExtensions.includes(ext)) return;
+          if (!allowedExtensions.includes(ext)) continue;
         }
 
         filesScanned++;
@@ -338,16 +327,12 @@ export const auditCodeTool: Tool = {
           }
         }
       }
-    }
-
-    try {
-      scan(targetDir);
     } catch (err: any) {
       throw new Error(`Security audit error: ${err.message}`);
     }
 
     if (issues.length === 0) {
-      return `🛡️ Security audit completed successfully: scanned ${filesScanned} file(s) in '${args.targetPath || '.'}' (Severity threshold: ${severityThreshold}), 0 issues found.`;
+      return `🛡️ Security audit completed successfully: scanned ${filesScanned} file(s) in '${args.targetPath || '.'}' (Severity threshold: ${severityThreshold}), 0 issues found. Scan guard: blocked links=${walkResult.blockedLinks}, truncated=${walkResult.truncatedReason ?? 'no'}.`;
     }
 
     const highIssues = issues.filter(i => i.severity === 'HIGH');
@@ -356,6 +341,7 @@ export const auditCodeTool: Tool = {
 
     let report = `🛡️ Security Audit Report ('${args.targetPath || '.'}')\n`;
     report += `Scanned Files: ${filesScanned} | Total Findings: ${issues.length}${issues.length >= maxIssues ? ` (Capped at ${maxIssues})` : ''}\n`;
+    report += `Scan Guard: Blocked Links: ${walkResult.blockedLinks} | Truncated: ${walkResult.truncatedReason ?? 'no'}\n`;
     report += `Severity Breakdown: [🔴 HIGH: ${highIssues.length}] [🟡 MEDIUM: ${mediumIssues.length}] [🔵 LOW: ${lowIssues.length}]\n\n`;
 
     issues.forEach((issue, idx) => {

@@ -6,10 +6,19 @@ import { logSink } from '../core/logSink';
 
 import { homePath, localWorkspacePath } from '../core/apphome';
 
+export interface DefaultRegistryOptions {
+  /** Loads create_tool and executable custom tool modules. Disabled by default. */
+  selfAuthoringEnabled?: boolean;
+}
+
 /**
  * Loads tools from a directory into the given ToolRegistry.
  */
-async function loadToolsFromDir(dirPath: string, registry: ToolRegistry): Promise<void> {
+async function loadToolsFromDir(
+  dirPath: string,
+  registry: ToolRegistry,
+  options: { forceDangerous?: boolean } = {}
+): Promise<void> {
   if (!fs.existsSync(dirPath)) return;
 
   const files = fs.readdirSync(dirPath);
@@ -35,7 +44,9 @@ async function loadToolsFromDir(dirPath: string, registry: ToolRegistry): Promis
             typeof exportItem.riskLevel === 'string' &&
             typeof exportItem.execute === 'function'
           ) {
-            registry.register(exportItem as Tool);
+            const tool = exportItem as Tool;
+            if (options.forceDangerous) tool.riskLevel = 'DANGEROUS';
+            registry.register(tool);
           }
         }
       } catch (error: any) {
@@ -49,7 +60,7 @@ async function loadToolsFromDir(dirPath: string, registry: ToolRegistry): Promis
  * Creates and returns a ToolRegistry by dynamically loading all tools
  * residing in the 'impl/' directory as well as user-created 'custom_tools/'.
  */
-export async function createDefaultRegistry(): Promise<ToolRegistry> {
+export async function createDefaultRegistry(options: DefaultRegistryOptions = {}): Promise<ToolRegistry> {
   const registry = new ToolRegistry();
   const implDir = path.join(__dirname, 'impl');
 
@@ -60,14 +71,19 @@ export async function createDefaultRegistry(): Promise<ToolRegistry> {
   // 1. Load native core tools
   await loadToolsFromDir(implDir, registry);
 
+  if (!options.selfAuthoringEnabled) {
+    registry.unregister('create_tool');
+    return registry;
+  }
+
   // 2. Load global custom tools (TSUKA_HOME)
   const globalCustomDir = homePath('custom_tools');
-  await loadToolsFromDir(globalCustomDir, registry);
+  await loadToolsFromDir(globalCustomDir, registry, { forceDangerous: true });
 
   // 3. Load local custom tools (.tsuka/ in project workspace)
   const localCustomDir = localWorkspacePath('custom_tools');
   if (localCustomDir) {
-    await loadToolsFromDir(localCustomDir, registry);
+    await loadToolsFromDir(localCustomDir, registry, { forceDangerous: true });
   }
 
   return registry;

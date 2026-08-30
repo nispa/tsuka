@@ -17,6 +17,48 @@ import {
 
 export const CONFIG_PATH = homePath('tsuka.config.json');
 
+/** Validates the structural boundary while keeping optional legacy fields compatible. */
+function validateConfigShape(value: unknown): AppConfig {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Configuration root must be a JSON object.');
+  }
+
+  const candidate = value as Record<string, unknown>;
+  const stringFields = ['activeProvider', 'activeRole', 'activeTrait', 'activeCharacter', 'workspaceRoot', 'reasoningEffort', 'creativity'];
+  for (const field of stringFields) {
+    if (field in candidate && candidate[field] !== undefined && typeof candidate[field] !== 'string') {
+      throw new Error(`Configuration field '${field}' must be a string.`);
+    }
+  }
+
+  const booleanFields = ['deferredToolsEnabled', 'parallelExecutionEnabled', 'selfAuthoringEnabled', 'inferenceLogprobs'];
+  for (const field of booleanFields) {
+    if (field in candidate && candidate[field] !== undefined && typeof candidate[field] !== 'boolean') {
+      throw new Error(`Configuration field '${field}' must be a boolean.`);
+    }
+  }
+
+  const objectFields = ['providerOverrides', 'providers', 'samplingProfiles', 'mcpServers'];
+  for (const field of objectFields) {
+    if (field in candidate && candidate[field] !== undefined &&
+      (!candidate[field] || typeof candidate[field] !== 'object' || Array.isArray(candidate[field]))) {
+      throw new Error(`Configuration field '${field}' must be an object.`);
+    }
+  }
+
+  if (candidate.webSearch !== undefined) {
+    if (!candidate.webSearch || typeof candidate.webSearch !== 'object' || Array.isArray(candidate.webSearch)) {
+      throw new Error("Configuration field 'webSearch' must be an object.");
+    }
+    const provider = (candidate.webSearch as Record<string, unknown>).provider;
+    if (provider !== undefined && provider !== 'duckduckgo' && provider !== 'tavily' && provider !== 'google') {
+      throw new Error("Configuration field 'webSearch.provider' is invalid.");
+    }
+  }
+
+  return candidate as unknown as AppConfig;
+}
+
 /**
  * Loads, heals and serves tsuka.config.json. Getters follow one pattern: accept a
  * valid user override, fall back to the central defaults in `src/core/constants.ts`
@@ -26,6 +68,8 @@ export class ConfigManager {
   private config!: AppConfig;
   private readonly providerCatalog: Record<string, ProviderDefinition>;
   private runtimeContextTokens: number | null = null;
+  /** Prevents a later setter from overwriting a file whose recovery was incomplete. */
+  private persistenceBlocked = false;
 
   constructor() {
     this.providerCatalog = loadProviderCatalog();
@@ -33,10 +77,16 @@ export class ConfigManager {
   }
 
   load(): void {
-    try {
-      if (fs.existsSync(CONFIG_PATH)) {
+    this.persistenceBlocked = false;
+    if (!fs.existsSync(CONFIG_PATH)) {
+      // A missing file is safe to initialize because there are no user bytes to preserve.
+      this.config = defaultAppConfig();
+      this.save();
+    }
+    if (fs.existsSync(CONFIG_PATH)) {
+      try {
         const raw = fs.readFileSync(CONFIG_PATH, 'utf-8');
-        this.config = JSON.parse(raw);
+        this.config = validateConfigShape(JSON.parse(raw));
         let dirty = false;
         if (!this.config.webSearch) {
           this.config.webSearch = { provider: 'duckduckgo' };
@@ -54,30 +104,84 @@ export class ConfigManager {
           this.config.activeCharacter = 'custom';
           dirty = true;
         }
-        if (dirty) {
-          this.save();
-        }
-      } else {
-        // Clean default fallback when configuration file is missing
-        this.config = defaultAppConfig();
-        this.save();
+        if (dirty) this.save();
+      } catch (error: any) {
+        this.recoverInvalidConfig(error);
       }
-    } catch (error: any) {
-      logSink.error(`Error loading tsuka.config.json: ${error.message}. Using default fallback configuration.`);
-      this.config = defaultAppConfig();
     }
     if (!this.config.activeProvider || !this.getProviderConfig(this.config.activeProvider)) {
       this.config.activeProvider = this.getProviderNames()[0] ?? '';
-      this.save();
+      if (!this.persistenceBlocked) this.save();
+    }
+  }
+
+  /** Backs up invalid bytes before writing a clean default; returns null on any unsafe step. */
+  private backupInvalidConfig(): string | null {
+    const stamp = Date.now();
+    for (let attempt = 0; attempt < 100; attempt++) {
+      const suffix = attempt === 0 ? '' : `-${attempt}`;
+      const backup = `${CONFIG_PATH}.corrupt-${stamp}${suffix}`;
+      try {
+        // COPYFILE_EXCL makes the collision check safe even when two processes recover together.
+        fs.copyFileSync(CONFIG_PATH, backup, fs.constants.COPYFILE_EXCL);
+      } catch (error: any) {
+        if (error?.code === 'EEXIST') continue;
+        logSink.error(`Could not back up invalid configuration '${CONFIG_PATH}': ${error.message}`);
+        return null;
+      }
+      try {
+        fs.unlinkSync(CONFIG_PATH);
+      } catch (error: any) {
+        logSink.error(`Could not remove invalid configuration '${CONFIG_PATH}' after backup '${backup}': ${error.message}`);
+        return null;
+      }
+      return backup;
+    }
+    logSink.error(`Could not choose a collision-safe backup name for invalid configuration '${CONFIG_PATH}'.`);
+    return null;
+  }
+
+  /** Recovers invalid configuration without allowing a later setter to overwrite lost bytes. */
+  private recoverInvalidConfig(error: Error): void {
+    const backup = this.backupInvalidConfig();
+    this.config = defaultAppConfig();
+    if (!backup) {
+      this.persistenceBlocked = true;
+      logSink.error(`Invalid tsuka.config.json was kept untouched; using defaults in memory (${error.message}).`);
+      return;
+    }
+    logSink.warn(`Invalid tsuka.config.json backed up to '${backup}' (${error.message}). Replacing it with defaults.`);
+    if (!this.persistConfig()) {
+      this.persistenceBlocked = true;
+      logSink.error(`Default configuration could not be persisted after backing up '${backup}'; future saves are blocked.`);
+    }
+  }
+
+  /** Atomically persists the current config through a sibling temporary file. */
+  private persistConfig(): boolean {
+    try {
+      fs.mkdirSync(path.dirname(CONFIG_PATH), { recursive: true });
+      const tempPath = `${CONFIG_PATH}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      try {
+        fs.writeFileSync(tempPath, JSON.stringify(this.config, null, 2), 'utf-8');
+        fs.renameSync(tempPath, CONFIG_PATH);
+      } catch (error) {
+        try { fs.unlinkSync(tempPath); } catch {}
+        throw error;
+      }
+      return true;
+    } catch (error: any) {
+      logSink.error(`Error saving configuration: ${error.message}`);
+      return false;
     }
   }
 
   save(): void {
-    try {
-      fs.writeFileSync(CONFIG_PATH, JSON.stringify(this.config, null, 2), 'utf-8');
-    } catch (error: any) {
-      logSink.error(`Error saving configuration: ${error.message}`);
+    if (this.persistenceBlocked) {
+      logSink.warn('Configuration persistence is blocked because the previous recovery was incomplete.');
+      return;
     }
+    if (!this.persistConfig()) this.persistenceBlocked = true;
   }
 
   getActiveProviderName(): string {
@@ -367,6 +471,11 @@ export class ConfigManager {
    */
   isParallelExecutionEnabled(): boolean {
     return normalizeProviderClass(this.getActiveProviderConfig()?.class) === 'CLOUD' || this.config.parallelExecutionEnabled === true;
+  }
+
+  /** Executable custom tools are opt-in because node:vm is not a security boundary. */
+  isSelfAuthoringEnabled(): boolean {
+    return this.config.selfAuthoringEnabled === true;
   }
 
   /**
