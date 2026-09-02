@@ -211,6 +211,7 @@ TSUKA was built as an open, educational instrument to learn how agentic harnesse
 * 📊 [**Capability Fingerprinting**](docs/benchmark.md) — Measuring small model reliability on function calling.
 * 🛡️ [**Security & Permissions**](docs/security.md) — Workspace jailing, risk tiers, and sandboxing.
 * 🔌 [**MCP Integration**](docs/mcp.md) — Plugging external MCP servers into the tool registry.
+* 🔎 [**Web Search Backends**](docs/web-search-backends.md) — HTTP provider catalog, backend registry, and MCP adapter contract.
 
 ---
 

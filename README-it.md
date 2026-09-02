@@ -211,6 +211,7 @@ TSUKA è nato come strumento didattico aperto per comprendere il funzionamento c
 * 📊 [**Capability Fingerprinting**](docs/benchmark-it.md) — Misurare l'affidabilità dei modelli locali sul function calling.
 * 🛡️ [**Sicurezza & Permessi**](docs/security-it.md) — Confinamento del workspace, livelli di rischio e sandboxing.
 * 🔌 [**Integrazione MCP**](docs/mcp-it.md) — Collegare server MCP esterni al registro dei tool.
+* 🔎 [**Backend di Ricerca Web**](docs/web-search-backends-it.md) — Catalogo HTTP, registry dei backend e contratto adapter MCP.
 
 ---
 
