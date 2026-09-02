@@ -10,6 +10,7 @@
 import { MemoryStore } from '../../core/memory';
 import { setEffortPin } from '../../core/effortControl';
 import { ConfigManager } from '../../core/config';
+import { listWebSearchProviderOptions } from '../../core/webSearchCatalog';
 import { syncModelOnServer } from '../../cli/commands/provider';
 import { PersonaModals, SystemModals, LayoutModals } from '../modals';
 import { TuiCommandContext, TuiCommandSpec } from './types';
@@ -43,11 +44,9 @@ function personaCommand(name: string, description: string): TuiCommandSpec {
   };
 }
 
-const SEARCH_ENGINES = [
-  { value: 'duckduckgo', label: 'DuckDuckGo', hint: 'Free, no API key required' },
-  { value: 'google', label: 'Google Search', hint: 'Requires GOOGLE_SEARCH_API_KEY in .env' },
-  { value: 'tavily', label: 'Tavily API', hint: 'Requires TAVILY_API_KEY in .env' },
-] as const;
+function searchEngines() {
+  return listWebSearchProviderOptions().map((provider) => ({ value: provider.id, label: provider.displayName, hint: provider.hint }));
+}
 
 /** Effort levels accepted by /effort: pin value and the toast that confirms it. */
 const EFFORT_LEVELS: Record<string, { pin: 'none' | 'low' | 'medium' | 'high' | 'xhigh' | undefined; message: string; tone: 'info' | 'success' }> = {
@@ -185,10 +184,11 @@ export const CONFIG_COMMANDS: TuiCommandSpec[] = [
     description: 'Configure the web search provider',
     run: ({ store, configManager, arg }) => {
       const requested = arg.toLowerCase().trim();
+      const engines = searchEngines();
 
       if (requested) {
-        if (!SEARCH_ENGINES.some((e) => e.value === requested)) {
-          store.notify(`Supported engines: ${SEARCH_ENGINES.map((e) => e.value).join(', ')}`, 'warn');
+        if (!engines.some((e) => e.value === requested)) {
+          store.notify(`Supported engines: ${engines.map((e) => e.value).join(', ')}`, 'warn');
           return;
         }
         configManager.setWebSearchProvider(requested as any);
@@ -197,7 +197,7 @@ export const CONFIG_COMMANDS: TuiCommandSpec[] = [
       }
 
       const current = configManager.getWebSearchProvider();
-      const options = SEARCH_ENGINES.map((e) => ({
+      const options = engines.map((e) => ({
         label: `${current === e.value ? '● ' : '  '}${e.label}`,
         value: e.value,
         hint: e.hint,

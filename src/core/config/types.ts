@@ -43,7 +43,10 @@ export interface SamplingProfileConfig {
 }
 
 export interface WebSearchConfig {
-  provider: 'duckduckgo' | 'tavily' | 'google';
+  /** Backend family registered by the web search registry; built-in default: http. */
+  backend?: string;
+  /** Provider selected inside the backend family; HTTP providers come from web_search_providers.json. */
+  provider: string;
 }
 
 /**

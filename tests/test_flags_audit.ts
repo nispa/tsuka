@@ -111,6 +111,22 @@ function discoverNamedEnvironmentVariables(root: string): string[] {
   return sorted(names);
 }
 
+/** Web search credentials are intentionally data-driven, so audit their catalog references too. */
+function discoverCatalogEnvironmentVariables(filePath: string): string[] {
+  const names = new Set<string>();
+  const visit = (value: unknown): void => {
+    if (Array.isArray(value)) {
+      for (const entry of value) visit(entry);
+    } else if (value && typeof value === 'object') {
+      const record = value as Record<string, unknown>;
+      if (record.source === 'env' && typeof record.name === 'string') names.add(record.name);
+      for (const child of Object.values(record)) visit(child);
+    }
+  };
+  visit(JSON.parse(fs.readFileSync(filePath, 'utf8')));
+  return sorted(names);
+}
+
 let passed = 0;
 let failed = 0;
 
@@ -177,7 +193,10 @@ async function runTests(): Promise<void> {
     `all ${configKeys.length} AppConfig keys discovered in source are classified`
   );
 
-  const environmentVariables = discoverNamedEnvironmentVariables(path.join(process.cwd(), 'src'));
+  const environmentVariables = sorted(new Set([
+    ...discoverNamedEnvironmentVariables(path.join(process.cwd(), 'src')),
+    ...discoverCatalogEnvironmentVariables(path.join(process.cwd(), 'web_search_providers.json')),
+  ]));
   const classifiedEnvironmentVariables = sorted(Object.keys(ENV_CLASSIFICATION));
   check(
     'AUDIT.24',

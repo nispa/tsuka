@@ -21,8 +21,8 @@
 
 ## 📊 Dashboard di Progetto & Stato Avanzamento
 
-- **Test Suite Totali**: **97 suite automatizzate** (100% pass rate)
-- **Fase Attuale**: **Fase 10 — Audit-Driven Security & Reliability Hardening** (In corso: 10/13 completati, 2 mitigati, 1 pianificato)
+- **Test Suite Totali**: **98 suite automatizzate** (100% pass rate)
+- **Fase Attuale**: **Fase 10 — Audit-Driven Security & Reliability Hardening** (Completata: 11/13 completati, 2 mitigati)
 - **Gate di Qualità**: TypeScript strict compilato su `dist/`, zero cicli di dipendenza, I/O logging disaccoppiato via `logSink`, memory jail attiva.
 
 ### 🧭 Indice Navigabile delle Fasi
@@ -184,7 +184,7 @@
 | T23.10 | ✅ Fatto | **Lifecycle provider senza leak**: owner unico per timer first-token/generation e listener abort, cleanup idempotente in `finally`; coperti errori, retry, abort e race con decisione timeout. Suite `test_provider_lifecycle.ts`. |
 | T23.11 | ✅ Fatto | **I/O e parsing web robusti**: cache TTL con invalidazione per la config nei percorsi caldi e parsing DOM bounded di DuckDuckGo con risultato esplicitamente non fidato. Suite `test_context_budget.ts` e `test_browser_evolution.ts`. |
 | T23.12 | ✅ Fatto | **Chiusura architetturale dell'audit**: zero cicli runtime su tutti i moduli `src/` verificati e garantiti dalla guard `ARCH.5` in `test_architecture_boundaries.ts` (contratti condivisi in `core/types.ts` leaf, zero loop da `cli/commands/types`); documentazione security/architettura allineata con matrice dei rischi residui; `npm pack --dry-run` con tarball pulito da 304 file; tutti i gate verdi (97/97 suite OK, build e typecheck puliti). |
-| T23.13 | ⬜ Da fare | **Web search data-driven e pluggable**: introdurre `WebSearchBackend` e registry/factory, spostare DuckDuckGo/Google/Tavily in un backend HTTP guidato da catalogo JSON e definire il contratto per adapter MCP esterni. Le credenziali nel catalogo sono soltanto riferimenti a variabili d'ambiente; il backend opzionale `browser-session` resta una fase successiva. |
+| T23.13 | ✅ Fatto | **Web search data-driven e pluggable**: `WebSearchBackend` con registry/factory, backend HTTP guidato da `web_search_providers.json`, adapter DOM registrato per DuckDuckGo e mapping JSON per Google/Tavily; selettori CLI/TUI derivati dal catalogo e contratto MCP esterno senza browser. Credenziali solo tramite riferimenti a variabili d'ambiente, valori mascherati negli errori e normalizzazione bounded comune. Suite `test_web_search_backends.ts`; 98 suite, build e typecheck verdi. |
 
 Tutti i task pianificati e di backlog sono completati; la serie T15 (memoria, modelli <30B) è implementata e chiusa con 72 suite di test verdi. Pianificata la serie **T16 (benchmark significativi)** su architettura a due velocità: **`/benchmark` fast** (1 colpo/test, deterministico — resta il gate del tier) e **`/benchmark --deep`** (repliche con variazione del prompt, mediana+varianza, per validazione/calibrazione). Pianificato anche **T17.1** (retrieval BM25/TF-IDF), il primo livello del percorso di apprendimento documentato in `docs/memory.md` §12. Valore di ritorno — i benchmark attuali saturano in alto e non discriminano tra i modelli, ma il gating dei tool (`registry.ts`) dipende proprio da quel tier: se tutto diventa `large` il gating è codice morto. Restano da fare T14.24 (commenti tests/ in inglese), T14.25 (token di protocollo multi-agente) e le serie T16/T17.
 
@@ -4707,6 +4707,16 @@ finding dell'audit ha una chiusura verificabile; `npm test`, `npm run build`,
 
 **Dipende da:** T23.11, T21.6 · **Sforzo:** alto · **Priorità:** media
 
+**Esito:** introdotti contratto e registry/factory `WebSearchBackend`; il backend
+HTTP carica una sola volta il catalogo versionato `web_search_providers.json`, senza
+I/O sincrono nel percorso di ogni ricerca. DuckDuckGo usa un adapter DOM registrato,
+Google e Tavily mapping JSON dichiarativi, mentre CLI e TUI derivano le opzioni dal
+catalogo. Query, body e header sensibili accettano soltanto riferimenti a variabili
+d'ambiente; eventuali valori riflessi dagli errori di trasporto vengono mascherati.
+L'adapter MCP espone esclusivamente query e risultati, lasciando fuori credenziali e
+browser-session. Suite `test_web_search_backends.ts` (14 check); gate finali: 98/98
+suite, build e typecheck verdi.
+
 Mantenere un solo tool pubblico `web_search`, separando la capability dal trasporto.
 Introdurre un contratto `WebSearchBackend` stretto e un registry/factory selezionato
 dalla configurazione. Il backend nativo HTTP deve caricare da un catalogo JSON
@@ -4745,6 +4755,7 @@ normalizzazione, limiti e policy SSRF; tre gate verdi.
 | 9 | `fix: consolidate provider resource lifecycle` | T23.10 | Zero timer/listener tardivi |
 | 10 | `perf: remove hot-path sync I/O and harden web parsing` | T23.11 | Cache e parser caratterizzati |
 | 11 | `docs: close the audit with architectural guards` | T23.12 | Report finale e matrice CI verde |
+| 12 | `feat: make web search providers data-driven` | T23.13 | Backend sostituibili, catalogo validato e credenziali indirette |
 
 Non accorpare T23.6, T23.7 e T23.8: sono confini di sicurezza differenti e devono
 avere review e rollback indipendenti. T23.9 dipende dalla policy di rete già chiusa;

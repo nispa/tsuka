@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "providers": {
+    "duckduckgo": {
+      "displayName": "DuckDuckGo",
+      "hint": "Free, no API key required",
+      "transport": "dom",
+      "endpoint": "https://html.duckduckgo.com/html/",
+      "method": "GET",
+      "query": { "q": { "source": "query" } },
+      "headers": {
+        "User-Agent": { "source": "literal", "value": "Mozilla/5.0 (compatible; TSUKA-WebSearch/1.0)" }
+      },
+      "response": { "adapter": "duckduckgo-html-v1" }
+    },
+    "google": {
+      "displayName": "Google Search",
+      "hint": "Requires GOOGLE_SEARCH_API_KEY and GOOGLE_SEARCH_CX",
+      "transport": "json",
+      "endpoint": "https://www.googleapis.com/customsearch/v1",
+      "method": "GET",
+      "query": {
+        "key": { "source": "env", "name": "GOOGLE_SEARCH_API_KEY" },
+        "cx": { "source": "env", "name": "GOOGLE_SEARCH_CX" },
+        "q": { "source": "query" }
+      },
+      "response": {
+        "itemsPath": "items",
+        "titlePath": "title",
+        "urlPath": "link",
+        "snippetPath": "snippet"
+      }
+    },
+    "tavily": {
+      "displayName": "Tavily API",
+      "hint": "Requires TAVILY_API_KEY",
+      "transport": "json",
+      "endpoint": "https://api.tavily.com/search",
+      "method": "POST",
+      "body": {
+        "api_key": { "source": "env", "name": "TAVILY_API_KEY" },
+        "query": { "source": "query" },
+        "search_depth": { "source": "literal", "value": "basic" },
+        "max_results": { "source": "maxResults" }
+      },
+      "headers": { "Content-Type": { "source": "literal", "value": "application/json" } },
+      "response": {
+        "itemsPath": "results",
+        "titlePath": "title",
+        "urlPath": "url",
+        "snippetPath": "content"
+      }
+    }
+  }
+}

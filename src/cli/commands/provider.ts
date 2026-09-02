@@ -3,6 +3,7 @@ import { ConfigManager } from '../../core/config';
 import { runBenchmark, ModelProfile } from '../../core/modelProfile';
 import { probeProvider, warmUpModel, isLocalUrl, detectContextWindow } from '../../core/discovery';
 import { CLITheme, InteractiveMenu } from '../ui';
+import { listWebSearchProviderOptions } from '../../core/webSearchCatalog';
 import { notifyIfUnprofiled } from '../shared';
 import { filterProviderModels, ModelCatalogFilter } from '../../core/modelCatalog';
 import chalk from 'chalk';
@@ -280,14 +281,11 @@ export async function handleModels(ctx: CommandCtx, arg: string): Promise<void> 
 
 export async function handleSearchEngine(ctx: CommandCtx, _arg: string): Promise<void> {
   const currentEngine = ctx.configManager.getWebSearchProvider();
+  const engines = listWebSearchProviderOptions();
   console.log();
-  const selected = await InteractiveMenu.select<'duckduckgo' | 'tavily' | 'google'>(
+  const selected = await InteractiveMenu.select<string>(
     'Select web search provider (use arrow keys):',
-    [
-      { title: `DuckDuckGo ${currentEngine === 'duckduckgo' ? '(selected)' : ''} - (Free, no setup required)`, value: 'duckduckgo' },
-      { title: `Google Search ${currentEngine === 'google' ? '(selected)' : ''} - (Requires GOOGLE_SEARCH_API_KEY in .env)`, value: 'google' },
-      { title: `Tavily API ${currentEngine === 'tavily' ? '(selected)' : ''} - (Requires TAVILY_API_KEY in .env)`, value: 'tavily' }
-    ],
+    engines.map((engine) => ({ title: `${engine.displayName} ${currentEngine === engine.id ? '(selected)' : ''} - (${engine.hint})`, value: engine.id })),
     currentEngine
   );
 

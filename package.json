@@ -33,6 +33,7 @@
     "tools_schemas",
     "benchmarks",
     "providers.json",
+    "web_search_providers.json",
     "tsuka.config.json",
     "tsuka.config.json.example",
     "README.md",

@@ -50,9 +50,11 @@ function validateConfigShape(value: unknown): AppConfig {
     if (!candidate.webSearch || typeof candidate.webSearch !== 'object' || Array.isArray(candidate.webSearch)) {
       throw new Error("Configuration field 'webSearch' must be an object.");
     }
-    const provider = (candidate.webSearch as Record<string, unknown>).provider;
-    if (provider !== undefined && provider !== 'duckduckgo' && provider !== 'tavily' && provider !== 'google') {
-      throw new Error("Configuration field 'webSearch.provider' is invalid.");
+    const webSearch = candidate.webSearch as Record<string, unknown>;
+    for (const field of ['backend', 'provider']) {
+      if (webSearch[field] !== undefined && (typeof webSearch[field] !== 'string' || !webSearch[field].trim())) {
+        throw new Error(`Configuration field 'webSearch.${field}' must be a non-empty string.`);
+      }
     }
   }
 
@@ -254,16 +256,30 @@ export class ConfigManager {
     return this.config.mcpServers ?? {};
   }
 
-  getWebSearchProvider(): 'duckduckgo' | 'tavily' | 'google' {
+  getWebSearchProvider(): string {
     return this.config.webSearch?.provider || 'duckduckgo';
   }
 
-  setWebSearchProvider(provider: 'duckduckgo' | 'tavily' | 'google'): void {
+  getWebSearchBackend(): string {
+    return this.config.webSearch?.backend || 'http';
+  }
+
+  setWebSearchProvider(provider: string): void {
+    const normalized = provider.trim().toLowerCase();
+    if (!normalized) throw new Error('Web search provider must be a non-empty string.');
     if (!this.config.webSearch) {
-      this.config.webSearch = { provider };
+      this.config.webSearch = { provider: normalized };
     } else {
-      this.config.webSearch.provider = provider;
+      this.config.webSearch.provider = normalized;
     }
+    this.save();
+  }
+
+  setWebSearchBackend(backend: string): void {
+    const normalized = backend.trim().toLowerCase();
+    if (!normalized) throw new Error('Web search backend must be a non-empty string.');
+    this.config.webSearch ??= { provider: 'duckduckgo' };
+    this.config.webSearch.backend = normalized;
     this.save();
   }
 

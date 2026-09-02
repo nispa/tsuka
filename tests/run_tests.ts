@@ -90,6 +90,7 @@ const suites = [
   'test_call.ts',
   'test_team.ts',
   'test_browser_evolution.ts',
+  'test_web_search_backends.ts',
   'test_download_file.ts',
   'test_mention_completion.ts',
   'test_escalation_tools.ts',

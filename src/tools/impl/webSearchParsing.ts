@@ -43,6 +43,18 @@ export function normalizeWebSearchResult(title: unknown, url: unknown, snippet: 
   };
 }
 
+/** Re-applies the trust boundary at the public capability edge, including plugin backends. */
+export function normalizeWebSearchResults(results: ReadonlyArray<Partial<WebSearchResult>>): WebSearchResult[] {
+  const normalized: WebSearchResult[] = [];
+  for (const result of results) {
+    const safe = normalizeWebSearchResult(result.title, result.url, result.snippet);
+    if (!safe.title || !safe.url) continue;
+    normalized.push(safe);
+    if (normalized.length >= TOOLS_DEFAULTS.webSearchMaxResults) break;
+  }
+  return normalized;
+}
+
 /**
  * Parses DuckDuckGo's result DOM without regular-expression tag stripping. The parser decodes
  * entities and tolerates malformed markup; script/style nodes are excluded before text access.
@@ -73,7 +85,7 @@ export function parseDuckDuckGoResults(html: string): WebSearchResult[] {
 /** Formats untrusted search results as plain labelled fields instead of executable Markdown. */
 export function formatWebSearchResults(results: WebSearchResult[]): string {
   if (results.length === 0) return 'No useful web search results found.';
-  return results.slice(0, TOOLS_DEFAULTS.webSearchMaxResults).map((result, index) => [
+  return normalizeWebSearchResults(results).map((result, index) => [
     `[Untrusted web result ${index + 1}]`,
     `Title: ${result.title}`,
     `URL: ${result.url}`,
