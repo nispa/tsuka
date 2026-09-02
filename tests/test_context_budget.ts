@@ -55,6 +55,7 @@ async function main() {
   const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'tsuka-ctxbudget-home-'));
   const tmpWorkspace = fs.mkdtempSync(path.join(os.tmpdir(), 'tsuka-ctxbudget-ws-'));
   process.env.TSUKA_HOME = tmpHome;
+  fs.copyFileSync(path.join(process.cwd(), 'providers.json'), path.join(tmpHome, 'providers.json'));
   writeConfig(tmpHome, tmpWorkspace); // nessun maxToolResultTokens: default 4000
 
   // Import dinamico DOPO aver impostato TSUKA_HOME: CONFIG_PATH è calcolato al load del modulo.

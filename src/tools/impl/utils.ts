@@ -31,7 +31,10 @@ function isInsideRoot(root: string, target: string): boolean {
 }
 
 function canonicalExistingPath(filePath: string): string {
-  return fs.realpathSync.native ? fs.realpathSync.native(filePath) : fs.realpathSync(filePath);
+  // Use standard fs.realpathSync across all platforms. On Windows, realpathSync.native
+  // calls GetFinalPathNameByHandleW which expands 8.3 short paths (e.g. RUNNER~1 -> runneradmin),
+  // breaking equality checks and lexical comparisons against unexpanded configuration roots.
+  return fs.realpathSync(filePath);
 }
 
 /** Checks whether a file is binary by scanning initial bytes for null characters. */
@@ -53,15 +56,20 @@ export function isBinaryFile(filePath: string): boolean {
  */
 export function resolveSafePath(filePath: string): string {
   const root = path.resolve(getEffectiveRoot());
+  let canonicalRoot: string;
+  try {
+    canonicalRoot = canonicalExistingPath(root);
+  } catch {
+    canonicalRoot = root;
+  }
   const resolved = path.resolve(resolvePath(filePath));
-  if (!isInsideRoot(root, resolved)) {
+  if (!isInsideRoot(root, resolved) && !isInsideRoot(canonicalRoot, resolved)) {
     throw new Error(
       `Access denied: path '${filePath}' is outside authorized workspace ` +
       `('${root}'). All file operations must stay within the workspace.`
     );
   }
 
-  const canonicalRoot = canonicalExistingPath(root);
   let ancestor = resolved;
   const missingSegments: string[] = [];
   while (true) {
@@ -83,12 +91,12 @@ export function resolveSafePath(filePath: string): string {
   } catch (error: any) {
     throw new Error(`Access denied: path '${filePath}' contains an unresolved filesystem link (${error.message}).`);
   }
-  if (!isInsideRoot(canonicalRoot, canonicalAncestor)) {
+  if (!isInsideRoot(canonicalRoot, canonicalAncestor) && !isInsideRoot(root, canonicalAncestor)) {
     throw new Error(`Access denied: path '${filePath}' resolves outside authorized workspace ('${canonicalRoot}').`);
   }
 
   const canonicalTarget = path.join(canonicalAncestor, ...missingSegments);
-  if (!isInsideRoot(canonicalRoot, canonicalTarget)) {
+  if (!isInsideRoot(canonicalRoot, canonicalTarget) && !isInsideRoot(root, canonicalTarget)) {
     throw new Error(`Access denied: path '${filePath}' resolves outside authorized workspace ('${canonicalRoot}').`);
   }
   return canonicalTarget;

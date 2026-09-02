@@ -242,7 +242,7 @@ function test(name: string, fn: () => void | Promise<void>) {
     assert.strictEqual(store.getState().stats.percentage, 39); // (3200 / 8192) * 100
 
     // 3. Render HeaderView and verify stacked gauge and label
-    const headerLines = HeaderView.render(store.getState(), 100);
+    const headerLines = HeaderView.render(store.getState(), 120);
     const statsLine = headerLines[1];
     assert.ok(
       statsLine.includes('39%') &&
@@ -258,7 +258,7 @@ function test(name: string, fn: () => void | Promise<void>) {
       isGenerating: true,
       generationStatus: { phase: 'tool', agentName: 'Geordi', toolName: 'read_file' },
     });
-    const toolHeader = HeaderView.render(store.getState(), 100);
+    const toolHeader = HeaderView.render(store.getState(), 120);
     assert.ok(toolHeader[1].includes('read_file'), 'Header should display active tool name in status badge');
     assert.ok(toolHeader[1].includes('@Geordi'), 'Header should display subagent author in tool status badge');
 
@@ -266,7 +266,7 @@ function test(name: string, fn: () => void | Promise<void>) {
       isGenerating: true,
       generationStatus: { phase: 'reasoning', agentName: 'Geordi' },
     });
-    const thinkHeader = HeaderView.render(store.getState(), 100);
+    const thinkHeader = HeaderView.render(store.getState(), 120);
     assert.ok(thinkHeader[1].includes('THINKING') && thinkHeader[1].includes('@Geordi'), 'Header should display thinking subagent in status badge');
   });
 
