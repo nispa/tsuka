@@ -10,6 +10,11 @@ import { withEffortPin } from '../../core/effortControl';
 import { WorkflowScope } from '../../core/workflowScope';
 import { logSink } from '../../core/logSink';
 import { resolveCharacter } from '../shared';
+import { Agent } from '../../core/agent';
+import { CALL_DEFAULTS } from '../../core/constants';
+
+/** `/call` may investigate, but never changes the workspace or external state. */
+const CONSULTATION_TOOLS = ['list_dir', 'read_file', 'grep_search', 'web_search', 'browse_url'];
 
 export function parseCallInvocation(arg: string, directTopic = ''): { selectedNames: string[]; topic: string } {
   let topic = directTopic.trim();
@@ -119,7 +124,7 @@ export async function handleCall(ctx: CommandCtx, arg: string, directTopic?: str
       { role: 'user', content: `Group discussion on topic: "${topic}"` }
     ];
 
-    const rounds = 2;
+    const rounds = CALL_DEFAULTS.rounds;
     const fullTranscript: string[] = [];
 
     const interrupt = ctx.interrupt ?? new GenerationInterrupt();
@@ -135,27 +140,70 @@ export async function handleCall(ctx: CommandCtx, arg: string, directTopic?: str
         const cascadedEffort = resolveReasoningEffort(undefined, p, roleObj, ctx.configManager.getDefaultReasoningEffort());
         const reasoningEffort = withEffortPin(cascadedEffort);
 
-        // No registry on purpose: a call turn is passed an empty `tools` array, so listing the
-        // role's tools here would advertise capabilities the participant cannot actually use.
         let sysPrompt = loadSystemPrompt(roleObj, traitObj, ctx.provider.getCurrentModel(), undefined, p, topic, reasoningEffort);
-        sysPrompt += '\n\n[CONTEXT]: You are participating in a group call with colleagues. Reply to prior points, addressing colleagues directly when appropriate. Keep your turn brief (max 4 sentences) and stay in character.';
+        sysPrompt += '\n\n[CONSULTATION CONTEXT]: You are participating in a group call with colleagues. You may inspect the workspace with read-only file tools and consult public web sources when that helps answer the topic. Do not modify files, run commands, download content, or use any tool outside the consultation set. Reply to prior points, addressing colleagues directly when appropriate. Once you have enough evidence, keep your final turn brief (max 4 sentences) and stay in character.';
 
-        callMessages[0] = { role: 'system', content: sysPrompt };
+        // A consultation turn uses the normal ReAct loop so tool schemas, permissions,
+        // workspace jail, and tool-result handling stay identical to ordinary agent work.
+        const participantAgent = new Agent(
+          ctx.provider,
+          ctx.registry,
+          ctx.permissionManager,
+          sysPrompt,
+          CONSULTATION_TOOLS,
+          undefined,
+          undefined,
+          p.aiName,
+          reasoningEffort
+        );
+        participantAgent.getMessages().push(...callMessages.slice(1));
 
-        const renderer = new StreamRenderer({ headerName: p.aiName, headerColor: chalk.green });
+        // `/call` is shared by the CLI and the TUI. The CLI owns terminal painting,
+        // whereas the TUI must receive each participant's chunks through its workflow
+        // event sink; a CLI StreamRenderer intentionally emits nothing in TUI mode.
+        const renderer = ctx.workflowEvents
+          ? undefined
+          : new StreamRenderer({ headerName: p.aiName, headerColor: chalk.green });
+        let receivedContentChunk = false;
+        const onChunk = (chunk: string, channel?: 'content' | 'reasoning') => {
+          if (channel !== 'reasoning' && chunk.length > 0) receivedContentChunk = true;
+          if (ctx.workflowEvents) {
+            ctx.workflowEvents.onChunk(chunk, channel ?? 'content', p.aiName);
+          } else {
+            renderer?.onDelta(chunk, channel ?? 'content');
+          }
+        };
+        let responseText = '';
         interrupt.rearm();
-        renderer.begin();
+        renderer?.begin();
         try {
-          await ctx.provider.chatWithTools(
-            callMessages,
-            [],
-            (chunk, channel) => renderer.onDelta(chunk, channel ?? 'content'),
+          responseText = await participantAgent.run(
+            `It is your consultation turn (round ${r}/${rounds}). Investigate the topic if needed, then contribute your evidence-based view to the group.`,
+            onChunk,
+            (stats) => {
+              if (ctx.workflowEvents) {
+                ctx.workflowEvents.onStats(stats, p.aiName);
+              } else {
+                renderer?.setStats(stats);
+              }
+            },
+            (event) => {
+              if (ctx.workflowEvents) {
+                ctx.workflowEvents.onEvent(event);
+              } else {
+                renderer?.onAgentEvent(event);
+              }
+              interrupt.rearm();
+            },
             interrupt.signal,
-            { reasoningEffort }
           );
-          renderer.finish();
+          // Some OpenAI-compatible backends ignore `stream: true`; Agent.run returns
+          // their final text, so route it explicitly when no content chunk arrived.
+          if (!receivedContentChunk && responseText) onChunk(responseText, 'content');
+          responseText = responseText.trim();
+          renderer?.finish();
         } catch (err: any) {
-          renderer.abort();
+          renderer?.abort();
           if (interrupt.aborted) {
             CLITheme.warning('Call interrupted (Esc).');
             break conf;
@@ -164,7 +212,8 @@ export async function handleCall(ctx: CommandCtx, arg: string, directTopic?: str
           continue;
         }
 
-        const responseText = renderer.getFullText().trim();
+        // The provider response is the authoritative transcript. This also preserves
+        // content returned by a non-streaming compatible backend.
         if (responseText) {
           callMessages.push({ role: 'user', content: `${p.aiName}: "${responseText}"` });
           fullTranscript.push(`${p.aiName}: "${responseText}"`);

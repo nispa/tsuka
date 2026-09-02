@@ -98,6 +98,12 @@ export const AGENT_DEFAULTS = {
   teamMaxRounds: 3,
 };
 
+/** Defaults for the read-only multi-agent consultation command (`/call`). */
+export const CALL_DEFAULTS = {
+  /** Each invited participant speaks once in every consultation round. */
+  rounds: 3,
+};
+
 /** Tool-side defaults (execute_command, browse_url, download_file, ContextTracker). */
 export const TOOLS_DEFAULTS = {
   /** Maximum recursion depth for workspace scans. */
