@@ -120,6 +120,7 @@ async function run() {
   check('CFG.19', config.getLlmMaxTokensCeiling() === 8192, `default llmMaxTokensCeiling è 8192 (trovato: ${config.getLlmMaxTokensCeiling()})`);
   check('CFG.20', config.getBrowseFetchTimeoutMs() === 30000, `default browseFetchTimeoutMs è 30000 (trovato: ${config.getBrowseFetchTimeoutMs()})`);
   check('CFG.21', config.getDownloadFetchTimeoutMs() === 60000, `default downloadFetchTimeoutMs è 60000 (trovato: ${config.getDownloadFetchTimeoutMs()})`);
+  check('CFG.21b', config.getDownloadMaxBytes() === 52428800, `default downloadMaxBytes is 52428800 (found: ${config.getDownloadMaxBytes()})`);
 
   // OpenRouter supports concurrent remote requests; local providers require an explicit opt-in.
   fs.writeFileSync(

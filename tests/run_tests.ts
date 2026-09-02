@@ -68,6 +68,7 @@ const suites = [
   'test_reasoning_effort.ts',
   'test_effort_propagation.ts',
   'test_generation_timeout.ts',
+  'test_provider_lifecycle.ts',
   'test_spawn_agent_reasoning_effort.ts',
   'test_prompt_overhead.ts',
   'test_deferred_tools.ts',

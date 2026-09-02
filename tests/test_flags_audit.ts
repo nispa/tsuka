@@ -12,6 +12,7 @@ import { ConfigManager, defaultAppConfig } from '../src/core/config';
 import {
   AGENT_DEFAULTS,
   CLI_DEFAULTS,
+  CONFIG_DEFAULTS,
   LLM_DEFAULTS,
   MEMORY_DEFAULTS,
   TOOLS_DEFAULTS,
@@ -30,6 +31,7 @@ const CONFIG_CLASSIFICATION: Record<string, FlagCategory> = {
   maxHistoryMessages: 'product',
   maxHistoryTokens: 'product',
   maxToolResultTokens: 'product',
+  hotPathConfigCacheTtlMs: 'product',
   deferredToolsEnabled: 'product',
   maxToolRounds: 'product',
   memoryMaxFacts: 'product',
@@ -50,6 +52,7 @@ const CONFIG_CLASSIFICATION: Record<string, FlagCategory> = {
   llmMaxTokensCeiling: 'compatibility',
   browseFetchTimeoutMs: 'product',
   downloadFetchTimeoutMs: 'product',
+  downloadMaxBytes: 'product',
   defaultUi: 'presentation',
   inferenceLogprobs: 'diagnostic',
   samplingProfiles: 'compatibility',
@@ -142,6 +145,7 @@ async function runTests(): Promise<void> {
   check('AUDIT.6', config.getMaxHistoryMessages() === AGENT_DEFAULTS.maxHistoryMessages, 'maxHistoryMessages maps to AGENT_DEFAULTS');
   check('AUDIT.7', config.getMaxHistoryTokens() === AGENT_DEFAULTS.defaultHistoryTokens, 'maxHistoryTokens maps to AGENT_DEFAULTS.defaultHistoryTokens');
   check('AUDIT.8', config.getMaxToolResultTokens() === AGENT_DEFAULTS.maxToolResultTokens, 'maxToolResultTokens maps to AGENT_DEFAULTS');
+  check('AUDIT.8b', config.getHotPathConfigCacheTtlMs() === CONFIG_DEFAULTS.hotPathCacheTtlMs, 'hotPathConfigCacheTtlMs maps to CONFIG_DEFAULTS');
   check('AUDIT.9', config.getMaxToolRounds() === AGENT_DEFAULTS.maxToolRounds, 'maxToolRounds maps to AGENT_DEFAULTS');
   check('AUDIT.10', config.getGoalCondensedHistoryCharLimit() === AGENT_DEFAULTS.goalCondensedHistoryCharLimit, 'goalCondensedHistoryCharLimit maps to AGENT_DEFAULTS');
 
@@ -160,6 +164,7 @@ async function runTests(): Promise<void> {
   check('AUDIT.18', config.getCommandTimeoutMs() === TOOLS_DEFAULTS.commandTimeoutMs, 'commandTimeoutMs maps to TOOLS_DEFAULTS');
   check('AUDIT.19', config.getBrowseFetchTimeoutMs() === TOOLS_DEFAULTS.browseFetchTimeoutMs, 'browseFetchTimeoutMs maps to TOOLS_DEFAULTS');
   check('AUDIT.20', config.getDownloadFetchTimeoutMs() === TOOLS_DEFAULTS.downloadFetchTimeoutMs, 'downloadFetchTimeoutMs maps to TOOLS_DEFAULTS');
+  check('AUDIT.20b', config.getDownloadMaxBytes() === TOOLS_DEFAULTS.downloadMaxBytes, 'downloadMaxBytes maps to TOOLS_DEFAULTS');
   check('AUDIT.21', config.getCliMaxHistory() === CLI_DEFAULTS.maxHistoryLines, 'cliMaxHistory maps to CLI_DEFAULTS.maxHistoryLines');
   check('AUDIT.22', config.getContextTrackerMaxEntries() === TOOLS_DEFAULTS.contextTrackerMaxEntries, 'contextTrackerMaxEntries maps to TOOLS_DEFAULTS.contextTrackerMaxEntries');
 

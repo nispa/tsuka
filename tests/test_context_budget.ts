@@ -59,7 +59,7 @@ async function main() {
 
   // Import dinamico DOPO aver impostato TSUKA_HOME: CONFIG_PATH è calcolato al load del modulo.
   const { ConfigManager } = await import('../src/core/config');
-  const { capForContext, getMaxToolResultTokens } = await import('../src/core/contextBudget');
+  const { capForContext, getMaxToolResultTokens, getContextBudgetConfigCacheMetrics } = await import('../src/core/contextBudget');
   const { readFileTool } = await import('../src/tools/impl/readFile');
   const { executeCommandTool } = await import('../src/tools/impl/executeCommand');
   const { grepSearchTool } = await import('../src/tools/impl/grepSearch');
@@ -69,6 +69,31 @@ async function main() {
   const defaultMaxTokens = getMaxToolResultTokens();
   const defaultMaxChars = Math.floor(defaultMaxTokens * CHARS_PER_TOKEN);
   check('CB0', defaultMaxTokens === 4000, `default maxToolResultTokens = ${defaultMaxTokens} (atteso 4000)`);
+
+  // A hot path must reuse its local snapshot instead of polling config metadata per tool call.
+  {
+    const before = getContextBudgetConfigCacheMetrics();
+    for (let attempt = 0; attempt < 20; attempt++) getMaxToolResultTokens();
+    const after = getContextBudgetConfigCacheMetrics();
+    check('CB0a', after.loads - before.loads <= 1 && after.hits - before.hits >= 19,
+      'repeated context caps reuse the config snapshot without per-call reloads');
+
+    const writer = new ConfigManager();
+    writer.setWebSearchProvider('google');
+    getMaxToolResultTokens();
+    const invalidated = getContextBudgetConfigCacheMetrics();
+    check('CB0b', invalidated.loads === after.loads + 1,
+      'ConfigManager.save invalidates the hot-path snapshot deterministically');
+
+    const ttlWriter = new ConfigManager();
+    (ttlWriter as unknown as { config: { hotPathConfigCacheTtlMs?: number } }).config.hotPathConfigCacheTtlMs = 100;
+    ttlWriter.save();
+    getMaxToolResultTokens(); // Reload once with the short configured TTL.
+    writeConfig(tmpHome, tmpWorkspace, { maxToolResultTokens: 1234, hotPathConfigCacheTtlMs: 100 });
+    await new Promise<void>((resolve) => setTimeout(resolve, 150));
+    check('CB0c', getMaxToolResultTokens() === 1234,
+      'an external config edit becomes visible after the bounded snapshot TTL');
+  }
 
   // ============================================================
   // 1) capForContext — unità isolata, indipendente dalla config

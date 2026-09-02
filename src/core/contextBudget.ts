@@ -1,5 +1,4 @@
-import * as fs from 'fs';
-import { ConfigManager, CONFIG_PATH } from './config';
+import { createHotPathConfigCache } from './config/hotPathCache';
 import { AGENT_DEFAULTS } from './constants';
 import { ChatMessage } from './types';
 
@@ -21,24 +20,16 @@ const DEFAULT_RECOVERY_HINT =
   "To read the rest: use grep_search to find specific terms, or read_file with " +
   "offset/limit (or startLine/endLine) to page through subsequent lines.";
 
-let cachedConfigManager: ConfigManager | null = null;
-let cachedConfigMtime = -1;
-
-function getSharedConfigManager(): ConfigManager {
-  let mtime = -1;
-  try {
-    mtime = fs.statSync(CONFIG_PATH).mtimeMs;
-  } catch {}
-  if (!cachedConfigManager || mtime !== cachedConfigMtime) {
-    cachedConfigManager = new ConfigManager();
-    cachedConfigMtime = mtime;
-  }
-  return cachedConfigManager;
-}
+const configCache = createHotPathConfigCache();
 
 /** Returns the configured context cap for a single tool result in estimated tokens. */
 export function getMaxToolResultTokens(): number {
-  return getSharedConfigManager().getMaxToolResultTokens();
+  return configCache.get().getMaxToolResultTokens();
+}
+
+/** Exposes cache counters so regression tests can prove tool calls do not reload config. */
+export function getContextBudgetConfigCacheMetrics() {
+  return configCache.getMetrics();
 }
 
 /** Calculates total raw character count across a message array. */

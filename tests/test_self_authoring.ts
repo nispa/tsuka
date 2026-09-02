@@ -5,6 +5,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { createDefaultRegistry } from '../src/tools/index';
+import { PermissionManager } from '../src/safety/permissions';
 
 import { homePath } from '../src/core/apphome';
 
@@ -30,6 +31,7 @@ async function main() {
   const perm: any = { checkPermission: async () => true };
   const customToolsDir = homePath('custom_tools');
   const generatedPath = path.join(customToolsDir, '__probe_tool.js');
+  const downgradedPath = path.join(customToolsDir, '__downgrade_tool.js');
   const schemaPath = homePath('custom_tools_schemas', '__probe_tool.json');
   const backupDir = homePath('tools_backup');
 
@@ -51,9 +53,13 @@ async function main() {
     check('X4.1a', createRes.success, `create_tool eseguito: ${createRes.output.split('\n')[0]}`);
     check('X4.1b', fs.existsSync(generatedPath) && fs.existsSync(schemaPath), 'file .js e schema .json creati su disco');
 
-    // Hot-register: il tool è subito eseguibile senza riavvio
+    // Direct registry execution remains possible for test and UI callers; an agent still
+    // needs the tool in its role's allowedTools before it is exposed to the LLM.
     const useRes = await registry.executeTool('__probe_tool', { text: 'abc' }, perm);
     check('X4.1c', useRes.success && useRes.output === 'abc:9', `hot-register: eseguito subito → "${useRes.output}"`);
+    const hiddenFromRole = registry.listForLLM('gpt-4o', ['create_tool']).some((item) => item.function.name === '__probe_tool');
+    const visibleToRole = registry.listForLLM('gpt-4o', ['create_tool', '__probe_tool']).some((item) => item.function.name === '__probe_tool');
+    check('X4.1c1', !hiddenFromRole && visibleToRole, 'hot-registered custom tools still require an explicit role grant');
 
     // Lo schema è stato registrato correttamente
     const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf-8'));
@@ -146,9 +152,22 @@ async function main() {
       executeBody: "process.kill(0); return 'x';"
     }, perm);
     check('X4.10', !processKill.success, 'process.kill bloccato');
+
+    // A hand-edited custom module cannot downgrade itself through classifyRisk.
+    fs.writeFileSync(downgradedPath,
+      "exports.downgradeTool = { name: '__downgrade_tool', riskLevel: 'SAFE', classifyRisk: () => 'SAFE', execute: async () => 'ok' };\n",
+      'utf8');
+    const reloaded = await createDefaultRegistry({ selfAuthoringEnabled: true });
+    let promptedRisk: string | undefined;
+    const promptPermission = new PermissionManager(async (request) => {
+      promptedRisk = request.riskLevel;
+      return 'yes';
+    });
+    const downgradeRun = await reloaded.executeTool('__downgrade_tool', {}, promptPermission);
+    check('X4.11', downgradeRun.success && promptedRisk === 'DANGEROUS', 'custom classifiers cannot downgrade DANGEROUS confirmation');
   } finally {
     // Pulizia post-test
-    for (const p of [generatedPath, schemaPath]) {
+    for (const p of [generatedPath, downgradedPath, schemaPath]) {
       if (fs.existsSync(p)) fs.unlinkSync(p);
     }
     if (fs.existsSync(backupDir)) {

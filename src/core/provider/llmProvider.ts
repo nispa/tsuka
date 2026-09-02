@@ -36,6 +36,7 @@ import {
 } from './errorClassification';
 import { logProviderFailure } from './providerLogger';
 import type { ProviderClass } from '../cloudProvider';
+import { ProviderAttemptLifecycle } from './lifecycle';
 
 function isAsyncIterable<T>(value: unknown): value is AsyncIterable<T> {
   return typeof value === 'object' && value !== null && Symbol.asyncIterator in value;
@@ -159,24 +160,22 @@ export class LLMProvider implements ILLMProvider {
       let streamAccumulator: StreamAccumulator | undefined;
 
       const onUserAbort = () => attemptAbort.abort();
-      if (signal) {
-        if (signal.aborted) break;
-        signal.addEventListener('abort', onUserAbort, { once: true });
+      const lifecycle = new ProviderAttemptLifecycle(signal, onUserAbort);
+      if (signal?.aborted) {
+        lifecycle.cleanup();
+        break;
       }
-
-      let firstTokenTimer: NodeJS.Timeout | undefined;
-      let generationTimer: NodeJS.Timeout | undefined;
       let receivedFirstToken = false;
 
       const scheduleFirstTokenTimer = () => {
-        if (firstTokenTimer) clearTimeout(firstTokenTimer);
-        firstTokenTimer = setTimeout(async () => {
-          if (receivedFirstToken || signal?.aborted) return;
+        lifecycle.scheduleFirstToken(firstTokenTimeout, async () => {
+          if (!lifecycle.isActive() || receivedFirstToken || signal?.aborted || attemptAbort.signal.aborted) return;
           const action = await requestTimeoutDecision({
             type: 'first_token',
             elapsedMs: firstTokenTimeout,
             model: this.currentModel,
           });
+          if (!lifecycle.isActive() || signal?.aborted || attemptAbort.signal.aborted || receivedFirstToken) return;
           if (action === 'extend') {
             scheduleFirstTokenTimer();
             return;
@@ -185,18 +184,18 @@ export class LLMProvider implements ILLMProvider {
           }
           timedOut = true;
           attemptAbort.abort();
-        }, firstTokenTimeout);
+        });
       };
 
       const scheduleGenerationTimer = () => {
-        if (generationTimer) clearTimeout(generationTimer);
-        generationTimer = setTimeout(async () => {
-          if (signal?.aborted) return;
+        lifecycle.scheduleGeneration(getGenerationTimeoutMs(), async () => {
+          if (!lifecycle.isActive() || signal?.aborted || attemptAbort.signal.aborted) return;
           const action = await requestTimeoutDecision({
             type: 'generation_duration',
             elapsedMs: getGenerationTimeoutMs(),
             model: this.currentModel,
           });
+          if (!lifecycle.isActive() || signal?.aborted || attemptAbort.signal.aborted) return;
           if (action === 'extend') {
             scheduleGenerationTimer();
             return;
@@ -205,7 +204,7 @@ export class LLMProvider implements ILLMProvider {
           }
           generationTimedOut = true;
           attemptAbort.abort();
-        }, getGenerationTimeoutMs());
+        });
       };
 
       scheduleFirstTokenTimer();
@@ -230,7 +229,7 @@ export class LLMProvider implements ILLMProvider {
         );
 
         const isStreaming = onChunk && isAsyncIterable<ProviderStreamChunk>(response);
-        if (!isStreaming) clearTimeout(firstTokenTimer);
+        if (!isStreaming) lifecycle.clearFirstToken();
 
         if (isStreaming) {
           streamAccumulator = new StreamAccumulator({
@@ -239,7 +238,7 @@ export class LLMProvider implements ILLMProvider {
             attemptStartTime,
             onFirstToken: () => {
               receivedFirstToken = true;
-              clearTimeout(firstTokenTimer);
+              lifecycle.clearFirstToken();
             },
           });
 
@@ -251,7 +250,7 @@ export class LLMProvider implements ILLMProvider {
             throw new Error('__generation_aborted_by_timeout__');
           }
 
-          clearTimeout(firstTokenTimer);
+          lifecycle.clearFirstToken();
           attemptReasoningText = streamAccumulator.getReasoningText();
           return streamAccumulator.finalize();
         } else {
@@ -374,9 +373,7 @@ export class LLMProvider implements ILLMProvider {
           allReasoningText
         );
       } finally {
-        if (firstTokenTimer) clearTimeout(firstTokenTimer);
-        if (generationTimer) clearTimeout(generationTimer);
-        if (signal) signal.removeEventListener('abort', onUserAbort);
+        lifecycle.cleanup();
       }
     }
 

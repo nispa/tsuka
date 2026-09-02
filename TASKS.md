@@ -21,8 +21,8 @@
 
 ## 📊 Dashboard di Progetto & Stato Avanzamento
 
-- **Test Suite Totali**: **96 suite automatizzate** (100% pass rate)
-- **Fase Attuale**: **Fase 10 — Audit-Driven Security & Reliability Hardening** (In corso: 6/12 completati)
+- **Test Suite Totali**: **97 suite automatizzate** (100% pass rate)
+- **Fase Attuale**: **Fase 10 — Audit-Driven Security & Reliability Hardening** (In corso: 10/13 completati, 2 mitigati, 1 pianificato)
 - **Gate di Qualità**: TypeScript strict compilato su `dist/`, zero cicli di dipendenza, I/O logging disaccoppiato via `logSink`, memory jail attiva.
 
 ### 🧭 Indice Navigabile delle Fasi
@@ -179,11 +179,12 @@
 | T23.5 | ✅ Fatto | **Abort idempotente dell'albero processi**: `execute_command` collega `ToolExecutionContext.signal` a un'unica transizione terminale per completamento, errore, timeout e abort; cleanup immediato di watchdog/listener; terminazione gentile e poi forzata dell'albero tramite process group POSIX o `taskkill /T` Windows. Suite reale `test_execute_command_abort.ts` con figlio ritardato, pre-abort, timeout, race e listener cleanup. Gate: 95 suite OK, build e typecheck verdi. |
 | T23.6 | ✅ Fatto | **Workspace jail canonica**: resolver basato su `realpath` per target esistenti e antenato esistente più vicino per destinazioni nuove; link interni ammessi, link esterni/dangling negati; walker condiviso con deduplica dei real path e limiti di profondità/file/byte per `grep_search` e `audit_code`; `list_dir` usa `lstat`. Suite `test_workspace_jail_canonical.ts`. Gate: 94 suite OK, build e typecheck verdi. |
 | T23.7 | 🟨 Mitigato | **Policy SSRF condivisa**: `safeFetch` valida schema, porte, tutti gli indirizzi DNS e ogni redirect per `browse_url`, `download_file` e `web_search`; indirizzi privati, loopback, link-local, multicast, reserved e DNS misti sono negati. Resta un rischio residuo TOCTOU fra preflight DNS e resolver interno di `fetch`; la chiusura strutturale richiede trasporto HTTP con lookup fissato all'indirizzo validato. Suite `test_network_policy.ts` (10 check). |
-| T23.8 | 🟨 Mitigato | **Self-authoring fail-closed**: `create_tool` e il caricamento dei moduli custom sono disabilitati per default tramite `selfAuthoringEnabled`; opt-in forza creazione e tool caricati a DANGEROUS. `node:vm` è documentato e usato solo per shape validation bounded. Resta aperta la sostituzione strutturale con contenimento OS/processo. |
-| T23.9 | ⬜ Da fare | **Download bounded e atomico**: streaming con limite reale, abort e pulizia dei file parziali. |
-| T23.10 | ⬜ Da fare | **Lifecycle provider senza leak**: consolidare timer/listener e provare tutti i percorsi di uscita. |
-| T23.11 | ⬜ Da fare | **I/O e parsing web robusti**: eliminare polling sincrono nei percorsi caldi e verificare il parser HTML corrente. |
-| T23.12 | ⬜ Da fare | **Chiusura architetturale dell'audit**: rimisurare i cicli, aggiornare guard CI e documentare rischio residuo. |
+| T23.8 | 🟨 Mitigato | **Self-authoring fail-closed**: `create_tool` e il caricamento dei moduli custom sono disabilitati per default tramite `selfAuthoringEnabled`; opt-in richiede grant esplicito del ruolo e ogni invocazione resta DANGEROUS, senza classifier custom. `node:vm` è documentato e usato solo per shape validation bounded. Resta aperta la sostituzione strutturale con contenimento OS/processo. |
+| T23.9 | ✅ Fatto | **Download bounded e atomico**: streaming con limite reale, preflight `Content-Length`, abort/timeout e pulizia atomica dei file parziali; originale preservato. Suite `test_download_file.ts`. |
+| T23.10 | ✅ Fatto | **Lifecycle provider senza leak**: owner unico per timer first-token/generation e listener abort, cleanup idempotente in `finally`; coperti errori, retry, abort e race con decisione timeout. Suite `test_provider_lifecycle.ts`. |
+| T23.11 | ✅ Fatto | **I/O e parsing web robusti**: cache TTL con invalidazione per la config nei percorsi caldi e parsing DOM bounded di DuckDuckGo con risultato esplicitamente non fidato. Suite `test_context_budget.ts` e `test_browser_evolution.ts`. |
+| T23.12 | ✅ Fatto | **Chiusura architetturale dell'audit**: zero cicli runtime su tutti i moduli `src/` verificati e garantiti dalla guard `ARCH.5` in `test_architecture_boundaries.ts` (contratti condivisi in `core/types.ts` leaf, zero loop da `cli/commands/types`); documentazione security/architettura allineata con matrice dei rischi residui; `npm pack --dry-run` con tarball pulito da 304 file; tutti i gate verdi (97/97 suite OK, build e typecheck puliti). |
+| T23.13 | ⬜ Da fare | **Web search data-driven e pluggable**: introdurre `WebSearchBackend` e registry/factory, spostare DuckDuckGo/Google/Tavily in un backend HTTP guidato da catalogo JSON e definire il contratto per adapter MCP esterni. Le credenziali nel catalogo sono soltanto riferimenti a variabili d'ambiente; il backend opzionale `browser-session` resta una fase successiva. |
 
 Tutti i task pianificati e di backlog sono completati; la serie T15 (memoria, modelli <30B) è implementata e chiusa con 72 suite di test verdi. Pianificata la serie **T16 (benchmark significativi)** su architettura a due velocità: **`/benchmark` fast** (1 colpo/test, deterministico — resta il gate del tier) e **`/benchmark --deep`** (repliche con variazione del prompt, mediana+varianza, per validazione/calibrazione). Pianificato anche **T17.1** (retrieval BM25/TF-IDF), il primo livello del percorso di apprendimento documentato in `docs/memory.md` §12. Valore di ritorno — i benchmark attuali saturano in alto e non discriminano tra i modelli, ma il gating dei tool (`registry.ts`) dipende proprio da quel tier: se tutto diventa `large` il gating è codice morto. Restano da fare T14.24 (commenti tests/ in inglese), T14.25 (token di protocollo multi-agente) e le serie T16/T17.
 
@@ -4586,6 +4587,29 @@ rebind simulato; nessuna richiesta raggiunge il target vietato; tre gate verdi.
 
 **Dipende da:** T23.1 · **Sforzo:** molto alto · **Priorità:** critica
 
+**Decisione di prodotto (2026-09-02):** mantenere il self-authoring come capability
+avanzata esplicitamente opt-in, senza presentarlo come sandbox. Il controllo è a
+più chiavi e nessuna chiave sostituisce le altre:
+
+1. `selfAuthoringEnabled: true` nel `tsuka.config.json` del progetto rende
+   disponibili `create_tool` e i moduli custom; assente o `false` li lascia inerti;
+2. il ruolo attivo deve includere esplicitamente `create_tool` o il nome del tool
+   custom in `allowedTools`;
+3. creazione e ogni esecuzione di codice custom restano sempre `DANGEROUS`, con
+   conferma puntuale dell'utente e senza autorizzazione permanente di sessione;
+4. prima di rendere persistente un tool in `allowedTools`, l'utente deve revisionare
+   il modulo e lo schema scritti su disco. Il flag attesta questa scelta consapevole,
+   non che il codice sia sicuro.
+
+Il caso d'uso previsto è lo sviluppo intenzionale dell'harness o di estensioni in
+un workspace controllato. Il contenuto della richiesta, il ruolo `developer` o il
+fatto che l'agente stia modificando TSUKA non possono abilitare automaticamente la
+capability: soltanto la configurazione esplicita dell'utente può farlo. Blocklist,
+workspace jail e `node:vm` restano defense in depth e validazione di forma; un
+bypass può comunque ottenere i privilegi del processo host. La sandbox
+multipiattaforma resta lavoro futuro e richiede una capability separata verificata
+su Windows, Linux e macOS.
+
 Mitigazione immediata: feature disabilitata per default o soggetta ad approvazione
 esplicita massima, mantenendo il livello RESTRICTED introdotto da T14.22 come minimo.
 Documentare che blocklist, Proxy e `node:vm` validano forma/convenzioni ma non
@@ -4662,6 +4686,8 @@ regressione; tre gate verdi.
 
 **Dipende da:** T23.2–T23.11 · **Sforzo:** medio · **Priorità:** alta
 
+**Esito:** Ricalcolato il grafo completo dei moduli in `src/` ed eliminati i cicli latenti spostando `AcceptanceCriteria` in `src/core/types.ts` (foglia pura) e disaccoppiando `src/cli/commands/types.ts` dall'entrypoint `src/cli/index.ts`. Aggiunta la guardia automatica `ARCH.5` in `tests/test_architecture_boundaries.ts` che valida l'assenza di cicli su tutti i file TS. Documentazione security allineata con matrice dei rischi residui (TOCTOU SSRF in T23.7 e isolamento processo per self-authoring in T23.8). Verificato con 97 suite di test (100% pass), `npm run build`, `npm run typecheck` e `npm pack --dry-run` (tarball pulito da 304 file).
+
 Ricalcolare il grafo dei moduli sul codice corrente e riconciliare il claim
 "dipendenze circolari" con la guardia T21.2. Se esistono cicli runtime, spostare
 soltanto i contratti realmente condivisi in moduli leaf e iniettare le implementazioni
@@ -4676,6 +4702,33 @@ la matrice CI completa e packaging dry-run.
 **Accettazione:** nessun ciclo runtime non giustificato; guard CI automatica; ogni
 finding dell'audit ha una chiusura verificabile; `npm test`, `npm run build`,
 `npm run typecheck` e `npm pack --dry-run` verdi sulla matrice supportata.
+
+## T23.13 — Backend `web_search` data-driven e pluggable
+
+**Dipende da:** T23.11, T21.6 · **Sforzo:** alto · **Priorità:** media
+
+Mantenere un solo tool pubblico `web_search`, separando la capability dal trasporto.
+Introdurre un contratto `WebSearchBackend` stretto e un registry/factory selezionato
+dalla configurazione. Il backend nativo HTTP deve caricare da un catalogo JSON
+versionato endpoint, metodo, parametri, riferimenti alle variabili d'ambiente e
+mapping della risposta; nessun token o cookie reale può essere persistito nel
+catalogo, inviato al modello o scritto nei log. DuckDuckGo conserva un adapter DOM
+registrato, mentre Google e Tavily usano il mapping JSON dichiarativo. Tutti i
+provider devono attraversare lo stesso boundary di normalizzazione bounded introdotto
+in T23.11.
+
+Definire inoltre un adapter contract per backend MCP esterni senza implementare in
+questa fase l'automazione di un browser autenticato. Il futuro backend
+`browser-session` dovrà mantenere cookie, token `HttpOnly`, CSRF e session storage nel
+browser, richiedere consenso esplicito e restituire a TSUKA soltanto risultati già
+normalizzabili; non deve esportare credenziali verso `safeFetch` o il contesto LLM.
+
+**Accettazione:** aggiunta o modifica di un provider HTTP tramite catalogo senza
+toccare `webSearch.ts`; variabili d'ambiente mancanti falliscono con errore mascherato;
+catalogo e mapping invalidi sono rifiutati in modo deterministico; scelta backend
+attraverso registry/config senza union hardcoded nei consumatori; fake backend e
+adapter MCP verificano sostituibilità; fixture DuckDuckGo/Google/Tavily conservano
+normalizzazione, limiti e policy SSRF; tre gate verdi.
 
 ## Sequenza di consegna della fase
 

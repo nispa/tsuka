@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { homePath } from '../apphome';
-import { AGENT_DEFAULTS, CLI_DEFAULTS, LLM_DEFAULTS, MEMORY_DEFAULTS, TOOLS_DEFAULTS } from '../constants';
+import { AGENT_DEFAULTS, CLI_DEFAULTS, CONFIG_DEFAULTS, LLM_DEFAULTS, MEMORY_DEFAULTS, TOOLS_DEFAULTS } from '../constants';
 import { logSink } from '../logSink';
 import { normalizeProviderClass } from '../cloudProvider';
 import { loadProviderCatalog, type ProviderDefinition } from '../providerCatalog';
@@ -65,6 +65,7 @@ function validateConfigShape(value: unknown): AppConfig {
  * (AGENTS.md directive 9) when the value is missing or out of range.
  */
 export class ConfigManager {
+  private static revision = 0;
   private config!: AppConfig;
   private readonly providerCatalog: Record<string, ProviderDefinition>;
   private runtimeContextTokens: number | null = null;
@@ -74,6 +75,14 @@ export class ConfigManager {
   constructor() {
     this.providerCatalog = loadProviderCatalog();
     this.load();
+  }
+
+  /**
+   * Monotonic in-process revision used by short-lived consumer caches. Saving through any
+   * manager invalidates them without a filesystem poll; external edits still expire by TTL.
+   */
+  static getRevision(): number {
+    return ConfigManager.revision;
   }
 
   load(): void {
@@ -169,6 +178,7 @@ export class ConfigManager {
         try { fs.unlinkSync(tempPath); } catch {}
         throw error;
       }
+      ConfigManager.revision++;
       return true;
     } catch (error: any) {
       logSink.error(`Error saving configuration: ${error.message}`);
@@ -355,6 +365,19 @@ export class ConfigManager {
       return Math.floor(value);
     }
     return AGENT_DEFAULTS.maxToolResultTokens;
+  }
+
+  /**
+   * Bounded lifetime for cache snapshots used in tool hot paths. The lower bound avoids
+   * reverting to per-call filesystem polling, while the upper bound exposes external edits.
+   */
+  getHotPathConfigCacheTtlMs(): number {
+    const value = this.config.hotPathConfigCacheTtlMs;
+    if (typeof value === 'number' && Number.isFinite(value) &&
+      value >= CONFIG_DEFAULTS.hotPathCacheMinTtlMs && value <= CONFIG_DEFAULTS.hotPathCacheMaxTtlMs) {
+      return Math.floor(value);
+    }
+    return CONFIG_DEFAULTS.hotPathCacheTtlMs;
   }
 
   /**
@@ -605,5 +628,16 @@ export class ConfigManager {
       return Math.floor(value);
     }
     return TOOLS_DEFAULTS.downloadFetchTimeoutMs;
+  }
+
+  /**
+   * Maximum bytes persisted by download_file. Default: 52428800.
+   */
+  getDownloadMaxBytes(): number {
+    const value = this.config.downloadMaxBytes;
+    if (typeof value === 'number' && Number.isFinite(value) && value >= 1) {
+      return Math.floor(value);
+    }
+    return TOOLS_DEFAULTS.downloadMaxBytes;
   }
 }

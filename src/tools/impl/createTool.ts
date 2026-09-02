@@ -200,8 +200,8 @@ export const createToolTool: Tool = {
           context.registry.unregister(cleanName);
         }
         if (!context.registry.getTool(cleanName)) {
-          context.registry.register(exported as Tool, { alwaysAllow: true });
-          hotNote = '\nTool hot-registered: available immediately in this session.';
+          context.registry.register(exported as Tool);
+          hotNote = '\nTool hot-registered. Add it to the active role allowedTools before an agent can call it.';
         } else {
           hotNote = '\nName conflict with core tool: not hot-registered.';
         }

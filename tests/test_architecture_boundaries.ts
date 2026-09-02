@@ -141,5 +141,66 @@ check(
     : `unexpected direct console output: ${unexpectedConsoleFiles.join(', ')}`
 );
 
+function resolveSourceFile(importer: string, specifier: string): string | null {
+  if (!specifier.startsWith('.')) return null;
+  const base = path.resolve(path.dirname(importer), specifier);
+  if (fs.existsSync(base + '.ts')) return base + '.ts';
+  if (fs.existsSync(path.join(base, 'index.ts'))) return path.join(base, 'index.ts');
+  if (fs.existsSync(base) && fs.statSync(base).isFile()) return base;
+  return null;
+}
+
+const allSrcFiles = typescriptFiles(sourceRoot);
+const graph = new Map<string, string[]>();
+
+for (const filePath of allSrcFiles) {
+  const source = fs.readFileSync(filePath, 'utf8');
+  const dependencies: string[] = [];
+  for (const specifier of importsOf(source)) {
+    const resolved = resolveSourceFile(filePath, specifier);
+    if (resolved && resolved.startsWith(sourceRoot)) {
+      dependencies.push(resolved);
+    }
+  }
+  graph.set(filePath, dependencies);
+}
+
+const visitedState = new Map<string, number>(); // 0: unvisited, 1: visiting, 2: visited
+const foundCycles: string[][] = [];
+
+function detectCyclesDfs(node: string, currentStack: string[]): void {
+  visitedState.set(node, 1);
+  currentStack.push(node);
+
+  for (const neighbor of graph.get(node) || []) {
+    const state = visitedState.get(neighbor) || 0;
+    if (state === 1) {
+      const cycleStartIndex = currentStack.indexOf(neighbor);
+      foundCycles.push(currentStack.slice(cycleStartIndex).concat(neighbor));
+    } else if (state === 0) {
+      detectCyclesDfs(neighbor, currentStack);
+    }
+  }
+
+  currentStack.pop();
+  visitedState.set(node, 2);
+}
+
+for (const filePath of allSrcFiles) {
+  if (!visitedState.get(filePath)) {
+    detectCyclesDfs(filePath, []);
+  }
+}
+
+const formattedCycles = foundCycles.map(c => c.map(p => relativeSourcePath(p)).join(' -> '));
+
+check(
+  'ARCH.5',
+  foundCycles.length === 0,
+  foundCycles.length === 0
+    ? 'zero circular dependencies across all source files in src/'
+    : `found circular dependencies: ${formattedCycles.join('; ')}`
+);
+
 console.log(`\nResult: ${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);

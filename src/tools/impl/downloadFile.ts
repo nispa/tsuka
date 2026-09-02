@@ -1,8 +1,13 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { randomUUID } from 'crypto';
+import { Readable, Transform } from 'stream';
+import { pipeline } from 'stream/promises';
 import { Tool } from '../registry';
 import { resolveSafePath } from './utils';
 import { safeFetch } from '../../core/network';
+import { ConfigManager } from '../../core/config';
+import type { ToolExecutionContext } from '../types';
 
 /**
  * Infers a sensible filename from a URL or content-type header.
@@ -34,19 +39,25 @@ function inferFilenameFromUrl(urlStr: string, contentType: string = ''): string 
 export const downloadFileTool: Tool = {
   name: 'download_file',
   riskLevel: 'RESTRICTED',
-  execute: async (args: { url: string; path?: string }) => {
+  execute: async (args: { url: string; path?: string }, context?: ToolExecutionContext) => {
     let targetUrl = args.url;
     if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
       targetUrl = 'https://' + targetUrl;
     }
 
-    let fetchTimeoutMs = 60_000;
-    try {
-      const { ConfigManager } = require('../../core/config');
-      fetchTimeoutMs = new ConfigManager().getDownloadFetchTimeoutMs();
-    } catch {}
+    const config = new ConfigManager();
+    const fetchTimeoutMs = config.getDownloadFetchTimeoutMs();
+    const maxBytes = config.getDownloadMaxBytes();
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), fetchTimeoutMs);
+    let timedOut = false;
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, fetchTimeoutMs);
+    const abortFromCaller = () => controller.abort();
+    if (context?.signal?.aborted) controller.abort();
+    else context?.signal?.addEventListener('abort', abortFromCaller, { once: true });
+    let temporaryPath: string | undefined;
 
     try {
       const response = await safeFetch(targetUrl, {
@@ -61,8 +72,14 @@ export const downloadFileTool: Tool = {
       }
 
       const contentType = response.headers.get('content-type') || '';
-      const arrayBuffer = await response.arrayBuffer();
-      const buffer = Buffer.from(arrayBuffer);
+      const declaredLength = response.headers.get('content-length');
+      const contentLength = declaredLength && /^\d+$/.test(declaredLength) ? Number(declaredLength) : undefined;
+      if (contentLength !== undefined && contentLength > maxBytes) {
+        throw new Error(`Download exceeds the configured limit of ${maxBytes} bytes.`);
+      }
+      if (!response.body) {
+        throw new Error('Response body is empty.');
+      }
 
       let destPath = (args.path || '').trim();
       if (!destPath || destPath.endsWith('/') || destPath.endsWith('\\')) {
@@ -77,21 +94,47 @@ export const downloadFileTool: Tool = {
         fs.mkdirSync(parentDir, { recursive: true });
       }
 
-      fs.writeFileSync(fullPath, buffer);
+      temporaryPath = path.join(parentDir, `.${path.basename(fullPath)}.${randomUUID()}.part`);
+      let downloadedBytes = 0;
+      const byteCounter = new (class extends Transform {
+        override _transform(chunk: Buffer, _encoding: BufferEncoding, callback: (error?: Error | null, data?: Buffer) => void): void {
+          downloadedBytes += chunk.byteLength;
+          if (downloadedBytes > maxBytes) {
+            callback(new Error(`Download exceeds the configured limit of ${maxBytes} bytes.`));
+            return;
+          }
+          callback(null, chunk);
+        }
+      })();
+      await pipeline(
+        Readable.fromWeb(response.body as import('stream/web').ReadableStream),
+        byteCounter,
+        fs.createWriteStream(temporaryPath, { flags: 'wx' }),
+        { signal: controller.signal }
+      );
+      fs.renameSync(temporaryPath, fullPath);
+      temporaryPath = undefined;
 
-      const sizeKb = (buffer.byteLength / 1024).toFixed(1);
-      const sizeFormatted = buffer.byteLength > 1024 * 1024
-        ? `${(buffer.byteLength / (1024 * 1024)).toFixed(2)} MB`
+      const sizeKb = (downloadedBytes / 1024).toFixed(1);
+      const sizeFormatted = downloadedBytes > 1024 * 1024
+        ? `${(downloadedBytes / (1024 * 1024)).toFixed(2)} MB`
         : `${sizeKb} KB`;
 
       return `✔ File downloaded successfully from '${targetUrl}' to '${destPath}' (${sizeFormatted}, type: ${contentType || 'binary'}).`;
     } catch (error: any) {
-      if (error?.name === 'AbortError') {
+      if (controller.signal.aborted && timedOut) {
         throw new Error(`Timeout: download from '${targetUrl}' exceeded limit of ${fetchTimeoutMs / 1000}s.`);
+      }
+      if (controller.signal.aborted) {
+        throw new Error(`Download from '${targetUrl}' was cancelled.`);
       }
       throw new Error(`Failed to download file from '${targetUrl}': ${error.message}`);
     } finally {
       clearTimeout(timeout);
+      context?.signal?.removeEventListener('abort', abortFromCaller);
+      if (temporaryPath) {
+        try { fs.unlinkSync(temporaryPath); } catch {}
+      }
     }
   }
 };

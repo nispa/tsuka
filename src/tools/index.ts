@@ -45,7 +45,13 @@ async function loadToolsFromDir(
             typeof exportItem.execute === 'function'
           ) {
             const tool = exportItem as Tool;
-            if (options.forceDangerous) tool.riskLevel = 'DANGEROUS';
+            if (options.forceDangerous) {
+              // Custom module source is not trusted to lower its own permission boundary.
+              // In particular, classifyRisk would otherwise turn a DANGEROUS custom tool
+              // into SAFE for a selected call after the user enabled self-authoring.
+              tool.riskLevel = 'DANGEROUS';
+              tool.classifyRisk = undefined;
+            }
             registry.register(tool);
           }
         }

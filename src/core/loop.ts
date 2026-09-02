@@ -7,15 +7,9 @@ import { PermissionManager } from '../safety/permissions';
 import { ILLMProvider } from './provider';
 import { Blackboard } from './blackboard';
 import { logSink } from './logSink';
+import { AcceptanceCriteria } from './types';
 
-export interface AcceptanceCriteria {
-  /** Shell command to execute (must return exit code 0 to pass acceptance). */
-  command?: string;
-  /** Relative or absolute path to a file that must exist on disk. */
-  fileExists?: string;
-  /** Relative or absolute path to a JSON file that must exist and parse cleanly. */
-  jsonValid?: string;
-}
+export { AcceptanceCriteria };
 
 export interface RunLoopOptions {
   /** Initial task or goal. */

@@ -34,7 +34,15 @@ export type ProtocolSource = 'tool_call' | 'regex' | 'fallback';
 /** Cast vote in a discussion round with voting enabled. */
 export type Vote = 'APPROVO' | 'MODIFICARE' | 'RIFIUTO';
 
-import type { AcceptanceCriteria } from './loop';
+/** Objective acceptance criteria for iterative execution loops (T6.3). */
+export interface AcceptanceCriteria {
+  /** Shell command to execute (must return exit code 0 to pass acceptance). */
+  command?: string;
+  /** Relative or absolute path to a file that must exist on disk. */
+  fileExists?: string;
+  /** Relative or absolute path to a JSON file that must exist and parse cleanly. */
+  jsonValid?: string;
+}
 
 /** Team configuration loaded from teams/*.json. */
 export interface TeamConfig {

@@ -73,6 +73,8 @@ export interface AppConfig {
   maxHistoryMessages?: number;
   maxHistoryTokens?: number;
   maxToolResultTokens?: number;
+  /** Bounded lifetime of hot-path config snapshots. */
+  hotPathConfigCacheTtlMs?: number;
   /** Whether roles with `coreTools` defer the rest behind `load_tools` (T14.14). Default: true. */
   deferredToolsEnabled?: boolean;
   /** Maximum consecutive tool execution rounds per user turn. Default: 15. */
@@ -114,6 +116,8 @@ export interface AppConfig {
   browseFetchTimeoutMs?: number;
   /** HTTP request timeout in ms for download_file tool. Default: 60000. */
   downloadFetchTimeoutMs?: number;
+  /** Maximum bytes persisted by one download_file call. Default: 52428800. */
+  downloadMaxBytes?: number;
   /** Default UI mode when launching tsuka without flags ('tui' or 'cli'). Default: 'tui'. */
   defaultUi?: 'tui' | 'cli';
   /**

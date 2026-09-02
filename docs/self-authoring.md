@@ -33,6 +33,8 @@ Restart TSUKA after changing the configuration. An absent or `false` value disab
 
 The built-in roles that currently include `create_tool` in `allowedTools` are `developer`, `sysadmin`, and `game_designer`. Add it explicitly to the relevant file under `roles/` for another role.
 
+This is an explicit project-level trust decision. A developer role, a request to improve TSUKA, or an agent detecting that it is working on the harness must never enable the capability automatically.
+
 ## 2. Ask the agent
 
 You can describe the requirement without writing the payload yourself:
@@ -40,6 +42,15 @@ You can describe the requirement without writing the payload yourself:
 > Create a `count_lines` tool that accepts a workspace-relative file path and returns its line count.
 
 If the model calls `create_tool`, TSUKA displays a `DANGEROUS` confirmation. Configuration makes the capability available; it does not replace security approval.
+
+Treat creation as a review workflow, not as delegation of trust:
+
+1. inspect the proposed body in the `DANGEROUS` prompt before allowing creation;
+2. review the generated module and JSON Schema on disk;
+3. test it in a controlled workspace;
+4. only then add its name to a role's persistent `allowedTools` list.
+
+Every later execution remains `DANGEROUS` and requires its own confirmation. Neither the configuration flag nor source review proves that the code is safe; they record the user's deliberate decision to expose and run a non-isolated extension. Enabling self-authoring also loads existing custom modules during startup, so review files already on disk before enabling it; loading is not a sandboxed execution step and has no per-module prompt.
 
 An equivalent call is:
 
@@ -71,7 +82,7 @@ With `global: false` or omitted, TSUKA writes:
 - `.tsuka/custom_tools/<name>.js`;
 - `.tsuka/custom_tools_schemas/<name>.json`.
 
-With `global: true`, it uses `TSUKA_HOME/custom_tools/` and `TSUKA_HOME/custom_tools_schemas/`. The tool is hot-registered and can be used immediately in the current session.
+With `global: true`, it uses `TSUKA_HOME/custom_tools/` and `TSUKA_HOME/custom_tools_schemas/`. The tool is hot-registered, but the active role must still name it in `allowedTools` before an agent can call it.
 
 To make it permanently available to a role, add its name to `allowedTools` in `roles/<role>.json`:
 
@@ -83,7 +94,7 @@ To make it permanently available to a role, add its name to `allowedTools` in `r
 }
 ```
 
-Every loaded custom tool remains classified as `DANGEROUS`, regardless of what its module declares.
+Every loaded custom tool remains classified as `DANGEROUS`, regardless of what its module declares. Custom risk classifiers are ignored, so no custom module can downgrade an individual invocation to `SAFE` or `RESTRICTED`.
 
 ## 4. Disable and remove
 

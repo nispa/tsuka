@@ -31,6 +31,16 @@ export const DISCOVERY_DEFAULTS = {
   warmUpTimeoutMs: 300_000,
 };
 
+/** Configuration cache defaults for hot paths that only need a stable snapshot. */
+export const CONFIG_DEFAULTS = {
+  /** Maximum age of a hot-path configuration snapshot before it is reloaded. */
+  hotPathCacheTtlMs: 5_000,
+  /** Lowest accepted user override, preventing a cache from degenerating into polling. */
+  hotPathCacheMinTtlMs: 100,
+  /** Highest accepted user override, keeping external edits visible in bounded time. */
+  hotPathCacheMaxTtlMs: 60_000,
+};
+
 /** Persistent-memory defaults (memory package + ConfigManager fallbacks). */
 export const MEMORY_DEFAULTS = {
   /** Facts retained before score-based eviction (memoryMaxFacts). */
@@ -124,8 +134,18 @@ export const TOOLS_DEFAULTS = {
   browseFetchTimeoutMs: 30_000,
   /** HTTP request timeout for download_file (downloadFetchTimeoutMs). */
   downloadFetchTimeoutMs: 60_000,
+  /** Maximum bytes persisted by one download_file call (downloadMaxBytes). */
+  downloadMaxBytes: 50 * 1024 * 1024,
   /** Maximum redirects followed by the shared HTTP safety boundary. */
   httpMaxRedirects: 5,
+  /** Maximum results returned by the built-in web search providers. */
+  webSearchMaxResults: 5,
+  /** Character ceiling for each untrusted result title after normalization. */
+  webSearchTitleMaxChars: 300,
+  /** Character ceiling for each untrusted result snippet after normalization. */
+  webSearchSnippetMaxChars: 1_200,
+  /** Character ceiling for each untrusted result URL after normalization. */
+  webSearchUrlMaxChars: 2_048,
   /** Maximum activity records in the ContextTracker ring buffer (contextTrackerMaxEntries). */
   contextTrackerMaxEntries: 100,
 };
