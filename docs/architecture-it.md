@@ -4,7 +4,7 @@
   <p>Read in <a href="architecture.md">🇬🇧 English</a></p>
 </div>
 
-> Questo documento descrive l'architettura tecnica, i principi di progettazione e l'organizzazione modulare del framework **TSUKA** (v0.7.0). Per le linee guida operative di contribuzione al codice si rimanda ad [`AGENTS.md`](../AGENTS.md); per l'elenco dei task completati e pianificati, consultare [`TASKS.md`](../TASKS.md).
+> Questo documento descrive l'architettura tecnica, i principi di progettazione e l'organizzazione modulare del framework **TSUKA** (v0.8.0). Per le linee guida operative di contribuzione al codice si rimanda ad [`AGENTS.md`](../AGENTS.md); per l'elenco dei task completati e pianificati, consultare [`TASKS.md`](../TASKS.md).
 >
 > 📊 **Metriche di sistema**: 30 tool · 20 comandi REPL · 21 ruoli · 9 tratti · 24 personaggi (agenti) · 10 team configurati · 89 suite di test automatici · Doppia interfaccia CLI & TUI.
 
@@ -168,7 +168,7 @@ Il catalogo comprende **30 tool integrati**, sviluppati secondo il principio del
 ```
 
 ### Classificazione dei Tool per Categoria
-1. **Manipolazione Filesystem**: `read_file`, `write_file` (con supporto append e limite di 16.000 caratteri per chiamata per prevenire troncamenti JSON), `edit_file`, `delete_file`, `list_dir`, `grep_search`.
+1. **Manipolazione Filesystem**: `read_file`, `write_file` (scritture complete senza limite artificiale e chunk transazionali riprendibili con offset UTF-8 e commit atomico), `edit_file`, `delete_file`, `list_dir`, `grep_search`.
 2. **Controllo di Sistema**: `execute_command` (esecuzione shell con rischio graduato, timeout configurabile e lifecycle abortibile dell'intero albero processi), `get_ps_info` (diagnostica processi e risorse).
 3. **Ricerca Web e Rete**: `web_search`, `browse_url` (con modalità Reader View e rimozione di elementi superflui), `download_file`.
 4. **Persistenza e Memoria**: `save_memory`, `recall_memory`, `update_memory`, `forget_memory`.

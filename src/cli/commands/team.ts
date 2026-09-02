@@ -25,6 +25,15 @@ export {
 };
 export type { TurnStats, ProtocolLogEntry };
 
+/** Splits a team invocation into its identifier and optional quoted task. */
+export function parseTeamInvocation(arg: string): { teamName: string; task: string } {
+  const trimmed = arg.trim();
+  const teamName = trimmed.split(/\s+/, 1)[0] || '';
+  const rest = trimmed.slice(teamName.length).trim();
+  const quoted = rest.match(/^["']([\s\S]*)["']$/);
+  return { teamName, task: quoted ? quoted[1] : rest };
+}
+
 export async function handleTeam(ctx: CommandCtx, arg: string, directTask?: string): Promise<void> {
   const availableTeams = ctx.listAvailableItems('teams', ctx.loadTeam);
   if (availableTeams.length === 0) {
@@ -32,7 +41,8 @@ export async function handleTeam(ctx: CommandCtx, arg: string, directTask?: stri
     return;
   }
 
-  let selectedTeamName = arg.toLowerCase().trim();
+  const parsed = directTask === undefined ? parseTeamInvocation(arg) : { teamName: arg.trim(), task: directTask };
+  let selectedTeamName = parsed.teamName.toLowerCase();
   if (!selectedTeamName) {
     logSink.log('');
     const selected = await InteractiveMenu.select<string>(
@@ -50,7 +60,7 @@ export async function handleTeam(ctx: CommandCtx, arg: string, directTask?: stri
     return;
   }
 
-  let task = (directTask || '').trim();
+  let task = parsed.task.trim();
   if (!task) {
     if (process.env.TSUKA_TUI || (ctx as any).isTui) {
       CLITheme.warning('Usage: /team <team_name> "<task description>"');

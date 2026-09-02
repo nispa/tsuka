@@ -1,6 +1,6 @@
 {
   "name": "write_file",
-  "description": "Creates a new file or fully overwrites an existing one with the given content. HARD LIMIT: 'content' cannot exceed 16000 characters per call — beyond that the call is rejected with an error. For longer files, split across multiple calls: the first without 'append' (or with append:false), the following ones with 'append': true, until the file is complete.",
+  "description": "Creates a new file or fully overwrites an existing one with the given content. For a large file, use resumable mode: first send a small chunk with offset:0, then send each next chunk using the exact byte offset returned by this tool, and set complete:true only on the final chunk. Resumable mode stages data safely, so the destination remains unchanged until the final commit.",
   "requiredTier": "small",
   "parameters": {
     "type": "object",
@@ -11,11 +11,20 @@
       },
       "content": {
         "type": "string",
-        "description": "The content to write. Without 'append' (or with append:false) it replaces the entire file. MAXIMUM 16000 characters per call: if the total content is longer, split it across multiple calls with 'append'."
+        "description": "The content to write. Without resumable fields it replaces the entire file unless append:true. In resumable mode it is one UTF-8 chunk."
       },
       "append": {
         "type": "boolean",
         "description": "If true, appends 'content' to the end of the file instead of overwriting it (creates the file if it doesn't exist yet, same as the first call). Use it for chunks AFTER the first one when building a long file piece by piece."
+      },
+      "offset": {
+        "type": "integer",
+        "minimum": 0,
+        "description": "Optional resumable-write offset in UTF-8 bytes. Start at 0. Every later call must use exactly the next offset returned by this tool. Do not combine with append."
+      },
+      "complete": {
+        "type": "boolean",
+        "description": "Only for resumable mode. Set true on the final chunk to atomically replace the destination. Until then the destination is unchanged."
       }
     },
     "required": ["path", "content"]

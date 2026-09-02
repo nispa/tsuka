@@ -7,6 +7,7 @@ import chalk from 'chalk';
 import { TuiState } from '../types';
 import { TuiScreen } from '../screen';
 import { layoutTabs } from '../navigation';
+import { TSUKA_PACKAGE } from '../../core/packageInfo';
 
 export class HeaderView {
   static render(state: TuiState, width: number, activeTab: string = 'chat'): string[] {
@@ -20,7 +21,7 @@ export class HeaderView {
         : chalk.hex('#818cf8')(`[${zone.label}]`) + ' ';
     }
 
-    const brand = chalk.bold.hex('#e879f9')('TSUKA') + (width > 95 ? chalk.gray(' v0.5.5') : '');
+    const brand = chalk.bold.hex('#e879f9')('TSUKA') + (width > 95 ? chalk.gray(` v${TSUKA_PACKAGE.version}`) : '');
     const tabsRowWidth = TuiScreen.stringWidth(tabsRow);
     const brandWidth = TuiScreen.stringWidth(brand);
     const spacing0 = Math.max(1, width - tabsRowWidth - brandWidth - 2);

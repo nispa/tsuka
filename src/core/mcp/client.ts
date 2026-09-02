@@ -11,6 +11,7 @@ import type {
   McpToolDescriptor,
 } from './types';
 import { MCP_DEFAULTS } from '../constants';
+import { TSUKA_PACKAGE } from '../packageInfo';
 
 /** Latest protocol version this client speaks; servers may negotiate older ones. */
 const PROTOCOL_VERSION = '2024-11-05';
@@ -59,7 +60,7 @@ export class McpClient implements IMcpClient {
       {
         protocolVersion: PROTOCOL_VERSION,
         capabilities: {},
-        clientInfo: { name: 'tsuka', version: '0.6.0' },
+        clientInfo: { name: TSUKA_PACKAGE.name, version: TSUKA_PACKAGE.version },
       },
       MCP_DEFAULTS.initializeTimeoutMs
     ) as InitializeResult;

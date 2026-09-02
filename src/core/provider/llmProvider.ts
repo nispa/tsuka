@@ -37,6 +37,7 @@ import {
 import { logProviderFailure } from './providerLogger';
 import type { ProviderClass } from '../cloudProvider';
 import { ProviderAttemptLifecycle } from './lifecycle';
+import { TSUKA_PACKAGE } from '../packageInfo';
 
 function isAsyncIterable<T>(value: unknown): value is AsyncIterable<T> {
   return typeof value === 'object' && value !== null && Symbol.asyncIterator in value;
@@ -58,7 +59,7 @@ export class LLMProvider implements ILLMProvider {
       baseURL: this.baseUrl,
       apiKey: this.apiKey,
       defaultHeaders: {
-        'User-Agent': 'TSUKA/0.7.0',
+        'User-Agent': TSUKA_PACKAGE.userAgent,
       },
       dangerouslyAllowBrowser: true
     });
@@ -78,7 +79,7 @@ export class LLMProvider implements ILLMProvider {
       baseURL: this.baseUrl,
       apiKey: this.apiKey,
       defaultHeaders: {
-        'User-Agent': 'TSUKA/0.7.0',
+        'User-Agent': TSUKA_PACKAGE.userAgent,
       },
       dangerouslyAllowBrowser: true
     });

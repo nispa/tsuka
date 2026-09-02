@@ -110,7 +110,7 @@ Il coordinamento si basa su tool di protocollo deterministici (`report_status`, 
 ## 🧰 Tool Nativi & Sicurezza
 
 TSUKA include **30 tool nativi** (`src/tools/impl/*.ts`) suddivisi per area:
-* **Filesystem**: `read_file`, `write_file`, `edit_file`, `delete_file`, `list_dir`, `grep_search` (strettamente confinati nel workspace jail).
+* **Filesystem**: `read_file`, `write_file` (incluse scritture atomiche riprendibili), `edit_file`, `delete_file`, `list_dir`, `grep_search` (strettamente confinati nel workspace jail).
 * **Sistema**: `execute_command` (esecuzione shell cross-platform con conferma interattiva).
 * **Memoria**: `save_memory`, `recall_memory`, `update_memory`, `forget_memory` (algoritmo BM25 + decadimento ad emivita).
 * **Coordinamento**: `post_note`, `read_notes`, `report_status`, `route_next`, `cast_vote`.

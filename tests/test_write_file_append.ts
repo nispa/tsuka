@@ -74,6 +74,11 @@ async function main() {
       nullRejected = true;
     }
     check('WA.5', nullRejected && fs.readFileSync(tmpFile, 'utf-8') === 'partenza', 'append:null is rejected without modifying the file');
+
+    // WA.6: complete large tool-call payloads are written without an artificial character ceiling.
+    const largeContent = '0123456789abcdef'.repeat(6_250);
+    await writeFileTool.execute({ path: tmpFile, content: largeContent });
+    check('WA.6', fs.readFileSync(tmpFile, 'utf-8') === largeContent, 'a 100,000-character payload is written in one call');
   } finally {
     fs.rmSync(tmpFile, { force: true });
   }

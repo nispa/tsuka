@@ -9,6 +9,34 @@ import { resolveReasoningEffort } from '../../core/agent';
 import { withEffortPin } from '../../core/effortControl';
 import { WorkflowScope } from '../../core/workflowScope';
 import { logSink } from '../../core/logSink';
+import { resolveCharacter } from '../shared';
+
+export function parseCallInvocation(arg: string, directTopic = ''): { selectedNames: string[]; topic: string } {
+  let topic = directTopic.trim();
+  let selectedNames: string[] = [];
+  const quotedMatch = arg.match(/["'](.*?)["']/);
+  if (quotedMatch) {
+    topic = quotedMatch[1].trim();
+    selectedNames = arg.replace(quotedMatch[0], '').trim()
+      .split(/[\s,+]+/)
+      .map((name) => name.trim().replace(/^@/, '').toLowerCase())
+      .filter(Boolean);
+    return { selectedNames, topic };
+  }
+
+  const parts = arg.split(/\s+/).filter(Boolean);
+  const agentParts = parts.filter((part) => part.startsWith('@'));
+  const textParts = parts.filter((part) => !part.startsWith('@'));
+  if (agentParts.length >= 2) {
+    selectedNames = agentParts.map((agent) => agent.replace(/^@/, '').toLowerCase());
+    if (textParts.length > 0) topic = textParts.join(' ');
+  } else {
+    selectedNames = arg.split(/[\s,+]+/)
+      .map((name) => name.trim().replace(/^@/, '').toLowerCase())
+      .filter(Boolean);
+  }
+  return { selectedNames, topic };
+}
 
 export async function handleCall(ctx: CommandCtx, arg: string, directTopic?: string): Promise<void> {
   const availableChars = ctx.listAvailableCharacters();
@@ -18,35 +46,7 @@ export async function handleCall(ctx: CommandCtx, arg: string, directTopic?: str
     return;
   }
 
-  let selectedNames: string[] = [];
-  let topic = (directTopic || '').trim();
-
-  if (arg) {
-    const quotedMatch = arg.match(/["'](.*?)["']/);
-    if (quotedMatch) {
-      topic = quotedMatch[1].trim();
-      const agentsPart = arg.replace(quotedMatch[0], '').trim();
-      selectedNames = agentsPart
-        .split(/[\s,e\+]+/i)
-        .map((n: string) => n.trim().replace(/^@/, '').toLowerCase())
-        .filter((n: string) => n.length > 0);
-    } else {
-      const parts = arg.split(/\s+/);
-      const agentParts = parts.filter(p => p.startsWith('@'));
-      const textParts = parts.filter(p => !p.startsWith('@'));
-      if (agentParts.length >= 2) {
-        selectedNames = agentParts.map(a => a.replace(/^@/, '').toLowerCase());
-        if (textParts.length > 0) {
-          topic = textParts.join(' ');
-        }
-      } else {
-        selectedNames = arg
-          .split(/[\s,e\+]+/i)
-          .map((n: string) => n.trim().replace(/^@/, '').toLowerCase())
-          .filter((n: string) => n.length > 0);
-      }
-    }
-  }
+  let { selectedNames, topic } = parseCallInvocation(arg, directTopic);
 
   if (!arg) {
     if (process.env.TSUKA_TUI || (ctx as any).isTui) {
@@ -75,12 +75,11 @@ export async function handleCall(ctx: CommandCtx, arg: string, directTopic?: str
 
   const participants: any[] = [];
   for (const name of selectedNames) {
-    const found = availableChars.find(c =>
-      c.name.toLowerCase() === name ||
-      c.aiName.toLowerCase() === name
-    );
-    if (found) {
+    const found = resolveCharacter(name);
+    if (found && !participants.some((participant) => participant.name === found.name)) {
       participants.push(found);
+    } else if (found) {
+      CLITheme.warning(`Character '@${name}' was already invited. Skipped duplicate.`);
     } else {
       CLITheme.warning(`Character '@${name}' not found. Skipped.`);
     }

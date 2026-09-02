@@ -110,7 +110,7 @@ Coordination relies on deterministic protocol tools (`report_status`, `route_nex
 ## 🧰 Native Tools & Security
 
 TSUKA ships with **30 native tools** (`src/tools/impl/*.ts`) categorized into:
-* **Filesystem**: `read_file`, `write_file`, `edit_file`, `delete_file`, `list_dir`, `grep_search` (strictly confined to workspace jail).
+* **Filesystem**: `read_file`, `write_file` (including resumable atomic writes), `edit_file`, `delete_file`, `list_dir`, `grep_search` (strictly confined to workspace jail).
 * **System**: `execute_command` (cross-platform shell execution with interactive approval).
 * **Memory**: `save_memory`, `recall_memory`, `update_memory`, `forget_memory` (BM25 + half-life retention).
 * **Coordination**: `post_note`, `read_notes`, `report_status`, `route_next`, `cast_vote`.

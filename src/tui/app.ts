@@ -7,6 +7,7 @@
 
 import { TuiScreen, KeyPressEvent, TuiMouseEvent } from './screen';
 import { TuiTabSpec, resolveTabShortcut } from './navigation';
+import { completeTuiInput } from './inputCompletion';
 import { TuiStore } from './store';
 import { TuiBridge } from './bridge';
 import { Agent, ToolRoundsAction, resolveReasoningEffort } from '../core/agent';
@@ -464,6 +465,17 @@ export class TuiApp {
     }
 
     if (key.name === 'tab') {
+      if (state.focus === 'input' && state.inputText) {
+        const completion = completeTuiInput(state.inputText, state.inputCursor);
+        if (completion.changed) {
+          this.store.setInputText(completion.text, completion.cursor);
+          return;
+        }
+        if (completion.candidates.length > 1) {
+          this.store.notify(`Matches: ${completion.candidates.join(', ')}`, 'info');
+          return;
+        }
+      }
       this.store.cycleFocus();
       return;
     }

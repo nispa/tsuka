@@ -3,6 +3,7 @@
  * Run: npx tsx tests/test_call.ts
  */
 import { resolveCharacter, loadRole, loadTrait, loadSystemPrompt } from '../src/cli/shared';
+import { parseCallInvocation } from '../src/cli/commands/call';
 
 let passed = 0;
 let failed = 0;
@@ -26,6 +27,12 @@ async function run() {
   const auditor = resolveCharacter('security_auditor');
 
   check('CALL.1', !!researcher && !!dev && !!auditor, 'base roles resolved correctly from the catalog');
+
+  const byAiName = dev ? resolveCharacter(dev.aiName.toUpperCase()) : null;
+  check('CALL.1b', !!dev && byAiName?.name === dev.name, 'an aiName resolves case-insensitively to the same call participant');
+
+  const parsed = parseCallInvocation('@geordi @doctor "Find a robust solution"');
+  check('CALL.1c', parsed.selectedNames.join(',') === 'geordi,doctor' && parsed.topic === 'Find a robust solution', 'quoted call syntax preserves complete character identifiers');
 
   if (researcher && dev && auditor) {
     const topic = 'System architecture analysis';

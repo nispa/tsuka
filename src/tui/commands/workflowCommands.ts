@@ -39,15 +39,6 @@ async function runCliWorkflow(c: TuiCommandContext, wf: CliWorkflow): Promise<vo
   }
 }
 
-/** Splits `<team> "<task>"` into its two parts, quotes optional. */
-function parseTeamArg(arg: string): { teamName: string; task: string } {
-  const trimmed = arg.trim();
-  const teamName = trimmed.split(/\s+/)[0];
-  const rest = trimmed.slice(teamName.length).trim();
-  const quoted = rest.match(/^["'](.*)["']$/);
-  return { teamName, task: quoted ? quoted[1] : rest };
-}
-
 export const WORKFLOW_COMMANDS: TuiCommandSpec[] = [
   {
     name: '/goal',
@@ -80,7 +71,8 @@ export const WORKFLOW_COMMANDS: TuiCommandSpec[] = [
         return;
       }
 
-      const { teamName, task } = parseTeamArg(c.arg);
+      const { parseTeamInvocation } = require('../../cli/commands/team');
+      const { teamName, task } = parseTeamInvocation(c.arg);
       if (!task) {
         c.store.setState({ activeTeam: teamName });
         c.store.notify(`Active team set to: ${teamName}`, 'success');

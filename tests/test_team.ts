@@ -5,6 +5,7 @@
 import { loadTeam, loadCharacter, loadRole, loadTrait } from '../src/cli/shared';
 import * as fs from 'fs';
 import * as path from 'path';
+import { parseTeamInvocation } from '../src/cli/commands/team';
 
 let passed = 0;
 let failed = 0;
@@ -26,6 +27,11 @@ async function run() {
   const teamFiles = fs.readdirSync(teamsDir).filter((f) => f.endsWith('.json'));
 
   check('TEAM.1', teamFiles.length > 0, 'Almeno un team configurato presente nella cartella teams/');
+
+  const parsedQuoted = parseTeamInvocation('dev_ops "Review and fix the build"');
+  const parsedPlain = parseTeamInvocation('cyber_audit inspect the workspace');
+  check('TEAM.1a', parsedQuoted.teamName === 'dev_ops' && parsedQuoted.task === 'Review and fix the build', 'CLI invocation separates a quoted task from the team identifier');
+  check('TEAM.1b', parsedPlain.teamName === 'cyber_audit' && parsedPlain.task === 'inspect the workspace', 'CLI invocation accepts an unquoted task');
 
   for (const f of teamFiles) {
     const teamName = path.basename(f, '.json');

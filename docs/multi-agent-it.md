@@ -27,8 +27,8 @@ Un **Personaggio (`characters/*.json`)** collega un nome identificativo (`aiName
 Il comando `/call` avvia una discussione collegiale a più voci su qualsiasi argomento, senza accesso ai tool:
 
 1. **Invocazione**:
-   * **Multiselect interattivo**: digitando `/call` senza argomenti compare un menu a selezione multipla con caselle di controllo.
-   * **Menzioni dirette**: indicando i nomi con `@` (es. `/call @spock, @kirk, @doctor`).
+   * **Multiselect interattivo (CLI)**: digitando `/call` senza argomenti compare un menu a selezione multipla con caselle di controllo.
+   * **Menzioni dirette (CLI/TUI)**: indicando ID personaggio, AI name o ruoli con `@` e includendo il tema (es. `/call @spock @doctor "Revisionate la proposta"`). Nella TUI, Tab completa i partecipanti in modo contestuale.
 2. **Esecuzione del dibattito**:
    * L'utente inserisce il tema di discussione.
    * Il sistema esegue $N$ round: ad ogni turno monta il system prompt del personaggio di turno e include la trascrizione degli interventi precedenti preceduti da `[Nome]: "..."`.
@@ -42,9 +42,10 @@ Il comando `/call` avvia una discussione collegiale a più voci su qualsiasi arg
 Il comando `/team` avvia una sessione operativa in cui gli agenti collaborano su un compito comune eseguendo tool di lettura, scrittura ed esecuzione comandi sul filesystem:
 
 ```powershell
-/team dev_security
-> "Implementa un modulo di logging sicuro e verifica l'assenza di segreti hardcoded"
+/team dev_security "Implementa un modulo di logging sicuro e verifica l'assenza di segreti hardcoded"
 ```
+
+Nella TUI, Tab completa l'identificativo del team dopo `/team`.
 
 ### Le 4 strategie di coordinamento (`mode`):
 1. **`orchestrated` (consigliata)**: un agente supervisore dedicato (`orchestrator`, es. `pike`) riceve un digest dei progressi ad ogni turno e decide chi far intervenire tramite il tool `route_next(agent, reason)` (o dichiara `FINE`).

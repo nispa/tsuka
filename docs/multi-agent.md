@@ -27,8 +27,8 @@ A **Character (`characters/*.json`)** binds an identifier (`aiName`) with a role
 The `/call` command launches a turn-based group discussion on any topic without tool execution:
 
 1. **Invocation**:
-   * **Interactive Multiselect**: run `/call` without arguments to open an interactive checkbox picker.
-   * **Direct Mentions**: specify names with `@` (e.g. `/call @spock, @kirk, @doctor`).
+   * **Interactive Multiselect (CLI)**: run `/call` without arguments to open an interactive checkbox picker.
+   * **Direct Mentions (CLI/TUI)**: specify character IDs, AI names, or roles with `@` and include the topic (e.g. `/call @spock @doctor "Review the proposal"`). In the TUI, Tab completes participants contextually.
 2. **Execution**:
    * The user inputs a discussion topic.
    * The CLI runs $N$ rounds: in each round it mounts the current speaker's system prompt and provides the formatted conversation history prefixed with `[SpeakerName]: "..."`.
@@ -42,9 +42,10 @@ The `/call` command launches a turn-based group discussion on any topic without 
 The `/team` command starts a multi-agent workflow where characters cooperate on tasks using tools on the physical filesystem:
 
 ```powershell
-/team dev_security
-> "Implement a secure logging module and verify that no hardcoded credentials exist."
+/team dev_security "Implement a secure logging module and verify that no hardcoded credentials exist."
 ```
+
+In the TUI, Tab completes the team identifier after `/team`.
 
 ### The 4 Collaboration Strategies (`mode`):
 1. **`orchestrated` (recommended)**: a dedicated supervisor (`orchestrator`, e.g. `pike`) receives a progress digest after each turn and dynamically routes the next step via `route_next(agent, reason)` (or calls `FINE`).

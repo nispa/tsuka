@@ -100,8 +100,6 @@ export const AGENT_DEFAULTS = {
 
 /** Tool-side defaults (execute_command, browse_url, download_file, ContextTracker). */
 export const TOOLS_DEFAULTS = {
-  /** Maximum characters accepted by one write_file call. */
-  writeFileMaxContentChars: 16_000,
   /** Maximum recursion depth for workspace scans. */
   workspaceScanMaxDepth: 32,
   /** Maximum files visited by one workspace scan. */
@@ -148,6 +146,16 @@ export const TOOLS_DEFAULTS = {
   webSearchUrlMaxChars: 2_048,
   /** Maximum activity records in the ContextTracker ring buffer (contextTrackerMaxEntries). */
   contextTrackerMaxEntries: 100,
+  /** Age after which an uncommitted resumable write staging file is discarded. */
+  resumableWriteStaleMs: 60 * 60 * 1000,
+  /** Maximum staging entries inspected during one resumable-write cleanup pass. */
+  resumableWriteCleanupMaxEntries: 100,
+  /** Upper bound on live in-process resumable write sessions. */
+  resumableWriteMaxActiveSessions: 100,
+  /** Random-name collision attempts when a resumable write starts a staging file. */
+  resumableWriteStageNameAttempts: 3,
+  /** Random bytes used in an individual resumable-write staging filename. */
+  resumableWriteStageNameRandomBytes: 12,
 };
 
 /** MCP client defaults (src/core/mcp/, ConfigManager-independent). */

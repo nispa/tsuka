@@ -8,6 +8,7 @@ import { HeaderView } from '../src/tui/views/Header';
 import { TUI_TABS, layoutTabs, tabAtColumn, tabByKey, labelForWidth } from '../src/tui/navigation';
 import { TUI_COMMANDS, findCommand, parseCommandLine, assertMenuCoverage } from '../src/tui/commands';
 import { buildSessionMarkdown, defaultExportPath } from '../src/tui/commands/sessionMarkdown';
+import { TSUKA_PACKAGE } from '../src/core/packageInfo';
 
 describe('TUI command registry (data-driven dispatch)', () => {
 
@@ -75,6 +76,13 @@ describe('TUI command registry (data-driven dispatch)', () => {
 });
 
 describe('TUI navigation table (header labels and click zones)', () => {
+
+  it('renders the release version from package.json', () => {
+    const store = new TuiStore();
+    const header = TuiScreen.stripAnsi(HeaderView.render(store.getState(), 200)[0]);
+    assert.ok(header.includes(`v${TSUKA_PACKAGE.version}`));
+    assert.strictEqual(TSUKA_PACKAGE.version, require('../package.json').version);
+  });
 
   it('gives every tab a function key and per-width labels', () => {
     const keys = TUI_TABS.map((t) => t.key);

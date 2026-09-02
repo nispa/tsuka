@@ -4,7 +4,7 @@
   <p>Leggi in <a href="architecture-it.md">🇮🇹 Italiano</a></p>
 </div>
 
-> This document describes the technical architecture, design principles, and modular structure of the **TSUKA** framework (v0.7.0). For codebase contribution guidelines, see [`AGENTS.md`](../AGENTS.md); for completed and upcoming task backlogs, see [`TASKS.md`](../TASKS.md).
+> This document describes the technical architecture, design principles, and modular structure of the **TSUKA** framework (v0.8.0). For codebase contribution guidelines, see [`AGENTS.md`](../AGENTS.md); for completed and upcoming task backlogs, see [`TASKS.md`](../TASKS.md).
 >
 > 📊 **System Metrics**: 30 native tools · 20 REPL commands · 21 roles · 9 traits · 24 characters (agents) · 10 preconfigured teams · 89 automated test suites · Dual CLI & TUI interfaces.
 
@@ -168,7 +168,7 @@ The harness includes **30 native tools** built on schema-execution separation:
 ```
  
 ### Tool Catalog Breakdown
-1. **Filesystem**: `read_file`, `write_file` (with append support and 16k char ceiling per call to prevent JSON truncation), `edit_file`, `delete_file`, `list_dir`, `grep_search`.
+1. **Filesystem**: `read_file`, `write_file` (unbounded complete writes plus resumable transactional chunks with UTF-8 byte offsets and atomic commit), `edit_file`, `delete_file`, `list_dir`, `grep_search`.
 2. **System**: `execute_command` (shell runner with graduated risk classification, dynamic timeout, and abortable process-tree ownership), `get_ps_info` (process & system metrics).
 3. **Web & Network**: `web_search`, `browse_url` (with Reader View extraction), `download_file`.
 4. **Memory**: `save_memory`, `recall_memory`, `update_memory`, `forget_memory`.

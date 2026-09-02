@@ -1,6 +1,7 @@
 import { ProviderConfig } from './config';
 import { DISCOVERY_DEFAULTS } from './constants';
 import { hasZeroTokenPricing } from './modelCatalog';
+import { TSUKA_PACKAGE } from './packageInfo';
 
 /**
  * Startup scan for LLM servers: probes configured providers to determine
@@ -141,7 +142,7 @@ export async function probeProvider(
     // Standard OpenAI-compatible endpoint (Ollama, llama.cpp/Unsloth, OpenRouter, Bailu)
     const auth = {
       Authorization: `Bearer ${apiKey || 'local'}`,
-      'User-Agent': 'TSUKA/0.7.0',
+      'User-Agent': TSUKA_PACKAGE.userAgent,
     };
     const data = await fetchJson(`${base}/models`, timeoutMs, auth);
     const entries = Array.isArray(data?.data) ? data.data : [];
@@ -157,7 +158,7 @@ export async function probeProvider(
     // Native Ollama fallback for local servers
     if (!isLocalUrl(base)) return null;
     try {
-      const data = await fetchJson(base.replace(/\/v1$/, '') + '/api/tags', timeoutMs, { 'User-Agent': 'TSUKA/0.7.0' });
+      const data = await fetchJson(base.replace(/\/v1$/, '') + '/api/tags', timeoutMs, { 'User-Agent': TSUKA_PACKAGE.userAgent });
       if (!Array.isArray(data?.models)) return null;
       models = data.models.map((m: any) => m.name).sort();
     } catch {
@@ -168,7 +169,7 @@ export async function probeProvider(
   // Ollama exposes loaded RAM models on /api/ps
   if (loadedModel === null && isLocalUrl(base)) {
     try {
-      const ps = await fetchJson(base.replace(/\/v1$/, '') + '/api/ps', DISCOVERY_DEFAULTS.metadataTimeoutMs, { 'User-Agent': 'TSUKA/0.7.0' });
+      const ps = await fetchJson(base.replace(/\/v1$/, '') + '/api/ps', DISCOVERY_DEFAULTS.metadataTimeoutMs, { 'User-Agent': TSUKA_PACKAGE.userAgent });
       if (Array.isArray(ps?.models) && ps.models.length > 0 && ps.models[0]?.name) {
         loadedModel = ps.models[0].name;
       }
@@ -196,7 +197,7 @@ export async function warmUpModel(
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        'User-Agent': 'TSUKA/0.7.0',
+        'User-Agent': TSUKA_PACKAGE.userAgent,
         ...(apiKey && apiKey !== 'local' ? { Authorization: `Bearer ${apiKey}` } : {})
       },
       body: JSON.stringify({
