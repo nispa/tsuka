@@ -75,6 +75,8 @@ export const AGENT_DEFAULTS = {
   goalCondensedHistoryCharLimit: 1500,
   /** Minimum reasoning trace length worth persisting to disk and memory. */
   reasoningTraceMinChars: 300,
+  /** Maximum incomplete reasoning-tag candidate retained between stream chunks. */
+  thinkTagCandidateMaxChars: 32,
   /**
    * Guard limit on retained session messages; primary compaction is token-driven
    * via historyTokens below (maxHistoryMessages).

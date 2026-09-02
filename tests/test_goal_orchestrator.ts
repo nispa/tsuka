@@ -264,6 +264,10 @@ FINE
       { content: 'B done.\nSTATO: COMPLETATO' },
     ]);
     const ctx = buildMockCtx(provider);
+    // This scenario explicitly exercises the parallel presentation contract.
+    // The fixture uses the local Ollama provider, whose default policy is serial;
+    // opt in here without mutating the user's persisted configuration.
+    ctx.configManager.isParallelExecutionEnabled = () => true;
     const parallelEvents: string[][] = [];
     let parallelEndCount = 0;
     ctx.workflowEvents = {

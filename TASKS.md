@@ -22,7 +22,7 @@
 ## 📊 Dashboard di Progetto & Stato Avanzamento
 
 - **Test Suite Totali**: **96 suite automatizzate** (100% pass rate)
-- **Fase Attuale**: **Fase 10 — Audit-Driven Security & Reliability Hardening** (In corso: 5/12 completati)
+- **Fase Attuale**: **Fase 10 — Audit-Driven Security & Reliability Hardening** (In corso: 6/12 completati)
 - **Gate di Qualità**: TypeScript strict compilato su `dist/`, zero cicli di dipendenza, I/O logging disaccoppiato via `logSink`, memory jail attiva.
 
 ### 🧭 Indice Navigabile delle Fasi
@@ -175,7 +175,7 @@
 | T23.1 | ✅ Fatto | **Baseline e triage dell'audit**: riprodotto il CI localmente; il solo failure residuo era G8 nel test `/goal`, che assumeva il parallelo pur usando il provider locale seriale. Il fixture abilita ora esplicitamente `isParallelExecutionEnabled()` senza mutare la configurazione persistita. Verificato: 91 suite OK, build e typecheck verdi. |
 | T23.2 | ✅ Fatto | **Config anti-perdita**: JSON root/struttura invalidi vengono caratterizzati, copiati byte per byte in un backup collision-safe e sostituiti con default tramite temp file + rename atomico; se backup o persistenza falliscono, le scritture successive sono bloccate. Suite `test_config_recovery.ts`. Gate: 93 suite OK, build e typecheck verdi. |
 | T23.3 | ✅ Fatto | **Mutazioni file non ambigue**: `write_file` accetta `append` solo se booleano e rifiuta stringhe/numeri/null senza modificare il file; il limite contenuto è centralizzato in `TOOLS_DEFAULTS`; `edit_file` rifiuta target vuoti/whitespace ma conserva replacement vuoto per cancellazioni intenzionali. Suite `test_file_mutation_contracts.ts`; schema aggiornato. Gate: 93 suite OK, build e typecheck verdi. |
-| T23.4 | ⬜ Da fare | **Parser reasoning caratterizzato**: definire e testare tag `<think>` completi, orfani, multipli e malformati. |
+| T23.4 | ✅ Fatto | **Parser reasoning caratterizzato**: parser a stati unico per streaming e risposta completa; apertura orfana privata, chiusura orfana e tag malformati letterali, casing/whitespace normalizzati, blocchi multipli ordinati e buffer bounded. Suite `test_think_parser.ts` (18 check). Gate: 96 suite OK, build e typecheck verdi. |
 | T23.5 | ✅ Fatto | **Abort idempotente dell'albero processi**: `execute_command` collega `ToolExecutionContext.signal` a un'unica transizione terminale per completamento, errore, timeout e abort; cleanup immediato di watchdog/listener; terminazione gentile e poi forzata dell'albero tramite process group POSIX o `taskkill /T` Windows. Suite reale `test_execute_command_abort.ts` con figlio ritardato, pre-abort, timeout, race e listener cleanup. Gate: 95 suite OK, build e typecheck verdi. |
 | T23.6 | ✅ Fatto | **Workspace jail canonica**: resolver basato su `realpath` per target esistenti e antenato esistente più vicino per destinazioni nuove; link interni ammessi, link esterni/dangling negati; walker condiviso con deduplica dei real path e limiti di profondità/file/byte per `grep_search` e `audit_code`; `list_dir` usa `lstat`. Suite `test_workspace_jail_canonical.ts`. Gate: 94 suite OK, build e typecheck verdi. |
 | T23.7 | 🟨 Mitigato | **Policy SSRF condivisa**: `safeFetch` valida schema, porte, tutti gli indirizzi DNS e ogni redirect per `browse_url`, `download_file` e `web_search`; indirizzi privati, loopback, link-local, multicast, reserved e DNS misti sono negati. Resta un rischio residuo TOCTOU fra preflight DNS e resolver interno di `fetch`; la chiusura strutturale richiede trasporto HTTP con lookup fissato all'indirizzo validato. Suite `test_network_policy.ts` (10 check). |
@@ -4503,6 +4503,15 @@ append, overwrite esplicito e rimozione con replacement vuoto; tre gate verdi.
 ## T23.4 — Contratto del parser `<think>` prima del fix
 
 **Dipende da:** T23.1 · **Sforzo:** basso · **Priorità:** alta
+
+**Esito:** `stripThinkBlocks` riusa ora lo stesso parser a stati del percorso
+streaming. I tag riconosciuti sono case-insensitive e tollerano whitespace interno;
+un'apertura orfana mantiene il resto nel canale reasoning, mentre chiusure orfane,
+tag annidati inattesi e tag malformati restano testo letterale nel canale corrente.
+Il candidato incompleto trattenuto fra chunk è bounded tramite `AGENT_DEFAULTS`.
+`tests/test_think_parser.ts` documenta la tabella di verità e verifica l'accordo
+streaming/finale con chunk da un carattere. Verificato con 96 suite, build e
+typecheck verdi.
 
 Il finding dell'audit è ambiguo: il titolo cita un `</think>` orfano, il codice cita
 un `<think>` non chiuso e lo snippet proposto conserva sostanzialmente lo stesso
