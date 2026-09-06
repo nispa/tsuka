@@ -99,6 +99,7 @@ const suites = [
   'test_continue_command.ts',
   'test_config_limits.ts',
   'test_config_recovery.ts',
+  'test_config_workspace.ts',
   'test_tui.ts',
   'test_tui_subagent_queue_copy.ts',
   'test_tui_thinking_view.ts',

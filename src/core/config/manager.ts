@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { homePath } from '../apphome';
+import { homePath, localWorkspacePath } from '../apphome';
 import { AGENT_DEFAULTS, CLI_DEFAULTS, CONFIG_DEFAULTS, LLM_DEFAULTS, MEMORY_DEFAULTS, TOOLS_DEFAULTS } from '../constants';
 import { logSink } from '../logSink';
 import { normalizeProviderClass } from '../cloudProvider';
@@ -15,7 +15,14 @@ import {
   defaultAppConfig,
 } from './types';
 
-export const CONFIG_PATH = homePath('tsuka.config.json');
+/** Selects the workspace config when initialized, with the global config as fallback. */
+export function resolveConfigPath(): string {
+  const local = localWorkspacePath('config.json');
+  return local && fs.existsSync(local) ? local : homePath('tsuka.config.json');
+}
+
+/** Backward-compatible snapshot for callers that need the selected config path. */
+export const CONFIG_PATH = resolveConfigPath();
 
 /** Validates the structural boundary while keeping optional legacy fields compatible. */
 function validateConfigShape(value: unknown): AppConfig {
@@ -70,11 +77,13 @@ export class ConfigManager {
   private static revision = 0;
   private config!: AppConfig;
   private readonly providerCatalog: Record<string, ProviderDefinition>;
+  private readonly configPath: string;
   private runtimeContextTokens: number | null = null;
   /** Prevents a later setter from overwriting a file whose recovery was incomplete. */
   private persistenceBlocked = false;
 
   constructor() {
+    this.configPath = resolveConfigPath();
     this.providerCatalog = loadProviderCatalog();
     this.load();
   }
@@ -89,14 +98,14 @@ export class ConfigManager {
 
   load(): void {
     this.persistenceBlocked = false;
-    if (!fs.existsSync(CONFIG_PATH)) {
+    if (!fs.existsSync(this.configPath)) {
       // A missing file is safe to initialize because there are no user bytes to preserve.
       this.config = defaultAppConfig();
       this.save();
     }
-    if (fs.existsSync(CONFIG_PATH)) {
+    if (fs.existsSync(this.configPath)) {
       try {
-        const raw = fs.readFileSync(CONFIG_PATH, 'utf-8');
+        const raw = fs.readFileSync(this.configPath, 'utf-8');
         this.config = validateConfigShape(JSON.parse(raw));
         let dirty = false;
         if (!this.config.webSearch) {
@@ -129,26 +138,26 @@ export class ConfigManager {
   /** Backs up invalid bytes before writing a clean default; returns null on any unsafe step. */
   private backupInvalidConfig(): string | null {
     const stamp = Date.now();
-    for (let attempt = 0; attempt < 100; attempt++) {
+    for (let attempt = 0; attempt < CONFIG_DEFAULTS.maxCorruptBackupAttempts; attempt++) {
       const suffix = attempt === 0 ? '' : `-${attempt}`;
-      const backup = `${CONFIG_PATH}.corrupt-${stamp}${suffix}`;
+      const backup = `${this.configPath}.corrupt-${stamp}${suffix}`;
       try {
         // COPYFILE_EXCL makes the collision check safe even when two processes recover together.
-        fs.copyFileSync(CONFIG_PATH, backup, fs.constants.COPYFILE_EXCL);
+        fs.copyFileSync(this.configPath, backup, fs.constants.COPYFILE_EXCL);
       } catch (error: any) {
         if (error?.code === 'EEXIST') continue;
-        logSink.error(`Could not back up invalid configuration '${CONFIG_PATH}': ${error.message}`);
+        logSink.error(`Could not back up invalid configuration '${this.configPath}': ${error.message}`);
         return null;
       }
       try {
-        fs.unlinkSync(CONFIG_PATH);
+        fs.unlinkSync(this.configPath);
       } catch (error: any) {
-        logSink.error(`Could not remove invalid configuration '${CONFIG_PATH}' after backup '${backup}': ${error.message}`);
+        logSink.error(`Could not remove invalid configuration '${this.configPath}' after backup '${backup}': ${error.message}`);
         return null;
       }
       return backup;
     }
-    logSink.error(`Could not choose a collision-safe backup name for invalid configuration '${CONFIG_PATH}'.`);
+    logSink.error(`Could not choose a collision-safe backup name for invalid configuration '${this.configPath}'.`);
     return null;
   }
 
@@ -171,11 +180,11 @@ export class ConfigManager {
   /** Atomically persists the current config through a sibling temporary file. */
   private persistConfig(): boolean {
     try {
-      fs.mkdirSync(path.dirname(CONFIG_PATH), { recursive: true });
-      const tempPath = `${CONFIG_PATH}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      fs.mkdirSync(path.dirname(this.configPath), { recursive: true });
+      const tempPath = `${this.configPath}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
       try {
         fs.writeFileSync(tempPath, JSON.stringify(this.config, null, 2), 'utf-8');
-        fs.renameSync(tempPath, CONFIG_PATH);
+        fs.renameSync(tempPath, this.configPath);
       } catch (error) {
         try { fs.unlinkSync(tempPath); } catch {}
         throw error;

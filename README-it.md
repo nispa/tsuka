@@ -1,220 +1,151 @@
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.5-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Node.js](https://img.shields.io/badge/Node.js-20+-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
-[![Ollama](https://img.shields.io/badge/Ollama-nativo-black?logo=ollama&logoColor=white)](https://ollama.com/)
-[![OpenRouter](https://img.shields.io/badge/OpenRouter-pronto-FF6B35?logo=openai&logoColor=white)](https://openrouter.ai/)
-[![Test](https://img.shields.io/badge/Test-96%20superati-brightgreen?logo=vitest&logoColor=white)](tests/)
-[![Licenza](https://img.shields.io/badge/Licenza-MIT-blue.svg)](LICENSE)
-[![PR benvenute](https://img.shields.io/badge/PR-benvenute-brightgreen.svg)](https://github.com/nispa/tsuka/pulls)
-
-<br />
-
-<div align="center">
+# TSUKA
 
 ![Logo TSUKA](assets/logo.png)
 
-### **TypeScript Unified Kit for Agents**
-*Harness multi-agente deterministico, trasparente con CLI e TUI a schermo intero in TypeScript.*
+**TypeScript Unified Kit for Agents** — un harness da terminale per eseguire agenti LLM con modelli locali o cloud.
 
-[🇮🇹 Italiano](README-it.md) · [🇬🇧 Read in English](README.md) · [📚 Wiki Didattico](docs/README-it.md)
+[English](README.md) · [Documentazione](docs/README-it.md) · [Licenza MIT](LICENSE)
 
-</div>
+TSUKA collega un modello linguistico a strumenti, memoria e workflow multi-agente attraverso una CLI o un'interfaccia terminale a schermo intero. Utilizza endpoint chat compatibili con OpenAI, con backend locali come Ollama e gateway cloud come OpenRouter.
 
----
+Il modello propone le azioni; l'harness gestisce l'esecuzione dei tool, i permessi, lo stato della conversazione e le condizioni di arresto. Il termine “deterministico” riguarda questa logica di controllo, non le risposte del modello o il risultato di un'attività.
 
-**TSUKA** è un harness multi-agente deterministico, didattico e ultra-leggero, scritto interamente in TypeScript puro. Si collega a backend LLM locali (**Ollama**, **llama.cpp**, **Unsloth Studio**, **LM Studio**) e gateway cloud (**OpenRouter**) tramite un'interfaccia standard compatibile con OpenAI (`/v1/chat/completions`).
+Il progetto è anche un laboratorio per capire come funziona un agente: ciclo di esecuzione, registro dei tool, memoria e client dei provider sono moduli TypeScript separati, consultabili ed estendibili. Il nome *tsuka* (柄) indica l'impugnatura della spada giapponese: il modello è la lama intercambiabile.
 
-> 🗡️ **Il nome**: 柄 (*tsuka*) è l'impugnatura della katana — il punto di presa solido a cui ogni lama si aggancia. I modelli LLM sono le lame intercambiabili; TSUKA è l'impugnatura che ti garantisce il controllo deterministico sulla loro esecuzione.
->
-> 🎓 **Perché TSUKA?** La maggior parte dei framework multi-agente sono "scatole nere" pesanti, opache e vincolate a Python. TSUKA è concepito come un **laboratorio didattico trasparente**: zero magia, zero dipendenze da database vettoriali esterni, codice di controllo 100% deterministico ed esecuzione nativa di prima classe su **Windows (PowerShell)**, **Linux** e **macOS**.
+## Primi passi
 
----
+Servono Git, Node.js e npm, oltre all'accesso a un backend LLM. Il pacchetto richiede Node.js 18 o successivo; il progetto consiglia la versione 20 o successiva. TSUKA funziona su Windows, Linux e macOS.
 
-## ✨ Punti Salienti dell'Architettura
+### 1. Installa dal sorgente
 
-| Pilastro | Design Architetturale & Valore |
-|---|---|
-| 🎯 **Determinismo Puro & Zero Magia** | L'LLM ragiona e propone chiamate a tool; l'harness governa rigorosamente lo stato, l'esecuzione, i limiti anti-loop (max 15 round) e i permessi. |
-| 🪟 **Vero Cross-Platform Nativo** | Supporto di prima classe per Windows (PowerShell nativa senza bisogno di WSL o Python), macOS e Linux. |
-| 🖥️ **TUI Interattiva a Schermo Intero** | Dashboard terminale zero-flicker a doppio buffer (`tsuka --tui`) con supporto mouse SGR 1006, schede e file explorer del workspace. |
-| 🧠 **Memoria Persistente Pluggabile** | Contratto modulare `MemoryBackend` con backend di default JSON+BM25 in TypeScript puro, stemming, deduplica ed emivita temporale (`memory.json`). |
-| 🧩 **Auto-Discovery Dinamica dei Tool** | Basta rilasciare un file `.ts` in `src/tools/impl/` per registrarlo a caldo all'avvio con validazione JSON Schema automatica. |
-| 🛠️ **Creazione Dinamica di Tool Opt-in** | Gli agenti possono creare e caricare a caldo nuovi tool con conferma `DANGEROUS`; `node:vm` ne valida la forma ma non è un sandbox di sicurezza. |
-| 👥 **Orchestrazione Multi-Agente** | Pianificazione autonoma di obiettivi (`/goal`), sandbox di staging parallele (`PARALLELO`), team preconfigurati (`/team`) e dibattiti a tavola rotonda (`/call`). |
-| 📊 **Capability Fingerprinting** | Benchmark empirico (`/benchmark`) che misura l'accuratezza di tool-calling dei modelli piccoli per calibrare dinamicamente i tool attivi. |
-| 🛡️ **Sicurezza Graduata dei Permessi** | Workspace jail rigoroso (`resolveSafePath`), classificazione graduata del rischio comandi, coda serializzata di conferme e analisi statica (SAST). |
-
----
-
-## ⚡ Guida Rapida
-
-```bash
+```sh
 git clone https://github.com/nispa/tsuka.git
 cd tsuka
 npm install
 npm run build
-npm link                 # Rende disponibile il comando globale `tsuka`
-
-tsuka init --preset core # Inizializza il workspace con il roster di base
-npm run tui              # Avvia la TUI a schermo intero (o: tsuka --tui)
-# Oppure la classica CLI REPL:
-tsuka
+npm link
 ```
 
-> [!TIP]
-> Assicurati che un backend locale sia attivo (`ollama serve`, `llama-server`, Unsloth Studio) oppure inserisci `OPENROUTER_API_KEY` nel file `.env`.
+`npm link` rende disponibile il comando `tsuka` anche fuori dal repository.
 
----
+### 2. Collega un modello
 
-## 🚀 Installazione & Setup
+Per un ambiente locale, avvia il backend e carica un modello con supporto alle chiamate di tool. La configurazione Ollama inclusa usa `http://localhost:11434/v1` e `qwen2.5-coder:7b`.
 
-```powershell
-# Opzione A: Ollama (Consigliato per modelli locali 7B–14B)
-ollama serve && ollama pull qwen2.5-coder:7b
+Se usi Ollama e il servizio non è già attivo, avvia `ollama serve`. In un altro terminale, scarica il modello configurato:
 
-# Opzione B: llama.cpp
-llama-server -m models/qwen2.5-coder-7b.gguf --port 8080
-
-# Opzione C: OpenRouter (Cloud)
-echo "OPENROUTER_API_KEY=la_tua_chiave" >> .env
+```sh
+ollama pull qwen2.5-coder:7b
 ```
 
-```powershell
-npm run build
-npm link               # Registra `tsuka` a livello globale
-tsuka --tui            # Avvia la dashboard a schermo intero
+Per OpenRouter, aggiungi la chiave a un file `.env` nella cartella da cui avvierai TSUKA:
+
+```dotenv
+OPENROUTER_API_KEY=your_key_here
 ```
 
-Inizializza workspace dedicati con roster specifici:
+Avvia TSUKA, poi usa `/provider` per scegliere il backend e `/models` per selezionare il modello.
 
-```powershell
-tsuka init                         # Procedura guidata interattiva
-tsuka init --preset core           # Roster essenziale (14 personaggi, 4 team)
-tsuka init --preset full           # Roster completo (24 personaggi, 21 ruoli, 10 team)
-tsuka init --pack osint,devops     # Aggiunge pack dedicati
+### 3. Apri un workspace
+
+Avvia TSUKA dalla cartella su cui vuoi far lavorare gli agenti:
+
+```sh
+cd path/to/your/project
+tsuka --tui
 ```
 
----
+Usa `tsuka --cli` per la REPL a righe di comando. Il comando `tsuka` senza opzioni usa il valore configurato in `defaultUi`.
 
-## 👥 Workflow Multi-Agente
+Comincia con una richiesta circoscritta, per esempio «Leggi questo progetto e spiegami i suoi punti di ingresso». Usa `/tools` per vedere gli strumenti disponibili e `/help` per i comandi supportati dall'interfaccia corrente.
 
-- **`/goal <obiettivo>`** — Scompone dinamicamente obiettivi complessi in pipeline multi-agente con esecuzione parallela isolata e verifica da parte del supervisore.
-- **`/team [nome] ["task"]`** — Esegue team preconfigurati (`teams/*.json`) attraverso 4 modalità collaborative (`round-robin`, `pipeline`, `orchestrated`, `hybrid`).
-- **`/call [@a, @b] ["argomento"]`** — Dibattito strutturato a tavola rotonda tra molteplici personaggi specializzati.
+## Lavorare con gli agenti
 
-Il coordinamento si basa su tool di protocollo deterministici (`report_status`, `route_next`, `cast_vote`) supportati da una lavagna effimera isolata (`AsyncLocalStorage`).
+Un personaggio combina uno o più **ruoli**, che definiscono istruzioni e strumenti disponibili, con un **tratto**, che ne definisce lo stile comunicativo. Seleziona un personaggio con `/agent` e descrivi il compito in linguaggio naturale. Gli agenti ricevono l'istruzione di rispondere nella lingua che usi.
 
-> 📚 Documentazione completa: [Guida Multi-Agente](docs/multi-agent-it.md)
+Per coinvolgere più agenti:
 
----
-
-## 🧰 Tool Nativi & Sicurezza
-
-TSUKA include **30 tool nativi** (`src/tools/impl/*.ts`) suddivisi per area:
-* **Filesystem**: `read_file`, `write_file` (incluse scritture atomiche riprendibili), `edit_file`, `delete_file`, `list_dir`, `grep_search` (strettamente confinati nel workspace jail).
-* **Sistema**: `execute_command` (esecuzione shell cross-platform con conferma interattiva).
-* **Memoria**: `save_memory`, `recall_memory`, `update_memory`, `forget_memory` (algoritmo BM25 + decadimento ad emivita).
-* **Coordinamento**: `post_note`, `read_notes`, `report_status`, `route_next`, `cast_vote`.
-* **Estensione & SAST**: [`create_tool` opt-in](docs/self-authoring-it.md) (DANGEROUS; `node:vm` valida la forma ma non è un sandbox di sicurezza), `audit_code` (analizzatore statico di vulnerabilità CWE).
-
-> 📚 Approfondimenti: [Specifica di Sicurezza](docs/security-it.md) · [Architettura di Sistema](docs/architecture-it.md)
-
----
-
-## 🌐 Gestione Provider & Modelli LLM
-
-TSUKA disaccoppia i provider LLM dal codice dell'harness tramite un catalogo dichiarativo in `providers.json`. Qualsiasi endpoint compatibile con lo standard OpenAI (`/v1/chat/completions`) può essere configurato senza modificare il sorgente:
-
-```json
-{
-  "providers": {
-    "ollama": {
-      "displayName": "Ollama",
-      "class": "LOCAL",
-      "baseUrl": "http://localhost:11434/v1",
-      "defaultModel": "qwen2.5-coder:7b"
-    },
-    "openrouter": {
-      "displayName": "OpenRouter",
-      "class": "CLOUD",
-      "baseUrl": "https://openrouter.ai/api/v1",
-      "defaultModel": "meta-llama/llama-3.3-70b-instruct",
-      "apiKeyEnv": "OPENROUTER_API_KEY",
-      "capabilities": {
-        "freeModels": {
-          "aliases": ["openrouter/free"],
-          "suffixes": [":free"],
-          "includeZeroPriced": true
-        }
-      }
-    },
-    "custom-vllm": {
-      "displayName": "vLLM Server",
-      "class": "LOCAL",
-      "baseUrl": "http://127.0.0.1:8000/v1",
-      "defaultModel": "meta-llama/Llama-3.1-8B-Instruct"
-    }
-  }
-}
-```
-
-* **Architettura Data-Driven**: Aggiungi qualsiasi backend (Ollama, llama.cpp, Unsloth, LM Studio, vLLM, Groq, Bailu, OpenRouter) senza modificare una sola riga di TypeScript.
-* **Separazione dei Ruoli**: `providers.json` definisce gli endpoint, le classi e i puntatori alle variabili d'ambiente delle API key; `tsuka.config.json` seleziona il provider attivo per il workspace corrente.
-* **Rilevamento Dinamico & Warmup RAM**: Quando cambi modello (`/models` o `/provider`), l'harness interroga il server per rilevare la context window effettiva e gestisce il warm-up automatico o il cambio di modello in memoria (`● loaded`).
-* **Policy Cloud vs Local**: I provider di classe `CLOUD` ottengono automaticamente il tier `LARGE`, evitando inutili sweep di benchmark locali.
-* **Filtro Modelli Gratuiti**: Per i provider con supporto `freeModels` (come OpenRouter), il menu `/models` offre un filtro istantaneo per mostrare solo i modelli a costo zero (`:free`).
-
----
-
-## 🔌 Integrazione MCP
-
-TSUKA parla il **Model Context Protocol**: ogni server MCP stdio configurato in `tsuka.config.json` viene avviato allo startup e i suoi tool entrano nel registry come `mcp__<server>__<tool>` — stessi permessi, stesso sistema a tier, zero dipendenze nuove.
-
-```json
-"mcpServers": {
-  "filesystem": {
-    "command": "npx",
-    "args": ["-y", "@modelcontextprotocol/server-filesystem", "C:\\dati"]
-  }
-}
-```
-
-Un server che fallisce degrada con un warning visibile senza bloccare l'avvio; ogni call passa dal prompt di permesso interattivo col nome prefissato completo.
-
-> 📚 Approfondimenti: [Guida all'Integrazione MCP](docs/mcp-it.md)
-
----
-
-## 🛠️ Comandi Slash della REPL
-
-| Comando | Descrizione |
+| Comando | A cosa serve |
 |---|---|
-| `/goal <obiettivo>` | Orchestratore autonomo di obiettivi multi-agente. |
-| `/team [nome] ["task"]` | Pipeline collaborativa per team predefiniti. |
-| `/call [@a, @b] ["tema"]` | Dibattito a tavola rotonda tra più agenti. |
-| `/models [id]` `/provider [p]` | Cambia modello attivo o backend LLM. |
-| `/benchmark [model\|all]` | Capability fingerprinting per function calling. |
-| `/agent [nome]` `/tools [filtro]` | Ispeziona o seleziona personaggio / tool attivi. |
-| `/export [path]` | Esporta conversazione e traccia dei tool in Markdown. |
-| `/memory [clear\|id]` `/blackboard` | Ispezione memoria persistente e lavagna di workflow. |
-| `/stop` `/continue` `/reset` `/help` `/exit` | Controllo del ciclo di vita della sessione. |
+| `/team` | Scegliere un team predefinito ed eseguire un'attività collaborativa. |
+| `/goal <objective>` | Affidare all'orchestratore la pianificazione e il coordinamento di un'attività. |
+| `/call` | Riunire più agenti in una discussione strutturata. |
 
----
+I team supportano le modalità round-robin, pipeline, orchestrated e hybrid. Ogni esecuzione di un workflow dispone di una lavagna temporanea condivisa; la memoria persistente conserva informazioni tra sessioni. L'esecuzione parallela degli obiettivi è opzionale e usa workspace di staging, con rilevamento dei conflitti quando le modifiche vengono unite.
 
-## 📚 Wiki Didattico & Architettura
+La [guida ai workflow multi-agente](docs/multi-agent-it.md) descrive sintassi e modalità di esecuzione; i [casi d'uso](docs/use-cases-it.md) propongono esempi di attività.
 
-TSUKA è nato come strumento didattico aperto per comprendere il funzionamento concreto degli harness agentici affrontando le reali sfide ingegneristiche:
+## Configurazione e personalizzazione
 
-* 🧠 [**Sistema di Memoria Persistente**](docs/memory-it.md) — I 3 livelli di stato, la scala della memoria, algoritmo BM25 ed emivita.
-* 🏛️ [**Architettura di Sistema**](docs/architecture-it.md) — ReAct loop, gestione del budget di contesto e disaccoppiamento I/O.
-* 🎓 [**Guida Didattica: Costruire un Harness**](docs/guida-didattica.md) — 10 tappe per costruire un harness da zero e le 10 insidie reali.
-* 👥 [**Workflow Multi-Agente**](docs/multi-agent-it.md) — Coordinamento dei team, tool di protocollo e staging parallelo.
-* 📊 [**Capability Fingerprinting**](docs/benchmark-it.md) — Misurare l'affidabilità dei modelli locali sul function calling.
-* 🛡️ [**Sicurezza & Permessi**](docs/security-it.md) — Confinamento del workspace, livelli di rischio e sandboxing.
-* 🔌 [**Integrazione MCP**](docs/mcp-it.md) — Collegare server MCP esterni al registro dei tool.
-* 🔎 [**Backend di Ricerca Web**](docs/web-search-backends-it.md) — Catalogo HTTP, registry dei backend e contratto adapter MCP.
+La cartella di installazione è la **directory applicativa** predefinita, modificabile tramite `TSUKA_HOME`. La directory di lavoro è il **workspace** predefinito dei tool sui file, salvo un'impostazione esplicita di `workspaceRoot`.
 
----
+| File o directory | Funzione |
+|---|---|
+| `.tsuka/config.json` nel workspace, oppure `tsuka.config.json` nella directory applicativa come fallback | Provider attivo, modelli, interfaccia, limiti di esecuzione e funzionalità opzionali. |
+| `providers.json` | Endpoint dei provider, modelli predefiniti e nomi delle variabili d'ambiente per le chiavi API. |
+| `.env` | Credenziali, caricate dalla directory applicativa, poi da `.tsuka/.env` e infine da `.env` nel workspace; i file successivi hanno precedenza. |
+| `characters/`, `roles/`, `traits/`, `teams/` | Definizioni degli agenti e composizione dei team. |
 
-## 📜 Licenza
+La [configurazione di esempio](tsuka.config.json.example) illustra le impostazioni disponibili. Usa `/provider` e `/models` per cambiare backend in modo interattivo e `/benchmark` per valutare le capacità di tool calling di un modello.
 
-MIT © [TSUKA Contributors](LICENSE)
+Per creare definizioni degli agenti locali al progetto, esegui uno di questi comandi nel workspace:
+
+```sh
+tsuka init --preset core
+tsuka init --preset full
+tsuka init --preset core --pack osint,devops
+```
+
+Sono inizializzazioni alternative. Il solo comando `tsuka init` apre la procedura guidata. Le risorse e la configurazione locali in `.tsuka/` hanno precedenza quando presenti; altrimenti il runtime usa `tsuka.config.json` nella directory applicativa come fallback.
+
+## Strumenti ed estensioni
+
+I tool inclusi coprono operazioni sui file, comandi shell, ricerca e navigazione web, memoria persistente, analisi statica del codice e coordinamento degli agenti. L'insieme attivo dipende dai ruoli selezionati, dal livello di capacità del modello e dalla configurazione.
+
+TSUKA rileva le implementazioni dei tool nativi attraverso il proprio registro e supporta **server MCP via stdio**. Memoria e provider LLM espongono contratti che permettono di sostituirne le implementazioni senza cambiare il ciclo dell'agente.
+
+- [Integrazione MCP](docs/mcp-it.md): collegare server esterni ed esporne i tool.
+- [Backend di ricerca web](docs/web-search-backends-it.md): configurare i provider di ricerca.
+- [Creazione di tool da parte degli agenti](docs/self-authoring-it.md): abilitare la generazione di strumenti eseguibili. La funzione è disattivata per impostazione predefinita e richiede l'approvazione prevista per le operazioni pericolose.
+
+## Permessi e limiti
+
+I tool nativi sui file applicano il confinamento al workspace. L'esecuzione usa i livelli di rischio `SAFE`, `RESTRICTED` e `DANGEROUS`; le richieste di approvazione dipendono dall'operazione e dai permessi della sessione.
+
+Comandi shell, server MCP esterni e tool eseguibili personalizzati possono agire con i permessi del processo che li ospita. I controlli sui percorsi dei file non rendono questi processi una sandbox del sistema operativo. Anche le verifiche con `node:vm` sui tool generati non costituiscono un confine di sicurezza.
+
+La [guida a sicurezza e permessi](docs/security-it.md) descrive le policy e i loro limiti.
+
+## Sviluppo
+
+```sh
+npm run dev -- --cli
+npm run tui
+```
+
+Prima di proporre una modifica, esegui tutti e tre i controlli:
+
+```sh
+npm test
+npm run build
+npm run typecheck
+```
+
+Il test runner isola memoria e log dei workflow in directory temporanee. I test usano backend simulati e non richiedono un modello attivo.
+
+| Directory | Responsabilità |
+|---|---|
+| `src/core/` | Ciclo dell'agente, provider, memoria, configurazione e stato dei workflow. |
+| `src/tools/` | Registro e implementazioni dei tool. |
+| `src/safety/` | Permessi e policy di esecuzione. |
+| `src/cli/` | REPL, comandi e output del terminale. |
+| `src/tui/` | Interfaccia a schermo intero e gestione delle interazioni. |
+| `tests/` | Test di regressione. |
+
+Consulta [AGENTS.md](AGENTS.md) per le regole di contribuzione e la [guida all'architettura](docs/architecture-it.md) per i contratti dei sottosistemi.
+
+## Approfondimenti
+
+L'[indice della documentazione](docs/README-it.md) raccoglie le guide operative e didattiche. Puoi partire dalla [costruzione di un harness](docs/guida-didattica.md) per un percorso guidato, dalla [memoria](docs/memory-it.md) per stato e conservazione delle informazioni, oppure dai [benchmark](docs/benchmark-it.md) per la valutazione dei modelli.
+
+TSUKA è distribuito con [licenza MIT](LICENSE).

@@ -10,4 +10,4 @@
  */
 export * from './types';
 export { matchesModelId, sanitizeSamplingParams } from './sampling';
-export { ConfigManager, CONFIG_PATH } from './manager';
+export { ConfigManager, CONFIG_PATH, resolveConfigPath } from './manager';

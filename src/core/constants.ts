@@ -33,6 +33,8 @@ export const DISCOVERY_DEFAULTS = {
 
 /** Configuration cache defaults for hot paths that only need a stable snapshot. */
 export const CONFIG_DEFAULTS = {
+  /** Maximum collision retries when backing up an invalid configuration. */
+  maxCorruptBackupAttempts: 100,
   /** Maximum age of a hot-path configuration snapshot before it is reloaded. */
   hotPathCacheTtlMs: 5_000,
   /** Lowest accepted user override, preventing a cache from degenerating into polling. */

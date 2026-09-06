@@ -58,7 +58,7 @@ const PAGES: WikiPage[] = [
     lang: 'en',
     counterpart: 'Guida-Rapida',
     summary: 'Install, initialize a workspace and run the first turn',
-    source: { kind: 'sections', file: 'README.md', headings: ['## ⚡ Quickstart', '## 🚀 Install & Setup'] },
+    source: { kind: 'sections', file: 'README.md', headings: ['## Get started', '## Configuration and customization'] },
   },
   {
     name: 'Guida-Rapida',
@@ -66,7 +66,7 @@ const PAGES: WikiPage[] = [
     lang: 'it',
     counterpart: 'Quickstart',
     summary: 'Installazione, inizializzazione della workspace e primo turno',
-    source: { kind: 'sections', file: 'README-it.md', headings: ['## ⚡ Guida Rapida', '## 🚀 Installazione & Setup'] },
+    source: { kind: 'sections', file: 'README-it.md', headings: ['## Primi passi', '## Configurazione e personalizzazione'] },
   },
   // T14.23: 'TUI-Dashboard'/'Dashboard-TUI' used to source from a dedicated "## 🖥️ Interactive
   // Terminal UI" README section. A prior, uncommitted README rewrite folded that content into a
