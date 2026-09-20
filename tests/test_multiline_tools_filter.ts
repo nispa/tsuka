@@ -1,3 +1,4 @@
+import { PermissionManager } from '../src/safety/permissions';
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import * as fs from 'fs';
@@ -65,6 +66,7 @@ describe('TUI & CLI Parity: Multi-line Input & Tools Search Filter', () => {
   it('CLI /tools [query]: filters displayed tool table by query', async () => {
     let capturedLog = '';
     const mockCtx: any = {
+      permissionManager: new PermissionManager(),
       configManager: {
         getActiveCharacter: () => 'developer',
         getActiveRole: () => 'developer',

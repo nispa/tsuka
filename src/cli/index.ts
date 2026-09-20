@@ -31,6 +31,7 @@ import { CommandCtx } from './commands/types';
 import { handleExit, handleInfo, handleReset } from './commands/session';
 import { handleProvider, handleModels, handleSearchEngine, handleBenchmark } from './commands/provider';
 import { handleAgent } from './commands/persona';
+import { handleSudo } from './commands/sudo';
 import { handleTools } from './commands/tools';
 import { handleRuns } from './commands/runs';
 import { handleMemory } from './commands/memory';
@@ -271,6 +272,7 @@ async function main() {
     '/goal':       handleGoal,
     '/agent':      handleAgent,
     '/tools':      handleTools,
+    '/sudo':       handleSudo,
     '/runs':       handleRuns,
     '/benchmark':  handleBenchmark,
     '/memory':     handleMemory,
@@ -288,6 +290,7 @@ async function main() {
       '/clear', '/help', '/reset', '/info', '/exit', '/continue',
     ])].sort(),
     argumentsFor: (command) => {
+      if (command === '/sudo') return ['on', 'off', 'status'];
       if (command === '/models' || command === '/benchmark') return commandCtx.availableModels.current;
       if (command === '/provider') return configManager.getProviderNames();
       if (command === '/continue') return listThinkingTraces().map((t) => t.filename);

@@ -5,6 +5,7 @@
 import './isolateMemory';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 import { hasCompletionMarker, hasUnanimousApproval } from '../src/cli/commands/team';
 import { ConfigManager } from '../src/core/config';
 import { Agent } from '../src/core/agent';
@@ -54,20 +55,23 @@ async function main() {
     { role: 'assistant', content: 'Verificato con i tool.\n  STATO: COMPLETATO' }
   ]), 'marker a inizio riga con indentazione rilevato');
 
-  // --- getTeamMaxRounds ---
-  const configPath = path.resolve(process.cwd(), 'tsuka.config.json');
-  const backup = fs.existsSync(configPath) ? fs.readFileSync(configPath, 'utf-8') : null;
+  // Verify defaults independently of the maintainer's active configuration.
+  const previousHome = process.env.TSUKA_HOME;
+  const testHome = fs.mkdtempSync(path.join(os.tmpdir(), 'tsuka-team-config-'));
+  process.env.TSUKA_HOME = testHome;
+  const configPath = path.join(testHome, 'tsuka.config.json');
+  fs.copyFileSync(path.resolve('providers.json'), path.join(testHome, 'providers.json'));
   try {
-    new ConfigManager(); // assicura esistenza
     const cfgDefault = new ConfigManager();
-    check('TM.2a', cfgDefault.getTeamMaxRounds() === 3, `default 3 (ottenuto ${cfgDefault.getTeamMaxRounds()})`);
-
+    check('TM.2a', cfgDefault.getTeamMaxRounds() === 3, `default is 3 (received ${cfgDefault.getTeamMaxRounds()})`);
     const cfg = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
     cfg.teamMaxRounds = 5;
     fs.writeFileSync(configPath, JSON.stringify(cfg, null, 2), 'utf-8');
-    check('TM.2b', new ConfigManager().getTeamMaxRounds() === 5, 'valore custom da config rispettato');
+    check('TM.2b', new ConfigManager().getTeamMaxRounds() === 5, 'custom configured value is respected');
   } finally {
-    if (backup !== null) fs.writeFileSync(configPath, backup, 'utf-8');
+    if (previousHome === undefined) delete process.env.TSUKA_HOME;
+    else process.env.TSUKA_HOME = previousHome;
+    fs.rmSync(testHome, { recursive: true, force: true });
   }
 
   // --- Robustezza estrazione messaggi post-turno (bug slice dopo pruning) ---

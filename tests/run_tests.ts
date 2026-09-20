@@ -29,6 +29,7 @@ const testLogsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tsuka-test-logs-'));
 process.env.TSUKA_LOGS_DIR = testLogsDir;
 
 const suites = [
+  'test_sudo.ts',
   'test_think_parser.ts',
   'test_markdown_render.ts',
   'test_markdown_tables.ts',

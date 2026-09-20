@@ -2,6 +2,7 @@
  * Commands acting on the current session: screen, clipboard, export, lifecycle.
  */
 
+import { controlSudo } from '../../core/sudoControl';
 import * as fs from 'fs';
 import * as path from 'path';
 import { copyToClipboard } from '../../core/platform';
@@ -10,6 +11,13 @@ import { TuiCommandSpec } from './types';
 import { buildSessionMarkdown, defaultExportPath } from './sessionMarkdown';
 
 export const SESSION_COMMANDS: TuiCommandSpec[] = [
+  {
+    name: '/sudo',
+    description: 'Session shell authorization: on / off / status',
+    run: ({ cliContext, store, arg }) => {
+      store.addMessage({ role: 'system', content: controlSudo(cliContext().permissionManager, arg) });
+    },
+  },
   {
     name: '/stop',
     aliases: ['/abort', '/cancel', '/kill'],
@@ -78,7 +86,8 @@ export const SESSION_COMMANDS: TuiCommandSpec[] = [
   {
     name: '/reset',
     description: 'Reset the agent history and restart the session',
-    run: ({ store, setAgent, recreateAgent }) => {
+    run: ({ store, setAgent, recreateAgent, cliContext }) => {
+      cliContext().permissionManager.resetSession();
       setAgent(recreateAgent());
       store.setState({ messages: [], activeTools: [] });
       store.notify('Agent session context reset', 'success');

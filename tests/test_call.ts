@@ -2,6 +2,8 @@
  * Test for the /call multi-agent conference preparation and logic.
  * Run: npx tsx tests/test_call.ts
  */
+import './isolateMemory';
+import { PermissionManager } from '../src/safety/permissions';
 import { resolveCharacter, loadRole, loadTrait, loadSystemPrompt } from '../src/cli/shared';
 import { handleCall, parseCallInvocation } from '../src/cli/commands/call';
 
@@ -85,7 +87,7 @@ async function run() {
         return { success: true, output: 'README contents' };
       },
     },
-    permissionManager: {},
+    permissionManager: new PermissionManager(),
     configManager: { getDefaultReasoningEffort: () => undefined },
     agent: { current: { getMessages: () => savedMessages } },
     workflowEvents: {

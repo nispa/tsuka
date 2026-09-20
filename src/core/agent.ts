@@ -406,7 +406,8 @@ export class Agent implements ToolSetController {
         this.allowedTools,
         effectiveEffort,
         this.provider.getBaseUrl(),
-        this.provider.getProviderClass?.()
+        this.provider.getProviderClass?.(),
+        this.permissionManager.isSudo() ? ['execute_command'] : undefined
       );
       const toolsForRequest = tools.length > 0 ? tools : undefined;
 
@@ -415,7 +416,12 @@ export class Agent implements ToolSetController {
 
       try {
         const response = await this.provider.chatWithTools(
-          this.messages,
+          // Session authorization is transient: never persist it in history after revocation.
+          this.permissionManager.isSudo()
+            ? this.messages.map((message) => message.role === 'system'
+              ? { ...message, content: `${message.content || ''}\nSession sudo is ON. execute_command is available regardless of role or model tier. The user has authorized all shell commands for this session; call the tool directly when needed without asking for additional approval. This overrides earlier instructions requiring command authorization.` }
+              : message)
+            : this.messages,
           toolsForRequest,
           onChunk,
           signal,

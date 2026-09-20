@@ -161,7 +161,9 @@ To protect the host system, every tool declares an explicit risk level:
 |---|---|---|
 | `SAFE` | Executed immediately without interruption. | `read_file`, `list_dir`, `web_search` |
 | `RESTRICTED` | Prompts user for approval (`[y/N/always]`). | `write_file`, `delete_file`, `edit_file` |
-| `DANGEROUS` | **Always prompts** per action; bypass disabled. | `execute_command` |
+| `DANGEROUS` | Prompts per action by default. `execute_command` can be explicitly authorized for the current session with user-operated `/sudo on`. | `execute_command` |
+
+`/sudo` is deliberately a session control rather than an agent tool: it cannot be enabled by a model. It exposes `execute_command` across role and capability-tier filters and bypasses its prompts only; it does not elevate OS privileges or grant access to other tools. `/sudo off`, `/reset`, and a new runtime revoke the control.
 
 Three complementary defense layers:
 1. **Workspace Sandboxing**: restricts filesystem operations to `workspaceRoot`.

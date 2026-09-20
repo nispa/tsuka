@@ -57,6 +57,12 @@ Every native and dynamic tool registered in `ToolRegistry` declares an explicit 
 
 `execute_command` owns the spawned process tree for its full lifecycle. User cancellation and timeout share an idempotent terminal path that removes listeners and watchdogs, then terminates descendants cooperatively and forcibly if needed (`taskkill /T` on Windows, detached process groups on POSIX).
 
+### Session shell authorization (`/sudo`)
+
+`/sudo on` is an explicit, user-operated session control in both the CLI and TUI. While enabled, it makes `execute_command` available to every agent regardless of its role allowlist or model capability tier, and bypasses that tool's `SAFE`, `RESTRICTED`, and `DANGEROUS` permission prompts. It applies to workflow agents that share the same `PermissionManager`.
+
+`/sudo`, `/sudo status`, and `/sudo off` inspect or revoke the control. It is disabled by default and cleared by `/reset` and when a new runtime starts. It does not elevate the operating-system process, grant other tools additional permissions, or undo a command already running; use the normal stop/interrupt path for that. A queued command checks the setting when it reaches the permission queue, so revocation takes effect before a waiting command is approved.
+
 All built-in HTTP tools use the shared `safeFetch` boundary. It validates HTTP(S), standard ports, every DNS answer, and every redirect hop; private, loopback, link-local, multicast, reserved, and mixed public/private DNS answers fail closed. A residual DNS TOCTOU remains until the transport pins the validated address for the actual socket connection.
 
 ---

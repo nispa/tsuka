@@ -11,6 +11,15 @@ export type PermissionPromptHandler = (req: PermissionPromptRequest) => Promise<
 
 export class PermissionManager {
   private allowAllWrite: boolean = false;
+  private sudo = false;
+
+  setSudo(enabled: boolean): void {
+    this.sudo = enabled;
+  }
+
+  isSudo(): boolean {
+    return this.sudo;
+  }
   // Internal promise chain (T3.1): requests triggering interactive prompts
   // (RESTRICTED/DANGEROUS) are queued sequentially rather than colliding on stdin.
   private promptQueue: Promise<void> = Promise.resolve();
@@ -28,6 +37,7 @@ export class PermissionManager {
   /** Resets permission state for a new session. */
   resetSession(): void {
     this.allowAllWrite = false;
+    this.sudo = false;
   }
 
   /**
@@ -68,6 +78,9 @@ export class PermissionManager {
   }
 
   private async promptForDecision(toolName: string, details: string, riskLevel: RiskLevel, requesterLabel?: string): Promise<boolean> {
+    // Evaluate at dequeue time so revocation also affects waiting commands.
+    if (this.sudo && toolName === 'execute_command') return true;
+
     if (riskLevel === 'RESTRICTED') {
       if (this.allowAllWrite) {
         return true;

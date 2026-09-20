@@ -32,7 +32,9 @@ export interface IToolRegistry {
     allowedTools?: string[],
     effort?: ReasoningEffort,
     providerBaseUrl?: string,
-    providerClass?: ProviderClass
+    providerClass?: ProviderClass,
+    /** Tools explicitly granted by the user for this request, overriding role and tier. */
+    explicitlyEnabledTools?: readonly string[]
   ): ToolLLMDescriptor[];
   executeTool(
     name: string,

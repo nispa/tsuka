@@ -64,7 +64,8 @@ export class ToolRegistry implements IToolRegistry {
     allowedTools?: string[],
     effort?: ReasoningEffort,
     providerBaseUrl?: string,
-    providerClass?: import('../core/cloudProvider').ProviderClass
+    providerClass?: import('../core/cloudProvider').ProviderClass,
+    explicitlyEnabledTools?: readonly string[]
   ): ToolLLMDescriptor[] {
     const modelTier = getModelTier(modelName, effort, providerBaseUrl, providerClass);
     const currentTierLevel = TIER_HIERARCHY[modelTier];
@@ -72,7 +73,7 @@ export class ToolRegistry implements IToolRegistry {
 
     for (const tool of this.tools.values()) {
       const schemaData = tool.schema ?? loadToolSchema(tool.name);
-      if (!isToolEligibleForLLM(tool, schemaData, currentTierLevel, allowedTools, this.alwaysAllow)) {
+      if (!explicitlyEnabledTools?.includes(tool.name) && !isToolEligibleForLLM(tool, schemaData, currentTierLevel, allowedTools, this.alwaysAllow)) {
         continue;
       }
 
