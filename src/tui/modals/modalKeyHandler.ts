@@ -112,7 +112,7 @@ export class ModalKeyHandler {
         modal.permissionReq.resolve('no');
         return;
       }
-      if (key.name === 'a' || key.name === 'A') {
+      if ((key.name === 'a' || key.name === 'A') && modal.permissionReq.toolName !== 'delete_file') {
         modal.permissionReq.resolve('always');
         return;
       }

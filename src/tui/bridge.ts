@@ -111,7 +111,7 @@ export class TuiBridge {
         this.store.showModal({
           type: 'permission',
           title: req.riskLevel === 'DANGEROUS' ? '⚠️ CRITICAL AUTHORIZATION' : '🛡️ TOOL PERMISSION REQUIRED',
-          selectedIndex: 0,
+          selectedIndex: req.toolName === 'delete_file' ? 1 : 0,
           permissionReq: {
             id: `perm_${Date.now()}`,
             toolName: req.toolName,
@@ -120,11 +120,16 @@ export class TuiBridge {
             requesterLabel: req.requesterLabel,
             resolve: doResolve,
           },
-          options: [
-            { label: '✔ Approve this execution (y)', value: 'yes' },
-            { label: '✘ Deny this execution (n)', value: 'no' },
-            { label: '★ Always approve for this session (a)', value: 'always' },
-          ],
+          options: req.toolName === 'delete_file'
+            ? [
+                { label: '✔ Approve deletion this time (y)', value: 'yes' },
+                { label: '✘ Deny deletion this time (n)', value: 'no' },
+              ]
+            : [
+                { label: '✔ Approve this execution (y)', value: 'yes' },
+                { label: '✘ Deny this execution (n)', value: 'no' },
+                { label: '★ Always approve for this session (a)', value: 'always' },
+              ],
           onSelect: (val) => {
             doResolve(val as 'yes' | 'no' | 'always');
           },

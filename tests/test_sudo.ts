@@ -173,5 +173,55 @@ async function main(): Promise<void> {
     assert.equal(del3, false);
     assert.equal(deletePrompts, 3);
   }
+
+  // Test CLI permission prompt handler options for delete_file vs other tools
+  {
+    const { createCliPermissionPromptHandler } = await import('../src/cli/permissionPrompt');
+    const { InteractiveMenu } = await import('../src/cli/ui');
+    const originalSelect = InteractiveMenu.select;
+    let presentedOptions: Array<{ title: string; value: string }> = [];
+
+    (InteractiveMenu as any).select = async (_title: string, options: any[], _initial: any) => {
+      presentedOptions = options;
+      return 'yes';
+    };
+
+    try {
+      const cliHandler = createCliPermissionPromptHandler();
+
+      // delete_file: only 'yes' and 'no' options presented
+      await cliHandler({ toolName: 'delete_file', details: 'rm.txt', riskLevel: 'RESTRICTED' });
+      assert.deepEqual(presentedOptions.map(o => o.value), ['yes', 'no']);
+
+      // write_file: 'yes', 'no', 'always' options presented
+      await cliHandler({ toolName: 'write_file', details: 'doc.txt', riskLevel: 'RESTRICTED' });
+      assert.deepEqual(presentedOptions.map(o => o.value), ['yes', 'no', 'always']);
+    } finally {
+      InteractiveMenu.select = originalSelect;
+    }
+  }
+
+  // Test TUI ModalKeyHandler ignores 'a' hotkey for delete_file
+  {
+    const { ModalKeyHandler } = await import('../src/tui/modals/modalKeyHandler');
+    let resolvedValue: string | null = null;
+    const deleteModal: any = {
+      type: 'permission',
+      permissionReq: {
+        toolName: 'delete_file',
+        details: 'rm.txt',
+        riskLevel: 'RESTRICTED',
+        resolve: (val: string) => { resolvedValue = val; },
+      },
+    };
+
+    // Pressing 'a' on delete_file modal must NOT resolve to 'always'
+    ModalKeyHandler.handleKey({ name: 'a', ctrl: false, meta: false, shift: false } as any, deleteModal, {} as any);
+    assert.equal(resolvedValue, null);
+
+    // Pressing 'y' must resolve
+    ModalKeyHandler.handleKey({ name: 'y', ctrl: false, meta: false, shift: false } as any, deleteModal, {} as any);
+    assert.equal(resolvedValue, 'yes');
+  }
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

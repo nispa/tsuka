@@ -10,17 +10,29 @@ export function createCliPermissionPromptHandler(): PermissionPromptHandler {
     const who = requesterLabel ? ` (${requesterLabel})` : '';
 
     if (riskLevel === 'RESTRICTED') {
-      logSink.log(chalk.yellow(`\n🛡️  [Authorization Request]${who} The agent requests modification tool:`));
+      const isDelete = toolName === 'delete_file';
+      const promptTitle = isDelete
+        ? `\n🛡️  [Authorization Request]${who} The agent requests file deletion:`
+        : `\n🛡️  [Authorization Request]${who} The agent requests modification tool:`;
+      logSink.log(chalk.yellow(promptTitle));
       logSink.log(`   Tool: ${chalk.cyan(toolName)}`);
       logSink.log(`   Action: ${chalk.white(details)}`);
+
+      const options = isDelete
+        ? [
+            { title: 'Approve deletion this time (y)', value: 'yes' as const },
+            { title: 'Deny deletion this time (n)', value: 'no' as const },
+          ]
+        : [
+            { title: 'Approve this time (y)', value: 'yes' as const },
+            { title: 'Deny this time (n)', value: 'no' as const },
+            { title: 'Always approve for this session (a)', value: 'always' as const },
+          ];
+
       const decision = await InteractiveMenu.select<'yes' | 'no' | 'always'>(
         'Choose how to proceed:',
-        [
-          { title: 'Approve this time (y)', value: 'yes' },
-          { title: 'Deny this time (n)', value: 'no' },
-          { title: 'Always approve for this session (a)', value: 'always' },
-        ],
-        'yes'
+        options,
+        isDelete ? 'no' : 'yes'
       );
       const resolvedDecision = decision ?? 'no';
       if (resolvedDecision === 'always') logSink.log(chalk.green('✔ Write permission granted for the rest of the session.'));

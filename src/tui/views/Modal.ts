@@ -91,7 +91,10 @@ function buildPermissionBox(modal: TuiModalState, screen: ScreenSize): ModalBox 
   });
 
   lines.push('');
-  lines.push(chalk.gray('(↑/↓ choose, Enter confirm, y/n/a hotkeys, Esc cancel)'));
+  const hotkeyHint = req.toolName === 'delete_file'
+    ? '(↑/↓ choose, Enter confirm, y/n hotkeys, Esc cancel)'
+    : '(↑/↓ choose, Enter confirm, y/n/a hotkeys, Esc cancel)';
+  lines.push(chalk.gray(hotkeyHint));
 
   return dialogBox(modal, lines, screen);
 }

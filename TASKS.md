@@ -157,7 +157,7 @@
 | T21.10 | ✅ Fatto | **Esecuzione shell per developer solo su tier large**: `execute_command` è core tool del developer ma lo schema richiede tier `large`; OpenRouter è classificato large dal contesto provider. Build, test, `npm ci` e installazioni npm comuni (incluse `-D`/`--save-dev`) sono RESTRICTED, composizioni e comandi ignoti DANGEROUS; l'output passa da `logSink`. |
 | T21.11 | Implementato; gate da verificare | **Autorizzazione shell di sessione `/sudo`**: commit `1432a33` del 2026-09-20. Comando utente CLI/TUI `/sudo` con argomenti `on`, `off`, `status` (senza argomento mostra lo stato), gestito dal boundary condiviso `controlSudo`. Quando attivo, rende disponibile `execute_command` a tutti gli agenti della sessione indipendentemente da ruolo e tier e ne autorizza anche i comandi DANGEROUS senza ulteriori prompt; non eleva i privilegi del sistema operativo e non autorizza gli altri tool. Stato solo in memoria, disattivato al reset della sessione; revoca applicata anche ai comandi in attesa nella coda permessi. L'avviso al modello è transitorio e non viene salvato nella history. Suite `tests/test_sudo.ts` registrata nel runner; documentazione security e guide didattiche IT/EN aggiornate nel commit. Ricognizione documentale del 2026-09-22: test, build e typecheck non rieseguiti; verifica lasciata al maintainer su sua richiesta. |
 | T21.12 | ✅ Fatto | **Estendere `/sudo` a scrittura e modifica file**: estesa l'autorizzazione di sessione a `write_file` ed `edit_file` mantenendo la workspace jail; `delete_file` richiede sempre conferma puntuale anche con `/sudo on` o con permessi RESTRICTED permanenti (`allowAllWrite`); messaggi, help e prompt transitori aggiornati; documentazione security e guide didattiche allineate; suite `tests/test_sudo.ts` estesa con test su visibilità, jail, revoca in coda e cancellazioni consecutive. I tre gate `npm test` (102 suite), `npm run build` e `npm run typecheck` verdi. |
-| T22.1 | ⬜ Da fare | **Baseline context, handoff e memoria**: characterization test dei percorsi correnti prima di cambiare policy o contratti. |
+| T22.1 | ✅ Fatto | **Baseline context, handoff e memoria**: characterization test suite `test_context_scheduler_baseline.ts` (49 check) a protezione di stime e pruning tool, telemetria ContextTracker, /context CLI/TUI, spawn_agent con/senza blackboard ed eventi, registry/CRUD e capping di MemoryBackend. 103 suite verdi, build e typecheck puliti. |
 | T22.2 | ⬜ Da fare | **Proiezione `ContextPressure`**: derivare la pressione dai dati già prodotti da `contextBudget.ts` e dalla calibrazione dell'`Agent`. |
 | T22.3 | ⬜ Da fare | **Pressione in `/context`**: estendere `ContextTracker` e le viste CLI/TUI senza introdurre nuova telemetria. |
 | T22.4 | ⬜ Da fare | **Policy pura dello scheduler**: scegliere soltanto `continue`, `prepare` o `delegate` con due soglie centralizzate. |
@@ -3947,7 +3947,7 @@ IT/EN nello stesso diff; una funzione futura non viene documentata come disponib
 
 ## T22.1 — Baseline protetta per context, handoff e memoria
 
-**Dipende da:** T21.3, T19.2 · **Sforzo:** basso · **Priorità:** alta
+**Dipende da:** T21.3, T19.2 · **Stato:** completato · **Sforzo:** basso · **Priorità:** alta
 
 Aggiungere characterization test sui percorsi che la fase toccherà:
 
@@ -3965,6 +3965,12 @@ Aggiungere characterization test sui percorsi che la fase toccherà:
 **Accettazione:** il diff contiene soltanto test e fixture minime; ogni comportamento
 elencato è protetto senza aggiornare snapshot per nascondere regressioni; tre gate
 verdi.
+
+**Esito implementazione (2026-09-22):**
+- Nuova suite `tests/test_context_scheduler_baseline.ts` (61 check) registrata in `tests/run_tests.ts`, conforme alla Direttiva 1 (English only in test banners).
+- Caratterizzati tutti i 5 percorsi critici: stima messaggi + overhead schemi tool e calibrazione dinamica, tracciamento ContextTracker e promptTokens, output /context CLI/TUI, spawn_agent con streaming chunks e tool events, CRUD MemoryBackend e capping esatto formatForPrompt/formatRelevant.
+- Risolto rilievo P2 su conferma delete_file: in CLI (`permissionPrompt.ts`) e TUI (`bridge.ts`, `Modal.ts`, `modalKeyHandler.ts`) vengono offerte esclusivamente le opzioni approva/rifiuta (senza promessa permanente `always`).
+- 103 suite OK in `npm test`, `npm run build` e `npm run typecheck` verdi.
 
 ## T22.2 — Proiettare `ContextPressure` dai budget esistenti
 

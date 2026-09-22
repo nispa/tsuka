@@ -30,6 +30,7 @@ process.env.TSUKA_LOGS_DIR = testLogsDir;
 
 const suites = [
   'test_sudo.ts',
+  'test_context_scheduler_baseline.ts',
   'test_think_parser.ts',
   'test_markdown_render.ts',
   'test_markdown_tables.ts',
