@@ -3974,7 +3974,7 @@ verdi.
 
 ## T22.2 — Proiettare `ContextPressure` dai budget esistenti
 
-**Dipende da:** T22.1 · **Sforzo:** basso · **Priorità:** alta
+**Dipende da:** T22.1 · **Stato:** completato · **Sforzo:** basso · **Priorità:** alta
 
 Estendere `src/core/contextBudget.ts` con una piccola proiezione pura; non creare un
 package o tracker parallelo:
@@ -4007,9 +4007,13 @@ complesso e stato globale.
 coperti; nessuna nuova configurazione e nessun cambiamento nel comportamento
 dell'agente; tre gate verdi.
 
+**Esito implementazione (2026-09-22):**
+- Implementata l'interfaccia `ContextPressure` e la funzione pura `getContextPressure(usedTokens, limitTokens)` in `src/core/contextBudget.ts`.
+- Coperti in modo rigoroso e deterministico tutti i casi limite (zero, valori negativi, over-budget clamp a ratio 1, non-finiti/NaN).
+
 ## T22.3 — Rendere la pressione osservabile in `/context`
 
-**Dipende da:** T22.2 · **Sforzo:** basso · **Priorità:** alta
+**Dipende da:** T22.2 · **Stato:** completato · **Sforzo:** basso · **Priorità:** alta
 
 Estendere in modo retrocompatibile `ContextEntry` con working-set usato, limite,
 rapporto e sorgente della misura (`estimated` o `observed`). Riutilizzare il ring
@@ -4028,6 +4032,13 @@ runtime.
 
 **Accettazione:** `/context` CLI/TUI mostra dati coerenti; il tracker resta bounded;
 nessun output normale aggiuntivo; test dei due frontend e tre gate verdi.
+
+**Esito implementazione (2026-09-22):**
+- Estesa retrocompatibilmente `ContextEntry` con `usedTokens`, `limitTokens`, `ratio` e `source: 'estimated' | 'observed'`.
+- Arricchita la registrazione automatica delle attività in `src/cli/index.ts` e `src/cli/commands/strategies/common.ts`.
+- Aggiornato `/context` sia in CLI (`src/cli/commands/session.ts`) sia in TUI (`src/tui/commands/sessionCommands.ts`) con la visualizzazione standardizzata di ratio e token (`en-US` separator).
+- Nuova suite di test `tests/test_context_pressure.ts` (35 check) registrata in `tests/run_tests.ts`.
+- 104 suite OK in `npm test`, `npm run build` e `npm run typecheck` verdi.
 
 ## T22.4 — Policy pura del context scheduler
 

@@ -269,7 +269,7 @@ async function main(): Promise<void> {
     tuiContextCommand!.run({ store: mockStore } as any);
     check('CSB3.2b', addedMessages.length === 1, 'TUI /context added exactly one message to store');
     check('CSB3.2c', addedMessages[0]?.content.includes('Context Breakdown:'), "TUI message contains 'Context Breakdown:' header");
-    check('CSB3.2d', addedMessages[0]?.content.includes('Used: 1250 tokens (25%)'), "TUI message contains 'Used: 1250 tokens (25%)'");
+    check('CSB3.2d', addedMessages[0]?.content.includes('Used: 1,250 / 5,000 tokens (25%)'), "TUI message contains 'Used: 1,250 / 5,000 tokens (25%)'");
     check('CSB3.2e', addedMessages[0]?.content.includes('Max Budget: 5000 tokens'), "TUI message contains 'Max Budget: 5000 tokens'");
   }
 

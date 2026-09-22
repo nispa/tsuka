@@ -3,7 +3,7 @@ import { CLITheme } from '../ui';
 import chalk from 'chalk';
 import { ContextTracker } from '../../core/contextTracker';
 import { getRecommendedEffort } from '../../core/modelProfile';
-import { sumMessageChars } from '../../core/contextBudget';
+import { sumMessageChars, getContextPressure } from '../../core/contextBudget';
 import { logSink } from '../../core/logSink';
 
 export async function handleExit(_ctx: CommandCtx, _arg: string): Promise<void> {
@@ -51,6 +51,10 @@ export async function handleContext(ctx: CommandCtx, _arg: string): Promise<void
 
   logSink.log(chalk.bold('\n📊 CONTEXT STATUS'));
   CLITheme.contextBar(total, maxTokens, 'Context:', sourceLabel);
+  const pressure = getContextPressure(total, maxTokens);
+  const pctStr = Math.round(pressure.ratio * 100);
+  logSink.log(`  ${chalk.gray('Context:')} ${chalk.cyan(`${pctStr}%`)} ${chalk.gray(`(estimated)`)}`);
+  logSink.log(`  ${chalk.gray('Used:')}    ${chalk.white(`${pressure.usedTokens.toLocaleString('en-US')} / ${pressure.limitTokens.toLocaleString('en-US')} tokens`)}`);
   logSink.log('');
 
   const counts: Record<string, number> = {};

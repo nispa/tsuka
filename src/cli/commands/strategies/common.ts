@@ -9,6 +9,7 @@ import { resolveToolSet } from '../../../core/toolSet';
 import { withEffortPin, logEffortDivergence } from '../../../core/effortControl';
 import { setCurrentSenderName, dequeueMessages, formatPendingMessages } from '../../../core/messageQueue';
 import { ContextTracker } from '../../../core/contextTracker';
+import { getContextPressure } from '../../../core/contextBudget';
 import { sanitizeToolCallArguments } from '../../../tools/jsonRepair';
 import { ChatMessage, TurnOutcome, ProtocolSource, TeamConfig } from '../../../core/types';
 import { logSink } from '../../../core/logSink';
@@ -255,12 +256,21 @@ SHARED BLACKBOARD (optional): this run has a shared blackboard, separate from th
 
   if (turnStatsRef.s) {
     onTurnStats?.(turnStatsRef.s);
+    const limitTokens = ctx.configManager.getMaxHistoryTokens();
+    const usedTokens = turnStatsRef.s.promptTokens > 0
+      ? turnStatsRef.s.promptTokens
+      : tempAgent.estimateTotalContextTokens();
+    const pressure = getContextPressure(usedTokens, limitTokens);
     ContextTracker.getInstance().addEntry({
       timestamp: new Date().toISOString(),
       agentName: memberChar.aiName,
       tokenCount: turnStatsRef.s.tokenCount,
       promptTokens: turnStatsRef.s.promptTokens,
-      action: task.length > 60 ? task.slice(0, 60) + '…' : task
+      action: task.length > 60 ? task.slice(0, 60) + '…' : task,
+      usedTokens: pressure.usedTokens,
+      limitTokens: pressure.limitTokens,
+      ratio: pressure.ratio,
+      source: turnStatsRef.s.promptTokens > 0 ? 'observed' : 'estimated',
     });
   }
 

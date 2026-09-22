@@ -159,3 +159,47 @@ export function calculateReasoningBudget(
     freeContextPercent: freePercent
   };
 }
+
+/**
+ * Normalized context pressure representation (T22.2).
+ */
+export interface ContextPressure {
+  usedTokens: number;
+  limitTokens: number;
+  remainingTokens: number;
+  ratio: number;
+}
+
+/**
+ * Pure projection of context window pressure (T22.2).
+ *
+ * Evaluates context working-set utilization relative to configured or detected limits.
+ * Normalizes ratio to [0, 1] and avoids NaN or unhandled divisions on invalid/edge inputs.
+ */
+export function getContextPressure(
+  usedTokens: number,
+  limitTokens: number
+): ContextPressure {
+  const safeUsed = Number.isFinite(usedTokens) ? Math.max(0, Math.floor(usedTokens)) : 0;
+  const safeLimit = Number.isFinite(limitTokens) ? Math.max(0, Math.floor(limitTokens)) : 0;
+
+  if (safeLimit <= 0) {
+    return {
+      usedTokens: safeUsed,
+      limitTokens: 0,
+      remainingTokens: 0,
+      ratio: 1,
+    };
+  }
+
+  const remaining = Math.max(0, safeLimit - safeUsed);
+  const rawRatio = safeUsed / safeLimit;
+  const ratio = Math.min(1, Math.max(0, Number.isFinite(rawRatio) ? rawRatio : 1));
+
+  return {
+    usedTokens: safeUsed,
+    limitTokens: safeLimit,
+    remainingTokens: remaining,
+    ratio,
+  };
+}

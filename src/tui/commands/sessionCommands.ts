@@ -6,6 +6,7 @@ import { controlSudo } from '../../core/sudoControl';
 import * as fs from 'fs';
 import * as path from 'path';
 import { copyToClipboard } from '../../core/platform';
+import { getContextPressure } from '../../core/contextBudget';
 import { SystemModals } from '../modals';
 import { TuiCommandSpec } from './types';
 import { buildSessionMarkdown, defaultExportPath } from './sessionMarkdown';
@@ -156,11 +157,14 @@ export const SESSION_COMMANDS: TuiCommandSpec[] = [
     description: 'Context window and token budget breakdown',
     run: ({ store }) => {
       const state = store.getState();
+      const pressure = getContextPressure(state.stats.usedTokens, state.stats.maxTokens);
+      const pct = Math.round(pressure.ratio * 100);
       store.addMessage({
         role: 'system',
         content:
           `📊 **Context Breakdown:**\n` +
-          `• Used: ${state.stats.usedTokens} tokens (${state.stats.percentage}%)\n` +
+          `• Context: ${pct}% (estimated)\n` +
+          `• Used: ${pressure.usedTokens.toLocaleString('en-US')} / ${pressure.limitTokens.toLocaleString('en-US')} tokens (${state.stats.percentage}%)\n` +
           `• Max Budget: ${state.stats.maxTokens} tokens\n` +
           `• Messages: ${state.messages.length} retained in session`,
       });

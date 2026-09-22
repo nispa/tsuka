@@ -22,6 +22,7 @@ import { askInput, setCompletionSource } from './input';
 import { lockRawMode } from './rawlock';
 import { GenerationInterrupt } from './interrupt';
 import { ContextTracker } from '../core/contextTracker';
+import { getContextPressure } from '../core/contextBudget';
 import {
   RoleConfig, TraitConfig, CharacterConfig, TeamConfig,
   loadJsonFile, listAvailableItems, listAvailableCharacters, listAvailableTeams, listAvailableRoles, resolveCharacter,
@@ -466,17 +467,26 @@ async function main() {
        }
        console.log();
 
-       try {
-         if (agentRunStats) {
-           ContextTracker.getInstance().addEntry({
-             timestamp: new Date().toISOString(),
-             agentName: agentHeaderName,
-             tokenCount: agentRunStats.tokenCount ?? 0,
-             promptTokens: agentRunStats.promptTokens ?? 0,
-             action: trimmedInput.length > 80 ? trimmedInput.slice(0, 80) + '…' : trimmedInput
-           });
-         }
-       } catch {}
+        try {
+          if (agentRunStats) {
+            const limitTokens = configManager.getMaxHistoryTokens();
+            const usedTokens = agentRunStats.promptTokens > 0
+              ? agentRunStats.promptTokens
+              : agent.estimateTotalContextTokens();
+            const pressure = getContextPressure(usedTokens, limitTokens);
+            ContextTracker.getInstance().addEntry({
+              timestamp: new Date().toISOString(),
+              agentName: agentHeaderName,
+              tokenCount: agentRunStats.tokenCount ?? 0,
+              promptTokens: agentRunStats.promptTokens ?? 0,
+              action: trimmedInput.length > 80 ? trimmedInput.slice(0, 80) + '…' : trimmedInput,
+              usedTokens: pressure.usedTokens,
+              limitTokens: pressure.limitTokens,
+              ratio: pressure.ratio,
+              source: agentRunStats.promptTokens > 0 ? 'observed' : 'estimated',
+            });
+          }
+        } catch {}
 
        try {
          await agent.compressHistory(0.75);

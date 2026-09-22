@@ -1,8 +1,11 @@
 import { ConfigManager } from './config';
 
+export type ContextMeasureSource = 'estimated' | 'observed';
+
 /**
  * ContextEntry represents an execution log point recording agent activity,
- * timestamps, output tokens generated, prompt tokens consumed, and the action performed.
+ * timestamps, output tokens generated, prompt tokens consumed, the action performed,
+ * and working-set context pressure metrics (T22.3).
  */
 export interface ContextEntry {
   timestamp: string;
@@ -10,6 +13,10 @@ export interface ContextEntry {
   tokenCount: number;
   promptTokens: number;
   action: string;
+  usedTokens?: number;
+  limitTokens?: number;
+  ratio?: number;
+  source?: ContextMeasureSource;
 }
 
 /**
