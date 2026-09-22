@@ -11,7 +11,8 @@ import { AGENT_DEFAULTS, AGENT_RESULT_DEFAULTS, CONTEXT_SCHEDULER_DEFAULTS, TASK
 import { calculateReasoningBudget, sumMessageChars, getContextPressure } from './contextBudget';
 import { scheduleContext, type ContextSchedulerConfig, validateContextSchedulerConfig } from './contextScheduler';
 import { createTaskPacket, type TaskPacket } from './taskPacket';
-import { formatAgentResultSummary, createFailedFallback, safeParseAgentResult, type AgentResult } from './agentResult';
+import { formatAgentResultSummary, createFailedFallback, safeParseAgentResult, reduceAgentResult, type AgentResult } from './agentResult';
+import { resolveCharacter, loadRole } from './personas';
 import { ContextTracker } from './contextTracker';
 import type { WorkflowDispatcher } from './workflowDispatcher';
 import { createTokenCalibrationState, estimateTokensFromChars, observePromptTokens, TokenCalibrationState } from './tokenCalibration';
@@ -160,6 +161,45 @@ export class Agent implements ToolSetController {
 
   getSubagentRunner(): ISubagentRunner | undefined {
     return this.subagentRunner;
+  }
+
+  private roleName?: string;
+  private charName?: string;
+
+  setRoleName(roleName: string | undefined): void {
+    this.roleName = roleName;
+  }
+
+  getRoleName(): string | undefined {
+    return this.roleName;
+  }
+
+  setCharName(charName: string | undefined): void {
+    this.charName = charName;
+  }
+
+  getCharName(): string | undefined {
+    return this.charName;
+  }
+
+  getEffectiveRoleName(): string | undefined {
+    if (this.roleName) return this.roleName;
+    if (this.agentLabel) {
+      const char = resolveCharacter(this.agentLabel);
+      if (char) return char.role || char.activeRole;
+      try {
+        const role = loadRole(this.agentLabel);
+        if (role) return role.name;
+      } catch {
+        // Not a registered role
+      }
+    }
+    return undefined;
+  }
+
+  getAllowedToolPerimeter(): string[] | undefined {
+    if (!this.allowedTools) return undefined;
+    return Array.from(new Set([...this.allowedTools, ...this.deferredTools]));
   }
 
   /** Whether context-driven autonomous subagent delegation is enabled (T22.8). Default: false. */
@@ -554,6 +594,9 @@ export class Agent implements ToolSetController {
               const subResult = await this.subagentRunner.run(
                 {
                   task: packetToDelegate,
+                  roleName: this.getEffectiveRoleName(),
+                  charName: this.charName,
+                  allowedTools: this.getAllowedToolPerimeter(),
                   expectAgentResult: true,
                   throwOnError: true,
                 },
@@ -568,12 +611,20 @@ export class Agent implements ToolSetController {
               // Preserve structured result (including blocked / failed status) without arbitrary raw text fallback
               const structuredResult: AgentResult = safeParseAgentResult(subResult.agentResult);
 
-              let formattedSummary = formatAgentResultSummary(structuredResult);
               const maxReportChars = AGENT_RESULT_DEFAULTS.maxSummaryChars;
-              if (formattedSummary.length > maxReportChars) {
-                formattedSummary =
-                  formattedSummary.slice(0, maxReportChars - 1) +
-                  `…\n[Truncated: see full report artifact at '${subResult.reportPath}']`;
+              const fullFormatted = formatAgentResultSummary(structuredResult);
+              let formattedSummary: string;
+
+              if (fullFormatted.length <= maxReportChars) {
+                formattedSummary = fullFormatted;
+              } else {
+                // Apply field-level structural reduction preserving status, summary, and unresolved (T22.8/T22.9)
+                const truncationNotice = subResult.reportPath
+                  ? `\n[Truncated: see full report artifact at '${subResult.reportPath}']`
+                  : '\n[Truncated: full details omitted]';
+                const availableBudget = Math.max(200, maxReportChars - truncationNotice.length);
+                const reduced = reduceAgentResult(structuredResult, availableBudget);
+                formattedSummary = formatAgentResultSummary(reduced) + truncationNotice;
               }
 
               this.messages.push({

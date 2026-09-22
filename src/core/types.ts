@@ -90,6 +90,8 @@ export interface SubagentRunRequest {
   reasoningEffort?: string;
   /** When true, child prompt requires AgentResult JSON and runner parses the output. */
   expectAgentResult?: boolean;
+  /** Restricts the subagent tools to a maximum allowable perimeter (T22.8). */
+  allowedTools?: string[];
   /** Explicit run ID override for blackboard / report scoping. */
   runId?: string;
   /** Whether to record execution to persistent memory outside blackboard. Defaults to true. */

@@ -33,6 +33,7 @@ import { ConfigManager } from '../src/core/config/manager';
 import type { ISubagentRunner, SubagentRunRequest, SubagentRunResult } from '../src/core/types';
 import type { AgentEvent } from '../src/core/agentEvents';
 import type { AgentResult } from '../src/core/agentResult';
+import { createSubagentRunner } from '../src/core/subagentRunner';
 import type { TaskPacket } from '../src/core/taskPacket';
 
 let passed = 0;
@@ -385,6 +386,7 @@ async function runTests(): Promise<void> {
         status: 'done',
         summary: 'x'.repeat(3000),
         changes: Array.from({ length: 20 }, (_, i) => `Change ${i}: ${'y'.repeat(100)}`),
+        unresolved: ['Critical remaining task: apply database migration'],
       },
     });
 
@@ -406,6 +408,12 @@ async function runTests(): Promise<void> {
       content.includes(`[Truncated: see full report artifact at 'runs/test-run/child-worker.md']`),
       'truncation note with artifact path is appended when report exceeds bounds'
     );
+    check(
+      'ACS.9.3',
+      content.includes('Critical remaining task: apply database migration'),
+      'unresolved items are strictly preserved even under truncation'
+    );
+    check('ACS.9.4', content.includes('**Unresolved:**'), 'unresolved header is preserved in truncated summary');
   }
 
   // ---------------------------------------------------------------------------
@@ -581,6 +589,59 @@ async function runTests(): Promise<void> {
     const config = cm.getContextSchedulerConfig();
     check('ACS.15.2', typeof config.prepareAt === 'number' && typeof config.delegateAt === 'number', 'config has numeric thresholds');
     check('ACS.15.3', config.prepareAt < config.delegateAt, 'default thresholds are strictly ordered');
+  }
+
+  // ---------------------------------------------------------------------------
+  // 16. ACS.16: Role and tool perimeter preservation during delegation
+  // ---------------------------------------------------------------------------
+  console.log('--- 16. Role and tool perimeter preservation ---');
+  {
+    const registry = new ToolRegistry();
+    const provider = new MockLLMProvider([{ content: 'Audit complete.' }]);
+    const runner = new SpySubagentRunner({
+      reportPath: 'runs/test-run/auditor-child.md',
+      agentResult: {
+        status: 'done',
+        summary: 'Defensive security audit completed with no findings.',
+      },
+    });
+
+    const parentTools = ['audit_code', 'read_file', 'grep_search'];
+    const agent = new Agent(provider, registry, permissions, 'Security auditor prompt', parentTools, 10, 50, 'security_auditor');
+    agent.setRoleName('security_auditor');
+    agent.setDeferredTools(['list_dir']);
+    agent.setSubagentRunner(runner);
+    agent.setContextScheduler({ enabled: true, prepareAt: 0.10, delegateAt: 0.20 });
+
+    await agent.run('Audit codebase for vulnerabilities '.repeat(3));
+
+    check('ACS.16.1', runner.calls.length === 1, 'delegation was triggered');
+    const req = runner.calls[0];
+    check('ACS.16.2', req.roleName === 'security_auditor', 'child inherits parent roleName (does not default to developer)');
+    check('ACS.16.3', Array.isArray(req.allowedTools), 'child request specifies allowedTools perimeter');
+    const perimeter = new Set(req.allowedTools);
+    check('ACS.16.4', perimeter.has('audit_code') && perimeter.has('read_file') && perimeter.has('list_dir'), 'perimeter includes parent active and deferred tools');
+    check('ACS.16.5', !perimeter.has('execute_command') && !perimeter.has('delete_file'), 'perimeter excludes dangerous tools not granted to parent');
+
+    // Test DefaultSubagentRunner enforces the perimeter on child agent instantiation
+    const freshProvider = new MockLLMProvider([{ content: 'Child audit response.' }]);
+    const runtimeRunner = createSubagentRunner({
+      provider: freshProvider,
+      registry,
+      permissionManager: permissions,
+      configManager: new ConfigManager(),
+      eventSink: () => {},
+    });
+
+    // Provide allowedTools restricting to safe read tools only
+    const subResult = await runtimeRunner.run({
+      task: 'Check security',
+      roleName: 'developer', // developer normally has execute_command and delete_file
+      allowedTools: ['read_file', 'grep_search'], // restricted perimeter
+      expectAgentResult: false,
+      throwOnError: false,
+    });
+    check('ACS.16.6', subResult.success === true, 'subagent ran with filtered tool perimeter');
   }
 
   // Cleanup

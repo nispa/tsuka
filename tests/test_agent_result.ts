@@ -16,6 +16,7 @@ import {
   createAgentResult,
   formatAgentResultSummary,
   parseAgentResult,
+  reduceAgentResult,
   safeParseAgentResult,
   serializeAgentResult,
   validateAgentResult,
@@ -494,6 +495,65 @@ assert(formatted.includes('**Unresolved:**'), 'Includes unresolved section');
 assert(formatted.includes('**Evidence:** Files: src/core/agentResult.ts | Tests: tests/test_agent_result.ts'), 'Includes evidence line');
 assert(!formatted.includes('secret-child-transcript-item'), 'Output does not include transcript');
 assert(!formatted.includes('secret-child-reasoning-step'), 'Output does not include reasoning');
+
+// 9. Structural Field-Level Reduction (T22.8, T22.9)
+console.log('--- 9. reduceAgentResult Structural Budget ---');
+
+// 9.1: Under budget - returned unchanged
+const underBudget: AgentResult = {
+  status: 'done',
+  summary: 'Short task finished cleanly.',
+  changes: ['file1.ts'],
+  unresolved: ['nothing'],
+};
+const redUnder = reduceAgentResult(underBudget, 1000);
+assert(redUnder.summary === underBudget.summary, 'Under-budget result keeps summary');
+assert(redUnder.changes?.length === 1, 'Under-budget result keeps changes');
+assert(redUnder.unresolved?.length === 1, 'Under-budget result keeps unresolved');
+
+// 9.2: Oversized changes + decisions - prunes secondary fields first, strictly preserves unresolved
+const oversizedChanges: AgentResult = {
+  status: 'done',
+  summary: 'Completed multiple tasks.',
+  changes: Array.from({ length: 30 }, (_, i) => `Change ${i}: ${'x'.repeat(100)}`),
+  decisions: Array.from({ length: 20 }, (_, i) => `Decision ${i}: ${'y'.repeat(100)}`),
+  unresolved: ['Crucial open issue: DB migration not applied', 'Secondary blocker'],
+  evidence: { files: ['src/a.ts', 'src/b.ts'], tests: ['t1.ts'] },
+};
+const budget = 1500;
+const redOver = reduceAgentResult(oversizedChanges, budget);
+const formattedRedOver = formatAgentResultSummary(redOver);
+
+assert(formattedRedOver.length <= budget, `Reduced result fits within budget (${formattedRedOver.length} <= ${budget})`);
+assert(redOver.status === 'done', 'Status is preserved');
+assert(redOver.summary === oversizedChanges.summary, 'Summary is preserved');
+assert(
+  formattedRedOver.includes('Crucial open issue: DB migration not applied'),
+  'Unresolved item is strictly preserved despite heavy pruning of changes/decisions'
+);
+assert(formattedRedOver.includes('**Unresolved:**'), 'Unresolved section header exists');
+assert(
+  (redOver.changes?.length ?? 0) < oversizedChanges.changes!.length,
+  'Changes were pruned to make room for unresolved'
+);
+
+// 9.3: Oversized summary + unresolved - trims summary to avoid dropping unresolved
+const hugeSummary: AgentResult = {
+  status: 'failed',
+  summary: 'Z'.repeat(1200),
+  unresolved: ['Critical remaining task: missing credentials'],
+};
+const tightBudget = 500;
+const redHugeSummary = reduceAgentResult(hugeSummary, tightBudget);
+const formattedTight = formatAgentResultSummary(redHugeSummary);
+
+assert(formattedTight.length <= tightBudget, `Tight budget satisfied (${formattedTight.length} <= ${tightBudget})`);
+assert(redHugeSummary.status === 'failed', 'Status failed preserved');
+assert(
+  formattedTight.includes('Critical remaining task: missing credentials'),
+  'Unresolved is preserved even when summary dominates the budget'
+);
+assert(redHugeSummary.summary.endsWith('...'), 'Summary was trimmed with ellipsis');
 
 // Summary of test results
 console.log(`\nResults: ${passed} passed, ${failed} failed`);

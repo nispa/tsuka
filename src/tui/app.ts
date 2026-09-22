@@ -154,12 +154,14 @@ export class TuiApp {
       toolSet.active,
       this.configManager.getMaxHistoryMessages(),
       this.configManager.getMaxHistoryTokens(),
-      undefined,
+      char?.aiName || role.name,
       reasoningEffort,
       undefined,
       this.configManager.getMaxToolRounds()
     );
     a.setDeferredTools(toolSet.deferred);
+    a.setRoleName(role.name);
+    if (char) a.setCharName(char.aiName);
     a.setSubagentRunner(this.subagentRunner);
     if (this.configManager.isContextSchedulerEnabled()) {
       a.setContextScheduler({

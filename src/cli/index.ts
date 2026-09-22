@@ -142,12 +142,14 @@ async function main() {
       toolSet.active,
       configManager.getMaxHistoryMessages(),
       configManager.getMaxHistoryTokens(),
-      undefined,
+      char?.aiName || role.name,
       reasoningEffort,
       undefined,
       configManager.getMaxToolRounds()
     );
     a.setDeferredTools(toolSet.deferred);
+    a.setRoleName(role.name);
+    if (char) a.setCharName(char.aiName);
     a.setSubagentRunner(runtime.subagentRunner);
     if (configManager.isContextSchedulerEnabled()) {
       a.setContextScheduler({

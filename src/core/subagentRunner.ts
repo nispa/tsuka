@@ -112,6 +112,13 @@ export class DefaultSubagentRunner implements ISubagentRunner {
     const blackboardTools = blackboard ? ['post_note', 'read_notes'] : [];
     const toolSet = resolveToolSet(roleObj, { alwaysActive: [...memoryTools, ...blackboardTools] });
 
+    // Restrict child tools to maximum allowed perimeter if specified (prevents privilege escalation, T22.8)
+    if (Array.isArray(request.allowedTools)) {
+      const allowedSet = new Set(request.allowedTools);
+      toolSet.active = toolSet.active.filter(t => allowedSet.has(t));
+      toolSet.deferred = toolSet.deferred.filter(t => allowedSet.has(t));
+    }
+
     // 4. Resolve reasoning effort
     const effectiveOverride = withEffortPin(request.reasoningEffort as ReasoningEffort | undefined);
     logEffortDivergence(label, effectiveOverride, configManager.getDefaultReasoningEffort());
@@ -152,6 +159,8 @@ export class DefaultSubagentRunner implements ISubagentRunner {
       configManager.getMaxToolRounds()
     );
     subAgent.setDeferredTools(toolSet.deferred);
+    subAgent.setRoleName(roleName);
+    if (char) subAgent.setCharName(char.aiName);
     subAgent.setSubagentRunner(this);
     subAgent.setContextScheduler({ enabled: false });
 

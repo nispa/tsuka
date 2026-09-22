@@ -376,3 +376,121 @@ export function formatAgentResultSummary(result: AgentResult): string {
 
   return lines.join('\n');
 }
+
+/**
+ * Structurally reduces an AgentResult to fit within a maximum character budget (T22.8, T22.9)
+ * while strictly preserving:
+ * 1. `status` (done | blocked | failed)
+ * 2. `summary` (valid, non-empty)
+ * 3. `unresolved` items (critical open issues, blockers, failures)
+ *
+ * Secondary details are pruned in order:
+ * 1. `changes` (pruned/summarized first)
+ * 2. `decisions` (pruned/summarized next)
+ * 3. `evidence` (excessive files/tests trimmed)
+ * 4. `unresolved` (only trimmed as a last resort if unresolved alone exceeds budget, keeping top items)
+ *
+ * Guarantees that formatAgentResultSummary(reducedResult).length <= maxChars.
+ */
+export function reduceAgentResult(
+  result: AgentResult,
+  maxChars: number = AGENT_RESULT_DEFAULTS.maxSummaryChars
+): AgentResult {
+  const validated = validateAgentResult(result);
+  if (formatAgentResultSummary(validated).length <= maxChars) {
+    return validated;
+  }
+
+  // Work with a mutable copy
+  let status = validated.status;
+  let summary = validated.summary;
+  let unresolved = validated.unresolved ? [...validated.unresolved] : undefined;
+  let evidence = validated.evidence
+    ? {
+        files: validated.evidence.files ? [...validated.evidence.files] : undefined,
+        tests: validated.evidence.tests ? [...validated.evidence.tests] : undefined,
+      }
+    : undefined;
+  let decisions = validated.decisions ? [...validated.decisions] : undefined;
+  let changes = validated.changes ? [...validated.changes] : undefined;
+
+  const build = (): AgentResult => {
+    const r: AgentResult = { status, summary };
+    if (changes && changes.length > 0) r.changes = changes;
+    if (decisions && decisions.length > 0) r.decisions = decisions;
+    if (unresolved && unresolved.length > 0) r.unresolved = unresolved;
+    if (
+      evidence &&
+      ((evidence.files && evidence.files.length > 0) ||
+        (evidence.tests && evidence.tests.length > 0))
+    ) {
+      r.evidence = evidence;
+    }
+    return r;
+  };
+
+  // Phase 1: Prune secondary details — 'changes' first
+  if (changes && changes.length > 0) {
+    if (changes.length > 2) {
+      changes = [changes[0], changes[1], `[... ${validated.changes!.length - 2} more changes omitted]`];
+      if (formatAgentResultSummary(build()).length <= maxChars) return build();
+    }
+    if (changes.length > 1) {
+      changes = [changes[0], `[... ${validated.changes!.length - 1} more changes omitted]`];
+      if (formatAgentResultSummary(build()).length <= maxChars) return build();
+    }
+    changes = undefined;
+    if (formatAgentResultSummary(build()).length <= maxChars) return build();
+  }
+
+  // Phase 2: Prune secondary details — 'decisions' next
+  if (decisions && decisions.length > 0) {
+    if (decisions.length > 2) {
+      decisions = [decisions[0], decisions[1], `[... ${validated.decisions!.length - 2} more decisions omitted]`];
+      if (formatAgentResultSummary(build()).length <= maxChars) return build();
+    }
+    if (decisions.length > 1) {
+      decisions = [decisions[0], `[... ${validated.decisions!.length - 1} more decisions omitted]`];
+      if (formatAgentResultSummary(build()).length <= maxChars) return build();
+    }
+    decisions = undefined;
+    if (formatAgentResultSummary(build()).length <= maxChars) return build();
+  }
+
+  // Phase 3: Prune secondary details — 'evidence'
+  if (evidence) {
+    if (evidence.files && evidence.files.length > 2) {
+      evidence.files = [evidence.files[0], evidence.files[1], `[+${evidence.files.length - 2} more]`];
+    }
+    if (evidence.tests && evidence.tests.length > 2) {
+      evidence.tests = [evidence.tests[0], evidence.tests[1], `[+${evidence.tests.length - 2} more]`];
+    }
+    if (formatAgentResultSummary(build()).length <= maxChars) return build();
+
+    evidence = undefined;
+    if (formatAgentResultSummary(build()).length <= maxChars) return build();
+  }
+
+  // Phase 4: Only status, summary, and unresolved remain.
+  // We MUST preserve unresolved items. If summary + unresolved > maxChars,
+  // we trim summary first to ensure unresolved items are not starved of space.
+  if (unresolved && unresolved.length > 0) {
+    while (unresolved.length > 2 && formatAgentResultSummary(build()).length > maxChars) {
+      unresolved = [
+        ...unresolved.slice(0, unresolved.length - 2),
+        `[... ${validated.unresolved!.length - (unresolved.length - 2)} more unresolved items omitted]`,
+      ];
+    }
+  }
+
+  // If still over budget, summary is consuming too much room: trim summary!
+  if (formatAgentResultSummary(build()).length > maxChars) {
+    const currentLen = formatAgentResultSummary(build()).length;
+    const overflow = currentLen - maxChars;
+    const targetSummaryLen = Math.max(20, summary.length - overflow - 5);
+    summary = summary.slice(0, targetSummaryLen) + '...';
+  }
+
+  // Final fallback safety: ensure valid AgentResult within bounds
+  return build();
+}
