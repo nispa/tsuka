@@ -79,3 +79,46 @@ export interface CharacterConfig {
   signature?: string;   // Optional concise summary for orchestrator
   reasoningEffort?: string;
 }
+
+/** Request payload for executing a child subagent (T22.7). */
+export interface SubagentRunRequest {
+  /** Task description string or structured TaskPacket */
+  task: string | unknown;
+  roleName?: string;
+  traitName?: string;
+  charName?: string;
+  reasoningEffort?: string;
+  /** When true, child prompt requires AgentResult JSON and runner parses the output. */
+  expectAgentResult?: boolean;
+  /** Explicit run ID override for blackboard / report scoping. */
+  runId?: string;
+  /** Whether to record execution to persistent memory outside blackboard. Defaults to true. */
+  persistMemory?: boolean;
+  /** If true, runner re-throws child execution errors instead of returning typed failure. */
+  throwOnError?: boolean;
+}
+
+/** Execution callbacks and signal for subagent run. */
+export interface SubagentExecutionContext {
+  onChunk?: (chunk: string, channel?: any, authorName?: string) => void;
+  onStats?: (stats: any, agentLabel?: string) => void;
+  onEvent?: (event: any) => void;
+  signal?: AbortSignal;
+}
+
+/** Typed outcome of a subagent run. */
+export interface SubagentRunResult {
+  success: boolean;
+  output: string;
+  agentLabel: string;
+  roleName: string;
+  reportPath: string;
+  stats?: unknown;
+  agentResult?: unknown;
+  error?: Error;
+}
+
+/** Contract for subagent runners (T22.7). */
+export interface ISubagentRunner {
+  run(request: SubagentRunRequest, context?: SubagentExecutionContext): Promise<SubagentRunResult>;
+}

@@ -30,50 +30,20 @@ import { withEffortPin, logEffortDivergence } from './effortControl';
 import type { StreamChannel } from './thinkParser';
 import type { AgentEventHandler } from './agentEvents';
 import { TaskPacket, validateTaskPacket, formatTaskPacketBriefing } from './taskPacket';
-import { AgentResult, safeParseAgentResult, createAgentResult } from './agentResult';
+import { AgentResult, safeParseAgentResult, createFailedFallback } from './agentResult';
+import type {
+  ISubagentRunner,
+  SubagentRunRequest,
+  SubagentExecutionContext,
+  SubagentRunResult,
+} from './types';
 
-export interface SubagentRunRequest {
-  /** Task description string or structured TaskPacket */
-  task: string | TaskPacket;
-  roleName?: string;
-  traitName?: string;
-  charName?: string;
-  reasoningEffort?: ReasoningEffort;
-  /**
-   * When true, child prompt requires AgentResult JSON and runner parses
-   * the output with safeParseAgentResult.
-   * When false, runner does not fabricate a structured result from arbitrary text.
-   */
-  expectAgentResult?: boolean;
-  /** Explicit run ID override for blackboard / report scoping. */
-  runId?: string;
-  /**
-   * Whether to record execution to persistent memory when outside a blackboard run.
-   * Set false in tests or isolated runs to prevent polluting memory.
-   * Defaults to true.
-   */
-  persistMemory?: boolean;
-  /** If true, runner re-throws child execution errors instead of returning typed failure. */
-  throwOnError?: boolean;
-}
-
-export interface SubagentExecutionContext {
-  onChunk?: (chunk: string, channel?: StreamChannel, authorName?: string) => void;
-  onStats?: (stats: ChatStats, agentLabel?: string) => void;
-  onEvent?: AgentEventHandler;
-  signal?: AbortSignal;
-}
-
-export interface SubagentRunResult {
-  success: boolean;
-  output: string;
-  agentLabel: string;
-  roleName: string;
-  reportPath: string;
-  stats?: ChatStats;
-  agentResult?: AgentResult;
-  error?: Error;
-}
+export type {
+  ISubagentRunner,
+  SubagentRunRequest,
+  SubagentExecutionContext,
+  SubagentRunResult,
+};
 
 export interface SubagentRunnerDependencies {
   provider: ILLMProvider;
@@ -81,10 +51,6 @@ export interface SubagentRunnerDependencies {
   permissionManager?: PermissionManager;
   configManager?: ConfigManager;
   memoryStore?: MemoryStore | null;
-}
-
-export interface ISubagentRunner {
-  run(request: SubagentRunRequest, context?: SubagentExecutionContext): Promise<SubagentRunResult>;
 }
 
 export class DefaultSubagentRunner implements ISubagentRunner {
@@ -147,7 +113,7 @@ export class DefaultSubagentRunner implements ISubagentRunner {
     const toolSet = resolveToolSet(roleObj, { alwaysActive: [...memoryTools, ...blackboardTools] });
 
     // 4. Resolve reasoning effort
-    const effectiveOverride = withEffortPin(request.reasoningEffort);
+    const effectiveOverride = withEffortPin(request.reasoningEffort as ReasoningEffort | undefined);
     logEffortDivergence(label, effectiveOverride, configManager.getDefaultReasoningEffort());
 
     // 5. Assemble system prompt
@@ -186,6 +152,7 @@ export class DefaultSubagentRunner implements ISubagentRunner {
       configManager.getMaxToolRounds()
     );
     subAgent.setDeferredTools(toolSet.deferred);
+    subAgent.setSubagentRunner(this);
 
     // 7. Setup forwarding handlers attributed to subagent label
     const onChunk = context?.onChunk;
@@ -227,10 +194,9 @@ export class DefaultSubagentRunner implements ISubagentRunner {
       });
     }
 
-    // 8. Execute child agent turn
-    let result: string;
+    // 8. Execute child agent turn & persist artifacts atomically
     try {
-      result = await subAgent.run(
+      const result = await subAgent.run(
         `Execute this task: ${taskText}`,
         subChunkHandler,
         subStatsHandler,
@@ -238,6 +204,46 @@ export class DefaultSubagentRunner implements ISubagentRunner {
         signal,
         effectiveOverride
       );
+
+      // 9. Persist full report artifact to disk under runs/<runId>/
+      const fullReport = result || '[no response]';
+      const runKey = request.runId || blackboard?.runId || crypto.randomUUID();
+      const runDir = homePath('runs', runKey);
+      fs.mkdirSync(runDir, { recursive: true });
+      const safeLabel = label.replace(/[^a-z0-9_-]+/gi, '_').toLowerCase() || 'subagent';
+      const fileName = `${safeLabel}-${Date.now()}-${crypto.randomBytes(3).toString('hex')}.md`;
+      const filePath = path.join(runDir, fileName);
+      fs.writeFileSync(filePath, fullReport, 'utf-8');
+      const relPath = path.join('runs', runKey, fileName);
+
+      // 10. Record artifact to blackboard or memory
+      if (blackboard) {
+        blackboard.post('artefatto-sub-agente', relPath, label);
+      } else if (request.persistMemory !== false) {
+        try {
+          const memStore =
+            this.dependencies.memoryStore !== undefined
+              ? this.dependencies.memoryStore
+              : MemoryStore.getInstance();
+          if (memStore) {
+            const summarySnippet = fullReport.length > 250 ? fullReport.slice(0, 245) + '…' : fullReport;
+            const taskSnippet = taskText.slice(0, 120);
+            memStore.addFact(
+              `[Subagent @${label}] Task: "${taskSnippet}" -> Report: ${relPath}. Summary: ${summarySnippet}`,
+              'agent',
+              { summary: `Subagent @${label}: ${taskText.slice(0, 50)}` }
+            );
+          }
+        } catch {
+          // Memory logging failures must not fail subagent execution
+        }
+      }
+
+      // 11. Optional AgentResult parsing when requested
+      let agentResult: AgentResult | undefined;
+      if (request.expectAgentResult) {
+        agentResult = safeParseAgentResult(result);
+      }
 
       if (onEvent) {
         onEvent({
@@ -248,6 +254,16 @@ export class DefaultSubagentRunner implements ISubagentRunner {
           agentLabel: label,
         });
       }
+
+      return {
+        success: true,
+        output: result,
+        agentLabel: label,
+        roleName,
+        reportPath: relPath,
+        stats: capturedStats,
+        agentResult,
+      };
     } catch (err: any) {
       if (onEvent) {
         onEvent({
@@ -265,11 +281,10 @@ export class DefaultSubagentRunner implements ISubagentRunner {
 
       let failedAgentResult: AgentResult | undefined;
       if (request.expectAgentResult) {
-        failedAgentResult = createAgentResult({
-          status: 'failed',
-          summary: `Child agent execution failed: ${err.message}`,
-          unresolved: [`Execution error: ${err.message}`],
-        });
+        failedAgentResult = createFailedFallback(
+          `Child agent execution failed: ${err.message}`,
+          [`Execution error: ${err.message}`]
+        );
       }
 
       return {
@@ -283,56 +298,6 @@ export class DefaultSubagentRunner implements ISubagentRunner {
         error: err instanceof Error ? err : new Error(String(err)),
       };
     }
-
-    // 9. Persist full report artifact to disk under runs/<runId>/
-    const fullReport = result || '[no response]';
-    const runKey = request.runId || blackboard?.runId || crypto.randomUUID();
-    const runDir = homePath('runs', runKey);
-    fs.mkdirSync(runDir, { recursive: true });
-    const safeLabel = label.replace(/[^a-z0-9_-]+/gi, '_').toLowerCase() || 'subagent';
-    const fileName = `${safeLabel}-${Date.now()}-${crypto.randomBytes(3).toString('hex')}.md`;
-    const filePath = path.join(runDir, fileName);
-    fs.writeFileSync(filePath, fullReport, 'utf-8');
-    const relPath = path.join('runs', runKey, fileName);
-
-    // 10. Record artifact to blackboard or memory
-    if (blackboard) {
-      blackboard.post('artefatto-sub-agente', relPath, label);
-    } else if (request.persistMemory !== false) {
-      try {
-        const memStore =
-          this.dependencies.memoryStore !== undefined
-            ? this.dependencies.memoryStore
-            : MemoryStore.getInstance();
-        if (memStore) {
-          const summarySnippet = fullReport.length > 250 ? fullReport.slice(0, 245) + '…' : fullReport;
-          const taskSnippet = taskText.slice(0, 120);
-          memStore.addFact(
-            `[Subagent @${label}] Task: "${taskSnippet}" -> Report: ${relPath}. Summary: ${summarySnippet}`,
-            'agent',
-            { summary: `Subagent @${label}: ${taskText.slice(0, 50)}` }
-          );
-        }
-      } catch {
-        // Memory logging failures must not fail subagent execution
-      }
-    }
-
-    // 11. Optional AgentResult parsing when requested
-    let agentResult: AgentResult | undefined;
-    if (request.expectAgentResult) {
-      agentResult = safeParseAgentResult(result);
-    }
-
-    return {
-      success: true,
-      output: result,
-      agentLabel: label,
-      roleName,
-      reportPath: relPath,
-      stats: capturedStats,
-      agentResult,
-    };
   }
 }
 

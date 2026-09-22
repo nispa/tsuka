@@ -36,12 +36,14 @@ import { TuiFileItem } from './types';
 import { TuiCommandController, TuiTurnRunner } from './controllers';
 import { setLogSink, resetLogSink } from '../core/logSink';
 import { setProgressSink } from '../core/progressSink';
+import type { ISubagentRunner } from '../core/types';
 
 export interface TuiAppOptions {
   configManager: ConfigManager;
   provider: ILLMProvider;
   registry: IToolRegistry;
   permissionManager: PermissionManager;
+  subagentRunner?: ISubagentRunner;
   onShutdown?: () => void | Promise<void>;
 }
 
@@ -53,6 +55,7 @@ export class TuiApp {
   private provider: ILLMProvider;
   private registry: IToolRegistry;
   private permissionManager: PermissionManager;
+  private subagentRunner?: ISubagentRunner;
   private agent: Agent;
   private activeTab: 'chat' | 'tools' = 'chat';
   private layoutConfig: TuiLayoutConfig;
@@ -66,6 +69,7 @@ export class TuiApp {
     this.provider = options.provider;
     this.registry = options.registry;
     this.permissionManager = options.permissionManager;
+    this.subagentRunner = options.subagentRunner;
     this.onShutdown = options.onShutdown;
     this.layoutConfig = LayoutConfigManager.load();
 
@@ -86,6 +90,7 @@ export class TuiApp {
       provider: this.provider,
       registry: this.registry,
       permissionManager: this.permissionManager,
+      subagentRunner: this.subagentRunner,
       layoutConfig: this.layoutConfig,
       getAgent: () => this.agent,
       setAgent: (a) => { this.agent = a; },
@@ -155,6 +160,7 @@ export class TuiApp {
       this.configManager.getMaxToolRounds()
     );
     a.setDeferredTools(toolSet.deferred);
+    a.setSubagentRunner(this.subagentRunner);
 
     a.setToolRoundsPromptHandler((info) => {
       return new Promise<ToolRoundsAction>((resolve) => {

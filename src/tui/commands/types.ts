@@ -13,6 +13,7 @@ import { TuiLayoutConfig } from '../layoutConfig';
 import { IToolRegistry } from '../../tools/registry';
 import { PermissionManager } from '../../safety/permissions';
 import { WorkflowEventSink } from '../../cli/commands/types';
+import type { ISubagentRunner } from '../../core/types';
 
 /**
  * Everything a command may need from the application.
@@ -25,6 +26,7 @@ export interface CommandControllerContext {
   provider: ILLMProvider;
   registry?: IToolRegistry;
   permissionManager?: PermissionManager;
+  subagentRunner?: ISubagentRunner;
   layoutConfig: TuiLayoutConfig;
   getAgent: () => Agent;
   setAgent: (a: Agent) => void;

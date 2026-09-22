@@ -25,6 +25,7 @@ export class TuiCommandController {
       provider,
       registry: this.ctx.registry || (this.ctx.getAgent() as any).registry,
       permissionManager: this.ctx.permissionManager || (this.ctx.getAgent() as any).permissionManager,
+      subagentRunner: this.ctx.subagentRunner || (this.ctx.getAgent() as any).subagentRunner,
       listAvailableCharacters,
       loadCharacter,
       loadRole,

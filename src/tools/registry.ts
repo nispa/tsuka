@@ -3,6 +3,7 @@ import type { ILLMProvider, ChatStats, ReasoningEffort } from '../core/provider'
 import type { StreamChannel } from '../core/thinkParser';
 import type { AgentEventHandler } from '../core/agentEvents';
 import type { WorkflowDispatcher } from '../core/workflowDispatcher';
+import type { ISubagentRunner } from '../core/types';
 
 import type {
   Tool,
@@ -101,7 +102,8 @@ export class ToolRegistry implements IToolRegistry {
     onStats?: (stats: ChatStats, agentLabel?: string) => void,
     onEvent?: AgentEventHandler,
     signal?: AbortSignal,
-    toolSet?: ToolSetController
+    toolSet?: ToolSetController,
+    subagentRunner?: ISubagentRunner
   ): Promise<ToolResult> {
     const tool = this.tools.get(name);
     if (!tool) {
@@ -118,6 +120,7 @@ export class ToolRegistry implements IToolRegistry {
       requesterLabel,
       workflowDispatcher,
       toolSet,
+      subagentRunner,
       onChunk,
       onStats,
       onEvent,

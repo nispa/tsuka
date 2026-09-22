@@ -20,13 +20,16 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { DefaultSubagentRunner, createSubagentRunner } from '../src/core/subagentRunner';
-import { MockLLMProvider } from './mocks/mockProvider';
+import { MockLLMProvider, mockToolCall } from './mocks/mockProvider';
 import { ToolRegistry } from '../src/tools/registry';
 import { PermissionManager } from '../src/safety/permissions';
 import { Blackboard } from '../src/core/blackboard';
 import { createTaskPacket } from '../src/core/taskPacket';
 import { serializeAgentResult } from '../src/core/agentResult';
+import { Agent } from '../src/core/agent';
+import { spawnAgentTool } from '../src/tools/impl/spawnAgent';
 import type { ChatStats } from '../src/core/provider';
+import type { ISubagentRunner } from '../src/core/types';
 
 let passed = 0;
 let failed = 0;
@@ -50,6 +53,7 @@ async function runTests(): Promise<void> {
   process.env.TSUKA_MEMORY_FILE = path.join(tmpMemDir, 'memory.json');
 
   const registry = new ToolRegistry();
+  registry.register(spawnAgentTool);
   const permissions = new PermissionManager();
 
   // ---------------------------------------------------------------------------
@@ -322,6 +326,126 @@ async function runTests(): Promise<void> {
   });
   const memExistsAfter = fs.existsSync(isolatedMemFile);
   check('SR8.1', memExistsBefore === memExistsAfter, 'persistMemory: false did not create or mutate memory file');
+
+  // ---------------------------------------------------------------------------
+  // 9. Pipeline Runner Injection to spawn_agent (Issue 1)
+  // ---------------------------------------------------------------------------
+  console.log('--- 9. Pipeline Runner Injection to spawn_agent ---');
+  let customRunnerCalls = 0;
+  const mockCustomRunner: ISubagentRunner = {
+    async run(req, ctx) {
+      customRunnerCalls++;
+      return {
+        success: true,
+        output: 'Custom runner handled delegation.',
+        agentLabel: 'custom-subagent',
+        roleName: req.roleName || 'developer',
+        reportPath: 'runs/test/custom.md',
+      };
+    },
+  };
+
+  const toolExecResult = await spawnAgentTool.execute(
+    { task: 'Delegate to subagent' },
+    {
+      provider: provider1,
+      registry,
+      permissionManager: permissions,
+      subagentRunner: mockCustomRunner,
+    }
+  );
+  check('SR9.1', customRunnerCalls === 1, 'spawnAgentTool executed injected subagentRunner');
+  check('SR9.2', toolExecResult.includes('Custom runner handled delegation'), 'spawnAgentTool returns custom runner output');
+
+  const agentWithRunner = new Agent(
+    new MockLLMProvider([
+      {
+        toolCalls: [mockToolCall('spawn_agent', { task: 'Subtask from parent agent' })],
+      },
+      {
+        content: 'Parent agent acknowledged subagent completion.',
+      },
+    ]),
+    registry,
+    permissions,
+    'Parent system prompt',
+    ['spawn_agent']
+  );
+  agentWithRunner.setSubagentRunner(mockCustomRunner);
+  await agentWithRunner.run('Please spawn a subagent');
+  check('SR9.3', customRunnerCalls === 2, 'Agent.run forwarded subagentRunner into spawn_agent tool round');
+
+  // ---------------------------------------------------------------------------
+  // 10. Fallback Error Bounding with expectAgentResult (Issue 2)
+  // ---------------------------------------------------------------------------
+  console.log('--- 10. Fallback Error Bounding (Issue 2) ---');
+  const hugeErrorMessage = 'CRITICAL_FAILURE_'.repeat(100); // 1,700 chars (> 1000 maxItemChars)
+  const hugeErrorProvider = new MockLLMProvider([
+    {
+      error: { message: hugeErrorMessage },
+    },
+  ]);
+  const runnerWithHugeError = createSubagentRunner({
+    provider: hugeErrorProvider,
+    registry,
+    permissionManager: permissions,
+  });
+
+  let hugeErrorResult: any;
+  let hugeErrorThrew = false;
+  try {
+    hugeErrorResult = await runnerWithHugeError.run({
+      task: 'Task with huge error',
+      expectAgentResult: true,
+      throwOnError: false,
+      persistMemory: false,
+    });
+  } catch {
+    hugeErrorThrew = true;
+  }
+  check('SR10.1', !hugeErrorThrew, 'runner does not throw when error exceeds item limit with expectAgentResult');
+  check('SR10.2', hugeErrorResult?.success === false, 'runner returns success: false for huge error');
+  check('SR10.3', !!hugeErrorResult?.agentResult, 'constructed agentResult fallback is present');
+  check('SR10.4', hugeErrorResult?.agentResult?.status === 'failed', 'fallback status is failed');
+  check('SR10.5', (hugeErrorResult?.agentResult?.unresolved?.[0]?.length ?? 0) <= 1000, 'unresolved error detail is bounded within maxItemChars (<= 1000)');
+
+  // ---------------------------------------------------------------------------
+  // 11. Atomic Finalization on Persistence Failure (Issue 3)
+  // ---------------------------------------------------------------------------
+  console.log('--- 11. Atomic Finalization on Persistence Failure (Issue 3) ---');
+  const successProvider = new MockLLMProvider([
+    { content: 'Work done successfully before write failure.' },
+  ]);
+  const runnerForWriteFailure = createSubagentRunner({
+    provider: successProvider,
+    registry,
+    permissionManager: permissions,
+  });
+
+  const capturedEvents: any[] = [];
+  const badRunId = 'invalid:path/with\0badchars';
+  let writeFailThrew = false;
+  let writeFailResult: any;
+  try {
+    writeFailResult = await runnerForWriteFailure.run(
+      {
+        task: 'Task with un-persistable path',
+        runId: badRunId,
+        throwOnError: false,
+        persistMemory: false,
+      },
+      {
+        onEvent: (ev) => capturedEvents.push(ev),
+      }
+    );
+  } catch {
+    writeFailThrew = true;
+  }
+  check('SR11.1', !writeFailThrew, 'persistence error does not throw unhandled exception when throwOnError is false');
+  check('SR11.2', writeFailResult?.success === false, 'runner returns success: false on persistence error');
+  const subagentEndEvents = capturedEvents.filter((ev) => ev.type === 'subagent_end');
+  check('SR11.3', subagentEndEvents.length === 1, 'emitted exactly one subagent_end event');
+  check('SR11.4', subagentEndEvents[0]?.success === false, 'subagent_end reports success: false instead of false-positive true');
 
   console.log(`\n=== SubagentRunner Test Results: ${passed} passed, ${failed} failed ===`);
   if (failed > 0) {

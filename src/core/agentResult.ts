@@ -181,7 +181,7 @@ export function parseAgentResult(raw: string | unknown): AgentResult {
  * Guarantees that summary and unresolved items strictly satisfy
  * AGENT_RESULT_DEFAULTS and pass validateAgentResult without throwing.
  */
-function createFailedFallback(summaryText: string, unresolvedDetails?: string[]): AgentResult {
+export function createFailedFallback(summaryText: string, unresolvedDetails?: string[]): AgentResult {
   const maxSummary = AGENT_RESULT_DEFAULTS.maxSummaryChars;
   const safeSummary =
     summaryText.length > maxSummary

@@ -6,7 +6,7 @@ import { StreamChannel } from './thinkParser';
 import chalk from 'chalk';
 import { MemoryStore } from './memory';
 import { logSink } from './logSink';
-import { ChatMessage } from './types';
+import { ChatMessage, ISubagentRunner } from './types';
 import { AGENT_DEFAULTS } from './constants';
 import { calculateReasoningBudget, sumMessageChars } from './contextBudget';
 import type { WorkflowDispatcher } from './workflowDispatcher';
@@ -133,6 +133,7 @@ export class Agent implements ToolSetController {
   }
 
   private workflowDispatcher?: WorkflowDispatcher;
+  private subagentRunner?: ISubagentRunner;
 
   /** Compatibility accessor: callers historically receive and mutate this array. */
   private get messages(): ChatMessage[] {
@@ -146,6 +147,15 @@ export class Agent implements ToolSetController {
   /** Connects escalation tools to the active application's workflow runner. */
   setWorkflowDispatcher(dispatcher: WorkflowDispatcher | undefined): void {
     this.workflowDispatcher = dispatcher;
+  }
+
+  /** Connects child agent delegation to the active application's subagent runner (T22.7). */
+  setSubagentRunner(runner: ISubagentRunner | undefined): void {
+    this.subagentRunner = runner;
+  }
+
+  getSubagentRunner(): ISubagentRunner | undefined {
+    return this.subagentRunner;
   }
 
   setToolRoundsPromptHandler(handler: ToolRoundsPromptHandler | undefined): void {
@@ -502,7 +512,8 @@ export class Agent implements ToolSetController {
           onStats,
           onEvent: emit,
           signal,
-          toolSet: this
+          toolSet: this,
+          subagentRunner: this.subagentRunner
         });
         this.messages.push(...toolRound.messages);
 

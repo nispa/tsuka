@@ -148,6 +148,7 @@ async function main() {
       configManager.getMaxToolRounds()
     );
     a.setDeferredTools(toolSet.deferred);
+    a.setSubagentRunner(runtime.subagentRunner);
     if (typeof commandCtx !== 'undefined') {
       a.setWorkflowDispatcher(createWorkflowDispatcher(commandCtx));
     }
@@ -253,6 +254,7 @@ async function main() {
     provider,
     registry,
     permissionManager,
+    subagentRunner: runtime.subagentRunner,
     agent: { current: agent },
     availableModels: { current: availableModels },
     recreateAgent,

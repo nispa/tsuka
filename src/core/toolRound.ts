@@ -3,7 +3,7 @@ import { PermissionManager } from '../safety/permissions';
 import { ILLMProvider, ChatStats } from './provider';
 import { AgentEventHandler } from './agentEvents';
 import { StreamChannel } from './thinkParser';
-import { ChatMessage, ToolCall } from './types';
+import { ChatMessage, ToolCall, ISubagentRunner } from './types';
 import type { WorkflowDispatcher } from './workflowDispatcher';
 
 export interface ToolRoundContext {
@@ -17,6 +17,7 @@ export interface ToolRoundContext {
   onEvent?: AgentEventHandler;
   signal?: AbortSignal;
   toolSet?: ToolSetController;
+  subagentRunner?: ISubagentRunner;
 }
 
 export interface ToolRoundResult {
@@ -59,7 +60,8 @@ export async function executeToolRound(
       context.onStats,
       context.onEvent,
       context.signal,
-      context.toolSet
+      context.toolSet,
+      context.subagentRunner
     );
 
     messages.push({

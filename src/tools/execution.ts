@@ -36,6 +36,8 @@ export function formatPermissionDetails(toolName: string, args: unknown): string
   }
 }
 
+import type { ISubagentRunner } from '../core/types';
+
 export interface ExecuteAuthorizedToolOptions {
   registry?: IToolRegistry;
   permissionManager: PermissionManager;
@@ -43,6 +45,7 @@ export interface ExecuteAuthorizedToolOptions {
   requesterLabel?: string;
   workflowDispatcher?: WorkflowDispatcher;
   toolSet?: ToolSetController;
+  subagentRunner?: ISubagentRunner;
   onChunk?: (chunk: string, channel?: StreamChannel, authorName?: string) => void;
   onStats?: (stats: ChatStats, agentLabel?: string) => void;
   onEvent?: AgentEventHandler;
@@ -109,6 +112,7 @@ export async function executeAuthorizedTool(
     requesterLabel: options.requesterLabel,
     workflowDispatcher: options.workflowDispatcher,
     toolSet: options.toolSet,
+    subagentRunner: options.subagentRunner,
     onChunk: options.onChunk,
     onStats: options.onStats,
     onEvent: options.onEvent,

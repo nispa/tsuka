@@ -20,6 +20,7 @@ export async function launchTui(): Promise<void> {
     provider: runtime.provider,
     registry: runtime.registry,
     permissionManager: runtime.permissionManager,
+    subagentRunner: runtime.subagentRunner,
     onShutdown: async () => {
       await runtime.close();
     },

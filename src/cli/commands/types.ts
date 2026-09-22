@@ -6,7 +6,7 @@ import { Agent } from '../../core/agent';
 import { AgentEventHandler } from '../../core/agentEvents';
 import { StreamChannel } from '../../core/thinkParser';
 import { RoleConfig, TraitConfig, CharacterConfig } from '../../core/personas';
-import { TeamConfig } from '../../core/types';
+import { TeamConfig, ISubagentRunner } from '../../core/types';
 import { GenerationInterrupt } from '../interrupt';
 
 /** Optional presentation sink used when CLI workflows run inside another UI. */
@@ -29,6 +29,7 @@ export interface CommandCtx {
   provider: ILLMProvider;
   registry: IToolRegistry;
   permissionManager: PermissionManager;
+  subagentRunner?: ISubagentRunner;
   agent: { current: Agent };
   availableModels: { current: string[] };
   recreateAgent: () => Agent;

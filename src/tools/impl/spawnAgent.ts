@@ -77,7 +77,7 @@ export const spawnAgentTool: Tool = {
     const permissionManager = context?.permissionManager ?? new PermissionManager();
 
     const runner: ISubagentRunner =
-      (context as any)?.subagentRunner ??
+      context?.subagentRunner ??
       createSubagentRunner({
         provider,
         registry,

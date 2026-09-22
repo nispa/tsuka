@@ -190,6 +190,7 @@ SHARED BLACKBOARD (optional): this run has a shared blackboard, separate from th
     ctx.configManager.getMaxToolRounds()
   );
   tempAgent.setDeferredTools(toolSet.deferred);
+  tempAgent.setSubagentRunner(ctx.subagentRunner ?? ctx.agent.current.getSubagentRunner());
 
   setCurrentSenderName(memberChar.aiName);
 

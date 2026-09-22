@@ -4,6 +4,7 @@ import type { StreamChannel } from '../core/thinkParser';
 import type { AgentEventHandler } from '../core/agentEvents';
 import type { ProviderClass } from '../core/cloudProvider';
 import type { WorkflowDispatcher } from '../core/workflowDispatcher';
+import type { ISubagentRunner } from '../core/types';
 
 export type ModelCapabilityTier = 'small' | 'medium' | 'large';
 
@@ -47,7 +48,8 @@ export interface IToolRegistry {
     onStats?: (stats: ChatStats, agentLabel?: string) => void,
     onEvent?: AgentEventHandler,
     signal?: AbortSignal,
-    toolSet?: ToolSetController
+    toolSet?: ToolSetController,
+    subagentRunner?: ISubagentRunner
   ): Promise<ToolResult>;
 }
 
@@ -56,6 +58,8 @@ export interface ToolExecutionContext {
   provider?: ILLMProvider;
   permissionManager?: PermissionManager;
   workflowDispatcher?: WorkflowDispatcher;
+  /** Subagent runner dependency for child delegation (T22.7). */
+  subagentRunner?: ISubagentRunner;
   /** Calling Agent's tool set (T14.14): present only when the Agent exposes one. */
   toolSet?: ToolSetController;
   /** Requesting agent label (e.g. character aiName) for logging and note authorship attribution. */
