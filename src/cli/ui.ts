@@ -229,7 +229,7 @@ export class CLITheme {
 
       { section: '🛠️  Agent & Tools' },
       ['/agent [name]', 'Selects or inspects active character/role'],
-      ['/sudo', 'Session shell authorization: on / off / status'],
+      ['/sudo', 'Session shell and file write/edit authorization: on / off / status'],
       ['/tools', 'Lists enabled tools per role, tier, and effort'],
 
       { section: '📊 Memory & History' },

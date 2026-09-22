@@ -57,11 +57,13 @@ Ogni tool nativo o dinamico registrato nel `ToolRegistry` dichiara un livello di
 
 `execute_command` possiede l'albero generato per tutto il lifecycle. Cancellazione utente e timeout convergono su un percorso terminale idempotente che rimuove listener e watchdog, quindi termina i discendenti prima in modo cooperativo e poi forzato se necessario (`taskkill /T` su Windows, process group detached su POSIX).
 
-### Autorizzazione shell di sessione (`/sudo`)
+### Autorizzazione di sessione (`/sudo`)
 
-`/sudo on` è un controllo esplicito dell'utente disponibile sia nella CLI sia nella TUI. Quando è attivo, rende `execute_command` disponibile a tutti gli agenti indipendentemente dalla allowlist del ruolo o dal tier del modello e bypassa i prompt `SAFE`, `RESTRICTED` e `DANGEROUS` di quel solo tool. Si applica anche agli agenti dei workflow che condividono lo stesso `PermissionManager`.
+`/sudo on` è un controllo esplicito dell'utente disponibile sia nella CLI sia nella TUI. Quando è attivo, rende `execute_command`, `write_file` ed `edit_file` disponibili a tutti gli agenti indipendentemente dalla allowlist del ruolo o dal tier del modello e ne consente l'esecuzione senza prompt interattivi all'interno della workspace jail. Si applica anche agli agenti dei workflow che condividono lo stesso `PermissionManager`.
 
-`/sudo`, `/sudo status` e `/sudo off` permettono rispettivamente di controllare lo stato o revocare l'autorizzazione. È disabilitato per impostazione predefinita e viene azzerato da `/reset` e all'avvio di un nuovo runtime. Non eleva i privilegi del processo nel sistema operativo, non amplia i permessi degli altri tool e non annulla un comando già in esecuzione; per quello va usata la normale interruzione. Un comando in coda valuta lo stato quando raggiunge la coda dei permessi, perciò la revoca ha effetto prima che un comando in attesa sia autorizzato.
+Crucialmente, `delete_file` è strettamente escluso: richiede sempre una conferma esplicita puntuale per singola invocazione, anche se sono attivi `/sudo on` o l'autorizzazione permanente dei tool RESTRICTED (`allowAllWrite`). La cancellazione di file tramite comandi shell (`rm`, `del`) resta possibile secondo l'invariato comportamento di `execute_command`; non vengono introdotti backup automatici o cestini (il recupero fa capo a Git).
+
+`/sudo`, `/sudo status` e `/sudo off` permettono rispettivamente di controllare lo stato o revocare l'autorizzazione. È disabilitato per impostazione predefinita e viene azzerato da `/reset` e all'avvio di un nuovo runtime. Non eleva i privilegi del processo nel sistema operativo, non amplia i permessi degli altri tool e non annulla un'operazione già in esecuzione; per quello va usata la normale interruzione. Una richiesta in coda valuta lo stato quando esce dalla coda dei permessi, perciò la revoca ha effetto prima che un'operazione in attesa sia autorizzata.
 
 Tutti i tool HTTP nativi usano il boundary condiviso `safeFetch`. Esso valida HTTP(S), porte standard, ogni risposta DNS e ogni hop di redirect; indirizzi privati, loopback, link-local, multicast, reserved e DNS misti vengono rifiutati in fail-closed. Resta un TOCTOU DNS fra preflight e resolver interno di `fetch`, finché il trasporto non fissa l'indirizzo validato sulla connessione effettiva.
 

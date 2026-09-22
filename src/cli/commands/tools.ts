@@ -47,7 +47,7 @@ export async function handleTools(ctx: CommandCtx, _arg: string): Promise<void> 
   }
 
   const visibleForLlm = ctx.registry.listForLLM(model, role.allowedTools, effort, ctx.provider.getBaseUrl(), ctx.provider.getProviderClass?.(),
-    ctx.permissionManager.isSudo() ? ['execute_command'] : undefined);
+    ctx.permissionManager.isSudo() ? ctx.permissionManager.getSudoTools() : undefined);
   const visibleNames = new Set(visibleForLlm.map((t) => t.function.name));
 
   logSink.log(chalk.bold(`\n🛠️  Agent Toolbox — ${char ? `${char.displayName} (${char.aiName})` : role.displayName}`));

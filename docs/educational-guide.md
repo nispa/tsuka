@@ -160,10 +160,10 @@ To protect the host system, every tool declares an explicit risk level:
 | Level | Operational Behavior | Examples |
 |---|---|---|
 | `SAFE` | Executed immediately without interruption. | `read_file`, `list_dir`, `web_search` |
-| `RESTRICTED` | Prompts user for approval (`[y/N/always]`). | `write_file`, `delete_file`, `edit_file` |
+| `RESTRICTED` | Prompts user for approval (`[y/N/always]`). `delete_file` always prompts; `write_file`/`edit_file` can also be authorized via `/sudo on`. | `write_file`, `delete_file`, `edit_file` |
 | `DANGEROUS` | Prompts per action by default. `execute_command` can be explicitly authorized for the current session with user-operated `/sudo on`. | `execute_command` |
 
-`/sudo` is deliberately a session control rather than an agent tool: it cannot be enabled by a model. It exposes `execute_command` across role and capability-tier filters and bypasses its prompts only; it does not elevate OS privileges or grant access to other tools. `/sudo off`, `/reset`, and a new runtime revoke the control.
+`/sudo` is deliberately a session control rather than an agent tool: it cannot be enabled by a model. It exposes `execute_command`, `write_file`, and `edit_file` across role and capability-tier filters and bypasses their prompts within the workspace jail; it does not elevate OS privileges, grant access to other tools, or bypass `delete_file` prompts. `/sudo off`, `/reset`, and a new runtime revoke the control.
 
 Three complementary defense layers:
 1. **Workspace Sandboxing**: restricts filesystem operations to `workspaceRoot`.

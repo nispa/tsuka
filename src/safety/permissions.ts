@@ -9,6 +9,9 @@ export interface PermissionPromptRequest {
 
 export type PermissionPromptHandler = (req: PermissionPromptRequest) => Promise<'yes' | 'no' | 'always'>;
 
+export const SUDO_AUTHORIZED_TOOLS = ['execute_command', 'write_file', 'edit_file'] as const;
+export type SudoAuthorizedTool = typeof SUDO_AUTHORIZED_TOOLS[number];
+
 export class PermissionManager {
   private allowAllWrite: boolean = false;
   private sudo = false;
@@ -19,6 +22,10 @@ export class PermissionManager {
 
   isSudo(): boolean {
     return this.sudo;
+  }
+
+  getSudoTools(): readonly string[] {
+    return SUDO_AUTHORIZED_TOOLS;
   }
   // Internal promise chain (T3.1): requests triggering interactive prompts
   // (RESTRICTED/DANGEROUS) are queued sequentially rather than colliding on stdin.
@@ -79,10 +86,12 @@ export class PermissionManager {
 
   private async promptForDecision(toolName: string, details: string, riskLevel: RiskLevel, requesterLabel?: string): Promise<boolean> {
     // Evaluate at dequeue time so revocation also affects waiting commands.
-    if (this.sudo && toolName === 'execute_command') return true;
+    if (this.sudo && (SUDO_AUTHORIZED_TOOLS as readonly string[]).includes(toolName)) return true;
 
     if (riskLevel === 'RESTRICTED') {
-      if (this.allowAllWrite) {
+      // T21.12: delete_file always requires explicit per-call confirmation;
+      // it is never bypassed by session-wide allowAllWrite or sudo.
+      if (this.allowAllWrite && toolName !== 'delete_file') {
         return true;
       }
 
@@ -90,7 +99,9 @@ export class PermissionManager {
       const decision = await this.promptHandler({ toolName, details, riskLevel, requesterLabel });
       if (decision === 'yes') return true;
       if (decision === 'always') {
-        this.allowAllWrite = true;
+        if (toolName !== 'delete_file') {
+          this.allowAllWrite = true;
+        }
         return true;
       }
       return false;

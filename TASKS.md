@@ -34,7 +34,7 @@
 - [Fase 4 — Pulizia del Core e Tipizzazione](#fase-4--pulizia-del-core-e-tipizzazione) (T4.1 – T4.2)
 - [Fase 5 — Test e Documentazione](#fase-5--test-e-documentazione) (T5.1 – T5.3)
 - [Fasi Intermedie (T8..T20) — TUI, MCP, Memory BM25, Escalation, SAST](#t141---piano-fase-5-polish-architetturale-e-didattica-qualità)
-- [Fase 8 — Refactoring Architetturale e Core Sharp](#fase-8--refactoring-architetturale-e-core-sharp) (T21.1 – T21.10)
+- [Fase 8 — Refactoring Architetturale e Core Sharp](#fase-8--refactoring-architetturale-e-core-sharp) (T21.1 – T21.12)
 - [Fase 9 — Context Scheduler e Memoria Pluggable](#fase-9--context-scheduler-e-memoria-pluggable) (T22.1 – T22.17)
 - [Fase 10 — Audit-Driven Security & Reliability Hardening](#fase-10--audit-driven-security--reliability-hardening) (T23.1 – T23.12)
 
@@ -155,6 +155,8 @@
 | T21.8 | ✅ Fatto | **Audit delle varianti dietro flag**: inventario derivato direttamente dal sorgente per tutte le opzioni di `AppConfig` e le variabili d'ambiente nominate, classificate come prodotto, compatibilità, diagnostica o presentazione; i tunable verificati convergono su `src/core/constants.ts` (Direttive 9 e 10). La suite `test_flags_audit.ts` fallisce quando compare una voce non classificata (24 check). |
 | T21.9 | ✅ Fatto | **Navigabilità di `TASKS.md` e guida didattica**: integrati dashboard di progetto e indice per fasi ad ancore interne in `TASKS.md` mantenendo l'unicità del diario storico; aggiornate le guide architetturali e didattiche (`docs/architecture-it.md`, `docs/architecture.md`, `docs/guida-didattica.md`, `docs/educational-guide.md`, `docs/memory-it.md`, `docs/memory.md`) con le motivazioni e decisioni reali di Fase 8. 89 suite verdi, build e typecheck puliti. |
 | T21.10 | ✅ Fatto | **Esecuzione shell per developer solo su tier large**: `execute_command` è core tool del developer ma lo schema richiede tier `large`; OpenRouter è classificato large dal contesto provider. Build, test, `npm ci` e installazioni npm comuni (incluse `-D`/`--save-dev`) sono RESTRICTED, composizioni e comandi ignoti DANGEROUS; l'output passa da `logSink`. |
+| T21.11 | Implementato; gate da verificare | **Autorizzazione shell di sessione `/sudo`**: commit `1432a33` del 2026-09-20. Comando utente CLI/TUI `/sudo` con argomenti `on`, `off`, `status` (senza argomento mostra lo stato), gestito dal boundary condiviso `controlSudo`. Quando attivo, rende disponibile `execute_command` a tutti gli agenti della sessione indipendentemente da ruolo e tier e ne autorizza anche i comandi DANGEROUS senza ulteriori prompt; non eleva i privilegi del sistema operativo e non autorizza gli altri tool. Stato solo in memoria, disattivato al reset della sessione; revoca applicata anche ai comandi in attesa nella coda permessi. L'avviso al modello è transitorio e non viene salvato nella history. Suite `tests/test_sudo.ts` registrata nel runner; documentazione security e guide didattiche IT/EN aggiornate nel commit. Ricognizione documentale del 2026-09-22: test, build e typecheck non rieseguiti; verifica lasciata al maintainer su sua richiesta. |
+| T21.12 | ✅ Fatto | **Estendere `/sudo` a scrittura e modifica file**: estesa l'autorizzazione di sessione a `write_file` ed `edit_file` mantenendo la workspace jail; `delete_file` richiede sempre conferma puntuale anche con `/sudo on` o con permessi RESTRICTED permanenti (`allowAllWrite`); messaggi, help e prompt transitori aggiornati; documentazione security e guide didattiche allineate; suite `tests/test_sudo.ts` estesa con test su visibilità, jail, revoca in coda e cancellazioni consecutive. I tre gate `npm test` (102 suite), `npm run build` e `npm run typecheck` verdi. |
 | T22.1 | ⬜ Da fare | **Baseline context, handoff e memoria**: characterization test dei percorsi correnti prima di cambiare policy o contratti. |
 | T22.2 | ⬜ Da fare | **Proiezione `ContextPressure`**: derivare la pressione dai dati già prodotti da `contextBudget.ts` e dalla calibrazione dell'`Agent`. |
 | T22.3 | ⬜ Da fare | **Pressione in `/context`**: estendere `ContextTracker` e le viste CLI/TUI senza introdurre nuova telemetria. |
@@ -3827,6 +3829,61 @@ solo con un modello/profilo `large`; small e medium non lo ricevono; build/test/
 install richiedono consenso RESTRICTED, le composizioni restano DANGEROUS; un modello
 OpenRouter riceve il tool come tier `large`; il TUI non riceve scritture raw; test
 mirati e i tre gate `npm test`, `npm run build`, `npm run typecheck` verdi.
+
+## T21.12 — Estendere `/sudo` a scrittura e modifica file
+
+**Dipende da:** T21.11 · **Stato:** completato · **Sforzo:** basso · **Priorità:** media
+
+**Decisione del maintainer (2026-09-22):** estendere l'autorizzazione di sessione
+alle operazioni `write_file` ed `edit_file`, mantenendo la workspace jail e una
+conferma esplicita per `delete_file`. Il comportamento attuale di `execute_command`
+resta invariato, compresa la possibilità di cancellare file tramite shell. Non si
+introducono backup automatici, cestino o controlli sui comandi distruttivi: il
+recupero tramite Git resta responsabilità del maintainer e copre solo contenuti
+versionati, non modifiche locali o file non tracciati.
+
+**Contratto:**
+
+- Con `/sudo on`, offrire `write_file` ed `edit_file` agli agenti della sessione
+  indipendentemente da ruolo e tier, come già avviene per `execute_command`, e
+  autorizzarli senza ulteriori prompt. Includere creazione, append, sovrascrittura,
+  scrittura transazionale e sostituzione con testo vuoto; conservare validazione
+  degli argomenti, jail e contratti di mutazione esistenti.
+- `delete_file` richiede sempre conferma puntuale quando invocato, anche se sono
+  attivi `/sudo` o l'autorizzazione permanente dei tool RESTRICTED. Nessun handler
+  disponibile significa rifiuto; un consenso non autorizza cancellazioni successive.
+  `/sudo` non amplia la visibilità di questo tool né autorizza altri tool.
+- `/sudo off` e il reset della sessione ripristinano le normali regole di visibilità
+  e autorizzazione di scrittura/modifica; valutare lo stato al momento dell'uscita
+  dalla coda permessi, affinché la revoca valga anche per richieste in attesa.
+- Conservare un solo percorso condiviso CLI/TUI e la policy nel boundary permessi;
+  aggiornare messaggi di stato/help e avviso transitorio al modello, senza salvare
+  lo stato sudo in configurazione o nella history.
+
+**File da verificare/modificare:** `src/safety/permissions.ts`,
+`src/core/sudoControl.ts`, `src/core/agent.ts`, `src/tools/registry.ts` e relativi
+contratti; presentazione CLI/TUI dove necessario; `tests/test_sudo.ts` e test dei
+permessi; `docs/security.md`, `docs/security-it.md`, `docs/educational-guide.md` e
+`docs/guida-didattica.md`.
+
+**Accettazione:** test con provider/tool mock e file temporanei per visibilità e
+autorizzazione con sudo on/off, reset e revoca in coda; scrittura/modifica consentite
+ma percorsi esterni alla jail negati; due cancellazioni consecutive richiedono due
+conferme anche con autorizzazione RESTRICTED permanente, e rifiuto/assenza di handler
+non elimina il file; nessuna regressione nell'autorizzazione shell o negli altri
+tool. Documentazione coerente con la possibilità di cancellare via shell; nessun
+backup/cestino introdotto. Alla consegna dell'implementazione: `npm test`,
+`npm run build` e `npm run typecheck` verdi.
+
+**Esito implementazione (2026-09-22):**
+- In `src/safety/permissions.ts`: esportata `SUDO_AUTHORIZED_TOOLS = ['execute_command', 'write_file', 'edit_file']`, aggiunto `getSudoTools()` e integrata la valutazione all'uscita dalla coda di `promptForDecision`. Per `RESTRICTED`, `delete_file` non riceve mai bypass da `allowAllWrite` o `/sudo`, richiedendo sempre conferma puntuale; un consenso `always` per `delete_file` non estende `allowAllWrite`.
+- In `src/core/sudoControl.ts`: messaggi aggiornati per includere comandi shell e scritture/modifiche file.
+- In `src/core/agent.ts`: `listForLLM` riceve `getSudoTools()` quando `isSudo()` è attivo; aggiornato il messaggio transitorio iniettato nel system prompt.
+- In `src/cli/commands/tools.ts`: visibilità LLM sincronizzata con `getSudoTools()`.
+- Presentazione CLI/TUI: aggiornati `src/cli/ui.ts`, `src/tui/commands/menu.json` e `src/tui/commands/sessionCommands.ts`.
+- Documentazione: aggiornati `docs/security.md`, `docs/security-it.md`, `docs/educational-guide.md` e `docs/guida-didattica.md`.
+- Suite `tests/test_sudo.ts`: verificata visibilità, esecuzione jail con percorsi esterni rifiutati, revoca in coda, doppia conferma per cancellazioni consecutive e fail-closed in assenza di handler.
+- Tutti i gate verdi: `npm test` (102 suite), `npm run build` e `npm run typecheck`.
 
 # FASE 9 — Context Scheduler e Memoria Pluggable
 

@@ -1,5 +1,5 @@
 [
-  { "command": "/sudo", "label": "/sudo", "hint": "Session shell authorization: on / off / status" },
+  { "command": "/sudo", "label": "/sudo", "hint": "Session shell and file write/edit authorization: on / off / status" },
   { "command": "/models", "label": "⚡ /models [name]", "hint": "Select or switch backend LLM model (F6)" },
   { "command": "/agent", "label": "🎭 /agent [name]", "hint": "Choose or switch Agent Persona (24 available) (F3)" },
   { "command": "/team", "label": "👥 /team [name]", "hint": "Launch autonomous multi-agent team (10 teams) (F4)" },

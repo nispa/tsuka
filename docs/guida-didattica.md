@@ -164,10 +164,10 @@ Per garantire la sicurezza del sistema host, ogni tool dichiara un livello di ri
 | Livello | Comportamento operativo | Esempi |
 |---|---|---|
 | `SAFE` | Esecuzione automatica trasparente senza interruzioni. | `read_file`, `list_dir`, `web_search` |
-| `RESTRICTED` | Richiede la conferma esplicita dell'utente (con opzione per autorizzare la sessione). | `write_file`, `delete_file`, `edit_file` |
+| `RESTRICTED` | Richiede la conferma esplicita dell'utente (`[y/N/always]`). `delete_file` richiede sempre conferma; `write_file` ed `edit_file` possono essere autorizzati anche con `/sudo on`. | `write_file`, `delete_file`, `edit_file` |
 | `DANGEROUS` | Richiede una conferma per esecuzione per default. `execute_command` può essere autorizzato esplicitamente per la sessione con `/sudo on`, azionato dall'utente. | `execute_command` |
 
-`/sudo` è intenzionalmente un controllo della sessione, non un tool dell'agente: un modello non può abilitarlo. Espone `execute_command` oltre i filtri di ruolo e tier e bypassa solo i suoi prompt; non eleva i privilegi del sistema operativo e non concede accesso ad altri tool. `/sudo off`, `/reset` e un nuovo runtime revocano il controllo.
+`/sudo` è intenzionalmente un controllo della sessione, non un tool dell'agente: un modello non può abilitarlo. Espone `execute_command`, `write_file` ed `edit_file` oltre i filtri di ruolo e tier e ne bypassa i prompt all'interno della workspace jail; non eleva i privilegi del sistema operativo, non concede accesso ad altri tool e non bypassa le conferme di `delete_file`. `/sudo off`, `/reset` e un nuovo runtime revocano il controllo.
 
 A questo meccanismo di autorizzazione si affiancano tre ulteriori barriere di sicurezza:
 1. **Workspace Sandbox (Jail)**: tutte le operazioni di lettura e scrittura su filesystem possono essere circoscritte alla cartella di lavoro configurata.

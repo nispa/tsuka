@@ -13,7 +13,7 @@ import { buildSessionMarkdown, defaultExportPath } from './sessionMarkdown';
 export const SESSION_COMMANDS: TuiCommandSpec[] = [
   {
     name: '/sudo',
-    description: 'Session shell authorization: on / off / status',
+    description: 'Session shell and file write/edit authorization: on / off / status',
     run: ({ cliContext, store, arg }) => {
       store.addMessage({ role: 'system', content: controlSudo(cliContext().permissionManager, arg) });
     },

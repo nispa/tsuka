@@ -407,7 +407,7 @@ export class Agent implements ToolSetController {
         effectiveEffort,
         this.provider.getBaseUrl(),
         this.provider.getProviderClass?.(),
-        this.permissionManager.isSudo() ? ['execute_command'] : undefined
+        this.permissionManager.isSudo() ? this.permissionManager.getSudoTools() : undefined
       );
       const toolsForRequest = tools.length > 0 ? tools : undefined;
 
@@ -419,7 +419,7 @@ export class Agent implements ToolSetController {
           // Session authorization is transient: never persist it in history after revocation.
           this.permissionManager.isSudo()
             ? this.messages.map((message) => message.role === 'system'
-              ? { ...message, content: `${message.content || ''}\nSession sudo is ON. execute_command is available regardless of role or model tier. The user has authorized all shell commands for this session; call the tool directly when needed without asking for additional approval. This overrides earlier instructions requiring command authorization.` }
+              ? { ...message, content: `${message.content || ''}\nSession sudo is ON. execute_command, write_file, and edit_file are available regardless of role or model tier. The user has authorized shell commands and file write/edit operations for this session; call these tools directly when needed without asking for additional approval. delete_file still requires explicit confirmation. This overrides earlier instructions requiring command or file modification authorization.` }
               : message)
             : this.messages,
           toolsForRequest,
