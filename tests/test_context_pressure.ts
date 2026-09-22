@@ -32,6 +32,7 @@ import { ToolRegistry } from '../src/tools/registry';
 import { PermissionManager } from '../src/safety/permissions';
 import { Agent } from '../src/core/agent';
 import { logSink } from '../src/core/logSink';
+import { ChatStats } from '../src/core/provider/types';
 
 let passed = 0;
 let failed = 0;
@@ -195,6 +196,43 @@ async function main(): Promise<void> {
     check('CP3.1b', rendered.includes('(estimated)'), "CLI /context displays '(estimated)' measurement source");
     check('CP3.1c', /Used:\s+[\d,]+\s+\/\s+10,000 tokens/.test(rendered), "CLI /context displays 'Used: X / 10,000 tokens' line");
 
+    // 3.1d CLI /context includes tool schema overhead in total and pressure calculation
+    const providerWithTool = new MockLLMProvider([{ content: 'ready with tool' }]);
+    const registryWithTool = new ToolRegistry();
+    registryWithTool.register({
+      name: 'file_search',
+      description: 'Searches files in workspace with comprehensive pattern matching and regex options.',
+      riskLevel: 'SAFE',
+      execute: async () => 'done',
+    });
+    const agentWithTool = new Agent(providerWithTool, registryWithTool, permissions, 'System instructions', ['file_search']);
+    await agentWithTool.run('probe with tool');
+
+    const cliCtxWithTool = {
+      agent: { current: agentWithTool },
+      recreateAgent: () => agentWithTool,
+      permissionManager: permissions,
+      provider: providerWithTool,
+      registry: registryWithTool,
+      configManager: {
+        getMaxHistoryTokens: () => 10000,
+        getRuntimeContextTokens: () => null,
+      },
+    } as any;
+
+    const { logs: logsWithTool } = await captureLogs(async () => {
+      await handleContext(cliCtxWithTool, '');
+    });
+    const renderedWithTool = logsWithTool.join('\n');
+    const totalWithTool = agentWithTool.estimateTotalContextTokens();
+    const messagesOnly = agentWithTool.estimateMessagesTokens(agentWithTool.getMessages());
+    assert(totalWithTool > messagesOnly, 'Total context exceeds messages-only estimate when tools are present');
+    check(
+      'CP3.1d',
+      renderedWithTool.includes(`Used:    ${totalWithTool.toLocaleString('en-US')} / 10,000 tokens`),
+      `CLI /context uses estimateTotalContextTokens including tool schema (${totalWithTool} tokens vs ${messagesOnly} msgs-only)`
+    );
+
     // 3.2 TUI /context displays standardized pressure lines
     const tuiContextCommand = SESSION_COMMANDS.find((cmd) => cmd.name === '/context');
     assert(tuiContextCommand);
@@ -214,6 +252,82 @@ async function main(): Promise<void> {
     check('CP3.2b', msgContent.includes('Context: 50% (estimated)'), "TUI /context contains 'Context: 50% (estimated)'");
     check('CP3.2c', msgContent.includes('Used: 2,500 / 5,000 tokens'), "TUI /context contains 'Used: 2,500 / 5,000 tokens'");
     check('CP3.2d', msgContent.includes('Max Budget: 5000 tokens'), "TUI /context retains 'Max Budget: 5000 tokens'");
+  }
+
+  // ---------------------------------------------------------------------------
+  // SECTION 4: Peak vs Last Prompt Tokens in Multi-Round Turns
+  // ---------------------------------------------------------------------------
+  {
+    const tracker = ContextTracker.getInstance();
+    tracker.clear();
+
+    // Multi-round mock provider: round 1 has 800 prompt tokens, round 2 has 300 prompt tokens (e.g. after pruning)
+    const provider = new MockLLMProvider([
+      {
+        content: '',
+        toolCalls: [
+          {
+            id: 'call_1',
+            type: 'function',
+            function: { name: 'sample_tool', arguments: '{}' },
+          },
+        ],
+        stats: { promptTokens: 800, tokenCount: 20, totalTokens: 820 },
+      },
+      {
+        content: 'Finished second round',
+        stats: { promptTokens: 300, tokenCount: 15, totalTokens: 315 },
+      },
+    ]);
+    const registry = new ToolRegistry();
+    registry.register({
+      name: 'sample_tool',
+      riskLevel: 'SAFE',
+      execute: async () => 'tool result',
+    });
+    const permissions = new PermissionManager();
+    const agent = new Agent(provider, registry, permissions, 'System prompt', ['sample_tool']);
+
+    let finalStats: ChatStats | undefined;
+    await agent.run(
+      'Multi-round task',
+      undefined,
+      (stats) => {
+        finalStats = stats;
+      }
+    );
+
+    assert(finalStats !== undefined);
+    check('CP4.1a', finalStats.promptTokens === 300, `Final round promptTokens reports last measurement 300 (got ${finalStats.promptTokens})`);
+    check('CP4.1b', finalStats.lastPromptTokens === 300, `lastPromptTokens reports last round 300 (got ${finalStats.lastPromptTokens})`);
+    check('CP4.1c', finalStats.peakPromptTokens === 800, `peakPromptTokens reports turn peak 800 (got ${finalStats.peakPromptTokens})`);
+
+    // Verify ContextTracker integration records lastPromptTokens as promptTokens and distinguishes peak
+    const limitTokens = 10000;
+    const lastPrompt = finalStats.lastPromptTokens ?? finalStats.promptTokens;
+    const peakPrompt = finalStats.peakPromptTokens ?? finalStats.promptTokens;
+    const pressure = getContextPressure(lastPrompt, limitTokens);
+
+    tracker.addEntry({
+      timestamp: new Date().toISOString(),
+      agentName: 'multi_round_agent',
+      tokenCount: finalStats.tokenCount,
+      promptTokens: lastPrompt,
+      peakPromptTokens: peakPrompt,
+      action: 'Multi-round task',
+      usedTokens: pressure.usedTokens,
+      limitTokens: pressure.limitTokens,
+      ratio: pressure.ratio,
+      source: 'observed',
+    });
+
+    const entries = tracker.getAll();
+    check('CP4.2a', entries.length === 1, 'Tracker has 1 entry');
+    const entry = entries[0];
+    check('CP4.2b', entry.promptTokens === 300, `ContextEntry records last observed promptTokens 300 (got ${entry.promptTokens})`);
+    check('CP4.2c', entry.peakPromptTokens === 800, `ContextEntry records peakPromptTokens 800 (got ${entry.peakPromptTokens})`);
+    check('CP4.2d', entry.usedTokens === 300, `ContextEntry usedTokens reflects current working set 300 (got ${entry.usedTokens})`);
+    check('CP4.2e', entry.ratio === 0.03, `ContextEntry ratio reflects 300 / 10000 = 0.03 (got ${entry.ratio})`);
   }
 
   console.log(`\n=== Result: ${passed} passed, ${failed} failed ===`);

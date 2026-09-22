@@ -98,6 +98,10 @@ export interface ChatStats {
   decodeMs?: number;
   /** Prompt ingestion speed measured client-side: promptTokens / TTFT. */
   prefillTokensPerSecond?: number;
+  /** Last observed prompt tokens from the most recent LLM round (distinguished from peak). */
+  lastPromptTokens?: number;
+  /** Peak prompt tokens observed across all rounds in this turn (distinguished from last). */
+  peakPromptTokens?: number;
 }
 
 export interface ChatResponse {

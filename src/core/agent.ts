@@ -389,7 +389,9 @@ export class Agent implements ToolSetController {
       tokenCount: 0,
       tokensPerSecond: 0,
       promptTokens: 0,
-      totalTokens: 0
+      totalTokens: 0,
+      lastPromptTokens: 0,
+      peakPromptTokens: 0,
     };
 
     while (!isDone) {
@@ -459,8 +461,14 @@ export class Agent implements ToolSetController {
           cumStats.durationMs += stats.durationMs;
           cumStats.decodeMs = (cumStats.decodeMs ?? 0) + (stats.decodeMs ?? 0);
           cumStats.tokenCount += stats.tokenCount;
-          cumStats.promptTokens = Math.max(cumStats.promptTokens, (stats as any).promptTokens ?? 0);
-          cumStats.totalTokens = Math.max(cumStats.totalTokens, (stats as any).totalTokens ?? 0);
+          const roundPromptTokens = typeof (stats as any)?.promptTokens === 'number' ? (stats as any).promptTokens : 0;
+          if (roundPromptTokens > 0) {
+            cumStats.lastPromptTokens = roundPromptTokens;
+            cumStats.peakPromptTokens = Math.max(cumStats.peakPromptTokens ?? 0, roundPromptTokens);
+            cumStats.promptTokens = roundPromptTokens;
+          }
+          const roundTotalTokens = typeof (stats as any)?.totalTokens === 'number' ? (stats as any).totalTokens : 0;
+          cumStats.totalTokens = roundTotalTokens > 0 ? roundTotalTokens : Math.max(cumStats.totalTokens, (stats as any).totalTokens ?? 0);
           // TTFT of the first round: it is the latency the user actually waited for.
           if (cumStats.ttftMs === undefined && stats.ttftMs !== undefined) cumStats.ttftMs = stats.ttftMs;
           if (stats.prefillTokensPerSecond !== undefined) cumStats.prefillTokensPerSecond = stats.prefillTokensPerSecond;

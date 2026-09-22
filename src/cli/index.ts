@@ -444,26 +444,29 @@ async function main() {
         }
         logSink.log('');
 
-         try {
-           if (agentRunStats) {
-             const limitTokens = configManager.getMaxHistoryTokens();
-             const usedTokens = agentRunStats.promptTokens > 0
-               ? agentRunStats.promptTokens
-               : agent.estimateTotalContextTokens();
-             const pressure = getContextPressure(usedTokens, limitTokens);
-             ContextTracker.getInstance().addEntry({
-               timestamp: new Date().toISOString(),
-               agentName: agentHeaderName,
-               tokenCount: agentRunStats.tokenCount ?? 0,
-               promptTokens: agentRunStats.promptTokens ?? 0,
-               action: trimmedInput.length > 80 ? trimmedInput.slice(0, 80) + '…' : trimmedInput,
-               usedTokens: pressure.usedTokens,
-               limitTokens: pressure.limitTokens,
-               ratio: pressure.ratio,
-               source: agentRunStats.promptTokens > 0 ? 'observed' : 'estimated',
-             });
-           }
-         } catch {}
+          try {
+            if (agentRunStats) {
+              const limitTokens = configManager.getMaxHistoryTokens();
+              const lastPromptTokens = agentRunStats.lastPromptTokens ?? agentRunStats.promptTokens ?? 0;
+              const peakPromptTokens = agentRunStats.peakPromptTokens ?? agentRunStats.promptTokens ?? 0;
+              const usedTokens = lastPromptTokens > 0
+                ? lastPromptTokens
+                : agent.estimateTotalContextTokens();
+              const pressure = getContextPressure(usedTokens, limitTokens);
+              ContextTracker.getInstance().addEntry({
+                timestamp: new Date().toISOString(),
+                agentName: agentHeaderName,
+                tokenCount: agentRunStats.tokenCount ?? 0,
+                promptTokens: lastPromptTokens,
+                peakPromptTokens: peakPromptTokens > 0 ? peakPromptTokens : undefined,
+                action: trimmedInput.length > 80 ? trimmedInput.slice(0, 80) + '…' : trimmedInput,
+                usedTokens: pressure.usedTokens,
+                limitTokens: pressure.limitTokens,
+                ratio: pressure.ratio,
+                source: lastPromptTokens > 0 ? 'observed' : 'estimated',
+              });
+            }
+          } catch {}
 
         try {
           await agent.compressHistory(0.75);

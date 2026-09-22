@@ -120,6 +120,8 @@ export interface TurnStats {
   tokensPerSecond: number;
   promptTokens: number;
   totalTokens: number;
+  lastPromptTokens?: number;
+  peakPromptTokens?: number;
 }
 
 export async function runMemberTurn(
@@ -257,20 +259,23 @@ SHARED BLACKBOARD (optional): this run has a shared blackboard, separate from th
   if (turnStatsRef.s) {
     onTurnStats?.(turnStatsRef.s);
     const limitTokens = ctx.configManager.getMaxHistoryTokens();
-    const usedTokens = turnStatsRef.s.promptTokens > 0
-      ? turnStatsRef.s.promptTokens
+    const lastPromptTokens = turnStatsRef.s.lastPromptTokens ?? turnStatsRef.s.promptTokens ?? 0;
+    const peakPromptTokens = turnStatsRef.s.peakPromptTokens ?? turnStatsRef.s.promptTokens ?? 0;
+    const usedTokens = lastPromptTokens > 0
+      ? lastPromptTokens
       : tempAgent.estimateTotalContextTokens();
     const pressure = getContextPressure(usedTokens, limitTokens);
     ContextTracker.getInstance().addEntry({
       timestamp: new Date().toISOString(),
       agentName: memberChar.aiName,
       tokenCount: turnStatsRef.s.tokenCount,
-      promptTokens: turnStatsRef.s.promptTokens,
+      promptTokens: lastPromptTokens,
+      peakPromptTokens: peakPromptTokens > 0 ? peakPromptTokens : undefined,
       action: task.length > 60 ? task.slice(0, 60) + '…' : task,
       usedTokens: pressure.usedTokens,
       limitTokens: pressure.limitTokens,
       ratio: pressure.ratio,
-      source: turnStatsRef.s.promptTokens > 0 ? 'observed' : 'estimated',
+      source: lastPromptTokens > 0 ? 'observed' : 'estimated',
     });
   }
 

@@ -51,7 +51,7 @@ export async function handleContext(ctx: CommandCtx, _arg: string): Promise<void
   const msgs = agent.getMessages();
   const maxTokens = ctx.configManager.getMaxHistoryTokens();
 
-  const total = agent.estimateMessagesTokens(msgs);
+  const total = agent.estimateTotalContextTokens();
 
   const runtimeCtx = ctx.configManager.getRuntimeContextTokens();
   const sourceLabel = runtimeCtx ? chalk.green('(live server)') : chalk.gray('(config default)');
@@ -79,6 +79,11 @@ export async function handleContext(ctx: CommandCtx, _arg: string): Promise<void
       logSink.log(`    ${chalk.cyan(role.padEnd(12))} ${chalk.yellow(String(counts[role]).padStart(3))} msg  ${chalk.gray(`(~${tokStr} tok)`)}`);
     }
   }
+  const toolTokens = Math.max(0, total - agent.estimateMessagesTokens(msgs));
+  if (toolTokens > 0) {
+    const tokStr = toolTokens >= 1000 ? `${(toolTokens / 1000).toFixed(1)}k` : `${toolTokens}`;
+    logSink.log(`    ${chalk.cyan('tools schema'.padEnd(12))} ${chalk.yellow('—'.padStart(3))} sch  ${chalk.gray(`(~${tokStr} tok)`)}`);
+  }
   logSink.log('');
 
   const tracker = ContextTracker.getInstance();
@@ -89,7 +94,10 @@ export async function handleContext(ctx: CommandCtx, _arg: string): Promise<void
       const time = e.timestamp.slice(11, 19);
       const tok = e.tokenCount >= 1000 ? `${(e.tokenCount / 1000).toFixed(1)}k` : `${e.tokenCount}`;
       const ctx = e.promptTokens >= 1000 ? `${(e.promptTokens / 1000).toFixed(1)}k` : `${e.promptTokens}`;
-      logSink.log(`    ${chalk.gray(time)}  ${chalk.cyan(e.agentName.padEnd(14))} ${chalk.yellow(tok.padStart(6))} out  ${chalk.gray(`${ctx.padStart(6)} ctx`)}  ${chalk.gray(e.action)}`);
+      const peakStr = e.peakPromptTokens && e.peakPromptTokens > e.promptTokens
+        ? chalk.gray(` (peak ${e.peakPromptTokens >= 1000 ? `${(e.peakPromptTokens / 1000).toFixed(1)}k` : e.peakPromptTokens})`)
+        : '';
+      logSink.log(`    ${chalk.gray(time)}  ${chalk.cyan(e.agentName.padEnd(14))} ${chalk.yellow(tok.padStart(6))} out  ${chalk.gray(`${ctx.padStart(6)} ctx`)}${peakStr}  ${chalk.gray(e.action)}`);
     }
     logSink.log('');
   }

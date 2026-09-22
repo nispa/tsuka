@@ -12,6 +12,7 @@ export interface ContextEntry {
   agentName: string;
   tokenCount: number;
   promptTokens: number;
+  peakPromptTokens?: number;
   action: string;
   usedTokens?: number;
   limitTokens?: number;

@@ -271,12 +271,15 @@ export async function handleGoal(ctx: CommandCtx, arg: string): Promise<void> {
                   );
                   if (ref.s) {
                     agentStats.push({ name: step.agentName, stats: ref.s });
-                    lastPromptTokens = Math.max(lastPromptTokens, ref.s.promptTokens);
+                    const lastTokens = ref.s.lastPromptTokens ?? ref.s.promptTokens ?? 0;
+                    const peakTokens = ref.s.peakPromptTokens ?? ref.s.promptTokens ?? 0;
+                    lastPromptTokens = Math.max(lastPromptTokens, peakTokens);
                     ContextTracker.getInstance().addEntry({
                       timestamp: new Date().toISOString(),
                       agentName: getCharDisplayName(allCharacters, step.agentName),
                       tokenCount: ref.s.tokenCount,
-                      promptTokens: ref.s.promptTokens,
+                      promptTokens: lastTokens,
+                      peakPromptTokens: peakTokens > 0 ? peakTokens : undefined,
                       action: step.task.length > 60 ? step.task.slice(0, 60) + '…' : step.task
                     });
                   }
@@ -342,12 +345,15 @@ export async function handleGoal(ctx: CommandCtx, arg: string): Promise<void> {
             );
             if (ref.s) {
               agentStats.push({ name: step.agentName, stats: ref.s });
-              lastPromptTokens = ref.s.promptTokens;
+              const lastTokens = ref.s.lastPromptTokens ?? ref.s.promptTokens ?? 0;
+              const peakTokens = ref.s.peakPromptTokens ?? ref.s.promptTokens ?? 0;
+              lastPromptTokens = peakTokens;
               ContextTracker.getInstance().addEntry({
                 timestamp: new Date().toISOString(),
                 agentName: char.aiName,
                 tokenCount: ref.s.tokenCount,
-                promptTokens: ref.s.promptTokens,
+                promptTokens: lastTokens,
+                peakPromptTokens: peakTokens > 0 ? peakTokens : undefined,
                 action: step.task.length > 60 ? step.task.slice(0, 60) + '…' : step.task
               });
               CLITheme.contextBar(lastPromptTokens, maxTokens, `Peak context (${char.aiName}):`);
