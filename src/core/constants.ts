@@ -134,6 +134,18 @@ export const AGENT_RESULT_DEFAULTS = {
   maxFailureSnippetChars: 500,
 };
 
+/** Subagent execution defaults (T22.7, subagentRunner, spawn_agent). */
+export const SUBAGENT_DEFAULTS = {
+  /** Maximum character length for inline task description in spawn_agent. */
+  maxTaskLength: 2_000,
+  /** Maximum character length for briefing file in spawn_agent. */
+  maxBriefingFileLength: 12_000,
+  /** Default role assigned when none is specified. */
+  defaultRole: 'developer',
+  /** Default trait assigned when none is specified. */
+  defaultTrait: 'professional',
+};
+
 /** Defaults for the read-only multi-agent consultation command (`/call`). */
 export const CALL_DEFAULTS = {
   /** Each invited participant speaks once in every consultation round. */

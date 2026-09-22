@@ -6,6 +6,7 @@ import { PermissionManager, type PermissionPromptHandler } from '../safety/permi
 import { connectMcpServers, type McpConnection, type McpConnectReport } from './mcp/connectMcpServers';
 
 import { loadEnvironmentVariables } from './apphome';
+import { createSubagentRunner, type ISubagentRunner } from './subagentRunner';
 
 export interface HarnessRuntimeOptions {
   configManager?: ConfigManager;
@@ -13,6 +14,7 @@ export interface HarnessRuntimeOptions {
   connectMcp?: boolean;
   customRegistry?: IToolRegistry;
   customProvider?: ILLMProvider;
+  customSubagentRunner?: ISubagentRunner;
 }
 
 export interface HarnessRuntime {
@@ -20,6 +22,7 @@ export interface HarnessRuntime {
   readonly provider: ILLMProvider;
   readonly registry: IToolRegistry;
   readonly permissionManager: PermissionManager;
+  readonly subagentRunner: ISubagentRunner;
   readonly mcpReport?: McpConnectReport;
   close(): Promise<void>;
 }
@@ -51,6 +54,15 @@ export async function createHarnessRuntime(options?: HarnessRuntimeOptions): Pro
     provider = new LLMProvider(activeConfig.baseUrl, configManager.getApiKey(), activeConfig.model, activeConfig.class);
   }
 
+  const subagentRunner =
+    options?.customSubagentRunner ??
+    createSubagentRunner({
+      provider,
+      registry,
+      permissionManager,
+      configManager,
+    });
+
   let closed = false;
   const close = async (): Promise<void> => {
     if (closed) return;
@@ -63,6 +75,7 @@ export async function createHarnessRuntime(options?: HarnessRuntimeOptions): Pro
     provider,
     registry,
     permissionManager,
+    subagentRunner,
     mcpReport,
     close,
   };

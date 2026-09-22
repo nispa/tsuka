@@ -163,7 +163,7 @@
 | T22.4 | ✅ Fatto | **Policy pura dello scheduler**: scegliere soltanto `continue`, `prepare` o `delegate` con due soglie centralizzate. |
 | T22.5 | ✅ Fatto | **Contratto `TaskPacket`**: contenuto minimo del briefing, separato da run ID e bookkeeping del workflow. |
 | T22.6 | ✅ Fatto | **Contratto `AgentResult`**: risultato child compatto e strutturato, senza transcript o reasoning. |
-| T22.7 | ⬜ Da fare | **Runner sub-agent condiviso**: estrarre da `spawn_agent` un solo percorso applicativo riusabile anche dallo scheduler. |
+| T22.7 | ✅ Fatto | **Runner sub-agent condiviso**: estratto `SubagentRunner` (`ISubagentRunner`, `DefaultSubagentRunner`) da `spawn_agent`, integrato nella composition root (`createHarnessRuntime`) e testato con 35 check (108 suite verdi). |
 | T22.8 | ⬜ Da fare | **Delega nel ReAct loop**: integrare la policy dopo pruning e fuori dai tool round, con guard anti-spawn e fallback al parent. |
 | T22.9 | ⬜ Da fare | **Budget strutturale di `AgentResult`**: ridurre il risultato senza troncare JSON o campi indispensabili. |
 | T22.10 | ⬜ Da fare | **Audit capability di `MemoryBackend`**: evolvere il contratto esistente soltanto per differenze operative dimostrate. |
@@ -4147,6 +4147,14 @@ tre gate verdi.
 ## T22.7 — Estrarre un runner sub-agent condiviso
 
 **Dipende da:** T22.4, T22.5, T22.6 · **Sforzo:** alto · **Priorità:** alta
+
+**Esito:** Estratta la costruzione ed esecuzione del sub-agente child da `src/tools/impl/spawnAgent.ts` nel modulo applicativo `src/core/subagentRunner.ts` (`ISubagentRunner`, `DefaultSubagentRunner`, `createSubagentRunner`).
+- Definite le costanti centralizzate `SUBAGENT_DEFAULTS` in `src/core/constants.ts` (`maxTaskLength: 2000`, `maxBriefingFileLength: 12000`, `defaultRole: 'developer'`, `defaultTrait: 'professional'`).
+- `SubagentRunner` gestisce l'intero ciclo di vita applicativo: risoluzione di persona (`resolveCharacter`, `loadRole`, `loadTrait`), toolset (`resolveToolSet`, memory tools, blackboard tools), effort control con pin e log di divergenza, assemblaggio system prompt, briefing da stringhe o `TaskPacket` (`formatTaskPacketBriefing`), creazione dell'istanza `Agent`, inoltro streaming token/chunk/eventi con attribuzione al label dell'agente, eventi di ciclo di vita (`subagent_start` e `subagent_end`), scrittura persistente del report in `runs/<runId>/<file>.md`, pubblicazione note su blackboard (`artefatto-sub-agente`) o persistenza su `MemoryStore` (isolabile via `persistMemory: false` o store mock), ed eventuale parsing tipizzato fail-closed di `AgentResult` quando richiesto esplicitamente (`expectAgentResult: true`).
+- `spawn_agent` ridotto a facade tool: valida gli argomenti di schema, verifica esistenza e jail del `briefingFile` (`resolveSafePath`), delega l'esecuzione a `SubagentRunner`, propaga gli errori preservando il contratto di lancio eccezioni (`throwOnError: true`) e formatta l'output con `capForContext()`.
+- Composition root (`src/core/runtime.ts`): esteso `HarnessRuntime` per includere `subagentRunner: ISubagentRunner` e `customSubagentRunner` opzionale nelle opzioni di bootstrap.
+- Nuova suite di test dedicata `tests/test_subagent_runner.ts` (35 check) registrata in `tests/run_tests.ts`.
+- ARCH.1-ARCH.5 conformi (zero dipendenze circolari), 108 suite OK in `npm test`, `npm run build` e `npm run typecheck` verdi.
 
 Estrarre da `src/tools/impl/spawnAgent.ts` la costruzione ed esecuzione del child in
 un contratto applicativo stretto, per esempio `SubagentRunner`. Il runner riceve il

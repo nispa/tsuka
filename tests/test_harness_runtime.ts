@@ -36,6 +36,7 @@ async function runTests(): Promise<void> {
   check('RUNTIME.3', !!runtime.registry, 'bootstraps tool registry');
   check('RUNTIME.4', !!runtime.permissionManager, 'bootstraps permission manager');
   check('RUNTIME.5', runtime.registry.getAllTools().length > 0, 'registers native tools');
+  check('RUNTIME.5b', !!runtime.subagentRunner, 'bootstraps subagent runner');
 
   // Test 2: Idempotent close()
   await runtime.close();
@@ -53,11 +54,22 @@ async function runTests(): Promise<void> {
     execute: async () => 'pong',
   });
 
+  const customRunner = {
+    run: async () => ({
+      success: true,
+      output: 'custom runner output',
+      agentLabel: 'custom',
+      roleName: 'developer',
+      reportPath: 'runs/test.md',
+    }),
+  };
+
   let promptHandlerCalled = false;
   const customRuntime = await createHarnessRuntime({
     configManager: customConfig,
     customProvider,
     customRegistry,
+    customSubagentRunner: customRunner,
     permissionHandler: async () => {
       promptHandlerCalled = true;
       return 'ALLOW_ALWAYS';
@@ -69,6 +81,7 @@ async function runTests(): Promise<void> {
   check('RUNTIME.9', customRuntime.provider === customProvider, 'uses injected LLM provider');
   check('RUNTIME.10', customRuntime.registry === customRegistry, 'uses injected tool registry');
   check('RUNTIME.11', customRuntime.registry.getTool('custom_ping') !== undefined, 'custom tool present in injected registry');
+  check('RUNTIME.11b', customRuntime.subagentRunner === customRunner, 'uses injected subagent runner');
 
   await customRuntime.close();
   check('RUNTIME.12', true, 'custom runtime closes cleanly');
