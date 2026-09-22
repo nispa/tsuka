@@ -158,9 +158,9 @@
 | T21.11 | Implementato; gate da verificare | **Autorizzazione shell di sessione `/sudo`**: commit `1432a33` del 2026-09-20. Comando utente CLI/TUI `/sudo` con argomenti `on`, `off`, `status` (senza argomento mostra lo stato), gestito dal boundary condiviso `controlSudo`. Quando attivo, rende disponibile `execute_command` a tutti gli agenti della sessione indipendentemente da ruolo e tier e ne autorizza anche i comandi DANGEROUS senza ulteriori prompt; non eleva i privilegi del sistema operativo e non autorizza gli altri tool. Stato solo in memoria, disattivato al reset della sessione; revoca applicata anche ai comandi in attesa nella coda permessi. L'avviso al modello è transitorio e non viene salvato nella history. Suite `tests/test_sudo.ts` registrata nel runner; documentazione security e guide didattiche IT/EN aggiornate nel commit. Ricognizione documentale del 2026-09-22: test, build e typecheck non rieseguiti; verifica lasciata al maintainer su sua richiesta. |
 | T21.12 | ✅ Fatto | **Estendere `/sudo` a scrittura e modifica file**: estesa l'autorizzazione di sessione a `write_file` ed `edit_file` mantenendo la workspace jail; `delete_file` richiede sempre conferma puntuale anche con `/sudo on` o con permessi RESTRICTED permanenti (`allowAllWrite`); messaggi, help e prompt transitori aggiornati; documentazione security e guide didattiche allineate; suite `tests/test_sudo.ts` estesa con test su visibilità, jail, revoca in coda e cancellazioni consecutive. I tre gate `npm test` (102 suite), `npm run build` e `npm run typecheck` verdi. |
 | T22.1 | ✅ Fatto | **Baseline context, handoff e memoria**: characterization test suite `test_context_scheduler_baseline.ts` (49 check) a protezione di stime e pruning tool, telemetria ContextTracker, /context CLI/TUI, spawn_agent con/senza blackboard ed eventi, registry/CRUD e capping di MemoryBackend. 103 suite verdi, build e typecheck puliti. |
-| T22.2 | ⬜ Da fare | **Proiezione `ContextPressure`**: derivare la pressione dai dati già prodotti da `contextBudget.ts` e dalla calibrazione dell'`Agent`. |
-| T22.3 | ⬜ Da fare | **Pressione in `/context`**: estendere `ContextTracker` e le viste CLI/TUI senza introdurre nuova telemetria. |
-| T22.4 | ⬜ Da fare | **Policy pura dello scheduler**: scegliere soltanto `continue`, `prepare` o `delegate` con due soglie centralizzate. |
+| T22.2 | ✅ Fatto | **Proiezione `ContextPressure`**: derivare la pressione dai dati già prodotti da `contextBudget.ts` e dalla calibrazione dell'`Agent`. |
+| T22.3 | ✅ Fatto | **Pressione in `/context`**: estendere `ContextTracker` e le viste CLI/TUI senza introdurre nuova telemetria. |
+| T22.4 | ✅ Fatto | **Policy pura dello scheduler**: scegliere soltanto `continue`, `prepare` o `delegate` con due soglie centralizzate. |
 | T22.5 | ⬜ Da fare | **Contratto `TaskPacket`**: contenuto minimo del briefing, separato da run ID e bookkeeping del workflow. |
 | T22.6 | ⬜ Da fare | **Contratto `AgentResult`**: risultato child compatto e strutturato, senza transcript o reasoning. |
 | T22.7 | ⬜ Da fare | **Runner sub-agent condiviso**: estrarre da `spawn_agent` un solo percorso applicativo riusabile anche dallo scheduler. |
@@ -4042,7 +4042,7 @@ nessun output normale aggiuntivo; test dei due frontend e tre gate verdi.
 
 ## T22.4 — Policy pura del context scheduler
 
-**Dipende da:** T22.2, T22.3 · **Sforzo:** medio · **Priorità:** alta
+**Dipende da:** T22.2, T22.3 · **Stato:** completato · **Sforzo:** medio · **Priorità:** alta
 
 Introdurre una funzione pura:
 
@@ -4073,6 +4073,13 @@ per-agent, reinforcement e decisioni affidate a un modello.
 **Accettazione:** funzione pura; test sotto, sulle e sopra le due soglie; test della
 configurazione invalida; nessun import da `Agent`, provider o frontend; tre gate
 verdi.
+
+**Esito implementazione (2026-09-22):**
+- Definiti `CONTEXT_SCHEDULER_DEFAULTS = { prepareAt: 0.60, delegateAt: 0.70 }` in `src/core/constants.ts` (AGENTS.md Direttiva 9).
+- Creato il modulo puro `src/core/contextScheduler.ts` con i tipi `ContextAction` (`continue` | `prepare` | `delegate`), `ContextSchedulerConfig`, `validateContextSchedulerConfig` e la funzione pura `scheduleContext(pressure, config)`.
+- Validazione stringente: solleva eccezione esplicita in caso di configurazioni non-finite, fuori da `[0, 1]`, o non strettamente ordinate (`prepareAt < delegateAt`), senza fallbacks silenziosi.
+- Nuova suite di test `tests/test_context_scheduler_policy.ts` (51 check) a copertura di soglie esatte, custom configs, validazione errori e integrazione con `getContextPressure`.
+- 105 suite OK in `npm test`, `npm run build` e `npm run typecheck` verdi.
 
 ## T22.5 — Contratto minimo `TaskPacket`
 

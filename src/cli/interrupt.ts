@@ -1,6 +1,7 @@
 import * as readline from 'readline';
 import chalk from 'chalk';
 import { StatusLine } from './statusline';
+import { logSink } from '../core/logSink';
 
 /**
  * Esc-key generation interrupt controller.
@@ -34,7 +35,7 @@ export class GenerationInterrupt {
         this.controller.abort();
       } else if (key.ctrl && key.name === 'c') {
         StatusLine.emergencyReset();
-        console.log(chalk.yellow('\nExiting... Goodbye!'));
+        logSink.log(chalk.yellow('\nExiting... Goodbye!'));
         process.exit(130);
       }
     };

@@ -3,6 +3,7 @@ import { ConfigManager } from '../../core/config';
 import { runBenchmark, ModelProfile } from '../../core/modelProfile';
 import { probeProvider, warmUpModel, isLocalUrl, detectContextWindow } from '../../core/discovery';
 import { CLITheme, InteractiveMenu } from '../ui';
+import { logSink } from '../../core/logSink';
 import { listWebSearchProviderOptions } from '../../core/webSearchCatalog';
 import { notifyIfUnprofiled } from '../shared';
 import { filterProviderModels, ModelCatalogFilter } from '../../core/modelCatalog';
@@ -73,7 +74,7 @@ async function maybeWarmUp(ctx: CommandCtx, selectedModel: string, loadedModel: 
   if (!isLocalUrl(baseUrl) || !loadedModel || loadedModel === selectedModel) return;
   if (process.env.TSUKA_TUI || (ctx as any).isTui || !process.stdin.isTTY) return; // TUI/non-interactive: caller uses syncModelOnServer/warmUpIfNeeded directly, unasked
 
-  console.log();
+  logSink.log('');
   const confirm = await prompts({
     type: 'confirm',
     name: 'ok',
@@ -94,7 +95,7 @@ export async function handleProvider(ctx: CommandCtx, arg: string): Promise<void
 
   if (!targetProvider) {
     const currentProvider = ctx.configManager.getActiveProviderName();
-    console.log();
+    logSink.log('');
     const selected = await InteractiveMenu.select<string>(
       'Select active provider (use arrow keys):',
       providerNames.map((name) => ({
@@ -144,7 +145,7 @@ export async function handleProvider(ctx: CommandCtx, arg: string): Promise<void
 async function pickProviderForModels(ctx: CommandCtx): Promise<boolean> {
   const currentProvider = ctx.configManager.getActiveProviderName();
   const providerNames = ctx.configManager.getProviderNames();
-  console.log();
+  logSink.log('');
   const selected = await InteractiveMenu.select<string>(
     'Select the provider whose models you want to use:',
     providerNames.map((name) => ({
@@ -187,7 +188,7 @@ async function pickModel(
     }
 
     const current = ctx.provider.getCurrentModel();
-    console.log();
+    logSink.log('');
     const selectedModel = await InteractiveMenu.select<string>(
       'Select model to activate (use arrow keys):',
       [
@@ -265,7 +266,7 @@ export async function handleModels(ctx: CommandCtx, arg: string): Promise<void> 
       notifyIfUnprofiled(arg, ctx.agent.current.getReasoningEffort(), ctx.provider.getBaseUrl(), ctx.configManager.getActiveProviderConfig().class, ctx.configManager.getActiveProviderConfig().displayName);
     } else {
       CLITheme.error(`Model '${arg}' not found on active server.`);
-      console.log(chalk.gray(`Use ${chalk.cyan('/models')} without arguments to open interactive menu.`));
+      logSink.log(chalk.gray(`Use ${chalk.cyan('/models')} without arguments to open interactive menu.`));
     }
   } catch (err: any) {
     spinner.stop();
@@ -282,7 +283,7 @@ export async function handleModels(ctx: CommandCtx, arg: string): Promise<void> 
 export async function handleSearchEngine(ctx: CommandCtx, _arg: string): Promise<void> {
   const currentEngine = ctx.configManager.getWebSearchProvider();
   const engines = listWebSearchProviderOptions();
-  console.log();
+  logSink.log('');
   const selected = await InteractiveMenu.select<string>(
     'Select web search provider (use arrow keys):',
     engines.map((engine) => ({ title: `${engine.displayName} ${currentEngine === engine.id ? '(selected)' : ''} - (${engine.hint})`, value: engine.id })),
@@ -304,17 +305,17 @@ function formatScore(score: number): string {
 
 function printProfile(p: ModelProfile): void {
   const tierColor = p.tier === 'large' ? chalk.green : p.tier === 'medium' ? chalk.yellow : chalk.red;
-  console.log(`  Effort:          ${chalk.magenta(p.reasoningEffort)}`);
-  console.log(`  Measured Tier:   ${tierColor(p.tier.toUpperCase())}`);
-  console.log(`  ├─ Instruction following: ${formatScore(p.scores.instruction)}`);
-  console.log(`  ├─ Output JSON:           ${formatScore(p.scores.json)}`);
-  console.log(`  ├─ Tool calling:          ${formatScore(p.scores.toolCalling)}`);
-  console.log(`  ├─ Speed:                 ${chalk.cyan(p.tokensPerSecond + ' tok/s')}`);
-  console.log(`  └─ Avg Completion Tokens: ${chalk.cyan(p.avgCompletionTokens)}`);
+  logSink.log(`  Effort:          ${chalk.magenta(p.reasoningEffort)}`);
+  logSink.log(`  Measured Tier:   ${tierColor(p.tier.toUpperCase())}`);
+  logSink.log(`  ├─ Instruction following: ${formatScore(p.scores.instruction)}`);
+  logSink.log(`  ├─ Output JSON:           ${formatScore(p.scores.json)}`);
+  logSink.log(`  ├─ Tool calling:          ${formatScore(p.scores.toolCalling)}`);
+  logSink.log(`  ├─ Speed:                 ${chalk.cyan(p.tokensPerSecond + ' tok/s')}`);
+  logSink.log(`  └─ Avg Completion Tokens: ${chalk.cyan(p.avgCompletionTokens)}`);
   if (p.testResults && p.testResults.length > 0) {
-    console.log(chalk.gray(`  Tests executed (${p.testResults.length}, from benchmarks/):`));
+    logSink.log(chalk.gray(`  Tests executed (${p.testResults.length}, from benchmarks/):`));
     for (const t of p.testResults) {
-      console.log(`    • ${t.name} ${chalk.gray(`[${t.category}]`)} → ${formatScore(t.score)}`);
+      logSink.log(`    • ${t.name} ${chalk.gray(`[${t.category}]`)} → ${formatScore(t.score)}`);
     }
   }
 }
@@ -361,7 +362,7 @@ export async function handleBenchmark(ctx: CommandCtx, arg: string): Promise<voi
     targets = [arg];
   }
 
-  console.log(chalk.bold('\n📊 [CAPABILITY FINGERPRINTING — Model Benchmark]\n'));
+  logSink.log(chalk.bold('\n📊 [CAPABILITY FINGERPRINTING — Model Benchmark]\n'));
 
   for (const model of targets) {
     const spinner = CLITheme.createSpinner(`Benchmarking '${model}'...`);
@@ -378,18 +379,18 @@ export async function handleBenchmark(ctx: CommandCtx, arg: string): Promise<voi
       spinner.succeed(chalk.green(`Benchmark completed for '${model}' (${profiles.length} effort levels)`));
       for (const profile of profiles) {
         printProfile(profile);
-        console.log();
+        logSink.log('');
       }
       if (recommendedEffort) {
         const bestProfile = profiles.find((p) => p.reasoningEffort === recommendedEffort) ?? profiles[0];
         const tierStr = bestProfile?.tier ? bestProfile.tier.toUpperCase() : 'STANDARD';
         const speedStr = bestProfile?.tokensPerSecond ? `${bestProfile.tokensPerSecond} tok/s` : '';
-        console.log(chalk.bold(`  🎯 Recommended reasoning effort: ${chalk.magenta(recommendedEffort.toUpperCase())}`));
-        console.log(chalk.gray(`     ├─ Rationale: at '${recommendedEffort}' effort, model reaches max tier (${tierStr})`));
-        console.log(chalk.gray(`     │  and passes tests with optimal speed${speedStr ? ` (~${speedStr})` : ''}.`));
-        console.log(chalk.cyan(`     └─ 👉 Use `) + chalk.bold.green(`/effort ${recommendedEffort}`) + chalk.cyan(` to apply recommended setting.`));
+        logSink.log(chalk.bold(`  🎯 Recommended reasoning effort: ${chalk.magenta(recommendedEffort.toUpperCase())}`));
+        logSink.log(chalk.gray(`     ├─ Rationale: at '${recommendedEffort}' effort, model reaches max tier (${tierStr})`));
+        logSink.log(chalk.gray(`     │  and passes tests with optimal speed${speedStr ? ` (~${speedStr})` : ''}.`));
+        logSink.log(chalk.cyan(`     └─ 👉 Use `) + chalk.bold.green(`/effort ${recommendedEffort}`) + chalk.cyan(` to apply recommended setting.`));
       }
-      console.log();
+      logSink.log('');
     } catch (err: any) {
       if (ctx.interrupt?.aborted) {
         spinner.stop();
@@ -402,5 +403,5 @@ export async function handleBenchmark(ctx: CommandCtx, arg: string): Promise<voi
 
   CLITheme.success('Profiles saved in models_profile.json. Tool tiers now calibrated from measured capability profiles.');
   ctx.agent.current = ctx.recreateAgent();
-  console.log();
+  logSink.log('');
 }

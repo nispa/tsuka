@@ -100,6 +100,14 @@ export const AGENT_DEFAULTS = {
   teamMaxRounds: 3,
 };
 
+/** Context scheduler threshold defaults (T22.4). */
+export const CONTEXT_SCHEDULER_DEFAULTS = {
+  /** Pressure ratio at or above which an agent begins preparation for handoff. */
+  prepareAt: 0.60,
+  /** Pressure ratio at or above which an agent must delegate to avoid overflow. */
+  delegateAt: 0.70,
+};
+
 /** Defaults for the read-only multi-agent consultation command (`/call`). */
 export const CALL_DEFAULTS = {
   /** Each invited participant speaks once in every consultation round. */

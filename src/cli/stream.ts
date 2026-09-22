@@ -3,6 +3,7 @@ import { CLITheme } from './ui';
 import { StatusLine } from './statusline';
 import { AgentEvent } from '../core/agentEvents';
 import { StreamChannel } from '../core/thinkParser';
+import { logSink } from '../core/logSink';
 
 /**
  * Screen rendering orchestrator for streaming responses,
@@ -149,16 +150,16 @@ export class StreamRenderer {
       case 'tool_start': {
         const args = summarizeToolArgs(ev.args);
         const prefix = ev.agentLabel ? chalk.magenta(`[@${ev.agentLabel}] `) : '';
-        console.log(prefix + chalk.cyan('●') + ' ' + chalk.bold(ev.name) + chalk.gray(`(${args})`));
+        logSink.log(prefix + chalk.cyan('●') + ' ' + chalk.bold(ev.name) + chalk.gray(`(${args})`));
         break;
       }
       case 'tool_end': {
         const [head, ...extra] = summarizeToolResult(ev.name, ev.args, ev.output, ev.success);
         const prefix = ev.agentLabel ? chalk.magenta(`[@${ev.agentLabel}] `) : '';
         const mark = ev.success ? chalk.gray('└ ') + chalk.gray(head) : chalk.gray('└ ') + chalk.red(head);
-        console.log('  ' + prefix + mark);
+        logSink.log('  ' + prefix + mark);
         for (const line of extra) {
-          console.log('  ' + prefix + chalk.gray(line));
+          logSink.log('  ' + prefix + chalk.gray(line));
         }
         break;
       }
@@ -197,7 +198,7 @@ export class StreamRenderer {
       const durationSec = (this.stats.durationMs / 1000).toFixed(2);
       const ctx = this.stats.promptTokens ?? 0;
       const total = this.stats.totalTokens ?? (ctx + this.stats.tokenCount);
-      console.log(
+      logSink.log(
         chalk.gray(`[Out: ${chalk.cyan(this.stats.tokenCount)} tok | Ctx: ${chalk.cyan(ctx)} tok | Tot: ${chalk.cyan(total)} tok | ${chalk.yellow(this.stats.tokensPerSecond)} tok/s | ${chalk.cyan(durationSec)}s]`)
       );
     }
@@ -231,7 +232,7 @@ export class StreamRenderer {
       if (isTTY() && this.col > 0) process.stdout.write('\n');
       this.streaming = false;
     } else if (printPending && !process.env.TSUKA_TUI && !isTTY() && this.segmentText.trim()) {
-      console.log(`${this.opts.headerName} ❯ ${this.segmentText.trim()}`);
+      logSink.log(`${this.opts.headerName} ❯ ${this.segmentText.trim()}`);
     }
     this.resetSegment();
   }
@@ -273,13 +274,13 @@ export function defaultAgentEventRenderer(ev: AgentEvent): void {
   const prefix = ev.agentLabel ? `[@${ev.agentLabel}] ` : '';
   switch (ev.type) {
     case 'tool_start':
-      console.log(`${prefix}● ${ev.name}(${summarizeToolArgs(ev.args)})`);
+      logSink.log(`${prefix}● ${ev.name}(${summarizeToolArgs(ev.args)})`);
       break;
     case 'tool_end':
-      console.log(`  └ ${prefix}${ev.success ? 'ok' : 'failed'}`);
+      logSink.log(`  └ ${prefix}${ev.success ? 'ok' : 'failed'}`);
       break;
     case 'max_rounds':
-      console.log(`${prefix}[Interrupted: reached limit of ${ev.limit} tool rounds]`);
+      logSink.log(`${prefix}[Interrupted: reached limit of ${ev.limit} tool rounds]`);
       break;
   }
 }

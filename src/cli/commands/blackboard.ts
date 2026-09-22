@@ -1,6 +1,7 @@
 import { CommandCtx } from './types';
 import { getLatestWorkflowLogs } from './workflowLog';
 import { CLITheme } from '../ui';
+import { logSink } from '../../core/logSink';
 import chalk from 'chalk';
 
 export async function handleBlackboard(_ctx: CommandCtx, arg: string): Promise<void> {
@@ -12,7 +13,7 @@ export async function handleBlackboard(_ctx: CommandCtx, arg: string): Promise<v
     return;
   }
 
-  console.log(chalk.bold(`\n📋 RECENT BLACKBOARD NOTES (last ${logs.length} run(s)):\n`));
+  logSink.log(chalk.bold(`\n📋 RECENT BLACKBOARD NOTES (last ${logs.length} run(s)):\n`));
 
   for (const { file, data } of logs) {
     const isGoal = data.type === 'goal';
@@ -21,17 +22,18 @@ export async function handleBlackboard(_ctx: CommandCtx, arg: string): Promise<v
       ? (data.success ? chalk.green('✔ COMPLETED') : chalk.yellow('⚠ NOT COMPLETED'))
       : (data.completed ? chalk.green('✔ COMPLETED') : chalk.yellow('TO CONTINUE'));
 
-    console.log(chalk.bold.cyan(`[${file}]`) + ` ${title} [${status}]`);
-    console.log(chalk.gray(`  Date: ${data.timestamp}`));
+    logSink.log(chalk.bold.cyan(`[${file}]`) + ` ${title} [${status}]`);
+    logSink.log(chalk.gray(`  Date: ${data.timestamp}`));
 
     const notes = Array.isArray(data.blackboard) ? data.blackboard : [];
     if (notes.length === 0) {
-      console.log(chalk.gray('  (No notes left on blackboard during this run)'));
+      logSink.log(chalk.gray('  (No notes left on blackboard during this run)'));
     } else {
       for (const note of notes) {
-        console.log(`  • ${chalk.cyan(`[${note.key}]`)} ${chalk.gray(`(@${note.author}):`)} ${note.value}`);
+        logSink.log(`  • ${chalk.cyan(`[${note.key}]`)} ${chalk.gray(`(@${note.author}):`)} ${note.value}`);
       }
     }
-    console.log();
+    logSink.log('');
   }
 }
+

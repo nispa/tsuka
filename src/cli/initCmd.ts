@@ -6,6 +6,7 @@ import { getAppHome } from '../core/apphome';
 import { scanProviders } from '../core/discovery';
 import { loadProviderCatalog } from '../core/providerCatalog';
 import { defaultAppConfig } from '../core/config';
+import { logSink } from '../core/logSink';
 
 export interface InitOptions {
   preset?: 'core' | 'full';
@@ -102,7 +103,7 @@ export async function handleInitCmd(rawArgs: string[] = [], customTargetDir?: st
   const tsukaDir = path.join(targetDir, '.tsuka');
 
   if (opts.interactive && process.stdin.isTTY) {
-    console.log(chalk.bold.cyan('\n🚀 TSUKA — Workspace Initialization\n'));
+    logSink.log(chalk.bold.cyan('\n🚀 TSUKA — Workspace Initialization\n'));
     const response = await prompts([
       {
         type: 'confirm',
@@ -123,19 +124,19 @@ export async function handleInitCmd(rawArgs: string[] = [], customTargetDir?: st
     ]);
 
     if (!response.confirm) {
-      console.log(chalk.gray('Initialization canceled.'));
+      logSink.log(chalk.gray('Initialization canceled.'));
       return false;
     }
     opts.preset = response.preset || 'core';
   }
 
   if (fs.existsSync(tsukaDir) && !opts.force) {
-    console.log(chalk.yellow(`\n⚠️ Directory .tsuka/ already exists in ${targetDir}.`));
-    console.log(chalk.gray(`Use '${chalk.white('tsuka init --force')}' to overwrite existing configuration.\n`));
+    logSink.log(chalk.yellow(`\n⚠️ Directory .tsuka/ already exists in ${targetDir}.`));
+    logSink.log(chalk.gray(`Use '${chalk.white('tsuka init --force')}' to overwrite existing configuration.\n`));
     return false;
   }
 
-  console.log(chalk.bold.blue(`\n[INIT] Setting up workspace in: ${chalk.cyan(tsukaDir)}`));
+  logSink.log(chalk.bold.blue(`\n[INIT] Setting up workspace in: ${chalk.cyan(tsukaDir)}`));
 
   // Directory scaffolding
   const subDirs = ['memory', 'workflow_logs', 'output', 'roles', 'traits', 'characters', 'teams'];
@@ -153,7 +154,7 @@ export async function handleInitCmd(rawArgs: string[] = [], customTargetDir?: st
     copyAllCategoryAssets(appHome, tsukaDir, 'traits');
     copyAllCategoryAssets(appHome, tsukaDir, 'characters');
     copyAllCategoryAssets(appHome, tsukaDir, 'teams');
-    console.log(chalk.green('  ✔ Copied all roles, traits, characters, and teams (preset full).'));
+    logSink.log(chalk.green('  ✔ Copied all roles, traits, characters, and teams (preset full).'));
   } else {
     const coreManifestPath = path.join(appHome, 'presets', 'core.json');
     if (fs.existsSync(coreManifestPath)) {
@@ -162,7 +163,7 @@ export async function handleInitCmd(rawArgs: string[] = [], customTargetDir?: st
       copyCategoryAssets(appHome, tsukaDir, 'traits', manifest.traits || []);
       copyCategoryAssets(appHome, tsukaDir, 'characters', manifest.characters || []);
       copyCategoryAssets(appHome, tsukaDir, 'teams', manifest.teams || []);
-      console.log(chalk.green(`  ✔ Copied core preset (${manifest.characters?.length || 0} characters).`));
+      logSink.log(chalk.green(`  ✔ Copied core preset (${manifest.characters?.length || 0} characters).`));
     }
   }
 
@@ -176,15 +177,15 @@ export async function handleInitCmd(rawArgs: string[] = [], customTargetDir?: st
         copyCategoryAssets(appHome, tsukaDir, 'traits', packManifest.traits || []);
         copyCategoryAssets(appHome, tsukaDir, 'characters', packManifest.characters || []);
         copyCategoryAssets(appHome, tsukaDir, 'teams', packManifest.teams || []);
-        console.log(chalk.green(`  ✔ Copied pack '${packName}'.`));
+        logSink.log(chalk.green(`  ✔ Copied pack '${packName}'.`));
       } else {
-        console.log(chalk.yellow(`  ⚠️ Pack '${packName}' not found in presets/packs/. Skipped.`));
+        logSink.log(chalk.yellow(`  ⚠️ Pack '${packName}' not found in presets/packs/. Skipped.`));
       }
     }
   }
 
   // Probe server discovery and generate config.json
-  console.log(chalk.blue('  🔍 Scanning for available LLM servers...'));
+  logSink.log(chalk.blue('  🔍 Scanning for available LLM servers...'));
   let bestProvider: string | null = null;
   let bestModel: string | null = null;
 
@@ -222,20 +223,20 @@ export async function handleInitCmd(rawArgs: string[] = [], customTargetDir?: st
     baseConfig.activeProvider = bestProvider;
     baseConfig.providerOverrides ??= {};
     baseConfig.providerOverrides[bestProvider] = { model: bestModel };
-    console.log(chalk.green(`  ✔ Detected active LLM server: ${bestProvider} (${bestModel})`));
+    logSink.log(chalk.green(`  ✔ Detected active LLM server: ${bestProvider} (${bestModel})`));
   } else {
-    console.log(chalk.yellow('  ⚠️ No local LLM server reachable at the moment. Created default configuration.'));
+    logSink.log(chalk.yellow('  ⚠️ No local LLM server reachable at the moment. Created default configuration.'));
   }
 
   const destConfigPath = path.join(tsukaDir, 'config.json');
   fs.writeFileSync(destConfigPath, JSON.stringify(baseConfig, null, 2), 'utf-8');
-  console.log(chalk.green('  ✔ Configuration saved in .tsuka/config.json'));
+  logSink.log(chalk.green('  ✔ Configuration saved in .tsuka/config.json'));
 
-  console.log(chalk.bold.green('\n🎉 TSUKA workspace initialized successfully!'));
-  console.log(chalk.bold('\nRecommended next steps:'));
-  console.log(`  • Run ${chalk.cyan('/benchmark')} to profile model performance.`);
-  console.log(`  • Launch an agent goal with ${chalk.cyan('/goal "Instructions..."')}.`);
-  console.log(`  • Configure providers via ${chalk.cyan('/provider')}.\n`);
+  logSink.log(chalk.bold.green('\n🎉 TSUKA workspace initialized successfully!'));
+  logSink.log(chalk.bold('\nRecommended next steps:'));
+  logSink.log(`  • Run ${chalk.cyan('/benchmark')} to profile model performance.`);
+  logSink.log(`  • Launch an agent goal with ${chalk.cyan('/goal "Instructions..."')}.`);
+  logSink.log(`  • Configure providers via ${chalk.cyan('/provider')}.\n`);
 
   return true;
 }

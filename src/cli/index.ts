@@ -49,7 +49,7 @@ import { handleInitCmd } from './initCmd';
 import { launchTui } from '../tui/index';
 import type { WorkflowDispatcher } from '../core/workflowDispatcher';
 import { createCliPermissionPromptHandler } from './permissionPrompt';
-import { setLogSink } from '../core/logSink';
+import { setLogSink, logSink } from '../core/logSink';
 
 export { RoleConfig, TraitConfig, CharacterConfig, TeamConfig };
 export { loadRole, loadTrait, loadCharacter, loadTeam, loadSystemPrompt, listAvailableItems };
@@ -68,7 +68,7 @@ loadEnvironmentVariables();
 // SIGINT handler: resets terminal cursor and status line
 process.on('SIGINT', () => {
   StatusLine.emergencyReset();
-  console.log(chalk.yellow('\nExiting... Goodbye!'));
+  logSink.log(chalk.yellow('\nExiting... Goodbye!'));
   process.exit(130);
 });
 
@@ -213,7 +213,7 @@ async function main() {
   } else {
     initSpinner.fail(chalk.red('No configured LLM provider is reachable.'));
     CLITheme.warning('Check providers.json endpoints and the configured apiKeyEnv variables.');
-    console.log(chalk.gray('  • To initialize a preset roster in workspace: ') + chalk.cyan('tsuka init --preset core\n'));
+    logSink.log(chalk.gray('  • To initialize a preset roster in workspace: ') + chalk.cyan('tsuka init --preset core\n'));
   }
 
   const initialCharName = configManager.getActiveCharacter();
@@ -317,7 +317,7 @@ async function main() {
     const input = await askInput('User ❯');
 
     if (input === undefined) {
-      console.log(chalk.yellow('\nExiting... Goodbye!'));
+      logSink.log(chalk.yellow('\nExiting... Goodbye!'));
       break;
     }
 
@@ -332,7 +332,7 @@ async function main() {
       const arg = parts.slice(1).join(' ').trim();
 
       if (command === '/exit') {
-        console.log(chalk.yellow('Exiting... Goodbye!'));
+        logSink.log(chalk.yellow('Exiting... Goodbye!'));
         await runtime.close();
         process.exit(0);
       }
@@ -346,35 +346,12 @@ async function main() {
         continue;
       }
       if (command === '/reset') {
-        agent = recreateAgent();
-        commandCtx.agent.current = agent;
-        permissionManager.resetSession();
-        CLITheme.success('Session reset successfully (history and permissions cleared).');
+        await handleReset(commandCtx, arg);
+        agent = commandCtx.agent.current;
         continue;
       }
       if (command === '/info') {
-        const charName = configManager.getActiveCharacter();
-        const char = loadCharacter(charName);
-        console.log(chalk.bold('\nSession Information:'));
-        console.log(`- Active Provider: ${chalk.green(configManager.getActiveProviderName().toUpperCase())}`);
-        console.log(`- Server Endpoint: ${chalk.cyan(provider.getBaseUrl())}`);
-        console.log(`- Active Model:    ${chalk.green(provider.getCurrentModel())}`);
-        const profile = getModelProfile(provider.getCurrentModel());
-        if (profile) {
-          const tierColor = profile.tier === 'large' ? chalk.green : profile.tier === 'medium' ? chalk.yellow : chalk.red;
-          console.log(`- Measured Profile: tier ${tierColor(profile.tier.toUpperCase())} (${profile.tokensPerSecond} tok/s, tested on ${profile.testedAt.slice(0, 10)})`);
-        } else {
-          console.log(chalk.gray('- Measured Profile: none (use /benchmark to measure model capabilities)'));
-        }
-        if (char) {
-          console.log(`- Character:       ${chalk.green(char.displayName)} (${chalk.yellow(char.aiName)})`);
-          console.log(`  └─ Linked Role:   ${char.role}`);
-          console.log(`  └─ Linked Trait:  ${char.trait}`);
-        } else {
-          console.log(`- Agent Role:      ${chalk.green(loadRole(configManager.getActiveRole()).displayName)}`);
-          console.log(`- Trait:           ${chalk.green(loadTrait(configManager.getActiveTrait()).displayName)}`);
-        }
-        console.log();
+        await handleInfo(commandCtx, arg);
         continue;
       }
       if (command === '/continue') {
@@ -422,80 +399,80 @@ async function main() {
      const agentHeaderName = activeCharObj ? activeCharObj.aiName : 'Tsuka';
 
      const turnEffortOverride: ReasoningEffort | undefined = await confirmEffortDivergence(
-       agentHeaderName,
-       agent.getReasoningEffort(),
-       configManager.getDefaultReasoningEffort(),
-       async (effective, reference) => {
-         console.log();
-         const decision = await InteractiveMenu.select<'yes' | 'no'>(
-           `This turn would run with effort '${effective ?? 'none'}' (reference: '${reference ?? 'none'}'). Proceed?`,
-           [
-             { title: `Proceed with '${effective ?? 'none'}'`, value: 'yes' },
-             { title: `Use reference '${reference ?? 'none'}' only for this turn`, value: 'no' }
-           ],
-           'yes'
-         );
-         return decision === 'yes';
-       }
-     );
+        agentHeaderName,
+        agent.getReasoningEffort(),
+        configManager.getDefaultReasoningEffort(),
+        async (effective, reference) => {
+          logSink.log('');
+          const decision = await InteractiveMenu.select<'yes' | 'no'>(
+            `This turn would run with effort '${effective ?? 'none'}' (reference: '${reference ?? 'none'}'). Proceed?`,
+            [
+              { title: `Proceed with '${effective ?? 'none'}'`, value: 'yes' },
+              { title: `Use reference '${reference ?? 'none'}' only for this turn`, value: 'no' }
+            ],
+            'yes'
+          );
+          return decision === 'yes';
+        }
+      );
 
-    const renderer = new StreamRenderer({ headerName: agentHeaderName });
-    const interrupt = new GenerationInterrupt();
-    interrupt.arm();
-    renderer.begin();
+     const renderer = new StreamRenderer({ headerName: agentHeaderName });
+     const interrupt = new GenerationInterrupt();
+     interrupt.arm();
+     renderer.begin();
 
-    let agentRunStats: any = null;
+     let agentRunStats: any = null;
 
-    try {
-       await agent.run(
-         messageToSend,
-         (chunk, channel) => renderer.onDelta(chunk, channel ?? 'content'),
-         (stats) => { renderer.setStats(stats); agentRunStats = stats; },
-         (ev) => { renderer.onAgentEvent(ev); interrupt.rearm(); },
-         interrupt.signal,
-         turnEffortOverride !== agent.getReasoningEffort() ? turnEffortOverride : undefined
-       );
-       if (interrupt.aborted) {
-         const partial = renderer.getFullText().trim();
-         if (partial) {
-           agent.getMessages().push({ role: 'assistant', content: partial + '\n[response interrupted by user]' });
-         }
-         renderer.abort();
-         CLITheme.warning('Generation interrupted (Esc).');
-       } else {
-         renderer.finish();
-       }
-       console.log();
+     try {
+        await agent.run(
+          messageToSend,
+          (chunk, channel) => renderer.onDelta(chunk, channel ?? 'content'),
+          (stats) => { renderer.setStats(stats); agentRunStats = stats; },
+          (ev) => { renderer.onAgentEvent(ev); interrupt.rearm(); },
+          interrupt.signal,
+          turnEffortOverride !== agent.getReasoningEffort() ? turnEffortOverride : undefined
+        );
+        if (interrupt.aborted) {
+          const partial = renderer.getFullText().trim();
+          if (partial) {
+            agent.getMessages().push({ role: 'assistant', content: partial + '\n[response interrupted by user]' });
+          }
+          renderer.abort();
+          CLITheme.warning('Generation interrupted (Esc).');
+        } else {
+          renderer.finish();
+        }
+        logSink.log('');
+
+         try {
+           if (agentRunStats) {
+             const limitTokens = configManager.getMaxHistoryTokens();
+             const usedTokens = agentRunStats.promptTokens > 0
+               ? agentRunStats.promptTokens
+               : agent.estimateTotalContextTokens();
+             const pressure = getContextPressure(usedTokens, limitTokens);
+             ContextTracker.getInstance().addEntry({
+               timestamp: new Date().toISOString(),
+               agentName: agentHeaderName,
+               tokenCount: agentRunStats.tokenCount ?? 0,
+               promptTokens: agentRunStats.promptTokens ?? 0,
+               action: trimmedInput.length > 80 ? trimmedInput.slice(0, 80) + '…' : trimmedInput,
+               usedTokens: pressure.usedTokens,
+               limitTokens: pressure.limitTokens,
+               ratio: pressure.ratio,
+               source: agentRunStats.promptTokens > 0 ? 'observed' : 'estimated',
+             });
+           }
+         } catch {}
 
         try {
-          if (agentRunStats) {
-            const limitTokens = configManager.getMaxHistoryTokens();
-            const usedTokens = agentRunStats.promptTokens > 0
-              ? agentRunStats.promptTokens
-              : agent.estimateTotalContextTokens();
-            const pressure = getContextPressure(usedTokens, limitTokens);
-            ContextTracker.getInstance().addEntry({
-              timestamp: new Date().toISOString(),
-              agentName: agentHeaderName,
-              tokenCount: agentRunStats.tokenCount ?? 0,
-              promptTokens: agentRunStats.promptTokens ?? 0,
-              action: trimmedInput.length > 80 ? trimmedInput.slice(0, 80) + '…' : trimmedInput,
-              usedTokens: pressure.usedTokens,
-              limitTokens: pressure.limitTokens,
-              ratio: pressure.ratio,
-              source: agentRunStats.promptTokens > 0 ? 'observed' : 'estimated',
-            });
-          }
+          await agent.compressHistory(0.75);
         } catch {}
 
-       try {
-         await agent.compressHistory(0.75);
-       } catch {}
-
-     } catch (error: any) {
-      renderer.abort();
-      console.log();
-      const msg = error?.message || String(error);
+      } catch (error: any) {
+       renderer.abort();
+       logSink.log('');
+       const msg = error?.message || String(error);
       if (msg.includes('ECONNREFUSED') || msg.includes('fetch failed')) {
         CLITheme.error(`Unable to connect to provider ${activeProvider.toUpperCase()} (${activeConfig.baseUrl}).`);
         CLITheme.warning(`Ensure server is running or use /provider to switch endpoint.`);

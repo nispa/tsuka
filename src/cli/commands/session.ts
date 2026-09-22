@@ -2,7 +2,7 @@ import { CommandCtx } from './types';
 import { CLITheme } from '../ui';
 import chalk from 'chalk';
 import { ContextTracker } from '../../core/contextTracker';
-import { getRecommendedEffort } from '../../core/modelProfile';
+import { getModelProfile, getRecommendedEffort } from '../../core/modelProfile';
 import { sumMessageChars, getContextPressure } from '../../core/contextBudget';
 import { logSink } from '../../core/logSink';
 
@@ -25,6 +25,13 @@ export async function handleInfo(ctx: CommandCtx, _arg: string): Promise<void> {
   logSink.log(`- Server Endpoint: ${chalk.cyan(ctx.provider.getBaseUrl())}`);
   logSink.log(`- Active Model:    ${chalk.green(currentModel)}`);
   logSink.log(`- Context Window:  ${chalk.cyan(maxTokens.toLocaleString() + ' tok')} ${ctxSource}`);
+  const profile = getModelProfile(currentModel);
+  if (profile) {
+    const tierColor = profile.tier === 'large' ? chalk.green : profile.tier === 'medium' ? chalk.yellow : chalk.red;
+    logSink.log(`- Measured Profile: tier ${tierColor(profile.tier.toUpperCase())} (${profile.tokensPerSecond} tok/s, tested on ${profile.testedAt.slice(0, 10)})`);
+  } else {
+    logSink.log(chalk.gray('- Measured Profile: none (use /benchmark to measure model capabilities)'));
+  }
   if (recEffort) {
     logSink.log(`- Recommended Effort: ${chalk.magenta(recEffort.toUpperCase())} ${chalk.gray('(from benchmark, use /effort ' + recEffort + ')')}`);
   }

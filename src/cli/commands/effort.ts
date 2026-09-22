@@ -1,6 +1,7 @@
 import chalk from 'chalk';
 import { CommandCtx } from './types';
 import { CLITheme } from '../ui';
+import { logSink } from '../../core/logSink';
 import { getModelTier } from '../../tools/registry';
 import { ReasoningEffort } from '../../core/provider';
 import {
@@ -49,14 +50,14 @@ function printStatus(ctx: CommandCtx): void {
     nessuno: 'none — model default'
   };
 
-  console.log(chalk.bold('\n🎚️  REASONING EFFORT'));
-  console.log(`  Active level:   ${chalk.magenta(effort ?? 'none (model default)')}`);
-  console.log(`  Source:         ${chalk.cyan(sourceLabel[source])}`);
-  console.log(`  Tool tier:      ${tierColor(tier.toUpperCase())} (for model '${ctx.provider.getCurrentModel()}')`);
-  console.log(`  Global pin:     ${getEffortPin() ? chalk.magenta(getEffortPin()) : chalk.gray('none')}`);
-  console.log(`  Ask mode:       ${isAskModeEnabled() ? chalk.green('enabled') : chalk.gray('disabled')} ${chalk.gray('(interactive chat only)')}`);
-  console.log(chalk.gray('  Usage: /effort <none|low|medium|high|xhigh> · /effort auto · /effort ask'));
-  console.log();
+  logSink.log(chalk.bold('\n🎚️  REASONING EFFORT'));
+  logSink.log(`  Active level:   ${chalk.magenta(effort ?? 'none (model default)')}`);
+  logSink.log(`  Source:         ${chalk.cyan(sourceLabel[source])}`);
+  logSink.log(`  Tool tier:      ${tierColor(tier.toUpperCase())} (for model '${ctx.provider.getCurrentModel()}')`);
+  logSink.log(`  Global pin:     ${getEffortPin() ? chalk.magenta(getEffortPin()) : chalk.gray('none')}`);
+  logSink.log(`  Ask mode:       ${isAskModeEnabled() ? chalk.green('enabled') : chalk.gray('disabled')} ${chalk.gray('(interactive chat only)')}`);
+  logSink.log(chalk.gray('  Usage: /effort <none|low|medium|high|xhigh> · /effort auto · /effort ask'));
+  logSink.log('');
 }
 
 function applyPinAndAnnounce(ctx: CommandCtx, newPin: ReasoningEffort | undefined, label: string): void {

@@ -2,6 +2,7 @@ import chalk from 'chalk';
 import { CommandCtx } from './types';
 import { CLITheme, InteractiveMenu } from '../ui';
 import { MemoryStore, MemoryFact } from '../../core/memory';
+import { logSink } from '../../core/logSink';
 import prompts from 'prompts';
 
 /**
@@ -12,16 +13,16 @@ const MENU_LIMIT = 30;
 
 function plainList(store: MemoryStore): void {
   const facts = store.getRecent(20);
-  console.log(chalk.bold(`\n🧠 Shared memory (${store.count()} total facts, last ${facts.length}):`));
+  logSink.log(chalk.bold(`\n🧠 Shared memory (${store.count()} total facts, last ${facts.length}):`));
   if (facts.length === 0) {
-    console.log(chalk.gray('  (empty — agents can save facts using the save_memory tool)'));
+    logSink.log(chalk.gray('  (empty — agents can save facts using the save_memory tool)'));
   } else {
     for (const f of facts) {
       const date = f.timestamp.replace('T', ' ').slice(0, 16);
-      console.log(`  ${chalk.gray(f.id)}  ${chalk.cyan(date)}  ${chalk.yellow(`(${f.source})`)} ${f.summary}`);
+      logSink.log(`  ${chalk.gray(f.id)}  ${chalk.cyan(date)}  ${chalk.yellow(`(${f.source})`)} ${f.summary}`);
     }
   }
-  console.log();
+  logSink.log('');
 }
 
 function showFact(fact: MemoryFact): void {
@@ -46,7 +47,7 @@ export async function handleMemory(ctx: CommandCtx, arg: string): Promise<void> 
       CLITheme.success('Shared memory cleared.');
       return;
     }
-    console.log();
+    logSink.log('');
     const confirm = await prompts({
       type: 'confirm',
       name: 'ok',
@@ -83,7 +84,7 @@ export async function handleMemory(ctx: CommandCtx, arg: string): Promise<void> 
       return;
     }
 
-    console.log();
+    logSink.log('');
     const items: Array<{ title: string; value: string; description?: string }> = facts.map((f) => {
       const date = f.timestamp.replace('T', ' ').slice(0, 16);
       return {
@@ -103,7 +104,7 @@ export async function handleMemory(ctx: CommandCtx, arg: string): Promise<void> 
     const fact = facts.find((f) => f.id === chosenId);
     if (!fact) continue;
 
-    console.log();
+    logSink.log('');
     showFact(fact);
 
     const action = await InteractiveMenu.select<string>(
