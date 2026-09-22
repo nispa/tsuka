@@ -7,6 +7,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { copyToClipboard } from '../../core/platform';
 import { getContextPressure } from '../../core/contextBudget';
+import { ContextTracker } from '../../core/contextTracker';
 import { SystemModals } from '../modals';
 import { TuiCommandSpec } from './types';
 import { buildSessionMarkdown, defaultExportPath } from './sessionMarkdown';
@@ -159,6 +160,20 @@ export const SESSION_COMMANDS: TuiCommandSpec[] = [
       const state = store.getState();
       const pressure = getContextPressure(state.stats.usedTokens, state.stats.maxTokens);
       const pct = Math.round(pressure.ratio * 100);
+      const tracker = ContextTracker.getInstance();
+      const scheduler = tracker.getSchedulerMetrics();
+      let schedulerSection = '';
+      if (scheduler.prepareDecisions > 0 || scheduler.delegateDecisions > 0 || scheduler.delegationsAttempted > 0 || scheduler.peakEstimatedPressure > 0) {
+        const ampStr = scheduler.contextAmplification !== null ? `${scheduler.contextAmplification}x` : 'n/a';
+        schedulerSection =
+          `\n\n⚙️ **Context Scheduler Diagnostics:**\n` +
+          `• Peak Estimated Pressure: ${Math.round(scheduler.peakEstimatedPressure * 100)}%\n` +
+          (scheduler.lastObservedPressure ? `• Last Observed Pressure: ${Math.round(scheduler.lastObservedPressure.ratio * 100)}% (${scheduler.lastObservedPressure.usedTokens}/${scheduler.lastObservedPressure.limitTokens} tok)\n` : '') +
+          `• Decisions: ${scheduler.prepareDecisions} prepare, ${scheduler.delegateDecisions} delegate\n` +
+          `• Delegations: ${scheduler.delegationsAttempted} attempted, ${scheduler.delegationsCompleted} completed, ${scheduler.delegationsFailed} failed\n` +
+          (scheduler.delegationsCompleted > 0 ? `• Token Economy: ${scheduler.lastChildTokens} child tok / ${scheduler.lastReturnedTokens} returned tok (amplification: ${ampStr})\n` : '') +
+          (scheduler.delegationsCompleted > 0 ? `• AgentResult: ${scheduler.lastAgentResultChars} chars\n` : '');
+      }
       store.addMessage({
         role: 'system',
         content:
@@ -166,7 +181,8 @@ export const SESSION_COMMANDS: TuiCommandSpec[] = [
           `• Context: ${pct}% (estimated)\n` +
           `• Used: ${pressure.usedTokens.toLocaleString('en-US')} / ${pressure.limitTokens.toLocaleString('en-US')} tokens (${state.stats.percentage}%)\n` +
           `• Max Budget: ${state.stats.maxTokens} tokens\n` +
-          `• Messages: ${state.messages.length} retained in session`,
+          `• Messages: ${state.messages.length} retained in session` +
+          schedulerSection,
       });
     },
   },

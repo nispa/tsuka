@@ -132,6 +132,7 @@ isolato.
 #### Aspetti critici da considerare fin dall'inizio:
 * **Tetto massimo ai round (`MAX_TOOL_ROUNDS`)**: i modelli linguistici (in particolare quelli più compatti) possono entrare in loop ricorsivi invocando ripetutamente gli stessi tool. È indispensabile definire un limite massimo di sicurezza (in TSUKA impostato di default a 15 round in `Agent.DEFAULT_MAX_TOOL_ROUNDS`, configurabile tramite `maxToolRounds`).
 * **Integrità formale della cronologia**: le API dei provider richiedono che a ogni `tool_call` corrisponda esattamente un messaggio di risposta `tool` con il medesimo `tool_call_id`. Se la cronologia viene alterata o troncata in modo scorretto, le chiamate successive falliranno sistematicamente.
+* **Compatibilità dei gateway**: il provider ritenta gli HTTP 429 con attesa limitata e cancellabile, rispettando `Retry-After` quando presente. I messaggi assistant privi sia di contenuto sia di tool call vengono scartati prima dell'invio: alcuni gateway rifiutano esplicitamente questa forma.
 
 ---
 

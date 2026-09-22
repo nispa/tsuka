@@ -37,6 +37,7 @@ const suites = [
   'test_agent_result.ts',
   'test_subagent_runner.ts',
   'test_agent_context_scheduler.ts',
+  'test_context_scheduler_metrics.ts',
   'test_think_parser.ts',
   'test_markdown_render.ts',
   'test_markdown_tables.ts',

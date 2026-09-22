@@ -38,6 +38,7 @@ import { logProviderFailure } from './providerLogger';
 import type { ProviderClass } from '../cloudProvider';
 import { ProviderAttemptLifecycle } from './lifecycle';
 import { TSUKA_PACKAGE } from '../packageInfo';
+import { isRateLimitError, rateLimitDelayMs, rateLimitDescription, waitForRateLimit } from './rateLimit';
 
 function isAsyncIterable<T>(value: unknown): value is AsyncIterable<T> {
   return typeof value === 'object' && value !== null && Symbol.asyncIterator in value;
@@ -226,7 +227,7 @@ export class LLMProvider implements ILLMProvider {
         // Local OpenAI-compatible servers accept effort values newer than this SDK's type union.
         const response = await this.client.chat.completions.create(
           payload as OpenAI.Chat.ChatCompletionCreateParams,
-          { signal: attemptAbort.signal }
+          { signal: attemptAbort.signal, maxRetries: 0 }
         );
 
         const isStreaming = onChunk && isAsyncIterable<ProviderStreamChunk>(response);
@@ -319,6 +320,21 @@ export class LLMProvider implements ILLMProvider {
           throw createProviderError(
             `[No response] Model '${this.currentModel}' produced no tokens after ${maxRetries} attempts ` +
             `(timeout: ${firstTokenTimeout / 1000}s per attempt).`,
+            allReasoningText
+          );
+        }
+
+        if (isRateLimitError(error)) {
+          const description = rateLimitDescription(error);
+          // A stream that already emitted text cannot be replayed without duplicating output.
+          if (attempt < maxRetries && !receivedFirstToken) {
+            const delayMs = rateLimitDelayMs(error, attempt);
+            logSink.warn(`[Rate limit] ${description} Retrying model '${this.currentModel}' in ${delayMs / 1000}s (attempt ${attempt}/${maxRetries}).`);
+            if (await waitForRateLimit(delayMs, signal)) continue;
+            break;
+          }
+          throw createProviderError(
+            `[Rate limit] ${description} Model '${this.currentModel}' remained unavailable after ${maxRetries} attempts. Try again later or select another model.`,
             allReasoningText
           );
         }

@@ -11,6 +11,6 @@ export type AgentEvent =
   | { type: 'subagent_end'; name: string; success: boolean; output?: string; agentLabel?: string }
   | { type: 'round_continue'; round: number; agentLabel?: string }
   | { type: 'max_rounds'; limit: number; agentLabel?: string }
-  | { type: 'context_action'; action: 'continue' | 'prepare' | 'delegate'; ratio: number; agentLabel?: string };
+  | { type: 'context_action'; action: 'continue' | 'prepare' | 'delegate'; ratio: number; agentLabel?: string; amplification?: number | null };
 
 export type AgentEventHandler = (ev: AgentEvent) => void;

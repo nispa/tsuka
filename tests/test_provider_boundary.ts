@@ -69,6 +69,15 @@ async function runTests(): Promise<void> {
       wireMessages[3].content === 'file1.txt\nfile2.txt',
     'formats tool response message with tool_call_id'
   );
+  const strictGatewayMessages = formatWireMessages([
+    { role: 'system', content: 'System' },
+    { role: 'user', content: 'Question' },
+    { role: 'assistant', content: null },
+    { role: 'assistant', content: '', tool_calls: [] },
+    { role: 'assistant', content: null, tool_calls: messages[2].tool_calls },
+  ]);
+  check('WIRE.6', strictGatewayMessages.length === 3, 'omits empty assistant turns rejected by strict gateways');
+  check('WIRE.7', strictGatewayMessages[2].role === 'assistant' && !!strictGatewayMessages[2].tool_calls?.length, 'preserves tool-call-only assistant turns');
 
   // Group 2: Wire Tools Format
   const sampleTools = [

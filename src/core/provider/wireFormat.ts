@@ -8,7 +8,8 @@ import { LOGPROBS_TOP_N } from './telemetry';
  * Maps internal ChatMessage structures into typed OpenAI wire message parameters.
  */
 export function formatWireMessages(messages: ChatMessage[]): OpenAI.Chat.ChatCompletionMessageParam[] {
-  return messages.map((m): OpenAI.Chat.ChatCompletionMessageParam => {
+  // Omit empty assistant turns retained by older sessions; they are invalid on strict gateways.
+  return messages.filter((m) => m.role !== 'assistant' || !!m.content || !!m.tool_calls?.length).map((m): OpenAI.Chat.ChatCompletionMessageParam => {
     if (m.role === 'tool') {
       return {
         role: 'tool',

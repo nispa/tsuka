@@ -87,6 +87,23 @@ export async function handleContext(ctx: CommandCtx, _arg: string): Promise<void
   logSink.log('');
 
   const tracker = ContextTracker.getInstance();
+  const scheduler = tracker.getSchedulerMetrics();
+  if (agent.isContextSchedulerEnabled() || scheduler.prepareDecisions > 0 || scheduler.delegateDecisions > 0 || scheduler.delegationsAttempted > 0) {
+    logSink.log(chalk.bold('  Context Scheduler Diagnostics:'));
+    logSink.log(`    Peak Estimated Pressure: ${chalk.cyan(`${Math.round(scheduler.peakEstimatedPressure * 100)}%`)}`);
+    if (scheduler.lastObservedPressure) {
+      logSink.log(`    Last Observed Pressure:  ${chalk.cyan(`${Math.round(scheduler.lastObservedPressure.ratio * 100)}%`)} ${chalk.gray(`(${scheduler.lastObservedPressure.usedTokens}/${scheduler.lastObservedPressure.limitTokens} tok)`)}`);
+    }
+    logSink.log(`    Decisions:               ${chalk.yellow(String(scheduler.prepareDecisions))} prepare, ${chalk.yellow(String(scheduler.delegateDecisions))} delegate`);
+    logSink.log(`    Delegations:             ${chalk.yellow(String(scheduler.delegationsAttempted))} attempted, ${chalk.green(String(scheduler.delegationsCompleted))} completed, ${chalk.red(String(scheduler.delegationsFailed))} failed`);
+    if (scheduler.delegationsCompleted > 0) {
+      const ampStr = scheduler.contextAmplification !== null ? `${scheduler.contextAmplification}x` : 'n/a';
+      logSink.log(`    Token Economy (last):    ${chalk.gray(`${scheduler.lastChildTokens} child tok / ${scheduler.lastReturnedTokens} returned tok`)} (amplification: ${chalk.cyan(ampStr)})`);
+      logSink.log(`    AgentResult (last):      ${chalk.gray(`${scheduler.lastAgentResultChars} chars`)}`);
+    }
+    logSink.log('');
+  }
+
   const recent = tracker.getRecent(10);
   if (recent.length > 0) {
     logSink.log(chalk.bold('  Recent activities:'));

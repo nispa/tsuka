@@ -10,6 +10,7 @@ import {
   __setMaxGenerationMsForTest,
   setTimeoutPromptHandler,
 } from '../src/core/provider';
+import { rateLimitDelayMs, rateLimitDescription } from '../src/core/provider/rateLimit';
 
 let passed = 0;
 let failed = 0;
@@ -210,6 +211,71 @@ async function main(): Promise<void> {
     );
     check('PL.7a', response.content === 'ok', 'non-stream success remains unchanged');
     check('PL.7b', signal.additions === 1 && signal.removals === 1, 'non-stream success removes its abort listener');
+  }
+
+  // HTTP 429 is retried with an explicit delay and a useful upstream classification.
+  {
+    const provider = new LLMProvider('http://fake.local/v1', 'fake-key', 'mock-model');
+    let calls = 0;
+    (provider as any).client.chat.completions.create = async (_params: unknown, options: { maxRetries: number }) => {
+      check('PL.8a', options.maxRetries === 0, 'SDK retries are disabled in favor of the bounded provider loop');
+      calls++;
+      if (calls === 1) {
+        const error: any = new Error('Provider returned error');
+        error.status = 429;
+        error.headers = { get: () => '0' };
+        error.error = { metadata: { limit_source: 'upstream_provider_shared_pool' } };
+        throw error;
+      }
+      return { choices: [{ message: { content: 'recovered' } }] };
+    };
+    const response = await provider.chatWithTools([{ role: 'user', content: 'probe' }]);
+    check('PL.8b', calls === 2 && response.content === 'recovered', '429 retries and recovers');
+    check('PL.8c', rateLimitDescription({ status: 429, error: { metadata: { limit_source: 'upstream_provider_shared_pool' } } }).includes('shared pool'), 'upstream limit is identified');
+    check('PL.8d', rateLimitDelayMs({ headers: { get: () => '999' } }, 1) === 10_000, 'Retry-After is capped');
+  }
+
+  // Cancellation during backoff must not start another request.
+  {
+    const provider = new LLMProvider('http://fake.local/v1', 'fake-key', 'mock-model');
+    const controller = new AbortController();
+    let calls = 0;
+    (provider as any).client.chat.completions.create = async () => {
+      calls++;
+      const error: any = new Error('429 Provider returned error');
+      error.status = 429;
+      error.headers = { get: () => '5' };
+      throw error;
+    };
+    const pending = provider.chatWithTools([{ role: 'user', content: 'probe' }], undefined, undefined, controller.signal);
+    setTimeout(() => controller.abort(), 10);
+    await pending.catch(() => undefined);
+    check('PL.9', calls === 1, 'abort during rate-limit backoff prevents a second request');
+  }
+
+  // Exhaustion names the rate limit; malformed requests still fail immediately.
+  {
+    const provider = new LLMProvider('http://fake.local/v1', 'fake-key', 'mock-model');
+    let calls = 0;
+    (provider as any).client.chat.completions.create = async () => {
+      calls++;
+      const error: any = new Error('Provider returned error');
+      error.status = 429;
+      error.headers = { get: () => '0' };
+      throw error;
+    };
+    const message = await expectFailure(provider);
+    check('PL.10', calls === 3 && message.includes('[Rate limit]'), '429 exhaustion reports a rate limit after bounded retries');
+
+    calls = 0;
+    (provider as any).client.chat.completions.create = async () => {
+      calls++;
+      const error: any = new Error('400 Invalid message');
+      error.status = 400;
+      throw error;
+    };
+    await expectFailure(provider);
+    check('PL.11', calls === 1, 'HTTP 400 is not retried');
   }
 
   setTimeoutPromptHandler(undefined);

@@ -1,4 +1,5 @@
 import { ConfigManager } from './config';
+import type { ContextPressure } from './types';
 
 export type ContextMeasureSource = 'estimated' | 'observed';
 
@@ -21,6 +22,30 @@ export interface ContextEntry {
 }
 
 /**
+ * Diagnostic metrics snapshot for autonomous context scheduling (T22.16).
+ * Strictly contains quantitative indicators; no prompts, reasoning, or content.
+ */
+export interface ContextSchedulerMetrics {
+  peakEstimatedPressure: number;
+  lastObservedPressure: ContextPressure | null;
+  prepareDecisions: number;
+  delegateDecisions: number;
+  delegationsAttempted: number;
+  delegationsCompleted: number;
+  delegationsFailed: number;
+  lastChildTokens: number;
+  lastReturnedTokens: number;
+  totalChildTokens: number;
+  totalReturnedTokens: number;
+  lastAgentResultChars: number;
+  /**
+   * Diagnostic ratio: child tokens consumed / tokens returned to parent.
+   * Null when denominator is 0 (unambiguous, non-infinite).
+   */
+  contextAmplification: number | null;
+}
+
+/**
  * Default maximum number of entries preserved in the in-memory activity ring buffer.
  * Keeps memory bounded while retaining enough context history for `/context` inspections.
  */
@@ -39,6 +64,20 @@ export class ContextTracker {
   private static instance: ContextTracker | null = null;
   private entries: ContextEntry[] = [];
   private maxEntries: number = DEFAULT_CONTEXT_TRACKER_MAX_ENTRIES;
+
+  // Diagnostic metrics for context scheduling (T22.16)
+  private peakEstimatedPressure: number = 0;
+  private lastObservedPressure: ContextPressure | null = null;
+  private prepareDecisions: number = 0;
+  private delegateDecisions: number = 0;
+  private delegationsAttempted: number = 0;
+  private delegationsCompleted: number = 0;
+  private delegationsFailed: number = 0;
+  private lastChildTokens: number = 0;
+  private lastReturnedTokens: number = 0;
+  private totalChildTokens: number = 0;
+  private totalReturnedTokens: number = 0;
+  private lastAgentResultChars: number = 0;
 
   constructor(maxEntries?: number) {
     if (typeof maxEntries === 'number' && maxEntries >= 10) {
@@ -82,10 +121,107 @@ export class ContextTracker {
    * Adds a new activity record to the tracker, evicting the oldest record if exceeding capacity.
    */
   addEntry(entry: ContextEntry): void {
+    if (entry.action?.startsWith('context_scheduler:') && typeof entry.ratio === 'number') {
+      if (entry.source === 'observed') {
+        this.recordObservedPressure({
+          usedTokens: entry.usedTokens ?? entry.promptTokens ?? 0,
+          limitTokens: entry.limitTokens ?? 0,
+          remainingTokens: Math.max(0, (entry.limitTokens ?? 0) - (entry.usedTokens ?? entry.promptTokens ?? 0)),
+          ratio: entry.ratio,
+        });
+      } else {
+        this.recordEstimatedPressure(entry.ratio);
+      }
+    }
     this.entries.push(entry);
     if (this.entries.length > this.maxEntries) {
       this.entries.shift();
     }
+  }
+
+  /**
+   * Records an estimated context pressure ratio. Updates peak estimated pressure.
+   */
+  recordEstimatedPressure(ratio: number): void {
+    if (typeof ratio === 'number' && !isNaN(ratio)) {
+      this.peakEstimatedPressure = Math.max(this.peakEstimatedPressure, ratio);
+    }
+  }
+
+  /**
+   * Records observed pressure reported by the LLM provider prompt tokens.
+   */
+  recordObservedPressure(pressure: ContextPressure): void {
+    if (pressure && typeof pressure.ratio === 'number') {
+      this.lastObservedPressure = { ...pressure };
+    }
+  }
+
+  /**
+   * Records an autonomous scheduling decision ('prepare' or 'delegate').
+   */
+  recordDecision(action: 'prepare' | 'delegate'): void {
+    if (action === 'prepare') {
+      this.prepareDecisions++;
+    } else if (action === 'delegate') {
+      this.delegateDecisions++;
+    }
+  }
+
+  /**
+   * Records an initiation of an autonomous child agent delegation.
+   */
+  recordDelegationAttempt(): void {
+    this.delegationsAttempted++;
+  }
+
+  /**
+   * Records successful completion of child delegation and handoff accounting.
+   */
+  recordDelegationSuccess(info: {
+    childTokens: number;
+    returnedTokens: number;
+    agentResultChars: number;
+  }): void {
+    this.delegationsCompleted++;
+    this.lastChildTokens = Math.max(0, info.childTokens);
+    this.lastReturnedTokens = Math.max(0, info.returnedTokens);
+    this.lastAgentResultChars = Math.max(0, info.agentResultChars);
+    this.totalChildTokens += this.lastChildTokens;
+    this.totalReturnedTokens += this.lastReturnedTokens;
+  }
+
+  /**
+   * Records failure of an autonomous delegation attempt.
+   */
+  recordDelegationFailure(): void {
+    this.delegationsFailed++;
+  }
+
+  /**
+   * Returns a snapshot of scheduler telemetry metrics (T22.16).
+   */
+  getSchedulerMetrics(): ContextSchedulerMetrics {
+    const amplification =
+      this.lastReturnedTokens > 0
+        ? Number((this.lastChildTokens / this.lastReturnedTokens).toFixed(2))
+        : null;
+
+    return {
+      peakEstimatedPressure: Number(this.peakEstimatedPressure.toFixed(4)),
+      lastObservedPressure: this.lastObservedPressure ? { ...this.lastObservedPressure } : null,
+      prepareDecisions: this.prepareDecisions,
+      delegateDecisions: this.delegateDecisions,
+      delegationsAttempted: this.delegationsAttempted,
+      delegationsCompleted: this.delegationsCompleted,
+      delegationsFailed: this.delegationsFailed,
+      lastChildTokens: this.lastChildTokens,
+      lastReturnedTokens: this.lastReturnedTokens,
+      totalChildTokens: this.totalChildTokens,
+      totalReturnedTokens: this.totalReturnedTokens,
+      lastAgentResultChars: this.lastAgentResultChars,
+      contextAmplification: amplification,
+    };
   }
 
   /**
@@ -103,10 +239,22 @@ export class ContextTracker {
   }
 
   /**
-   * Clears all recorded entries.
+   * Clears all recorded entries and resets scheduler metrics.
    */
   clear(): void {
     this.entries = [];
+    this.peakEstimatedPressure = 0;
+    this.lastObservedPressure = null;
+    this.prepareDecisions = 0;
+    this.delegateDecisions = 0;
+    this.delegationsAttempted = 0;
+    this.delegationsCompleted = 0;
+    this.delegationsFailed = 0;
+    this.lastChildTokens = 0;
+    this.lastReturnedTokens = 0;
+    this.totalChildTokens = 0;
+    this.totalReturnedTokens = 0;
+    this.lastAgentResultChars = 0;
   }
 
   /**

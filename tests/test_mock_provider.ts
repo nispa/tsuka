@@ -27,6 +27,14 @@ function check(id: string, condition: boolean, detail: string) {
 async function main() {
   console.log('=== Test MockLLMProvider ===\n');
 
+  // Empty model output must not poison the next request on strict gateways.
+  {
+    const provider = new MockLLMProvider([{ content: '' }]);
+    const agent = new Agent(provider, new ToolRegistry(), new PermissionManager(), 'System', []);
+    await agent.run('Question');
+    check('M0', !agent.getMessages().some((message) => message.role === 'assistant' && !message.content && !message.tool_calls?.length), 'empty assistant response is not retained in history');
+  }
+
   // --- M1: chatWithTools consuma il copione in ordine ---
   {
     const provider = new MockLLMProvider([

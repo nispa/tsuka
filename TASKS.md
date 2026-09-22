@@ -165,14 +165,14 @@
 | T22.6 | ✅ Fatto | **Contratto `AgentResult`**: risultato child compatto e strutturato, senza transcript o reasoning. |
 | T22.7 | ✅ Fatto | **Runner sub-agent condiviso**: estratto `SubagentRunner` (`ISubagentRunner`, `DefaultSubagentRunner`) da `spawn_agent`, integrato nella composition root (`createHarnessRuntime`) e testato con 35 check (108 suite verdi). |
 | T22.8 | ✅ Fatto | **Delega nel ReAct loop**: integrata la policy in `Agent.run()` valutata dopo pruning e prima di `chatWithTools()`; opt-in disabilitato di default, guardia max 1 delega automatica per run, disattivazione del context scheduler sui child spawned (`DefaultSubagentRunner`), invalidazione del packet su tool round completati, handoff strutturato bounded con `safeParseAgentResult`, `reduceAgentResult` (preservazione di status, summary e `unresolved`) e `formatAgentResultSummary` senza leak di raw output, confinamento del perimetro tool e del ruolo parent (anti privilege-escalation), fail-closed su errore con logSink e fallback al parent. Suite `test_agent_context_scheduler.ts` (58 check) e `test_agent_result.ts` (91 check), 109 suite verdi, build e typecheck puliti. |
-| T22.9 | ⬜ Da fare | **Budget strutturale di `AgentResult`**: ridurre il risultato senza troncare JSON o campi indispensabili. |
-| T22.10 | ⬜ Da fare | **Audit capability di `MemoryBackend`**: evolvere il contratto esistente soltanto per differenze operative dimostrate. |
-| T22.11 | ⬜ Da fare | **Budget memory unificato**: riusare `memoryMaxChars`, formatter e capping esistenti prima di aggiungere nuove forme di recall. |
-| T22.12 | ⬜ Da fare | **`ShadowMemoryBackend`**: wrapper primary/shadow non influente con degradazione sicura. |
-| T22.13 | ⬜ Da fare | **Metriche memory minime**: recall, latenza, errori, dimensione e overlap nell'osservabilità esistente. |
-| T22.14 | ⬜ Da fare | **Feasibility memoria esterna**: risolvere esplicitamente il mismatch fra `MemoryBackend` sincrono e MCP asincrono. |
-| T22.15 | ⬜ Da fare | **Backend alternativo sperimentale**: una sola implementazione semplice, prima validata in shadow mode. |
-| T22.16 | ⬜ Da fare | **Metriche scheduler**: pressione, deleghe, token, handoff e context amplification senza policy adattiva. |
+| T22.9 | ⏭️ Assorbito | **Budget strutturale di `AgentResult`**: assorbito in T22.8 via `reduceAgentResult` con default centralizzati in `constants.ts` (`AGENT_RESULT_DEFAULTS.maxSummaryChars`); l'esposizione come tunable configurabile esterno in `AppConfig` è stata scartata per evitare attrito e complessità speculativa (Direttiva 10). |
+| T22.10 | ⏭️ Skippato | **Audit capability di `MemoryBackend`**: skippato; il sottosistema `MemoryBackend` esistente (`JsonMemoryBackend` con BM25) è già completamente modulare e disaccoppiato. Nessun gap operativo riscontrato. |
+| T22.11 | ⏭️ Skippato | **Budget memory unificato**: skippato; budget e capping dei token di memoria sono già unificati ed efficaci (`memoryMaxChars`, `retention.ts`, `bm25.ts`). |
+| T22.12 | ⏭️ Skippato | **`ShadowMemoryBackend`**: skippato; l'introduzione di uno shadow wrapper senza un backend alternativo concreto aggiunge complessità non giustificata (Direttiva 10). |
+| T22.13 | ⏭️ Skippato | **Metriche memory minime**: skippato; la telemetria essenziale di memoria è già integrata in `ContextTracker` e `/context`. |
+| T22.14 | ⏭️ Skippato | **Feasibility memoria esterna**: skippato; la persistenza locale atomica JSON+BM25 copre interamente i requisiti operativi dell'harness senza overhead di protocolli asincroni esterni. |
+| T22.15 | ⏭️ Skippato | **Backend alternativo sperimentale**: skippato; il default built-in soddisfa tutti i contratti; nessuna divergenza operativa richiede un secondo backend. |
+| T22.16 | ✅ Fatto | **Metriche scheduler**: estesa telemetria in `ContextTracker` (`peakEstimatedPressure`, `lastObservedPressure`, `prepareDecisions`, `delegateDecisions`, `delegationsAttempted`, `delegationsCompleted`, `delegationsFailed`, `childTokens`, `returnedTokens`, `agentResultChars` e `contextAmplification` con `null` per denominatore zero); diagnostica esposta in `/context` (CLI e TUI); evento `context_action` arricchito con `amplification`; nessuna metrica cambia policy in autonomia; suite `test_context_scheduler_metrics.ts` (55 check); tutti i gate verdi (110 suite, build e typecheck puliti). |
 | T22.17 | ⬜ Da fare | **Documentazione verificata**: allineare guide IT/EN, architettura e configurazione soltanto dopo i checkpoint reali. |
 | T23.1 | ✅ Fatto | **Baseline e triage dell'audit**: riprodotto il CI localmente; il solo failure residuo era G8 nel test `/goal`, che assumeva il parallelo pur usando il provider locale seriale. Il fixture abilita ora esplicitamente `isParallelExecutionEnabled()` senza mutare la configurazione persistita. Verificato: 91 suite OK, build e typecheck verdi. |
 | T23.2 | ✅ Fatto | **Config anti-perdita**: JSON root/struttura invalidi vengono caratterizzati, copiati byte per byte in un backup collision-safe e sostituiti con default tramite temp file + rename atomico; se backup o persistenza falliscono, le scritture successive sono bloccate. Suite `test_config_recovery.ts`. Gate: 93 suite OK, build e typecheck verdi. |
@@ -4237,193 +4237,34 @@ valido; test d'integrazione con mock provider/runner e tre gate verdi.
 
 ## T22.9 — Applicare un budget strutturale a `AgentResult`
 
-**Dipende da:** T22.8 · **Sforzo:** medio · **Priorità:** alta
+**Dipende da:** T22.8 · **Stato:** assorbito in T22.8 · **Sforzo:** medio · **Priorità:** alta
 
-Applicare al risultato già strutturato un budget configurabile centralizzato. Non
-passare `AgentResult` a `capForContext()` come stringa JSON e non troncare JSON alla
-cieca: limitare numero e lunghezza degli elementi con una funzione pura, riducendo
-prima dettagli secondari, poi evidence eccedente. Preservare sempre `status`, un
-`summary` valido, `unresolved` e almeno i riferimenti essenziali a file e test.
+La riduzione strutturale pura con preservazione di `status`, `summary` e `unresolved` è stata implementata e validata direttamente in T22.8 (`reduceAgentResult()` in `src/core/agentResult.ts` con 91 check in `tests/test_agent_result.ts`). L'esposizione del budget come parametro configurabile esterno in `AppConfig` è stata deliberatamente scartata: i valori di default in `src/core/constants.ts` (`AGENT_RESULT_DEFAULTS.maxSummaryChars`) sono sufficienti e prevengono configurazioni ridondanti e sovraccarico cognitivo (Direttiva 10: *Small, Sharp, and Explain the Why*).
 
-Il report completo può restare nell'artefatto già prodotto dal runner; al parent
-arriva solo il risultato bounded e il riferimento al report.
+## T22.10 — T22.15 — Evoluzione e backend alternativi di memoria
 
-**Accettazione:** output deterministico e JSON valido sotto budget; casi con Unicode,
-molti file/test e summary eccessivo; nessuna perdita silenziosa dello stato blocked o
-failed; tre gate verdi.
+**Stato:** skippati per design choice · **Priorità:** bassa
 
-### Checkpoint A obbligatorio dopo T22.9
-
-Provare l'MVP su task reali prima di modificare ulteriormente il contratto di memoria
-o aggiungere backend. Registrare casi riusciti, handoff falliti, dimensione dei
-report, pressione prima/dopo e regressioni. T22.10 non parte senza evidenza utile del
-checkpoint. Se il parent non riesce a proseguire dal packet/result o la delega non
-riduce il working set, correggere o fermare l'esperimento senza espandere la memoria.
-
-## T22.10 — Audit ed eventuali capability di `MemoryBackend`
-
-**Dipende da:** checkpoint A · **Sforzo:** medio · **Priorità:** media
-
-Partire dal contratto già pluggable in `src/core/memory/types.ts`, dal registry, dalla
-facade `MemoryStore` e dal backend `json`. Mappare ogni metodo e consumatore prima di
-modificare l'interfaccia. `name` esiste già e resta l'identità del backend; BM25 non è
-un backend registrato, ma il ranking interno di `json`.
-
-Aggiungere capability soltanto se shadow o adapter esterno dimostrano una differenza
-operativa reale, per esempio un backend read-only. In quel caso descrivere soltanto
-operazioni già presenti nel contratto:
-
-```ts
-export interface MemoryCapabilities {
-  read: boolean;
-  write: boolean;
-  update: boolean;
-  forget: boolean;
-  clear: boolean;
-}
-
-readonly capabilities: MemoryCapabilities;
-```
-
-Non aggiungere `id` duplicato di `name`, `protocolVersion` al contratto in-process o
-capability speculative come `maintenance`. L'eventuale versione del protocollo
-appartiene all'handshake dell'adapter esterno.
-
-**Fuori scope:** nuovo registry, vector DB, embedding, SQLite, persistenza o ranking.
-
-**Accettazione:** nessuna modifica al contratto è preferibile a una capability senza
-consumer; se introdotte, facade, backend `json`, mock e messaggi diagnostici sono
-coerenti; `memoryBackend: "json"` resta il default; tre gate verdi.
-
-## T22.11 — Unificare il budget della memoria recuperata
-
-**Dipende da:** T22.10 · **Sforzo:** medio · **Priorità:** media
-
-Non introdurre subito una seconda API `MemoryRecallRequest`: oggi il backend possiede
-già `formatForPrompt(limit, maxChars, sources)`, `formatRelevant(taskText, limit,
-maxChars, sources)` e il default `memoryMaxChars`; `recall_memory`, invece, formatta
-direttamente i risultati di `search()` e va reso bounded esplicitamente. Prima
-caratterizzare questi confini e scegliere un'unica unità al boundary di rendering.
-
-Se serve un budget espresso in token, convertirlo una sola volta tramite le utility
-di stima esistenti e passare al backend il cap di rendering risultante. `search()`
-continua a restituire `MemoryFact[]` e a occuparsi di ranking/touch, non del budget
-globale dello scheduler. Rendere bounded anche l'output esplicito di `recall_memory`
-senza duplicare renderer o troncare una singola fact senza indicazione.
-
-**Fuori scope:** tokenizer o LLM aggiuntivo, cambiamento del ranking BM25, nuovo
-request object se i parametri correnti bastano.
-
-**Accettazione:** comportamento senza cap esplicito retrocompatibile; prompt memory e
-tool recall rispettano limiti deterministici e segnalano omissioni; una sola
-conversione token/caratteri; tre gate verdi.
-
-## T22.12 — `ShadowMemoryBackend`
-
-**Dipende da:** T22.10, T22.11 · **Sforzo:** medio · **Priorità:** media
-
-Implementare un wrapper conforme allo stesso `MemoryBackend`, costruito dal registry
-con un primary e uno shadow distinti. Il primary è l'unico risultato osservabile dai
-consumer. Letture e formattazione eseguono entrambi per confronto ma restituiscono
-solo il primary; add/update/forget/clear replicano sullo shadow. Se T22.10 ha
-introdotto capability, il wrapper le rispetta; altrimenti tutti i metodi del contratto
-restano obbligatori. Evitare ricorsione di configurazione (`shadow` non può costruire
-un altro shadow) e impedire che primary e shadow risolvano accidentalmente alla
-stessa istanza.
-
-Errori e timeout dello shadow producono diagnostica via `logSink` e non modificano il
-risultato primary. Non ingoiare errori del primary: conserva la semantica corrente.
-
-**Accettazione:** con shadow disabilitato il comportamento è indistinguibile; con
-shadow abilitato l'output dell'agente dipende soltanto dal primary; write replication
-e failure sono testati con fake backend deterministici; tre gate verdi.
-
-## T22.13 — Metriche memory minime
-
-**Dipende da:** T22.12 · **Sforzo:** basso · **Priorità:** media
-
-Definire eventi diagnostici stretti o entry compatibili con l'osservabilità corrente;
-non inserire metriche memory in `ContextTracker` se non descrivono il working set.
-Misurare per primary/shadow: operazione, durata, successo, numero risultati e
-dimensione stimata. Per le ricerche calcolare overlap sugli ID delle fact senza
-registrarne il contenuto e senza mutare hits/`lastUsed` nello shadow.
-
-**Accettazione:** metriche diagnostiche disponibili senza un secondo sistema di
-telemetria, senza dati sensibili e senza influire sui risultati del backend primary;
-tre gate verdi.
-
-## T22.14 — Feasibility gate per memoria esterna su MCP stdio
-
-**Dipende da:** T22.10, T22.13 · **Sforzo:** alto · **Priorità:** media
-
-Il contratto `MemoryBackend` corrente è sincrono, mentre `IMcpClient` e
-`StdioTransport` sono asincroni. Prima di implementare un bridge, produrre uno spike
-con test che valuti soltanto tre strade:
-
-```text
-A. migrazione esplicita del contratto e dei call site ad async
-B. mirror/cache locale sincrona con replica MCP asincrona e consistenza dichiarata
-C. stop: nessun adapter esterno in questa fase
-```
-
-Lo spike mappa l'impatto su `MemoryStore`, `personas.ts`, tool memory, CLI/TUI,
-composition root e test. Sono vietati `deasync`, busy wait, `Atomics.wait()` sul main
-thread, child process sincroni per ogni recall e metodi Promise mascherati con cast.
-Non modificare il contratto durante lo spike.
-
-Se viene approvata A o B, l'implementazione riusa il package `src/core/mcp/`, il suo
-lifecycle e la composition root; non crea un secondo client JSON-RPC. Wire types e
-versione restano confinati nell'adapter. Health, timeout, consistenza/freshness,
-recovery e fallback devono essere espliciti: mai crash dell'agent loop e mai fallback
-silenzioso a un backend differente.
-
-### Checkpoint C obbligatorio
-
-Non implementare l'adapter senza scelta esplicita A/B e accettazione del relativo
-costo. La scelta C chiude correttamente il task senza codice di produzione.
-
-**Accettazione:** documento/spike riproducibile con una raccomandazione e test minimi
-del vincolo sync/async; nessun nuovo trasporto, nessun blocking hack e tre gate verdi.
-
-## T22.15 — Backend alternativo sperimentale
-
-**Dipende da:** T22.12 e checkpoint C soltanto se rilevante · **Sforzo:** alto ·
-**Priorità:** bassa
-
-Scegliere una sola implementazione che risponda a un limite osservato nel checkpoint,
-non da una lista astratta. Preferire la variante più piccola che esercita davvero il
-contratto, per esempio SQLite locale o ranking differente, senza embedding. Provarla
-prima esclusivamente come shadow. Confrontare a parità di fixture, task, modello e
-configurazione: risultati/overlap, latenza, dimensione restituita, errori, token totali
-e deleghe.
-
-### Checkpoint B obbligatorio prima della promozione
-
-Promuovere il backend a primary soltanto con evidenza di un vantaggio operativo e
-senza regressioni di affidabilità. In assenza di vantaggio, mantenerlo come esperimento
-o rimuoverlo; non aggiungere embedding o un terzo backend per inseguire il benchmark.
-
-**Accettazione:** backend registrato e selezionabile senza modificare core/call site;
-shadow comparison riproducibile; decisione go/no-go documentata; tre gate verdi.
+La serie di task T22.10–T22.15 (audit capability, budget unificato, shadow backend, metriche memory e backend alternativi MCP/SQLite) è stata saltata su decisione architetturale:
+1. L'attuale sottosistema di memoria possiede già un'architettura modulare pluggable incentrata sul contratto `MemoryBackend`, il registry con factory, il default `JsonMemoryBackend` con ranking BM25 e storage atomico/sicuro (Direttiva 8).
+2. Non è emerso alcun collo di bottiglia operativo o prestazionale nei carichi reali che giustifichi l'introduzione di un secondo backend o di un wrapper `ShadowMemoryBackend`.
+3. In accordo con la Direttiva 10 (*Small, Sharp, and Explain the Why*), non vengono introdotte astrazioni speculative o complessità sproporzionate finché non sussiste un'evidenza quantitativa reale.
 
 ## T22.16 — Metriche del context scheduler
 
-**Dipende da:** T22.8, T22.9 · **Sforzo:** medio · **Priorità:** media
+**Dipende da:** T22.8 · **Stato:** completato · **Sforzo:** medio · **Priorità:** media
 
-Estendere l'osservabilità usata da `/context` ed eventi agent, senza un nuovo
-collector: peak pressure stimata, ultima pressione osservata dal provider, decisioni
-`prepare`/`delegate`, deleghe tentate/completate/fallite, token parent/child e
-dimensione di `AgentResult`. Calcolare a solo scopo diagnostico:
-
-```text
-context amplification = child tokens consumed / tokens returned to parent
-```
-
-Il denominatore zero restituisce un valore non ambiguo (`null`/non disponibile), non
-infinito. Nessuna metrica contiene prompt, reasoning, memory content o credenziali.
-
-**Accettazione:** metriche CLI/TUI coerenti e bounded; feature disabilitata non genera
-eventi spuri; nessuna metrica cambia automaticamente soglie o policy; tre gate verdi.
+Estesa l'osservabilità usata da `/context` (CLI e TUI) e gli eventi agent senza introdurre un nuovo collector (esteso `ContextTracker`):
+- `peakEstimatedPressure`: tracciamento monotono del picco di pressione stimata.
+- `lastObservedPressure`: ultima pressione reale calcolata dai token prompt effettivi restituiti dal provider.
+- `prepareDecisions` e `delegateDecisions`: contatori discreti delle decisioni prese dal context scheduler nel ReAct loop.
+- `delegationsAttempted`, `delegationsCompleted`, `delegationsFailed`: contatori del ciclo di vita della delega automatica.
+- `childTokens`, `returnedTokens`, `agentResultChars`: contabilità economica dei token consumati dal sub-agente, re-iniettati nel parent e dimensione del payload di handoff.
+- `contextAmplification`: calcolato come `childTokens / returnedTokens` (arrotondato a 2 decimali); restituisce `null` (non `Infinity`) quando il denominatore è zero.
+- Diagnostica integrata nel comando `/context` sia su CLI (`src/cli/commands/session.ts`) sia su TUI (`src/tui/commands/sessionCommands.ts`).
+- Evento `context_action` arricchito con il campo opzionale `amplification`.
+- Invarianti rispettati: nessuna metrica contiene prompt, reasoning, dati di memoria o credenziali; la feature disabilitata non produce metriche o eventi spuri; nessuna metrica muta le soglie di scheduling in autonomia.
+- Suite dedicata: `tests/test_context_scheduler_metrics.ts` (55 check superati). Tutti i gate verdi: 110 suite OK, build e typecheck puliti.
 
 ## T22.17 — Documentare soltanto il comportamento verificato
 

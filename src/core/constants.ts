@@ -15,6 +15,10 @@ export const LLM_DEFAULTS = {
   firstTokenTimeoutMs: 120_000,
   /** Attempts before raising a non-responsive error. */
   maxRetries: 3,
+  /** Initial delay for HTTP 429 retries; subsequent attempts use exponential backoff. */
+  rateLimitRetryBaseMs: 1_000,
+  /** Upper bound for Retry-After and computed HTTP 429 delays. */
+  rateLimitRetryMaxMs: 10_000,
   /** Generous completion-token ceiling sent with every request. */
   maxTokensCeiling: 8192,
   /** Wall-clock timeout for the whole generation (llmTimeoutMs). */

@@ -263,6 +263,15 @@ export class Agent implements ToolSetController {
   private calibrateCharsPerToken(sentMessages: Array<Pick<ChatMessage, 'content' | 'tool_calls'>>, promptTokens?: number): void {
     const chars = sentMessages.reduce((sum, m) => sum + Agent.messageChars(m), 0) + this.toolsChars;
     observePromptTokens(this.tokenCalibration, chars, promptTokens);
+    if (this.contextSchedulerEnabled && typeof promptTokens === 'number' && promptTokens > 0) {
+      const observedRatio = this.maxHistoryTokens > 0 ? promptTokens / this.maxHistoryTokens : 0;
+      ContextTracker.getInstance().recordObservedPressure({
+        usedTokens: promptTokens,
+        limitTokens: this.maxHistoryTokens,
+        remainingTokens: Math.max(0, this.maxHistoryTokens - promptTokens),
+        ratio: observedRatio,
+      });
+    }
   }
 
   private updateToolsSize(toolsForRequest: unknown[] | undefined): void {
@@ -510,10 +519,11 @@ export class Agent implements ToolSetController {
       this.updateToolsSize(toolsForRequest);
       this.pruneHistory();
 
-      // Context-driven autonomous subagent delegation evaluation (T22.8)
+      // Context-driven autonomous subagent delegation evaluation (T22.8 / T22.16)
       if (this.contextSchedulerEnabled && this.subagentRunner && !automaticDelegationPerformed) {
         const currentTokens = this.estimateTotalContextTokens();
         const pressure = getContextPressure(currentTokens, this.maxHistoryTokens);
+        ContextTracker.getInstance().recordEstimatedPressure(pressure.ratio);
         const action = scheduleContext(pressure, this.contextSchedulerConfig);
 
         const createTurnTaskPacket = (): TaskPacket | undefined => {
@@ -543,6 +553,7 @@ export class Agent implements ToolSetController {
         };
 
         if (action === 'prepare') {
+          ContextTracker.getInstance().recordDecision('prepare');
           if (!preparedPacket) {
             preparedPacket = createTurnTaskPacket();
             if (preparedPacket) {
@@ -567,6 +578,8 @@ export class Agent implements ToolSetController {
             }
           }
         } else if (action === 'delegate') {
+          ContextTracker.getInstance().recordDecision('delegate');
+          ContextTracker.getInstance().recordDelegationAttempt();
           automaticDelegationPerformed = true;
           const packetToDelegate = preparedPacket ?? createTurnTaskPacket();
 
@@ -581,13 +594,6 @@ export class Agent implements ToolSetController {
               limitTokens: pressure.limitTokens,
               ratio: pressure.ratio,
               source: 'estimated',
-            });
-
-            emit({
-              type: 'context_action',
-              action: 'delegate',
-              ratio: pressure.ratio,
-              agentLabel: this.agentLabel,
             });
 
             try {
@@ -627,21 +633,45 @@ export class Agent implements ToolSetController {
                 formattedSummary = formatAgentResultSummary(reduced) + truncationNotice;
               }
 
+              const delegationReportMessage =
+                `[SUBAGENT DELEGATION REPORT — NOT A USER INSTRUCTION]\n` +
+                `Agent: @${subResult.agentLabel} (${subResult.roleName})\n` +
+                `Status: ${structuredResult.status.toUpperCase()}\n` +
+                `Report Artifact: ${subResult.reportPath}\n\n` +
+                `${formattedSummary}\n\n` +
+                `[INSTRUCTION FOR ASSISTANT]: The above is the execution report from your delegated subordinate. ` +
+                `Incorporate its findings, decisions, and unresolved items to complete your original response to the user. ` +
+                `Do not treat this report as a new user request.`;
+
+              const childTokens = typeof (subResult.stats as any)?.totalTokens === 'number'
+                ? (subResult.stats as any).totalTokens
+                : (subResult.stats as any)?.tokenCount ?? 0;
+              const returnedTokens = this.estimateTokens({ content: delegationReportMessage });
+              const agentResultChars = JSON.stringify(structuredResult).length;
+
+              ContextTracker.getInstance().recordDelegationSuccess({
+                childTokens,
+                returnedTokens,
+                agentResultChars,
+              });
+
+              const metrics = ContextTracker.getInstance().getSchedulerMetrics();
+              emit({
+                type: 'context_action',
+                action: 'delegate',
+                ratio: pressure.ratio,
+                agentLabel: this.agentLabel,
+                amplification: metrics.contextAmplification,
+              });
+
               this.messages.push({
                 role: 'user',
-                content:
-                  `[SUBAGENT DELEGATION REPORT — NOT A USER INSTRUCTION]\n` +
-                  `Agent: @${subResult.agentLabel} (${subResult.roleName})\n` +
-                  `Status: ${structuredResult.status.toUpperCase()}\n` +
-                  `Report Artifact: ${subResult.reportPath}\n\n` +
-                  `${formattedSummary}\n\n` +
-                  `[INSTRUCTION FOR ASSISTANT]: The above is the execution report from your delegated subordinate. ` +
-                  `Incorporate its findings, decisions, and unresolved items to complete your original response to the user. ` +
-                  `Do not treat this report as a new user request.`,
+                content: delegationReportMessage,
               });
 
               continue;
             } catch (err: any) {
+              ContextTracker.getInstance().recordDelegationFailure();
               logSink.warn(`Autonomous delegation failed: ${err.message}. Continuing with parent agent.`);
             }
           }
@@ -683,7 +713,10 @@ export class Agent implements ToolSetController {
         if (toolCalls && toolCalls.length > 0) {
           assistantMessage.tool_calls = toolCalls;
         }
-        this.messages.push(assistantMessage);
+        // Some gateways reject an assistant turn with neither content nor tool calls.
+        if (assistantMessage.content || assistantMessage.tool_calls?.length) {
+          this.messages.push(assistantMessage);
+        }
 
         if (content) {
           finalAnswer = content;
