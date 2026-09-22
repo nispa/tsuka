@@ -122,6 +122,18 @@ export const TASK_PACKET_DEFAULTS = {
   maxCriterionChars: 1_000,
 };
 
+/** Compact agent result contract defaults (T22.6). */
+export const AGENT_RESULT_DEFAULTS = {
+  /** Maximum character length for child result summary. */
+  maxSummaryChars: 4_000,
+  /** Maximum number of items in list fields (changes, decisions, unresolved, evidence). */
+  maxListItems: 50,
+  /** Maximum character length for an individual list item. */
+  maxItemChars: 1_000,
+  /** Maximum character length for raw failure snippet in fallback result. */
+  maxFailureSnippetChars: 500,
+};
+
 /** Defaults for the read-only multi-agent consultation command (`/call`). */
 export const CALL_DEFAULTS = {
   /** Each invited participant speaks once in every consultation round. */

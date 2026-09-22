@@ -162,7 +162,7 @@
 | T22.3 | ✅ Fatto | **Pressione in `/context`**: estendere `ContextTracker` e le viste CLI/TUI senza introdurre nuova telemetria. |
 | T22.4 | ✅ Fatto | **Policy pura dello scheduler**: scegliere soltanto `continue`, `prepare` o `delegate` con due soglie centralizzate. |
 | T22.5 | ✅ Fatto | **Contratto `TaskPacket`**: contenuto minimo del briefing, separato da run ID e bookkeeping del workflow. |
-| T22.6 | ⬜ Da fare | **Contratto `AgentResult`**: risultato child compatto e strutturato, senza transcript o reasoning. |
+| T22.6 | ✅ Fatto | **Contratto `AgentResult`**: risultato child compatto e strutturato, senza transcript o reasoning. |
 | T22.7 | ⬜ Da fare | **Runner sub-agent condiviso**: estrarre da `spawn_agent` un solo percorso applicativo riusabile anche dallo scheduler. |
 | T22.8 | ⬜ Da fare | **Delega nel ReAct loop**: integrare la policy dopo pruning e fuori dai tool round, con guard anti-spawn e fallback al parent. |
 | T22.9 | ⬜ Da fare | **Budget strutturale di `AgentResult`**: ridurre il risultato senza troncare JSON o campi indispensabili. |
@@ -4115,7 +4115,7 @@ vincoli e verifica senza history; nessun nuovo store condiviso; tre gate verdi.
 
 ## T22.6 — Contratto compatto `AgentResult`
 
-**Dipende da:** T22.5 · **Sforzo:** basso · **Priorità:** alta
+**Dipende da:** T22.5 · **Stato:** completato · **Sforzo:** basso · **Priorità:** alta
 
 ```ts
 export interface AgentResult {
@@ -4135,6 +4135,14 @@ conversazionale sono esclusi.
 il parent può proseguire dal risultato senza ricevere la history del child; output
 malformato produce un `failed` esplicito o un fallback tipizzato, mai un cast cieco;
 tre gate verdi.
+
+**Esito implementazione (2026-09-22):**
+- Definite costanti centralizzate `AGENT_RESULT_DEFAULTS` in `src/core/constants.ts` (AGENTS.md Direttiva 9).
+- Creato il modulo `src/core/agentResult.ts` contenente `AgentResult`, `AgentResultStatus`, `AgentResultEvidence`, `validateAgentResult`, `createAgentResult`, `parseAgentResult`, `safeParseAgentResult`, `serializeAgentResult` e `formatAgentResultSummary`.
+- Garantito l'isolamento: il parsing rimuove attivamente proprietà non modellate (come transcript, messages, reasoning trace e metadata transitori) per impedire leakage verso il parent.
+- Parsing fail-closed: `safeParseAgentResult` gestisce JSON puliti, blocchi markdown ` ```json `, JSON incorporati in testo e input malformati/non validi restituendo un fallback tipizzato con `status: 'failed'` ed estratti informativi in `unresolved`, senza mai sollevare eccezioni o eseguire cast ciechi.
+- Nuova suite di test `tests/test_agent_result.ts` (68 check) registrata in `tests/run_tests.ts`.
+- ARCH.1-ARCH.5 conformi, 107 suite OK in `npm test`, `npm run build` e `npm run typecheck` verdi.
 
 ## T22.7 — Estrarre un runner sub-agent condiviso
 
