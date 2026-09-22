@@ -161,7 +161,7 @@
 | T22.2 | ✅ Fatto | **Proiezione `ContextPressure`**: derivare la pressione dai dati già prodotti da `contextBudget.ts` e dalla calibrazione dell'`Agent`. |
 | T22.3 | ✅ Fatto | **Pressione in `/context`**: estendere `ContextTracker` e le viste CLI/TUI senza introdurre nuova telemetria. |
 | T22.4 | ✅ Fatto | **Policy pura dello scheduler**: scegliere soltanto `continue`, `prepare` o `delegate` con due soglie centralizzate. |
-| T22.5 | ⬜ Da fare | **Contratto `TaskPacket`**: contenuto minimo del briefing, separato da run ID e bookkeeping del workflow. |
+| T22.5 | ✅ Fatto | **Contratto `TaskPacket`**: contenuto minimo del briefing, separato da run ID e bookkeeping del workflow. |
 | T22.6 | ⬜ Da fare | **Contratto `AgentResult`**: risultato child compatto e strutturato, senza transcript o reasoning. |
 | T22.7 | ⬜ Da fare | **Runner sub-agent condiviso**: estrarre da `spawn_agent` un solo percorso applicativo riusabile anche dallo scheduler. |
 | T22.8 | ⬜ Da fare | **Delega nel ReAct loop**: integrare la policy dopo pruning e fuori dai tool round, con guard anti-spawn e fallback al parent. |
@@ -4083,7 +4083,7 @@ verdi.
 
 ## T22.5 — Contratto minimo `TaskPacket`
 
-**Dipende da:** T22.4 · **Sforzo:** basso · **Priorità:** alta
+**Dipende da:** T22.4 · **Stato:** completato · **Sforzo:** basso · **Priorità:** alta
 
 ```ts
 export interface TaskPacket {
@@ -4105,6 +4105,13 @@ scope o allo stato del singolo `Agent.run()` e non vengono serializzati nel brie
 
 **Accettazione:** serializzazione deterministica e bounded; un child riceve obiettivo,
 vincoli e verifica senza history; nessun nuovo store condiviso; tre gate verdi.
+
+**Esito implementazione (2026-09-22):**
+- Definite costanti centralizzate `TASK_PACKET_DEFAULTS` in `src/core/constants.ts` (AGENTS.md Direttiva 9).
+- Creato il modulo `src/core/taskPacket.ts` contenente `TaskPacket`, `validateTaskPacket`, `createTaskPacket`, `formatTaskPacketBriefing`, `serializeTaskPacket` e `parseTaskPacket`.
+- Garantito l'isolamento: il briefing del child contiene solo obiettivo, vincoli e criteri di accettazione; esclusi conversation history, transcript, memory dump e bookkeeping di run.
+- Nuova suite di test `tests/test_task_packet.ts` (39 check) registrata in `tests/run_tests.ts`.
+- 106 suite OK in `npm test`, `npm run build` e `npm run typecheck` verdi.
 
 ## T22.6 — Contratto compatto `AgentResult`
 

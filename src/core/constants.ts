@@ -108,6 +108,20 @@ export const CONTEXT_SCHEDULER_DEFAULTS = {
   delegateAt: 0.70,
 };
 
+/** Task packet handoff briefing defaults (T22.5). */
+export const TASK_PACKET_DEFAULTS = {
+  /** Maximum character length for task objective. */
+  maxObjectiveChars: 4_000,
+  /** Maximum number of constraint items. */
+  maxConstraints: 20,
+  /** Maximum character length for a single constraint. */
+  maxConstraintChars: 1_000,
+  /** Maximum number of acceptance criteria items. */
+  maxAcceptanceCriteria: 20,
+  /** Maximum character length for a single acceptance criterion. */
+  maxCriterionChars: 1_000,
+};
+
 /** Defaults for the read-only multi-agent consultation command (`/call`). */
 export const CALL_DEFAULTS = {
   /** Each invited participant speaks once in every consultation round. */
