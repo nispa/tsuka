@@ -60,11 +60,12 @@ export function validateTaskPacket(candidate: unknown): TaskPacket {
         `TaskPacket constraints count exceeds maximum of ${TASK_PACKET_DEFAULTS.maxConstraints} (received ${raw.constraints.length}).`
       );
     }
-    normalizedConstraints = raw.constraints.map((c, idx) => {
-      if (typeof c !== 'string') {
+    const constraints: string[] = [];
+    for (let idx = 0; idx < raw.constraints.length; idx++) {
+      if (!(idx in raw.constraints) || typeof raw.constraints[idx] !== 'string') {
         throw new Error(`TaskPacket constraint at index ${idx} must be a string.`);
       }
-      const trimmed = c.trim();
+      const trimmed = raw.constraints[idx].trim();
       if (trimmed.length === 0) {
         throw new Error(`TaskPacket constraint at index ${idx} cannot be empty.`);
       }
@@ -73,8 +74,9 @@ export function validateTaskPacket(candidate: unknown): TaskPacket {
           `TaskPacket constraint at index ${idx} exceeds maximum length of ${TASK_PACKET_DEFAULTS.maxConstraintChars} characters.`
         );
       }
-      return trimmed;
-    });
+      constraints.push(trimmed);
+    }
+    normalizedConstraints = constraints;
   }
 
   let normalizedCriteria: string[] | undefined;
@@ -87,11 +89,12 @@ export function validateTaskPacket(candidate: unknown): TaskPacket {
         `TaskPacket acceptanceCriteria count exceeds maximum of ${TASK_PACKET_DEFAULTS.maxAcceptanceCriteria} (received ${raw.acceptanceCriteria.length}).`
       );
     }
-    normalizedCriteria = raw.acceptanceCriteria.map((a, idx) => {
-      if (typeof a !== 'string') {
+    const criteria: string[] = [];
+    for (let idx = 0; idx < raw.acceptanceCriteria.length; idx++) {
+      if (!(idx in raw.acceptanceCriteria) || typeof raw.acceptanceCriteria[idx] !== 'string') {
         throw new Error(`TaskPacket acceptance criterion at index ${idx} must be a string.`);
       }
-      const trimmed = a.trim();
+      const trimmed = raw.acceptanceCriteria[idx].trim();
       if (trimmed.length === 0) {
         throw new Error(`TaskPacket acceptance criterion at index ${idx} cannot be empty.`);
       }
@@ -100,8 +103,9 @@ export function validateTaskPacket(candidate: unknown): TaskPacket {
           `TaskPacket acceptance criterion at index ${idx} exceeds maximum length of ${TASK_PACKET_DEFAULTS.maxCriterionChars} characters.`
         );
       }
-      return trimmed;
-    });
+      criteria.push(trimmed);
+    }
+    normalizedCriteria = criteria;
   }
 
   const result: TaskPacket = {

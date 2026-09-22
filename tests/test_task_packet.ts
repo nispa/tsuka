@@ -236,6 +236,20 @@ assertThrows(
   'rejects invalid JSON in parseTaskPacket'
 );
 
+assertThrows(
+  'TP4.16',
+  () => validateTaskPacket({ objective: 'Valid', constraints: new Array(1) }),
+  /constraint at index 0 must be a string/,
+  'rejects sparse array in constraints'
+);
+
+assertThrows(
+  'TP4.17',
+  () => validateTaskPacket({ objective: 'Valid', acceptanceCriteria: new Array(2) }),
+  /acceptance criterion at index 0 must be a string/,
+  'rejects sparse array in acceptanceCriteria'
+);
+
 // ---------------------------------------------------------------------------
 // Group 5: Immutability & Defaults
 // ---------------------------------------------------------------------------

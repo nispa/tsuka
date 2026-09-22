@@ -48,10 +48,12 @@ export function validateAgentResult(candidate: unknown): AgentResult {
     throw new Error('AgentResult status must be a string.');
   }
 
-  const status = raw.status.trim().toLowerCase();
+  const rawStatus = typeof raw.status === 'string' ? raw.status : String(raw.status ?? '');
+  const statusSnippet = rawStatus.length > 50 ? `${rawStatus.slice(0, 47)}...` : rawStatus;
+  const status = rawStatus.trim().toLowerCase();
   if (status !== 'done' && status !== 'blocked' && status !== 'failed') {
     throw new Error(
-      `Invalid AgentResult status: expected 'done', 'blocked', or 'failed', got '${raw.status}'.`
+      `Invalid AgentResult status: expected 'done', 'blocked', or 'failed', got '${statusSnippet}'.`
     );
   }
 
@@ -80,11 +82,12 @@ export function validateAgentResult(candidate: unknown): AgentResult {
         `AgentResult ${name} count exceeds maximum of ${AGENT_RESULT_DEFAULTS.maxListItems} (received ${field.length}).`
       );
     }
-    const items = field.map((item, idx) => {
-      if (typeof item !== 'string') {
+    const items: string[] = [];
+    for (let idx = 0; idx < field.length; idx++) {
+      if (!(idx in field) || typeof field[idx] !== 'string') {
         throw new Error(`AgentResult ${name} item at index ${idx} must be a string.`);
       }
-      const trimmed = item.trim();
+      const trimmed = field[idx].trim();
       if (trimmed.length === 0) {
         throw new Error(`AgentResult ${name} item at index ${idx} cannot be empty.`);
       }
@@ -93,8 +96,8 @@ export function validateAgentResult(candidate: unknown): AgentResult {
           `AgentResult ${name} item at index ${idx} exceeds maximum length of ${AGENT_RESULT_DEFAULTS.maxItemChars} characters.`
         );
       }
-      return trimmed;
-    });
+      items.push(trimmed);
+    }
     return items.length > 0 ? items : undefined;
   };
 
@@ -173,84 +176,148 @@ export function parseAgentResult(raw: string | unknown): AgentResult {
  * If the input cannot be parsed or fails schema validation, this returns a typed
  * 'failed' AgentResult rather than throwing or blindly casting the output.
  */
+/**
+ * Constructs a strictly bounded 'failed' AgentResult fallback.
+ * Guarantees that summary and unresolved items strictly satisfy
+ * AGENT_RESULT_DEFAULTS and pass validateAgentResult without throwing.
+ */
+function createFailedFallback(summaryText: string, unresolvedDetails?: string[]): AgentResult {
+  const maxSummary = AGENT_RESULT_DEFAULTS.maxSummaryChars;
+  const safeSummary =
+    summaryText.length > maxSummary
+      ? `${summaryText.slice(0, maxSummary - 3)}...`
+      : summaryText;
+
+  let unresolved: string[] | undefined;
+  if (unresolvedDetails && unresolvedDetails.length > 0) {
+    unresolved = unresolvedDetails
+      .slice(0, AGENT_RESULT_DEFAULTS.maxListItems)
+      .map((item) => {
+        const maxItem = AGENT_RESULT_DEFAULTS.maxItemChars;
+        return item.length > maxItem ? `${item.slice(0, maxItem - 3)}...` : item;
+      });
+  }
+
+  return {
+    status: 'failed',
+    summary: safeSummary,
+    ...(unresolved && unresolved.length > 0 ? { unresolved } : {}),
+  };
+}
+
+/**
+ * Safely parses and validates child agent output into an AgentResult.
+ *
+ * Handles:
+ * - Pre-parsed objects
+ * - Clean JSON strings
+ * - Markdown-fenced JSON blocks (```json ... ```)
+ * - Raw text with embedded JSON
+ *
+ * If the input cannot be parsed or fails schema validation, this returns a typed
+ * 'failed' AgentResult rather than throwing or blindly casting the output.
+ */
 export function safeParseAgentResult(raw: unknown): AgentResult {
   if (raw === null || raw === undefined) {
-    return {
-      status: 'failed',
-      summary: 'Child agent produced no output (null or undefined).',
-      unresolved: ['Sub-agent returned empty result.'],
-    };
+    return createFailedFallback('Child agent produced no output (null or undefined).', [
+      'Sub-agent returned empty result.',
+    ]);
   }
 
   if (typeof raw === 'object' && !Array.isArray(raw)) {
     try {
       return validateAgentResult(raw);
     } catch (err: any) {
-      return {
-        status: 'failed',
-        summary: `Child agent produced invalid result object: ${err.message}`,
-        unresolved: [`Validation failed: ${err.message}`],
-      };
+      return createFailedFallback(
+        `Child agent produced invalid result object: ${err.message}`,
+        [`Validation failed: ${err.message}`]
+      );
     }
   }
 
   if (typeof raw !== 'string') {
-    return {
-      status: 'failed',
-      summary: `Child agent produced unexpected output type: ${typeof raw}.`,
-      unresolved: ['Sub-agent output was neither a JSON string nor an object.'],
-    };
+    return createFailedFallback(`Child agent produced unexpected output type: ${typeof raw}.`, [
+      'Sub-agent output was neither a JSON string nor an object.',
+    ]);
   }
 
   const trimmed = raw.trim();
   if (trimmed.length === 0) {
-    return {
-      status: 'failed',
-      summary: 'Child agent produced empty string output.',
-      unresolved: ['Sub-agent returned empty string.'],
-    };
+    return createFailedFallback('Child agent produced empty string output.', [
+      'Sub-agent returned empty string.',
+    ]);
   }
 
-  // Attempt JSON parsing strategies
-  const candidates: string[] = [trimmed];
-
-  // Strategy 1: markdown code fences ```json ... ``` or ``` ... ```
-  const codeBlockMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-  if (codeBlockMatch && codeBlockMatch[1]) {
-    candidates.unshift(codeBlockMatch[1].trim());
-  }
-
-  // Strategy 2: outermost JSON braces if present
-  const firstBrace = trimmed.indexOf('{');
-  const lastBrace = trimmed.lastIndexOf('}');
-  if (firstBrace !== -1 && lastBrace > firstBrace) {
-    const extracted = trimmed.slice(firstBrace, lastBrace + 1).trim();
-    if (!candidates.includes(extracted)) {
-      candidates.push(extracted);
-    }
-  }
-
-  let lastError: Error | null = null;
-  for (const candidate of candidates) {
-    try {
-      const parsed = JSON.parse(candidate);
-      return validateAgentResult(parsed);
-    } catch (err: any) {
-      lastError = err;
-    }
-  }
-
-  // Malformed or failed validation -> typed failed fallback
   const snippet = trimmed.slice(0, AGENT_RESULT_DEFAULTS.maxFailureSnippetChars);
   const snippetSuffix = trimmed.length > AGENT_RESULT_DEFAULTS.maxFailureSnippetChars ? '...' : '';
 
-  return {
-    status: 'failed',
-    summary: `Malformed child agent result: ${lastError ? lastError.message : 'unparseable JSON'}.`,
-    unresolved: [
-      `Raw output could not be parsed as AgentResult: "${snippet}${snippetSuffix}"`,
-    ],
-  };
+  // 1. Direct JSON parse attempt on the full string
+  try {
+    const parsed = JSON.parse(trimmed);
+    // If JSON.parse succeeded, trimmed is syntactically valid JSON.
+    // Structural validation applies: if it fails, it is a structural failure,
+    // NOT a syntax error, so we must never carve out inner substrings to bypass it!
+    try {
+      return validateAgentResult(parsed);
+    } catch (valErr: any) {
+      return createFailedFallback(
+        `Child agent produced invalid result object: ${valErr.message}`,
+        [`Validation failed: ${valErr.message}`]
+      );
+    }
+  } catch {
+    // trimmed is not valid JSON as a whole (e.g. contains markdown fences or prose)
+  }
+
+  // 2. Syntax recovery: check for markdown code fences (```json ... ``` or ``` ... ```)
+  const codeBlockMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (codeBlockMatch && codeBlockMatch[1]) {
+    const fenced = codeBlockMatch[1].trim();
+    try {
+      const parsed = JSON.parse(fenced);
+      // Valid JSON in code fence: validate structurally
+      try {
+        return validateAgentResult(parsed);
+      } catch (valErr: any) {
+        return createFailedFallback(
+          `Child agent produced invalid result object: ${valErr.message}`,
+          [`Validation failed: ${valErr.message}`]
+        );
+      }
+    } catch {
+      // Fenced content was not valid JSON
+    }
+  }
+
+  // 3. Syntax recovery: embedded JSON object { ... } in prose (only if not enclosed in an outer array)
+  const firstBrace = trimmed.indexOf('{');
+  const lastBrace = trimmed.lastIndexOf('}');
+  const firstBracket = trimmed.indexOf('[');
+  const lastBracket = trimmed.lastIndexOf(']');
+
+  const isEnclosedInArray =
+    firstBracket !== -1 && lastBracket !== -1 && firstBracket < firstBrace && lastBracket > lastBrace;
+
+  if (!isEnclosedInArray && firstBrace !== -1 && lastBrace > firstBrace) {
+    const extracted = trimmed.slice(firstBrace, lastBrace + 1).trim();
+    try {
+      const parsed = JSON.parse(extracted);
+      try {
+        return validateAgentResult(parsed);
+      } catch (valErr: any) {
+        return createFailedFallback(
+          `Child agent produced invalid result object: ${valErr.message}`,
+          [`Validation failed: ${valErr.message}`]
+        );
+      }
+    } catch {
+      // Extracted braces were not valid JSON
+    }
+  }
+
+  return createFailedFallback('Malformed child agent result: unparseable JSON.', [
+    `Raw output could not be parsed as AgentResult: "${snippet}${snippetSuffix}"`,
+  ]);
 }
 
 /**

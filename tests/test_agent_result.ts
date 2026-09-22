@@ -188,6 +188,47 @@ assertThrows(
   'unresolved item at index 0 cannot be empty'
 );
 
+// Sparse array checks (new Array(n))
+assertThrows(
+  () =>
+    validateAgentResult({
+      status: 'done',
+      summary: 'Valid summary',
+      changes: new Array(1),
+    }),
+  'changes item at index 0 must be a string'
+);
+
+assertThrows(
+  () =>
+    validateAgentResult({
+      status: 'done',
+      summary: 'Valid summary',
+      decisions: new Array(2),
+    }),
+  'decisions item at index 0 must be a string'
+);
+
+assertThrows(
+  () =>
+    validateAgentResult({
+      status: 'done',
+      summary: 'Valid summary',
+      unresolved: new Array(1),
+    }),
+  'unresolved item at index 0 must be a string'
+);
+
+assertThrows(
+  () =>
+    validateAgentResult({
+      status: 'done',
+      summary: 'Valid summary',
+      evidence: { files: new Array(1) },
+    }),
+  'evidence.files item at index 0 must be a string'
+);
+
 // 4. Evidence validation
 console.log('--- 4. Evidence Validation ---');
 
@@ -382,6 +423,45 @@ const numberFallback = safeParseAgentResult(42);
 assert(
   numberFallback.status === 'failed',
   'Number input produces explicit "failed" status'
+);
+
+// Case I: Structurally invalid JSON array must produce failed and not be converted to success via brace recovery
+const arrayJsonString = JSON.stringify([{ status: 'done', summary: 'example' }]);
+const arrayFallback = safeParseAgentResult(arrayJsonString);
+assert(
+  arrayFallback.status === 'failed',
+  'Array of objects as JSON string produces explicit "failed" status (no brace recovery bypass)'
+);
+const arrayObjectFallback = safeParseAgentResult([{ status: 'done', summary: 'example' }]);
+assert(
+  arrayObjectFallback.status === 'failed',
+  'Array of objects as parsed object produces explicit "failed" status'
+);
+
+// Case J: Long invalid status (5,000 chars) must produce bounded fallback that formats without throwing
+const hugeStatusJson = JSON.stringify({
+  status: 'invalid_status_'.repeat(350), // ~5250 chars
+  summary: 'Valid summary',
+});
+const hugeFallback = safeParseAgentResult(hugeStatusJson);
+assert(hugeFallback.status === 'failed', 'Huge invalid status produces "failed" status');
+assert(
+  hugeFallback.summary.length <= AGENT_RESULT_DEFAULTS.maxSummaryChars,
+  'Fallback summary is within maxSummaryChars bounds'
+);
+if (hugeFallback.unresolved) {
+  for (const u of hugeFallback.unresolved) {
+    assert(
+      u.length <= AGENT_RESULT_DEFAULTS.maxItemChars,
+      'Fallback unresolved item is within maxItemChars bounds'
+    );
+  }
+}
+// Must format cleanly without throwing
+const formattedHugeFallback = formatAgentResultSummary(hugeFallback);
+assert(
+  formattedHugeFallback.includes('[FAILED]'),
+  'formatAgentResultSummary formats bounded fallback without throwing'
 );
 
 // 8. Compact Markdown Formatting for Parent Consumption
