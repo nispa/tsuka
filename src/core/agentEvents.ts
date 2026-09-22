@@ -10,6 +10,7 @@ export type AgentEvent =
   | { type: 'subagent_start'; name: string; role: string; task: string; agentLabel?: string }
   | { type: 'subagent_end'; name: string; success: boolean; output?: string; agentLabel?: string }
   | { type: 'round_continue'; round: number; agentLabel?: string }
-  | { type: 'max_rounds'; limit: number; agentLabel?: string };
+  | { type: 'max_rounds'; limit: number; agentLabel?: string }
+  | { type: 'context_action'; action: 'continue' | 'prepare' | 'delegate'; ratio: number; agentLabel?: string };
 
 export type AgentEventHandler = (ev: AgentEvent) => void;

@@ -164,7 +164,7 @@
 | T22.5 | ✅ Fatto | **Contratto `TaskPacket`**: contenuto minimo del briefing, separato da run ID e bookkeeping del workflow. |
 | T22.6 | ✅ Fatto | **Contratto `AgentResult`**: risultato child compatto e strutturato, senza transcript o reasoning. |
 | T22.7 | ✅ Fatto | **Runner sub-agent condiviso**: estratto `SubagentRunner` (`ISubagentRunner`, `DefaultSubagentRunner`) da `spawn_agent`, integrato nella composition root (`createHarnessRuntime`) e testato con 35 check (108 suite verdi). |
-| T22.8 | ⬜ Da fare | **Delega nel ReAct loop**: integrare la policy dopo pruning e fuori dai tool round, con guard anti-spawn e fallback al parent. |
+| T22.8 | ✅ Fatto | **Delega nel ReAct loop**: integrata la policy in `Agent.run()` valutata dopo pruning e prima di `chatWithTools()`; opt-in disabilitato di default, guardia max 1 delega automatica per run, disattivazione del context scheduler sui child spawned (`DefaultSubagentRunner`), invalidazione del packet su tool round completati, handoff strutturato bounded con `safeParseAgentResult` e `formatAgentResultSummary` senza leak di raw output, fail-closed su errore con logSink e fallback al parent. Suite `test_agent_context_scheduler.ts` (50 check), 109 suite verdi, build e typecheck puliti. |
 | T22.9 | ⬜ Da fare | **Budget strutturale di `AgentResult`**: ridurre il risultato senza troncare JSON o campi indispensabili. |
 | T22.10 | ⬜ Da fare | **Audit capability di `MemoryBackend`**: evolvere il contratto esistente soltanto per differenze operative dimostrate. |
 | T22.11 | ⬜ Da fare | **Budget memory unificato**: riusare `memoryMaxChars`, formatter e capping esistenti prima di aggiungere nuove forme di recall. |
@@ -4210,6 +4210,27 @@ non consuma la quota automatica.
 caratterizzato come identico; nessuno spawn ripetuto se la pressione resta alta;
 nessuna delega ricorsiva automatica; failure non bloccanti; ordering dei messaggi
 valido; test d'integrazione con mock provider/runner e tre gate verdi.
+
+**Esito:** Collegata la policy del context scheduler al ReAct loop in `Agent.run()` (`src/core/agent.ts`).
+- Configurata e iniettata la configurazione applicativa (`contextSchedulerEnabled`, `contextPrepareAt`, `contextDelegateAt`) tramite `ConfigManager` e `constants.ts` (`CONTEXT_SCHEDULER_DEFAULTS`, disabilitato per default: `enabled: false`, `prepareAt: 0.60`, `delegateAt: 0.70`), con validazione centralizzata `validateContextSchedulerConfig()`.
+- Il ciclo ReAct valuta la pressione e la decisione dopo selezione/schema dei tool, `updateToolsSize()` e `ConversationHistory.prune()`, prima di invocare `chatWithTools()`.
+- Azione `prepare`: costruisce deterministicamente il `TaskPacket` (`createTurnTaskPacket`) con obiettivo bounded (`TASK_PACKET_DEFAULTS.maxObjectiveChars`), tool round constraints e note esplicite del turno senza compattare la history; registra la decisione su `ContextTracker` ed emette l'evento `context_action: prepare`.
+- Invariante di invalidazione: se viene eseguito un tool round reale, qualsiasi packet precedentemente preparato viene invalidato (`preparedPacket = undefined`), garantendo che deleghe successive incorporino il briefing più aggiornato.
+- Azione `delegate`: esegue la delega automatica invocando `subagentRunner.run({ task, expectAgentResult: true, throwOnError: true })`.
+- Invarianti di isolamento:
+  1. Quota massima di 1 delega automatica per singolo `Agent.run()`;
+  2. `DefaultSubagentRunner` imposta esplicitamente `contextScheduler: { enabled: false }` sulle istanze child create, impedendo ricorsioni incontrollate;
+  3. Il parent marca la delega automatica come consumata prima di invocare il runner;
+  4. L'uso manuale di `spawn_agent` non tocca né consuma la quota di delega automatica del ReAct loop.
+- Handoff strutturato e protetto da context leak:
+  - Il risultato child viene validato con `safeParseAgentResult(subResult.agentResult)` o ridotto a fallback tipizzato (`createFailedFallback`) preservando lo stato effettivo (`done`, `blocked`, `failed`), senza mai ripiegare sull'output arbitrario non bounded `subResult.output`.
+  - Formattazione tramite `formatAgentResultSummary()` con delimitazione e truncation note a `AGENT_RESULT_DEFAULTS.maxSummaryChars` e avvisi su artefatti salvati su disco.
+  - Inserimento dell'handoff come messaggio utente chiaramente demarcato (`[DELEGATION RESULT - SUB-AGENT COMPLETED/FAILED/BLOCKED] ... [END DELEGATION RESULT]`), consentendo al parent di proseguire normalmente.
+  - Fail-closed: qualsiasi errore o eccezione sollevata dal runner viene intercettata, loggata su `logSink.warn` con emissione di evento di warning, consentendo al parent di proseguire senza crash.
+- Broken circular dependency ARCH.5: spostata l'interfaccia `ContextPressure` in `src/core/types.ts` e re-esportata da `contextBudget.ts`.
+- Suite di test dedicata `tests/test_agent_context_scheduler.ts` (50 check su 15 scenari da ACS.1 a ACS.15) registrata in `tests/run_tests.ts`.
+- Audit flag aggiornato (`test_flags_audit.ts`, 26 check OK).
+- I tre gate `npm test` (109 suite OK, 0 fallite), `npm run build` e `npm run typecheck` verdi.
 
 ## T22.9 — Applicare un budget strutturale a `AgentResult`
 

@@ -1,11 +1,12 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { homePath, localWorkspacePath } from '../apphome';
-import { AGENT_DEFAULTS, CLI_DEFAULTS, CONFIG_DEFAULTS, LLM_DEFAULTS, MEMORY_DEFAULTS, TOOLS_DEFAULTS } from '../constants';
+import { AGENT_DEFAULTS, CLI_DEFAULTS, CONFIG_DEFAULTS, CONTEXT_SCHEDULER_DEFAULTS, LLM_DEFAULTS, MEMORY_DEFAULTS, TOOLS_DEFAULTS } from '../constants';
 import { logSink } from '../logSink';
 import { normalizeProviderClass } from '../cloudProvider';
 import { loadProviderCatalog, type ProviderDefinition } from '../providerCatalog';
 import { matchesModelId, sanitizeSamplingParams } from './sampling';
+import { type ContextSchedulerConfig, validateContextSchedulerConfig } from '../contextScheduler';
 import {
   AppConfig,
   ProviderConfig,
@@ -568,6 +569,32 @@ export class ConfigManager {
       return Math.floor(value);
     }
     return TOOLS_DEFAULTS.contextTrackerMaxEntries;
+  }
+
+  /**
+   * Whether context-driven autonomous subagent delegation is enabled (T22.8). Default: false.
+   */
+  isContextSchedulerEnabled(): boolean {
+    return this.config.contextSchedulerEnabled === true;
+  }
+
+  /**
+   * Resolves and strictly validates context scheduler thresholds (T22.8).
+   * Validates at loading time: throws immediately if thresholds are invalid or not strictly ordered.
+   */
+  getContextSchedulerConfig(): ContextSchedulerConfig {
+    const prepareAt =
+      typeof this.config.contextPrepareAt === 'number'
+        ? this.config.contextPrepareAt
+        : CONTEXT_SCHEDULER_DEFAULTS.prepareAt;
+    const delegateAt =
+      typeof this.config.contextDelegateAt === 'number'
+        ? this.config.contextDelegateAt
+        : CONTEXT_SCHEDULER_DEFAULTS.delegateAt;
+
+    const resolved: ContextSchedulerConfig = { prepareAt, delegateAt };
+    validateContextSchedulerConfig(resolved);
+    return resolved;
   }
 
   /**

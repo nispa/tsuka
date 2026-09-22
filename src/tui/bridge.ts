@@ -372,6 +372,12 @@ export class TuiBridge {
       max_rounds: (ev) => {
         this.store.notify(`Execution interrupted: reached limit of ${ev.limit} tool rounds`, 'warn');
       },
+
+      context_action: (ev) => {
+        if (ev.action === 'delegate') {
+          this.store.notify(`Context pressure high (${Math.round(ev.ratio * 100)}%): delegating subagent task`, 'info');
+        }
+      },
     };
 
     return (ev: AgentEvent) => (handlers[ev.type] as (e: AgentEvent) => void)(ev);

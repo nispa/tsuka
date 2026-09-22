@@ -153,6 +153,7 @@ export class DefaultSubagentRunner implements ISubagentRunner {
     );
     subAgent.setDeferredTools(toolSet.deferred);
     subAgent.setSubagentRunner(this);
+    subAgent.setContextScheduler({ enabled: false });
 
     // 7. Setup forwarding handlers attributed to subagent label
     const onChunk = context?.onChunk;

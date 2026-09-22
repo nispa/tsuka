@@ -161,6 +161,12 @@ export class TuiApp {
     );
     a.setDeferredTools(toolSet.deferred);
     a.setSubagentRunner(this.subagentRunner);
+    if (this.configManager.isContextSchedulerEnabled()) {
+      a.setContextScheduler({
+        enabled: true,
+        ...this.configManager.getContextSchedulerConfig(),
+      });
+    }
 
     a.setToolRoundsPromptHandler((info) => {
       return new Promise<ToolRoundsAction>((resolve) => {

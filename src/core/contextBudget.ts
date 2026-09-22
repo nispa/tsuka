@@ -1,6 +1,7 @@
 import { createHotPathConfigCache } from './config/hotPathCache';
 import { AGENT_DEFAULTS } from './constants';
-import { ChatMessage } from './types';
+import { ChatMessage, ContextPressure } from './types';
+export type { ContextPressure };
 
 /**
  * Context ceiling for individual tool execution results (T8.8).
@@ -160,15 +161,6 @@ export function calculateReasoningBudget(
   };
 }
 
-/**
- * Normalized context pressure representation (T22.2).
- */
-export interface ContextPressure {
-  usedTokens: number;
-  limitTokens: number;
-  remainingTokens: number;
-  ratio: number;
-}
 
 /**
  * Pure projection of context window pressure (T22.2).

@@ -8,7 +8,7 @@
  * providers, or presentation layers.
  */
 
-import { ContextPressure } from './contextBudget';
+import { ContextPressure } from './types';
 import { CONTEXT_SCHEDULER_DEFAULTS } from './constants';
 
 export type ContextAction = 'continue' | 'prepare' | 'delegate';

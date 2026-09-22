@@ -57,6 +57,9 @@ const CONFIG_CLASSIFICATION: Record<string, FlagCategory> = {
   inferenceLogprobs: 'diagnostic',
   samplingProfiles: 'compatibility',
   mcpServers: 'compatibility',
+  contextSchedulerEnabled: 'product',
+  contextPrepareAt: 'product',
+  contextDelegateAt: 'product',
 };
 
 const ENV_CLASSIFICATION: Record<string, FlagCategory> = {

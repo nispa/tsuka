@@ -122,3 +122,13 @@ export interface SubagentRunResult {
 export interface ISubagentRunner {
   run(request: SubagentRunRequest, context?: SubagentExecutionContext): Promise<SubagentRunResult>;
 }
+
+/**
+ * Normalized context pressure representation (T22.2).
+ */
+export interface ContextPressure {
+  usedTokens: number;
+  limitTokens: number;
+  remainingTokens: number;
+  ratio: number;
+}

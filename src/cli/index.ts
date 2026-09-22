@@ -149,6 +149,12 @@ async function main() {
     );
     a.setDeferredTools(toolSet.deferred);
     a.setSubagentRunner(runtime.subagentRunner);
+    if (configManager.isContextSchedulerEnabled()) {
+      a.setContextScheduler({
+        enabled: true,
+        ...configManager.getContextSchedulerConfig(),
+      });
+    }
     if (typeof commandCtx !== 'undefined') {
       a.setWorkflowDispatcher(createWorkflowDispatcher(commandCtx));
     }

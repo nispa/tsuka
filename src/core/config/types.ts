@@ -105,6 +105,12 @@ export interface AppConfig {
   selfAuthoringEnabled?: boolean;
   /** Maximum number of activity records kept in the in-memory ContextTracker ring buffer. Default: 100. */
   contextTrackerMaxEntries?: number;
+  /** Enables autonomous subagent delegation when context pressure crosses configured thresholds (T22.8). Default: false. */
+  contextSchedulerEnabled?: boolean;
+  /** Context pressure ratio at which turn data is prepared into a TaskPacket (T22.8). Default: 0.60. */
+  contextPrepareAt?: number;
+  /** Context pressure ratio at which automatic delegation triggers (T22.8). Default: 0.70. */
+  contextDelegateAt?: number;
   /** Maximum command history lines retained in REPL history file. Default: 100. */
   cliMaxHistory?: number;
   /** Character threshold above which agent turn outputs in /goal are condensed into persistent memory. Default: 1500. */

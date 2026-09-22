@@ -100,8 +100,10 @@ export const AGENT_DEFAULTS = {
   teamMaxRounds: 3,
 };
 
-/** Context scheduler threshold defaults (T22.4). */
+/** Context scheduler threshold defaults (T22.4, T22.8). */
 export const CONTEXT_SCHEDULER_DEFAULTS = {
+  /** Default enablement of context-driven autonomous subagent delegation. */
+  enabled: false,
   /** Pressure ratio at or above which an agent begins preparation for handoff. */
   prepareAt: 0.60,
   /** Pressure ratio at or above which an agent must delegate to avoid overflow. */
