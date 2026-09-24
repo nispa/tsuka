@@ -188,6 +188,7 @@
 | T23.12 | ✅ Fatto | **Chiusura architetturale dell'audit**: zero cicli runtime su tutti i moduli `src/` verificati e garantiti dalla guard `ARCH.5` in `test_architecture_boundaries.ts` (contratti condivisi in `core/types.ts` leaf, zero loop da `cli/commands/types`); documentazione security/architettura allineata con matrice dei rischi residui; `npm pack --dry-run` con tarball pulito da 304 file; tutti i gate verdi (97/97 suite OK, build e typecheck puliti). |
 | T23.13 | ✅ Fatto | **Web search data-driven e pluggable**: `WebSearchBackend` con registry/factory, backend HTTP guidato da `web_search_providers.json`, adapter DOM registrato per DuckDuckGo e mapping JSON per Google/Tavily; selettori CLI/TUI derivati dal catalogo e contratto MCP esterno senza browser. Credenziali solo tramite riferimenti a variabili d'ambiente, valori mascherati negli errori e normalizzazione bounded comune. Suite `test_web_search_backends.ts`; 98 suite, build e typecheck verdi. |
 | T23.14 | ✅ Fatto | **Recupero write_file incompleto**: schema con obbligatorietà congiunta di `path` e `content` esplicitata, feedback di validazione che elenca tutti i campi obbligatori mancanti insieme, flag `isValidationError` strutturato nel contratto `ToolResult`, tracciamento degli errori consecutivi per tool in `reactState.ts` con limite centralizzato (`TOOLS_DEFAULTS.maxConsecutiveValidationErrors = 3`), emissione dell'evento `validation_limit` e arresto sicuro senza salvataggio spurio; staging preservato e azzeramento su chiamata valida. Nuova suite `test_write_file_recovery.ts` (12 check). I tre gate verdi (111 suite). |
+| T23.15 | ✅ Fatto | **Tool call in streaming invisibile nella TUI**: i delta degli argomenti di una tool call non producevano né chunk né telemetria, quindi dopo il ragionamento la TUI restava ferma sull'ultimo pensiero per tutta la composizione (minuti per un `write_file` grande). Ora contano come token decodificati e l'evento `decode` porta `toolCall: { name, argChars }`; la TUI mostra la fase `composing` (card, titoli, header). |
 
 Tutti i task pianificati e di backlog sono completati; la serie T15 (memoria, modelli <30B) è implementata e chiusa con 72 suite di test verdi. Pianificata la serie **T16 (benchmark significativi)** su architettura a due velocità: **`/benchmark` fast** (1 colpo/test, deterministico — resta il gate del tier) e **`/benchmark --deep`** (repliche con variazione del prompt, mediana+varianza, per validazione/calibrazione). Pianificato anche **T17.1** (retrieval BM25/TF-IDF), il primo livello del percorso di apprendimento documentato in `docs/memory.md` §12. Valore di ritorno — i benchmark attuali saturano in alto e non discriminano tra i modelli, ma il gating dei tool (`registry.ts`) dipende proprio da quel tier: se tutto diventa `large` il gating è codice morto. Restano da fare T14.24 (commenti tests/ in inglese), T14.25 (token di protocollo multi-agente) e le serie T16/T17.
 
@@ -4842,6 +4843,34 @@ round, salvare automaticamente staging incompleto o introdurre fallback shell.
   - WFR.6a-b: interruzione mid-batch su 3 errori consecutivi che impedisce l'esecuzione di una 4ª chiamata valida nel medesimo batch (file non toccato).
   - WFR.7a-b: errore operativo con parametri validi che azzera il contatore di errori di validazione, impedendo abort erronei al successivo errore.
 - Tutti i tre gate verdi: `npm test` (111 suite OK, 0 fallite), `npm run build` e `npm run typecheck` puliti.
+
+## T23.15 — Tool call in streaming invisibile nella TUI
+
+**Stato:** ✅ Fatto · **Priorità:** alta
+
+**Problema osservato:** con un ragionamento lungo la TUI sembrava bloccata: il
+pensiero smetteva di crescere, ma l'interfaccia restava reattiva. Un micro-benchmark
+ha escluso il rendering (circa 19 ms per frame, costante fino a 640K caratteri di
+pensiero). La causa è in `StreamAccumulator.processChunk`: i delta `tool_calls`
+venivano accumulati senza `onChunk`, senza telemetria e senza contare token. Finito
+il ragionamento, un modello che compone una tool call lunga (per esempio un file
+intero per `write_file`, minuti a circa 11 tok/s su hardware locale) non mostrava
+alcun progresso fino all'esecuzione del tool.
+
+**Intervento:**
+- `src/core/provider/streamAccumulator.ts`: ogni delta di argomenti conta come token
+  decodificato e pubblica la telemetria `decode` (con lo stesso throttle dei token di
+  testo) con `toolCall: { name, argChars }`. Nessuna confidenza viene attribuita ai
+  token degli argomenti, perché i logprobs sono letti soltanto sul testo.
+- `src/tui/bridge.ts`: un evento `decode` con `toolCall` porta `generationStatus`
+  nella nuova fase `composing`; i chunk visibili successivi e `tool_start` la
+  sostituiscono come prima.
+- Viste (`Chat.ts`, `Input.ts`, `Header.ts`): etichetta condivisa
+  `composingLabel()` (es. `write_file · 12.4K chars`), nessuna formattazione duplicata.
+- Due casi nuovi in `tests/test_inference_telemetry.ts` (provider e bridge/viste).
+
+**Non fatto:** la CLI non installa un sink di telemetria e non mostra ancora la fase
+di composizione.
 
 ## Sequenza di consegna della fase
 

@@ -6,6 +6,7 @@
 import chalk from 'chalk';
 import { TuiState } from '../types';
 import { TuiScreen } from '../screen';
+import { composingLabel } from './composingLabel';
 
 const SLASH_COMMANDS = [
   { cmd: '/agent', desc: 'Switch active Character or Persona' },
@@ -105,6 +106,8 @@ export class InputView {
         title = `Prompt Input (⚡ PARALLEL ${parallel.length}: ${parallel.map((name) => `@${name}`).join(' · ')} | Esc or /stop to halt)`;
       } else if (phase === 'reasoning') {
         title = `Prompt Input (⚡ THINKING... ${agent} | Esc or /stop to halt)`;
+      } else if (phase === 'composing') {
+        title = `Prompt Input (🧩 COMPOSING: ${composingLabel(gen)} ${agent} | Esc or /stop to halt)`;
       } else if (phase === 'tool') {
         title = `Prompt Input (🔧 TOOL EXECUTION: ${gen?.toolName || 'tool'} ${agent} | Esc or /stop to halt)`;
       } else if (phase === 'streaming') {

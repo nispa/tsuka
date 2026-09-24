@@ -108,9 +108,12 @@ export interface TuiSpawnedAgent {
 }
 
 export interface TuiGenerationStatus {
-  phase: 'idle' | 'reasoning' | 'streaming' | 'tool';
+  /** `composing`: the model is streaming a tool call's arguments (not yet executing it). */
+  phase: 'idle' | 'reasoning' | 'streaming' | 'composing' | 'tool';
   agentName?: string;
   toolName?: string;
+  /** Argument characters received so far while `composing`. */
+  argChars?: number;
   /** Live progress text from a long CLI workflow's spinner (e.g. `/benchmark`'s current step). */
   detail?: string;
 }

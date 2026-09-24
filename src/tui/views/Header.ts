@@ -6,6 +6,7 @@
 import chalk from 'chalk';
 import { TuiState } from '../types';
 import { TuiScreen } from '../screen';
+import { composingLabel } from './composingLabel';
 import { layoutTabs } from '../navigation';
 import { TSUKA_PACKAGE } from '../../core/packageInfo';
 
@@ -76,6 +77,9 @@ export class HeaderView {
       if (gen?.phase === 'tool' && gen.toolName) {
         const who = gen.agentName ? `@${gen.agentName}: ` : '';
         statusBadge = chalk.bold.bgHex('#d97706').white(` 🔧 ${who}${gen.toolName} `);
+      } else if (gen?.phase === 'composing') {
+        const who = gen.agentName && gen.agentName !== state.activeAiName ? `@${gen.agentName}: ` : '';
+        statusBadge = chalk.bold.bgHex('#0d9488').white(` 🧩 ${who}${composingLabel(gen)} `);
       } else if (gen?.phase === 'streaming') {
         const who = gen.agentName && gen.agentName !== state.activeAiName ? ` @${gen.agentName}` : '';
         const isNoEffort = state.activeReasoningEffort === 'none';

@@ -1,6 +1,6 @@
 import { ThinkTagParser, StreamChannel } from '../thinkParser';
 import type { ToolCall } from '../types';
-import type { ChatResponse, ChatStats, InferenceCandidate } from './types';
+import type { ChatResponse, ChatStats, InferenceCandidate, InferenceToolCallProgress } from './types';
 import {
   LOGPROBS_TOP_N,
   TELEMETRY_EMIT_INTERVAL_MS,
@@ -94,22 +94,7 @@ export class StreamAccumulator {
         this.decodedTokens++;
       }
 
-      if (!this.firstTokenAt) {
-        this.firstTokenAt = Date.now();
-        emitInferenceTelemetry({ type: 'first_token', ttftMs: this.firstTokenAt - this.opts.attemptStartTime });
-      }
-
-      const now = Date.now();
-      if (now - this.lastTelemetryAt >= TELEMETRY_EMIT_INTERVAL_MS) {
-        this.lastTelemetryAt = now;
-        emitInferenceTelemetry({
-          type: 'decode',
-          tokens: this.decodedTokens,
-          decodeMs: now - this.firstTokenAt,
-          confidence: this.lastConfidence,
-          topCandidates: this.lastCandidates,
-        });
-      }
+      this.emitDecodeTelemetry();
     }
 
     if (reasoning) {
@@ -133,11 +118,39 @@ export class StreamAccumulator {
             function: { name: '', arguments: '' }
           };
         }
-        if (tc.id) this.toolCallsAccumulator[idx].id = tc.id;
-        if (tc.function?.name) this.toolCallsAccumulator[idx].function.name += tc.function.name;
-        if (tc.function?.arguments) this.toolCallsAccumulator[idx].function.arguments += tc.function.arguments;
+        const acc = this.toolCallsAccumulator[idx];
+        if (tc.id) acc.id = tc.id;
+        if (tc.function?.name) acc.function.name += tc.function.name;
+        if (tc.function?.arguments) {
+          acc.function.arguments += tc.function.arguments;
+          // Argument deltas are decoded tokens too: without counting and publishing
+          // them, a long tool call streams invisibly after the thought has ended.
+          this.decodedTokens++;
+          this.emitDecodeTelemetry({ name: acc.function.name, argChars: acc.function.arguments.length });
+        }
       }
     }
+  }
+
+  /** Publishes first-token and throttled decode telemetry for the tokens counted so far. */
+  private emitDecodeTelemetry(toolCall?: InferenceToolCallProgress): void {
+    if (!this.firstTokenAt) {
+      this.firstTokenAt = Date.now();
+      emitInferenceTelemetry({ type: 'first_token', ttftMs: this.firstTokenAt - this.opts.attemptStartTime });
+    }
+
+    const now = Date.now();
+    if (now - this.lastTelemetryAt < TELEMETRY_EMIT_INTERVAL_MS) return;
+    this.lastTelemetryAt = now;
+    emitInferenceTelemetry({
+      type: 'decode',
+      tokens: this.decodedTokens,
+      decodeMs: now - this.firstTokenAt,
+      // Logprobs are parsed for text tokens only: an argument token has no measured confidence.
+      ...(toolCall
+        ? { toolCall }
+        : { confidence: this.lastConfidence, topCandidates: this.lastCandidates }),
+    });
   }
 
   getReasoningText(): string {

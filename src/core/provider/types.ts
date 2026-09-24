@@ -71,6 +71,12 @@ export interface InferenceCandidate {
   prob: number;
 }
 
+/** Tool call being composed by the model: its name and the argument characters received so far. */
+export interface InferenceToolCallProgress {
+  name: string;
+  argChars: number;
+}
+
 /**
  * Real inference telemetry emitted by the streaming loop (T14.9).
  * The core never renders: it only publishes measured values, the presentation
@@ -79,7 +85,19 @@ export interface InferenceCandidate {
  */
 export type InferenceTelemetryEvent =
   | { type: 'first_token'; ttftMs: number }
-  | { type: 'decode'; tokens: number; decodeMs: number; confidence?: number; topCandidates?: InferenceCandidate[] }
+  | {
+      type: 'decode';
+      tokens: number;
+      decodeMs: number;
+      confidence?: number;
+      topCandidates?: InferenceCandidate[];
+      /**
+       * Present while the model streams tool call arguments: those deltas carry no
+       * visible text, so without this signal a long call (e.g. a whole file for
+       * write_file) looks like a stalled thought.
+       */
+      toolCall?: InferenceToolCallProgress;
+    }
   | { type: 'complete'; stats: ChatStats };
 
 export type InferenceTelemetrySink = (event: InferenceTelemetryEvent) => void;

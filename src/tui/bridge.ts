@@ -94,6 +94,20 @@ export class TuiBridge {
           lastUpdated: Date.now(),
         },
       });
+
+      // Tool call arguments stream with no visible text: surface them as a phase of
+      // their own, otherwise the last thought looks frozen until the call executes.
+      if (ev.toolCall) {
+        const gen = this.store.getState().generationStatus;
+        this.store.setState({
+          generationStatus: {
+            phase: 'composing',
+            agentName: gen?.agentName,
+            toolName: ev.toolCall.name || undefined,
+            argChars: ev.toolCall.argChars,
+          },
+        });
+      }
     }
   }
 

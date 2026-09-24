@@ -7,6 +7,7 @@ import chalk from 'chalk';
 import { TuiState, TuiChatMessage } from '../types';
 import { TuiScreen } from '../screen';
 import { renderMarkdownToLines } from '../../cli/markdown';
+import { composingLabel } from './composingLabel';
 
 /**
  * Lines of a live thought kept on screen while it streams. A running thought is shown
@@ -69,6 +70,7 @@ export class ChatView {
       const parallel = state.parallelAgents || [];
       if (parallel.length > 1) title = `Conversation (⚡ PARALLEL ${parallel.length}: ${parallel.map((name) => `@${name}`).join(' · ')})`;
       else if (phase === 'reasoning') title = `Conversation (⚡ THINKING... ${agent})`;
+      else if (phase === 'composing') title = `Conversation (🧩 COMPOSING: ${composingLabel(gen)} ${agent})`;
       else if (phase === 'tool') title = `Conversation (🔧 TOOL: ${gen?.toolName || 'tool'} ${agent})`;
       else title = `Conversation (💬 GENERATING... ${agent})`;
     }
@@ -191,6 +193,8 @@ export class ChatView {
       statusCard = chalk.bgHex('#7c3aed').white.bold(` ⚡ ${parallel.length} AGENTS IN PARALLEL `) + ' ' + chalk.hex('#ddd6fe')(parallel.map((name) => `@${name}`).join('  ·  ')) + ' ' + chalk.gray('(Esc or /stop to halt)');
     } else if (phase === 'reasoning') {
       statusCard = chalk.bgHex('#ea580c').white.bold(` ⚡ THINKING... `) + ' ' + chalk.hex('#fdba74')(`${agent} is analyzing and reasoning...`) + ' ' + chalk.gray('(Press Esc or /stop to halt)');
+    } else if (phase === 'composing') {
+      statusCard = chalk.bgHex('#0d9488').white.bold(` 🧩 COMPOSING TOOL CALL `) + ' ' + chalk.hex('#5eead4')(`${agent} is writing ${chalk.bold(composingLabel(gen))}...`) + ' ' + chalk.gray('(Press Esc or /stop to halt)');
     } else if (phase === 'tool') {
       statusCard = chalk.bgHex('#d97706').white.bold(` 🔧 TOOL EXECUTION `) + ' ' + chalk.hex('#fde047')(`${agent} is executing: ${chalk.bold(gen?.toolName || 'tool')}...`) + ' ' + chalk.gray('(Press Esc or /stop to halt)');
     } else if (phase === 'streaming') {

@@ -6,6 +6,8 @@ import { TuiBridge } from '../src/tui/bridge';
 import { PermissionManager } from '../src/safety/permissions';
 import { InferenceTelemetryWidget } from '../src/tui/widgets/InferenceTelemetryWidget';
 import { SidebarView } from '../src/tui/views/Sidebar';
+import { ChatView } from '../src/tui/views/Chat';
+import { InputView } from '../src/tui/views/Input';
 import { isHelpShortcut } from '../src/tui/inputParser';
 import {
   LLMProvider,
@@ -265,6 +267,63 @@ describe('TUI Inference Telemetry & Latent Space Inspector (T14.7 / T14.9)', () 
     assert.strictEqual(captured.length, 2, 'Must retry once after the rejection');
     assert.strictEqual(captured[1]?.logprobs, undefined, 'The retry must not carry the rejected parameter');
     assert.strictEqual(res.content, 'ok', 'The turn completes normally after the fallback');
+  });
+
+  it('LLMProvider: tool call argument deltas keep publishing decode telemetry', async () => {
+    __setLogprobsEnabledForTest(false);
+    const events: InferenceTelemetryEvent[] = [];
+    setInferenceTelemetrySink((ev) => events.push(ev));
+
+    const argChunks = Array.from({ length: 40 }, (_, i) => ({
+      choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: i === 0 ? '{"content":"' : 'xxxxx' } }] } }],
+    }));
+    const provider = new LLMProvider('http://fake.local/v1', 'fake-key', 'fake-model');
+    (provider as any).client.chat.completions.create = async () =>
+      fakeStream([
+        { choices: [{ delta: { reasoning_content: 'I will write the file.' } }] },
+        { choices: [{ delta: { tool_calls: [{ index: 0, id: 'c1', function: { name: 'write_file', arguments: '' } }] } }] },
+        ...argChunks,
+      ]);
+
+    const res = await provider.chatWithTools([{ role: 'user', content: 'hi' }], undefined, () => {});
+    setInferenceTelemetrySink(undefined);
+
+    const toolDecodes = events.filter((e) => e.type === 'decode' && e.toolCall);
+    assert.ok(toolDecodes.length > 0, 'Argument streaming must publish decode telemetry, not stay silent');
+    const last = toolDecodes[toolDecodes.length - 1] as Extract<InferenceTelemetryEvent, { type: 'decode' }>;
+    assert.strictEqual(last.toolCall?.name, 'write_file');
+    assert.ok((last.toolCall?.argChars ?? 0) > 12, 'argChars grows with the received arguments');
+    assert.strictEqual(last.confidence, undefined, 'No confidence is claimed for argument tokens');
+    assert.ok(last.tokens > 1, 'Argument deltas are counted as decoded tokens');
+    assert.strictEqual(res.toolCalls?.[0]?.function.name, 'write_file', 'The tool call is still assembled intact');
+  });
+
+  it('TuiBridge: streaming tool arguments show a composing phase, not a frozen thought', () => {
+    const store = new TuiStore();
+    const bridge = new TuiBridge(store, new PermissionManager());
+    store.setState({ isGenerating: true });
+
+    const onChunk = bridge.createChunkHandler();
+    onChunk('Planning the file...', 'reasoning', 'Tsuka');
+    assert.strictEqual(store.getState().generationStatus?.phase, 'reasoning');
+
+    bridge.handleInferenceTelemetry({
+      type: 'decode', tokens: 900, decodeMs: 60_000, toolCall: { name: 'write_file', argChars: 12_400 },
+    });
+    const gen = store.getState().generationStatus;
+    assert.strictEqual(gen?.phase, 'composing');
+    assert.strictEqual(gen?.agentName, 'Tsuka', 'The composing phase keeps the author');
+
+    const chat = ChatView.render(store.getState(), 120, 30).map((l) => TuiScreen.stripAnsi(l)).join('\n');
+    assert.ok(chat.includes('COMPOSING TOOL CALL'), 'The live card names the phase');
+    assert.ok(chat.includes('write_file · 12.4K chars'), 'The live card shows the tool and the argument size');
+    const input = InputView.render(store.getState(), 160, 5).map((l) => TuiScreen.stripAnsi(l)).join('\n');
+    assert.ok(input.includes('COMPOSING: write_file'), 'The prompt title follows the phase');
+
+    // A plain decode event does not override the phase set by visible chunks.
+    onChunk('More thought', 'reasoning', 'Tsuka');
+    bridge.handleInferenceTelemetry({ type: 'decode', tokens: 910, decodeMs: 61_000 });
+    assert.strictEqual(store.getState().generationStatus?.phase, 'reasoning');
   });
 
   it('SidebarView: mounts InferenceTelemetryWidget seamlessly in layout', () => {
