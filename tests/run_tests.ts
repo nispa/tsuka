@@ -91,6 +91,7 @@ const suites = [
   'test_malformed_toolcall_retry.ts',
   'test_write_file_append.ts',
   'test_write_file_resumable.ts',
+  'test_write_file_recovery.ts',
   'test_file_mutation_contracts.ts',
   'test_reasoning_memory.ts',
   'test_context_detection.ts',

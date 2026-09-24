@@ -282,5 +282,8 @@ export function defaultAgentEventRenderer(ev: AgentEvent): void {
     case 'max_rounds':
       logSink.log(`${prefix}[Interrupted: reached limit of ${ev.limit} tool rounds]`);
       break;
+    case 'validation_limit':
+      logSink.warn(`${prefix}[Validation limit reached for ${ev.toolName}]`);
+      break;
   }
 }

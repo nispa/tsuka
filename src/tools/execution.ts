@@ -68,7 +68,8 @@ export async function executeAuthorizedTool(
     if (validationError) {
       return {
         success: false,
-        output: `Validation error for tool '${tool.name}': ${validationError}. Please review parameters and retry.`
+        output: `Validation error for tool '${tool.name}': ${validationError}. Please review parameters and retry.`,
+        isValidationError: true
       };
     }
   }

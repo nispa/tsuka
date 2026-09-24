@@ -7,7 +7,7 @@ import chalk from 'chalk';
 import { MemoryStore } from './memory';
 import { logSink } from './logSink';
 import { ChatMessage, ISubagentRunner } from './types';
-import { AGENT_DEFAULTS, AGENT_RESULT_DEFAULTS, CONTEXT_SCHEDULER_DEFAULTS, TASK_PACKET_DEFAULTS } from './constants';
+import { AGENT_DEFAULTS, AGENT_RESULT_DEFAULTS, CONTEXT_SCHEDULER_DEFAULTS, TASK_PACKET_DEFAULTS, TOOLS_DEFAULTS } from './constants';
 import { calculateReasoningBudget, sumMessageChars, getContextPressure } from './contextBudget';
 import { scheduleContext, type ContextSchedulerConfig, validateContextSchedulerConfig } from './contextScheduler';
 import { createTaskPacket, type TaskPacket } from './taskPacket';
@@ -19,7 +19,7 @@ import { createTokenCalibrationState, estimateTokensFromChars, observePromptToke
 import { ConversationHistory } from './conversationHistory';
 import { executeToolRound } from './toolRound';
 import { persistReasoningTrace } from './reasoningTrace';
-import { createReActState, evaluateTextResponse, markToolRound } from './reactState';
+import { createReActState, evaluateTextResponse, markToolRound, recordToolExecutionResult } from './reactState';
 
 /**
  * Minimal interface shape for reasoning effort cascade resolution (T8.10).
@@ -60,6 +60,9 @@ function plainEventRenderer(ev: AgentEvent): void {
       break;
     case 'max_rounds':
       logSink.log(chalk.yellow(`[Interrupted: reached limit of ${ev.limit} tool rounds]`));
+      break;
+    case 'validation_limit':
+      logSink.warn(chalk.yellow(`[Validation limit reached for ${ev.toolName}]`));
       break;
   }
 }
@@ -760,6 +763,7 @@ export class Agent implements ToolSetController {
           isDone = true;
           break;
         }
+        let validationLimitStopMessage: string | undefined;
         const toolRound = await executeToolRound(toolCalls, parsedArgsList, {
           registry: this.registry,
           permissionManager: this.permissionManager,
@@ -771,13 +775,38 @@ export class Agent implements ToolSetController {
           onEvent: emit,
           signal,
           toolSet: this,
-          subagentRunner: this.subagentRunner
+          subagentRunner: this.subagentRunner,
+          onToolExecuted: (exec) => {
+            const { consecutiveErrors } = recordToolExecutionResult(reactState, exec.toolName, exec);
+            if (consecutiveErrors >= TOOLS_DEFAULTS.maxConsecutiveValidationErrors) {
+              const stopMessage =
+                `[Safety limit reached] Reached maximum of ${TOOLS_DEFAULTS.maxConsecutiveValidationErrors} ` +
+                `consecutive parameter validation errors for tool '${exec.toolName}'. Execution halted without saving changes.`;
+              logSink.warn(stopMessage);
+              emit({
+                type: 'validation_limit',
+                toolName: exec.toolName,
+                limit: TOOLS_DEFAULTS.maxConsecutiveValidationErrors,
+                message: stopMessage,
+                agentLabel: this.agentLabel,
+              });
+              validationLimitStopMessage = stopMessage;
+              return { abort: true, reason: stopMessage };
+            }
+          },
         });
         this.messages.push(...toolRound.messages);
         // Completed tool actions modify turn state, invalidating any previously prepared packet
         preparedPacket = undefined;
 
         if (signal?.aborted) break;
+
+        if (validationLimitStopMessage) {
+          this.messages.push({ role: 'assistant', content: validationLimitStopMessage });
+          finalAnswer = validationLimitStopMessage;
+          isDone = true;
+          break;
+        }
 
         const toolRounds = markToolRound(reactState);
         if (toolRounds >= this.maxToolRounds) {

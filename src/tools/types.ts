@@ -99,6 +99,8 @@ export interface Tool<TArgs = unknown> {
 export interface ToolResult {
   success: boolean;
   output: string;
+  /** True when tool execution failed during parameter/schema validation before execution (T23.14). */
+  isValidationError?: boolean;
 }
 
 export type ToolLLMDescriptor = ChatToolDefinition;

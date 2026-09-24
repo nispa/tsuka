@@ -378,6 +378,10 @@ export class TuiBridge {
           this.store.notify(`Context pressure high (${Math.round(ev.ratio * 100)}%): delegating subagent task`, 'info');
         }
       },
+
+      validation_limit: (ev) => {
+        this.store.notify(ev.message, 'warn');
+      },
     };
 
     return (ev: AgentEvent) => (handlers[ev.type] as (e: AgentEvent) => void)(ev);

@@ -216,6 +216,8 @@ export const TOOLS_DEFAULTS = {
   resumableWriteStageNameAttempts: 3,
   /** Random bytes used in an individual resumable-write staging filename. */
   resumableWriteStageNameRandomBytes: 12,
+  /** Maximum consecutive validation errors for a single tool within an agent turn before aborting (T23.14). */
+  maxConsecutiveValidationErrors: 3,
 };
 
 /** MCP client defaults (src/core/mcp/, ConfigManager-independent). */

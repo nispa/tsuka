@@ -187,6 +187,7 @@
 | T23.11 | ✅ Fatto | **I/O e parsing web robusti**: cache TTL con invalidazione per la config nei percorsi caldi e parsing DOM bounded di DuckDuckGo con risultato esplicitamente non fidato. Suite `test_context_budget.ts` e `test_browser_evolution.ts`. |
 | T23.12 | ✅ Fatto | **Chiusura architetturale dell'audit**: zero cicli runtime su tutti i moduli `src/` verificati e garantiti dalla guard `ARCH.5` in `test_architecture_boundaries.ts` (contratti condivisi in `core/types.ts` leaf, zero loop da `cli/commands/types`); documentazione security/architettura allineata con matrice dei rischi residui; `npm pack --dry-run` con tarball pulito da 304 file; tutti i gate verdi (97/97 suite OK, build e typecheck puliti). |
 | T23.13 | ✅ Fatto | **Web search data-driven e pluggable**: `WebSearchBackend` con registry/factory, backend HTTP guidato da `web_search_providers.json`, adapter DOM registrato per DuckDuckGo e mapping JSON per Google/Tavily; selettori CLI/TUI derivati dal catalogo e contratto MCP esterno senza browser. Credenziali solo tramite riferimenti a variabili d'ambiente, valori mascherati negli errori e normalizzazione bounded comune. Suite `test_web_search_backends.ts`; 98 suite, build e typecheck verdi. |
+| T23.14 | ✅ Fatto | **Recupero write_file incompleto**: schema con obbligatorietà congiunta di `path` e `content` esplicitata, feedback di validazione che elenca tutti i campi obbligatori mancanti insieme, flag `isValidationError` strutturato nel contratto `ToolResult`, tracciamento degli errori consecutivi per tool in `reactState.ts` con limite centralizzato (`TOOLS_DEFAULTS.maxConsecutiveValidationErrors = 3`), emissione dell'evento `validation_limit` e arresto sicuro senza salvataggio spurio; staging preservato e azzeramento su chiamata valida. Nuova suite `test_write_file_recovery.ts` (12 check). I tre gate verdi (111 suite). |
 
 Tutti i task pianificati e di backlog sono completati; la serie T15 (memoria, modelli <30B) è implementata e chiusa con 72 suite di test verdi. Pianificata la serie **T16 (benchmark significativi)** su architettura a due velocità: **`/benchmark` fast** (1 colpo/test, deterministico — resta il gate del tier) e **`/benchmark --deep`** (repliche con variazione del prompt, mediana+varianza, per validazione/calibrazione). Pianificato anche **T17.1** (retrieval BM25/TF-IDF), il primo livello del percorso di apprendimento documentato in `docs/memory.md` §12. Valore di ritorno — i benchmark attuali saturano in alto e non discriminano tra i modelli, ma il gating dei tool (`registry.ts`) dipende proprio da quel tier: se tutto diventa `large` il gating è codice morto. Restano da fare T14.24 (commenti tests/ in inglese), T14.25 (token di protocollo multi-agente) e le serie T16/T17.
 
@@ -4769,6 +4770,78 @@ catalogo e mapping invalidi sono rifiutati in modo deterministico; scelta backen
 attraverso registry/config senza union hardcoded nei consumatori; fake backend e
 adapter MCP verificano sostituibilità; fixture DuckDuckGo/Google/Tavily conservano
 normalizzazione, limiti e policy SSRF; tre gate verdi.
+
+## T23.14 — Recupero bounded dalle chiamate `write_file` incomplete
+
+**Stato:** ✅ Fatto · **Priorità:** alta · **Dipende da:** T23.3
+
+**Problema osservato:** l'agente annuncia la scrittura resumable ma ripete chiamate
+respinte con `Missing required parameter 'content'` oppure `'path'`, senza salvare
+il file. La validazione segnala soltanto il primo parametro mancante e invita a
+riprovare genericamente. Ogni blocco richiede invece entrambi i campi; la destinazione
+viene aggiornata soltanto dopo una chiamata valida con `complete:true`. Il messaggio
+del modello sulla lunghezza non dimostra un limite del tool né un troncamento del
+provider: verificare gli argomenti effettivi prima di attribuire la causa.
+
+**Intervento:**
+- Riprodurre con provider mock chiamate prive di `path`, di `content` e di entrambi,
+  anche alternate tra round e durante una transazione già avviata. Verificare il
+  percorso schema → assemblaggio/parsing degli argomenti → validazione → feedback.
+  Distinguere omissione del modello e argomenti troncati o persi nel trasporto;
+  correggere il provider soltanto se una fixture dimostra il difetto.
+- Rendere lo schema `write_file` esplicito: ogni chiamata è autonoma e include
+  `path` e `content`; nessuna eredità dai blocchi precedenti. Documentare esempi
+  minimi iniziale/finale, offset UTF-8 restituito dal tool e commit finale.
+- Restituire dalla validazione un feedback derivato dallo schema con tutti i campi
+  obbligatori mancanti e quelli da includere insieme nella nuova chiamata. Una
+  chiamata rifiutata non scrive dati e non avanza l'offset; mantenere questa garanzia.
+- Introdurre un limite ai tentativi consecutivi di recupero da errori di validazione
+  dello stesso tool nel turno, contando anche errori alternati path/content.
+  Usare un esito strutturato nel contratto dei tool, non regex sul testo dell'errore;
+  definire reset su chiamata valida e isolamento tra turni/agenti. Soglia in
+  `src/core/constants.ts`, eventuale override tramite ConfigManager solo se necessario.
+  Esaurito il limite, interrompere il ciclo con esito esplicito di mancato salvataggio
+  e diagnostica tramite eventi/logSink, senza dichiarare successo o fare commit impliciti.
+
+**File da valutare:** `tools_schemas/write_file.json`, `src/tools/schema.ts`,
+`src/tools/execution.ts`, `src/tools/types.ts`, `src/core/toolRound.ts`,
+`src/core/reactState.ts`, `src/core/agent.ts`, `src/core/constants.ts`,
+`src/tools/impl/writeFile.ts`, `tests/test_tool_registry.ts`,
+`tests/test_write_file_resumable.ts` e test d'integrazione del ciclo agente.
+Aggiornare la guida didattica se cambia il recupero descritto; mantenere i consumatori
+dipendenti dai contratti, senza accesso diretto al backend di staging.
+
+**Accettazione:** test deterministici dimostrano recupero errore → chiamata corretta
+→ file completo, arresto bounded per omissioni ripetute/alternate e assenza di falsi
+successi. Verificare destinazione preesistente invariata dopo errori o arresto,
+offset invariato dopo validazione fallita, Unicode, commit finale, isolamento dei
+contatori e compatibilità delle scritture normali/append. Test con directory temporanee
+e mock, senza modificare la memoria utente. `npm test`, `npm run build` e
+`npm run typecheck` verdi. Una prova sul modello segnalato, se disponibile, documenta
+il miglioramento operativo senza promettere che il solo prompt garantisca il salvataggio.
+
+**Non fare:** inventare `path`, sostituire `content` assente con stringa vuota,
+disabilitare validazione o workspace jail, aumentare soltanto il limite globale dei
+round, salvare automaticamente staging incompleto o introdurre fallback shell.
+
+**Implementazione e verifica:**
+- Aggiornato `tools_schemas/write_file.json`: descrizioni chiarite per specificare che ogni blocco/chiamata richiede obbligatoriamente sia `path` sia `content` contestualmente, documentando convenzioni di offset UTF-8 riprendibile e completamento atomico.
+- Aggiornato `src/tools/schema.ts` (`validateToolArgs`): elenca tutti i parametri obbligatori mancanti insieme nella stessa segnalazione, indicando esplicitamente al modello di includerli insieme in ogni chiamata.
+- Aggiornati i contratti `src/tools/types.ts` ed `execution.ts`: aggiunto `isValidationError?: boolean` in `ToolResult`, valorizzato a `true` in caso di rifiuto per schema non valido.
+- Centralizzato tunable in `src/core/constants.ts`: `TOOLS_DEFAULTS.maxConsecutiveValidationErrors = 3`.
+- Aggiornato `src/core/reactState.ts`: contatore discreto `consecutiveValidationErrors` isolato per singolo tool; si incrementa solo in presenza di errori di validazione dello schema e si azzera su qualsiasi chiamata con parametri validi (anche in caso di errore operativo a runtime).
+- Aggiornato `src/core/toolRound.ts`: propaga record di esecuzione con `isValidationError` per ciascuna chiamata ed espone l'hook `onToolExecuted`; se un limite viene raggiunto, interrompe immediatamente il round prima delle chiamate successive nel batch, registrando messaggi placeholder per mantenere bilanciati i messaggi di tool response.
+- Aggiornato `src/core/agent.ts`: controlla la soglia di errori di validazione immediatamente tra una chiamata e l'altra del round; se scatta il limite, emette l'evento `validation_limit` e arresta il turno con messaggio di safety stop trasparente (`[Safety limit reached]`), impedendo l'esecuzione di chiamate successive nel batch e proteggendo i file da scritture parziali o spurie.
+- Gestito evento `validation_limit` in `src/cli/stream.ts` e `src/tui/bridge.ts` con output diagnostico chiaro per l'utente.
+- Creata la nuova suite `tests/test_write_file_recovery.ts` (16 check) registrata in `tests/run_tests.ts`:
+  - WFR.1a-c: validazione completa con segnalazione di entrambi i parametri mancanti o di singoli parametri.
+  - WFR.2a-b: recupero deterministico da errore di validazione -> chiamata corretta -> salvataggio effettivo del file.
+  - WFR.3a-c: arresto bounded con emissione di `validation_limit` ed esito esplicito su errori ripetuti alternati (`path`/`content`), verificando che il file originale rimanga intatto.
+  - WFR.4a-b: preservazione dello staging su scrittura riprendibile con errore di validazione intermedio e successivo completamento.
+  - WFR.5a-b: azzeramento del contatore consecutivo su chiamata valida intermedia.
+  - WFR.6a-b: interruzione mid-batch su 3 errori consecutivi che impedisce l'esecuzione di una 4ª chiamata valida nel medesimo batch (file non toccato).
+  - WFR.7a-b: errore operativo con parametri validi che azzera il contatore di errori di validazione, impedendo abort erronei al successivo errore.
+- Tutti i tre gate verdi: `npm test` (111 suite OK, 0 fallite), `npm run build` e `npm run typecheck` puliti.
 
 ## Sequenza di consegna della fase
 

@@ -5,6 +5,8 @@ export interface ReActState {
   everCalledTool: boolean;
   noToolNudgeUsed: boolean;
   currentRoundEffortOverride?: ReasoningEffort;
+  /** Consecutive validation error counter per tool name (T23.14). */
+  consecutiveValidationErrors: Record<string, number>;
 }
 
 export function createReActState(reasoningEffortOverride?: ReasoningEffort): ReActState {
@@ -13,6 +15,7 @@ export function createReActState(reasoningEffortOverride?: ReasoningEffort): ReA
     everCalledTool: false,
     noToolNudgeUsed: false,
     currentRoundEffortOverride: reasoningEffortOverride,
+    consecutiveValidationErrors: {},
   };
 }
 
@@ -20,6 +23,24 @@ export function markToolRound(state: ReActState): number {
   state.everCalledTool = true;
   state.toolRounds++;
   return state.toolRounds;
+}
+
+/**
+ * Updates consecutive validation error counters for a tool call (T23.14).
+ * Parameter validation errors increment the counter; any call with valid parameters
+ * (whether successful or with an operational failure) resets the consecutive validation counter to 0.
+ */
+export function recordToolExecutionResult(
+  state: ReActState,
+  toolName: string,
+  result: { success: boolean; isValidationError?: boolean }
+): { consecutiveErrors: number } {
+  if (result.isValidationError) {
+    state.consecutiveValidationErrors[toolName] = (state.consecutiveValidationErrors[toolName] || 0) + 1;
+  } else {
+    state.consecutiveValidationErrors[toolName] = 0;
+  }
+  return { consecutiveErrors: state.consecutiveValidationErrors[toolName] || 0 };
 }
 
 /**

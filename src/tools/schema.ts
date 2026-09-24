@@ -72,10 +72,12 @@ export function validateToolArgs(args: unknown, schema: Record<string, unknown>,
   }
 
   const required = (Array.isArray(schema.required) ? schema.required : []) as string[];
-  for (const field of required) {
-    if (recordArgs[field] === undefined || recordArgs[field] === null) {
-      return `Missing required parameter '${field}'`;
+  const missingFields = required.filter((field) => recordArgs[field] === undefined || recordArgs[field] === null);
+  if (missingFields.length > 0) {
+    if (missingFields.length === 1) {
+      return `Missing required parameter '${missingFields[0]}'`;
     }
+    return `Missing required parameters: ${missingFields.map((f) => `'${f}'`).join(', ')}. All required parameters must be provided together in every call`;
   }
 
   const properties = (schema.properties && typeof schema.properties === 'object' ? schema.properties : {}) as Record<string, Record<string, unknown>>;
