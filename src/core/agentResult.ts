@@ -383,14 +383,21 @@ export function formatAgentResultSummary(result: AgentResult): string {
  * 1. `status` (done | blocked | failed)
  * 2. `summary` (valid, non-empty)
  * 3. `unresolved` items (critical open issues, blockers, failures)
+ * 4. essential `evidence` references (files/tests) when room permits
  *
- * Secondary details are pruned in order:
- * 1. `changes` (pruned/summarized first)
- * 2. `decisions` (pruned/summarized next)
- * 3. `evidence` (excessive files/tests trimmed)
- * 4. `unresolved` (only trimmed as a last resort if unresolved alone exceeds budget, keeping top items)
+ * Reduction priority order:
+ * 1. `changes` (pruned/summarized first, then omitted)
+ * 2. `decisions` (pruned/summarized next, then omitted)
+ * 3. `evidence` (condensed to essential references: top files/tests)
+ * 4. `summary` (reduced/shortened BEFORE sacrificing unresolved items)
+ * 5. `evidence` (omitted only if summary reduction alone cannot fit essential unresolved items)
+ * 6. `unresolved` (compact individual items, retain top items with explicit report reference)
  *
- * Guarantees that formatAgentResultSummary(reducedResult).length <= maxChars.
+ * Guarantees:
+ * - formatAgentResultSummary(reducedResult).length <= maxChars
+ * - validateAgentResult(reducedResult) passes
+ * - Unicode safety (never breaks multi-byte/surrogate characters)
+ * - No silent omission of unresolved issues
  */
 export function reduceAgentResult(
   result: AgentResult,
@@ -429,6 +436,12 @@ export function reduceAgentResult(
     return r;
   };
 
+  const safeSlice = (str: string, maxLen: number): string => {
+    const chars = Array.from(str);
+    if (chars.length <= maxLen) return str;
+    return chars.slice(0, Math.max(0, maxLen)).join('');
+  };
+
   // Phase 1: Prune secondary details — 'changes' first
   if (changes && changes.length > 0) {
     if (changes.length > 2) {
@@ -457,7 +470,7 @@ export function reduceAgentResult(
     if (formatAgentResultSummary(build()).length <= maxChars) return build();
   }
 
-  // Phase 3: Prune secondary details — 'evidence'
+  // Phase 3: Condense 'evidence' to essential references (do not discard completely yet)
   if (evidence) {
     if (evidence.files && evidence.files.length > 2) {
       evidence.files = [evidence.files[0], evidence.files[1], `[+${evidence.files.length - 2} more]`];
@@ -467,30 +480,68 @@ export function reduceAgentResult(
     }
     if (formatAgentResultSummary(build()).length <= maxChars) return build();
 
+    if (evidence.files && evidence.files.length > 1) {
+      evidence.files = [evidence.files[0], `[+${validated.evidence!.files!.length - 1} more]`];
+    }
+    if (evidence.tests && evidence.tests.length > 1) {
+      evidence.tests = [evidence.tests[0], `[+${validated.evidence!.tests!.length - 1} more]`];
+    }
+    if (formatAgentResultSummary(build()).length <= maxChars) return build();
+  }
+
+  // Phase 4: Reduce 'summary' BEFORE sacrificing unresolved items or essential evidence!
+  if (formatAgentResultSummary(build()).length > maxChars) {
+    const currentLen = formatAgentResultSummary(build()).length;
+    const overflow = currentLen - maxChars;
+    const targetSummaryChars = Math.max(25, Array.from(summary).length - overflow - 4);
+    if (Array.from(summary).length > targetSummaryChars) {
+      summary = `${safeSlice(summary, targetSummaryChars)}...`;
+      if (formatAgentResultSummary(build()).length <= maxChars) return build();
+    }
+  }
+
+  // Phase 5: If still over budget, omit evidence before sacrificing unresolved
+  if (evidence && formatAgentResultSummary(build()).length > maxChars) {
     evidence = undefined;
     if (formatAgentResultSummary(build()).length <= maxChars) return build();
   }
 
-  // Phase 4: Only status, summary, and unresolved remain.
-  // We MUST preserve unresolved items. If summary + unresolved > maxChars,
-  // we trim summary first to ensure unresolved items are not starved of space.
+  // Phase 6: Unresolved items reduction (only as needed, with explicit notice and no silent drops)
   if (unresolved && unresolved.length > 0) {
-    while (unresolved.length > 2 && formatAgentResultSummary(build()).length > maxChars) {
+    // 6a: Compact long individual unresolved items
+    unresolved = unresolved.map((item) => {
+      const chars = Array.from(item);
+      return chars.length > 80 ? `${safeSlice(item, 77)}...` : item;
+    });
+    if (formatAgentResultSummary(build()).length <= maxChars) return build();
+
+    // 6b: Retain top items with an explicit omission notice referencing the full report
+    const baseUnresolved = unresolved;
+    for (let retainCount = baseUnresolved.length - 1; retainCount >= 1; retainCount--) {
+      const omittedCount = validated.unresolved!.length - retainCount;
       unresolved = [
-        ...unresolved.slice(0, unresolved.length - 2),
-        `[... ${validated.unresolved!.length - (unresolved.length - 2)} more unresolved items omitted]`,
+        ...baseUnresolved.slice(0, retainCount),
+        `[... ${omittedCount} more unresolved items omitted; see full report]`,
       ];
+      if (formatAgentResultSummary(build()).length <= maxChars) return build();
     }
   }
 
-  // If still over budget, summary is consuming too much room: trim summary!
+  // Phase 7: Deepest reduction for very small budgets (guarantee valid AgentResult)
+  if (formatAgentResultSummary(build()).length > maxChars && unresolved && unresolved.length > 0) {
+    const currentLen = formatAgentResultSummary(build()).length;
+    const overflow = currentLen - maxChars;
+    const targetU = Math.max(20, Array.from(unresolved[0]).length - overflow - 4);
+    unresolved = [`${safeSlice(unresolved[0], targetU)}... [see full report]`];
+    if (formatAgentResultSummary(build()).length <= maxChars) return build();
+  }
+
   if (formatAgentResultSummary(build()).length > maxChars) {
     const currentLen = formatAgentResultSummary(build()).length;
     const overflow = currentLen - maxChars;
-    const targetSummaryLen = Math.max(20, summary.length - overflow - 5);
-    summary = summary.slice(0, targetSummaryLen) + '...';
+    const targetSummaryChars = Math.max(10, Array.from(summary).length - overflow - 4);
+    summary = `${safeSlice(summary, targetSummaryChars)}...`;
   }
 
-  // Final fallback safety: ensure valid AgentResult within bounds
   return build();
 }

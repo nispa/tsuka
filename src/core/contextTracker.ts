@@ -32,6 +32,7 @@ export interface ContextSchedulerMetrics {
   delegateDecisions: number;
   delegationsAttempted: number;
   delegationsCompleted: number;
+  delegationsBlocked: number;
   delegationsFailed: number;
   lastChildTokens: number;
   lastReturnedTokens: number;
@@ -72,6 +73,7 @@ export class ContextTracker {
   private delegateDecisions: number = 0;
   private delegationsAttempted: number = 0;
   private delegationsCompleted: number = 0;
+  private delegationsBlocked: number = 0;
   private delegationsFailed: number = 0;
   private lastChildTokens: number = 0;
   private lastReturnedTokens: number = 0;
@@ -177,13 +179,23 @@ export class ContextTracker {
 
   /**
    * Records successful completion of child delegation and handoff accounting.
+  /**
+   * Records outcome of child delegation and handoff accounting (T22.16).
+   * Distinguishes completed ('done'), blocked ('blocked'), and failed ('failed') outcomes.
    */
-  recordDelegationSuccess(info: {
+  recordDelegationResult(info: {
+    status: 'done' | 'blocked' | 'failed';
     childTokens: number;
     returnedTokens: number;
     agentResultChars: number;
   }): void {
-    this.delegationsCompleted++;
+    if (info.status === 'done') {
+      this.delegationsCompleted++;
+    } else if (info.status === 'blocked') {
+      this.delegationsBlocked++;
+    } else if (info.status === 'failed') {
+      this.delegationsFailed++;
+    }
     this.lastChildTokens = Math.max(0, info.childTokens);
     this.lastReturnedTokens = Math.max(0, info.returnedTokens);
     this.lastAgentResultChars = Math.max(0, info.agentResultChars);
@@ -192,10 +204,39 @@ export class ContextTracker {
   }
 
   /**
+   * Records successful completion of child delegation and handoff accounting.
+   * Alias for recordDelegationResult({ status: 'done', ...info }).
+   */
+  recordDelegationSuccess(info: {
+    childTokens: number;
+    returnedTokens: number;
+    agentResultChars: number;
+  }): void {
+    this.recordDelegationResult({ status: 'done', ...info });
+  }
+
+  /**
    * Records failure of an autonomous delegation attempt.
    */
-  recordDelegationFailure(): void {
+  recordDelegationFailure(info?: {
+    childTokens?: number;
+    returnedTokens?: number;
+    agentResultChars?: number;
+  }): void {
     this.delegationsFailed++;
+    if (info) {
+      if (typeof info.childTokens === 'number') {
+        this.lastChildTokens = Math.max(0, info.childTokens);
+        this.totalChildTokens += this.lastChildTokens;
+      }
+      if (typeof info.returnedTokens === 'number') {
+        this.lastReturnedTokens = Math.max(0, info.returnedTokens);
+        this.totalReturnedTokens += this.lastReturnedTokens;
+      }
+      if (typeof info.agentResultChars === 'number') {
+        this.lastAgentResultChars = Math.max(0, info.agentResultChars);
+      }
+    }
   }
 
   /**
@@ -214,6 +255,7 @@ export class ContextTracker {
       delegateDecisions: this.delegateDecisions,
       delegationsAttempted: this.delegationsAttempted,
       delegationsCompleted: this.delegationsCompleted,
+      delegationsBlocked: this.delegationsBlocked,
       delegationsFailed: this.delegationsFailed,
       lastChildTokens: this.lastChildTokens,
       lastReturnedTokens: this.lastReturnedTokens,
@@ -249,6 +291,7 @@ export class ContextTracker {
     this.delegateDecisions = 0;
     this.delegationsAttempted = 0;
     this.delegationsCompleted = 0;
+    this.delegationsBlocked = 0;
     this.delegationsFailed = 0;
     this.lastChildTokens = 0;
     this.lastReturnedTokens = 0;

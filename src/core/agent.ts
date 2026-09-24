@@ -649,7 +649,8 @@ export class Agent implements ToolSetController {
               const returnedTokens = this.estimateTokens({ content: delegationReportMessage });
               const agentResultChars = JSON.stringify(structuredResult).length;
 
-              ContextTracker.getInstance().recordDelegationSuccess({
+              ContextTracker.getInstance().recordDelegationResult({
+                status: structuredResult.status,
                 childTokens,
                 returnedTokens,
                 agentResultChars,
@@ -732,8 +733,10 @@ export class Agent implements ToolSetController {
             cumStats.peakPromptTokens = Math.max(cumStats.peakPromptTokens ?? 0, roundPromptTokens);
             cumStats.promptTokens = roundPromptTokens;
           }
-          const roundTotalTokens = typeof (stats as any)?.totalTokens === 'number' ? (stats as any).totalTokens : 0;
-          cumStats.totalTokens = roundTotalTokens > 0 ? roundTotalTokens : Math.max(cumStats.totalTokens, (stats as any).totalTokens ?? 0);
+          const roundTotalTokens = typeof (stats as any)?.totalTokens === 'number'
+            ? (stats as any).totalTokens
+            : (roundPromptTokens + stats.tokenCount);
+          cumStats.totalTokens += roundTotalTokens;
           // TTFT of the first round: it is the latency the user actually waited for.
           if (cumStats.ttftMs === undefined && stats.ttftMs !== undefined) cumStats.ttftMs = stats.ttftMs;
           if (stats.prefillTokensPerSecond !== undefined) cumStats.prefillTokensPerSecond = stats.prefillTokensPerSecond;

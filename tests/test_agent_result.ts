@@ -555,8 +555,80 @@ assert(
 );
 assert(redHugeSummary.summary.endsWith('...'), 'Summary was trimmed with ellipsis');
 
+// 9.4: Multiple unresolved items preserved while summary is reduced first (T22.9 post-audit fix)
+const longSummaryMultipleUnresolved: AgentResult = {
+  status: 'blocked',
+  summary: 'A'.repeat(800),
+  unresolved: ['Blocker 1: API key expired', 'Blocker 2: DB locked', 'Blocker 3: Disk full'],
+};
+const redMulti = reduceAgentResult(longSummaryMultipleUnresolved, 400);
+const formattedMulti = formatAgentResultSummary(redMulti);
+assert(formattedMulti.length <= 400, `Multi-unresolved fits within budget (${formattedMulti.length} <= 400)`);
+assert(redMulti.unresolved?.length === 3, 'All 3 unresolved items are preserved because summary was reduced first');
+assert(formattedMulti.includes('Blocker 1: API key expired'), 'Contains blocker 1');
+assert(formattedMulti.includes('Blocker 2: DB locked'), 'Contains blocker 2');
+assert(formattedMulti.includes('Blocker 3: Disk full'), 'Contains blocker 3');
+assert(redMulti.summary.length < longSummaryMultipleUnresolved.summary.length, 'Summary was shortened to fit unresolved items');
+
+// 9.5: Preserving essential evidence references while reducing summary
+const resultWithEvidence: AgentResult = {
+  status: 'done',
+  summary: 'Summary with evidence '.repeat(30),
+  unresolved: ['Open issue: follow-up tests'],
+  evidence: {
+    files: ['src/core/agentResult.ts', 'src/core/constants.ts', 'src/core/agent.ts'],
+    tests: ['tests/test_agent_result.ts', 'tests/test_agent.ts'],
+  },
+};
+const redEvidence = reduceAgentResult(resultWithEvidence, 450);
+const formattedEvidence = formatAgentResultSummary(redEvidence);
+assert(formattedEvidence.length <= 450, `Evidence result fits budget (${formattedEvidence.length} <= 450)`);
+assert(redEvidence.evidence !== undefined, 'Essential evidence is preserved when budget permits summary reduction');
+assert(redEvidence.evidence?.files?.length! > 0, 'Evidence files preserved');
+assert(redEvidence.evidence?.tests?.length! > 0, 'Evidence tests preserved');
+assert(formattedEvidence.includes('Open issue: follow-up tests'), 'Unresolved item preserved');
+
+// 9.6: Explicit omission notice referencing full report when unresolved items exceed budget
+const manyUnresolved: AgentResult = {
+  status: 'failed',
+  summary: 'Task had massive blockers.',
+  unresolved: Array.from({ length: 15 }, (_, i) => `Massive issue number ${i}: detailed description of failure`),
+};
+const redMany = reduceAgentResult(manyUnresolved, 350);
+const formattedMany = formatAgentResultSummary(redMany);
+assert(formattedMany.length <= 350, `Many unresolved fits budget (${formattedMany.length} <= 350)`);
+assert(
+  formattedMany.includes('unresolved items omitted; see full report'),
+  'Explicit omission notice references full report instead of silent dropping'
+);
+
+// 9.7: Unicode and small budget: does not split surrogate pairs or throw validation error
+const unicodeResult: AgentResult = {
+  status: 'done',
+  summary: '🚀 Subagent finished task with complex data: 🎯🔍💡'.repeat(20),
+  unresolved: ['⚠️ Open issue with emoji: ⚡🚨'],
+};
+const redUnicode = reduceAgentResult(unicodeResult, 150);
+assert(redUnicode.status === 'done', 'Status preserved under small budget');
+assert(redUnicode.summary.length > 0, 'Summary remains valid string');
+const validatedUnicode = validateAgentResult(redUnicode);
+assert(validatedUnicode.status === 'done', 'Validates cleanly without corrupting multi-byte characters');
+
+// 9.8: Two unresolved items of 80 characters with small budget (150 chars): terminates cleanly without infinite loop
+const twoLargeUnresolved: AgentResult = {
+  status: 'blocked',
+  summary: 'Short summary',
+  unresolved: ['A'.repeat(80), 'B'.repeat(80)],
+};
+const redTwoLarge = reduceAgentResult(twoLargeUnresolved, 150);
+const formattedTwoLarge = formatAgentResultSummary(redTwoLarge);
+assert(formattedTwoLarge.length <= 150, `Two large unresolved fits budget (${formattedTwoLarge.length} <= 150)`);
+assert(redTwoLarge.status === 'blocked', 'Status preserved for two large unresolved');
+assert(validateAgentResult(redTwoLarge).status === 'blocked', 'Produces valid AgentResult schema without hanging');
+
 // Summary of test results
 console.log(`\nResults: ${passed} passed, ${failed} failed`);
 if (failed > 0) {
   process.exit(1);
 }
+

@@ -165,14 +165,15 @@ export const SESSION_COMMANDS: TuiCommandSpec[] = [
       let schedulerSection = '';
       if (scheduler.prepareDecisions > 0 || scheduler.delegateDecisions > 0 || scheduler.delegationsAttempted > 0 || scheduler.peakEstimatedPressure > 0) {
         const ampStr = scheduler.contextAmplification !== null ? `${scheduler.contextAmplification}x` : 'n/a';
+        const blockedStr = scheduler.delegationsBlocked > 0 ? `, ${scheduler.delegationsBlocked} blocked` : '';
         schedulerSection =
           `\n\n⚙️ **Context Scheduler Diagnostics:**\n` +
           `• Peak Estimated Pressure: ${Math.round(scheduler.peakEstimatedPressure * 100)}%\n` +
           (scheduler.lastObservedPressure ? `• Last Observed Pressure: ${Math.round(scheduler.lastObservedPressure.ratio * 100)}% (${scheduler.lastObservedPressure.usedTokens}/${scheduler.lastObservedPressure.limitTokens} tok)\n` : '') +
           `• Decisions: ${scheduler.prepareDecisions} prepare, ${scheduler.delegateDecisions} delegate\n` +
-          `• Delegations: ${scheduler.delegationsAttempted} attempted, ${scheduler.delegationsCompleted} completed, ${scheduler.delegationsFailed} failed\n` +
-          (scheduler.delegationsCompleted > 0 ? `• Token Economy: ${scheduler.lastChildTokens} child tok / ${scheduler.lastReturnedTokens} returned tok (amplification: ${ampStr})\n` : '') +
-          (scheduler.delegationsCompleted > 0 ? `• AgentResult: ${scheduler.lastAgentResultChars} chars\n` : '');
+          `• Delegations: ${scheduler.delegationsAttempted} attempted, ${scheduler.delegationsCompleted} completed${blockedStr}, ${scheduler.delegationsFailed} failed\n` +
+          ((scheduler.delegationsCompleted > 0 || scheduler.delegationsBlocked > 0 || scheduler.delegationsFailed > 0) ? `• Token Economy: ${scheduler.lastChildTokens} child tok / ${scheduler.lastReturnedTokens} returned tok (amplification: ${ampStr})\n` : '') +
+          ((scheduler.delegationsCompleted > 0 || scheduler.delegationsBlocked > 0 || scheduler.delegationsFailed > 0) ? `• AgentResult: ${scheduler.lastAgentResultChars} chars\n` : '');
       }
       store.addMessage({
         role: 'system',

@@ -331,6 +331,135 @@ async function runTests(): Promise<void> {
     check('CSM.11d', metrics.delegationsCompleted === 0, 'completion was not counted');
   }
 
+  // ---------------------------------------------------------------------------
+  // 12. CSM.12: Child returns status: 'failed' without throwing
+  // ---------------------------------------------------------------------------
+  console.log('--- 12. Child returns status: failed without throwing ---');
+  tracker.clear();
+  {
+    const registry = new ToolRegistry();
+    const permissions = new PermissionManager();
+    const provider = new MockLLMProvider([{ content: 'Parent completes after child reported failure' }]);
+    const agent = new Agent(provider, registry, permissions, 'System prompt', [], 10, 1000, 'test-agent');
+    agent.setContextScheduler({ enabled: true, prepareAt: 0.5, delegateAt: 0.8 });
+
+    const failedResultRunner = new MockSubagentRunner({
+      agentResult: {
+        status: 'failed',
+        summary: 'Child task failed due to missing resource.',
+        unresolved: ['Resource not found'],
+      },
+      stats: { totalTokens: 800, promptTokens: 600, tokenCount: 200 },
+    });
+    agent.setSubagentRunner(failedResultRunner);
+
+    const filler = 'X'.repeat(3400);
+    agent.getMessages().push({ role: 'user', content: filler });
+
+    await agent.run('Task where child returns failed status');
+    const metrics = tracker.getSchedulerMetrics();
+    check('CSM.12a', metrics.delegationsAttempted === 1, 'delegation attempt recorded');
+    check('CSM.12b', metrics.delegationsFailed === 1, 'delegationsFailed incremented on child failed status');
+    check('CSM.12c', metrics.delegationsCompleted === 0, 'delegationsCompleted NOT incremented on child failed status');
+    check('CSM.12d', metrics.lastChildTokens === 800, 'token stats still captured on child failed status');
+  }
+
+  // ---------------------------------------------------------------------------
+  // 13. CSM.13: Child returns status: 'blocked'
+  // ---------------------------------------------------------------------------
+  console.log('--- 13. Child returns status: blocked ---');
+  tracker.clear();
+  {
+    const registry = new ToolRegistry();
+    const permissions = new PermissionManager();
+    const provider = new MockLLMProvider([{ content: 'Parent handles blocked child' }]);
+    const agent = new Agent(provider, registry, permissions, 'System prompt', [], 10, 1000, 'test-agent');
+    agent.setContextScheduler({ enabled: true, prepareAt: 0.5, delegateAt: 0.8 });
+
+    const blockedResultRunner = new MockSubagentRunner({
+      agentResult: {
+        status: 'blocked',
+        summary: 'Child task blocked pending user confirmation.',
+        unresolved: ['User confirmation required'],
+      },
+      stats: { totalTokens: 950, promptTokens: 700, tokenCount: 250 },
+    });
+    agent.setSubagentRunner(blockedResultRunner);
+
+    const filler = 'X'.repeat(3400);
+    agent.getMessages().push({ role: 'user', content: filler });
+
+    await agent.run('Task where child returns blocked status');
+    const metrics = tracker.getSchedulerMetrics();
+    check('CSM.13a', metrics.delegationsAttempted === 1, 'delegation attempt recorded');
+    check('CSM.13b', metrics.delegationsBlocked === 1, 'delegationsBlocked incremented on blocked status');
+    check('CSM.13c', metrics.delegationsCompleted === 0, 'delegationsCompleted NOT incremented on blocked status');
+    check('CSM.13d', metrics.delegationsFailed === 0, 'delegationsFailed NOT incremented on blocked status');
+  }
+
+  // ---------------------------------------------------------------------------
+  // 14. CSM.14: Child produces malformed result falling back to failed
+  // ---------------------------------------------------------------------------
+  console.log('--- 14. Child produces malformed result falling back to failed ---');
+  tracker.clear();
+  {
+    const registry = new ToolRegistry();
+    const permissions = new PermissionManager();
+    const provider = new MockLLMProvider([{ content: 'Parent recovers from malformed child result' }]);
+    const agent = new Agent(provider, registry, permissions, 'System prompt', [], 10, 1000, 'test-agent');
+    agent.setContextScheduler({ enabled: true, prepareAt: 0.5, delegateAt: 0.8 });
+
+    const malformedRunner = new MockSubagentRunner({
+      agentResult: 'This is not valid JSON at all and cannot be parsed',
+      stats: { totalTokens: 600, promptTokens: 500, tokenCount: 100 },
+    });
+    agent.setSubagentRunner(malformedRunner);
+
+    const filler = 'X'.repeat(3400);
+    agent.getMessages().push({ role: 'user', content: filler });
+
+    await agent.run('Task with malformed child output');
+    const metrics = tracker.getSchedulerMetrics();
+    check('CSM.14a', metrics.delegationsAttempted === 1, 'delegation attempt recorded');
+    check('CSM.14b', metrics.delegationsFailed === 1, 'delegationsFailed incremented on fallback from malformed output');
+    check('CSM.14c', metrics.delegationsCompleted === 0, 'delegationsCompleted is 0 for malformed fallback');
+  }
+
+  // ---------------------------------------------------------------------------
+  // 15. CSM.15: Multi-round cumStats totalTokens accumulation
+  // ---------------------------------------------------------------------------
+  console.log('--- 15. Multi-round cumStats totalTokens accumulation ---');
+  {
+    const registry = new ToolRegistry();
+    registry.register({
+      name: 'dummy_tool',
+      riskLevel: 'SAFE',
+      execute: async () => 'tool output',
+    });
+    const permissions = new PermissionManager();
+    // 2-round agent: round 1 calls dummy_tool, round 2 provides final answer
+    const provider = new MockLLMProvider([
+      {
+        content: null as any,
+        toolCalls: [{ id: 'call_1', type: 'function', function: { name: 'dummy_tool', arguments: '{}' } }],
+        stats: { durationMs: 10, tokenCount: 50, tokensPerSecond: 10, promptTokens: 100, totalTokens: 150 },
+      },
+      {
+        content: 'Final multi-round answer',
+        stats: { durationMs: 10, tokenCount: 60, tokensPerSecond: 10, promptTokens: 180, totalTokens: 240 },
+      },
+    ]);
+    const agent = new Agent(provider, registry, permissions, 'System prompt', ['dummy_tool'], 10, 1000, 'test-agent');
+
+    let finalStats: any;
+    await agent.run('Multi-round run', undefined, (s) => { finalStats = s; });
+
+    check('CSM.15a', finalStats !== undefined, 'stats emitted');
+    // Round 1 totalTokens: 150, Round 2 totalTokens: 240 -> cumulative totalTokens: 390
+    check('CSM.15b', finalStats.totalTokens === 390, `totalTokens accumulates across rounds (expected 390, got ${finalStats?.totalTokens})`);
+    check('CSM.15c', finalStats.tokenCount === 110, `tokenCount accumulates (expected 110, got ${finalStats?.tokenCount})`);
+  }
+
   // Clean up
   try {
     fs.rmSync(tmpHome, { recursive: true, force: true });
