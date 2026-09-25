@@ -10,6 +10,7 @@
 import chalk from 'chalk';
 import { TuiModalState } from '../types';
 import { TuiScreen } from '../screen';
+import { TuiThemePalette, paneFrame } from '../layoutConfig';
 import { TUI_TABS } from '../navigation';
 import { viewerHeight, viewerWidth } from '../viewerGeometry';
 
@@ -208,12 +209,12 @@ const BOX_BUILDERS: Partial<Record<TuiModalState['type'], (m: TuiModalState, s: 
 };
 
 export class ModalView {
-  static renderOverlay(modal: TuiModalState, screenLines: string[], screenWidth: number, screenHeight: number): string[] {
+  static renderOverlay(modal: TuiModalState, screenLines: string[], screenWidth: number, screenHeight: number, theme?: TuiThemePalette): string[] {
     const screen: ScreenSize = { width: screenWidth, height: screenHeight };
     const build = BOX_BUILDERS[modal.type];
     const box = build ? build(modal, screen) : dialogBox(modal, renderOptionList(modal, screen), screen);
 
-    const rendered = TuiScreen.drawBox(box.title, box.lines, box.width, box.height, true, box.borderColor, box.scrollbar);
+    const rendered = TuiScreen.drawBox(box.title, box.lines, box.width, box.height, true, box.borderColor, box.scrollbar, paneFrame(theme, 'modal', true));
     return ModalView.composite(screenLines, rendered, box, screen);
   }
 

@@ -80,7 +80,7 @@ harness/
 │   │   ├── inputParser.ts           # Raw TTY decoder: key events, SGR 1006 mouse, help shortcut
 │   │   ├── boxDrawing.ts            # ANSI-safe widths, padding, boxes and scrollbars
 │   │   ├── navigation.ts            # TUI_TABS table: function keys, labels, click zones, modals
-│   │   ├── layoutConfig.ts          # Layout presets, themes and widget order (tui.layout.json)
+│   │   ├── layoutConfig.ts          # Layout presets, themes (LCARS default), widget order; app-home tui.layout.json
 │   │   ├── commands/                # Slash command table (registry + handlers) & menu.json
 │   │   ├── controllers/             # Command dispatcher and turn runner
 │   │   ├── modals/                  # Modal builders and modal key handling

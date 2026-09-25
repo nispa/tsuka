@@ -1,4 +1,3 @@
-import { TUI_DEFAULTS } from '../core/constants';
 import { TuiStore } from './store';
 import { TuiState } from './types';
 import { HeaderView } from './views/Header';
@@ -8,8 +7,8 @@ import { InputView } from './views/Input';
 import { ToolsView } from './views/Tools';
 import { FilesView } from './views/Files';
 import { ModalView } from './views/Modal';
-import { TuiLayoutConfig } from './layoutConfig';
-import { computeFilePaneHeights, computeInputHeight, computeSidebarWidth } from './interaction/geometry';
+import { LayoutConfigManager, TuiLayoutConfig } from './layoutConfig';
+import { computeFrameGeometry } from './interaction/geometry';
 
 /**
  * Pure composition of one full-screen frame from the reactive store state.
@@ -23,62 +22,45 @@ export function composeFrame(
   activeTab: 'chat' | 'tools',
   layout: TuiLayoutConfig
 ): string[] {
-  const effectiveWidth = Math.max(TUI_DEFAULTS.minEffectiveWidth, width - 1);
+  const theme = LayoutConfigManager.getTheme(layout.theme);
+  const g = computeFrameGeometry(width, height, layout, {
+    headerHeight: HeaderView.lineCount(state),
+    inputText: state.inputText,
+  });
 
-  const headerLines = HeaderView.render(state, effectiveWidth, activeTab);
-  const inputHeight = computeInputHeight(state.inputText);
-  const mainHeight = Math.max(
-    TUI_DEFAULTS.minMainHeight,
-    height - headerLines.length - inputHeight
-  );
-
-  const sidebarPos = layout.sidebarPosition;
-  const showFiles = layout.showFilesExplorer;
-
-  let sidebarWidth = 0;
-  let mainWidth = effectiveWidth;
-
-  if (sidebarPos !== 'hidden') {
-    sidebarWidth = computeSidebarWidth(effectiveWidth, layout);
-    mainWidth = Math.max(10, effectiveWidth - sidebarWidth);
-  }
+  const headerLines = HeaderView.render(state, g.effectiveWidth, activeTab, theme);
 
   let sidebarColumnLines: string[] = [];
-  if (sidebarPos !== 'hidden') {
-    if (showFiles) {
-      const { filesHeight, profileHeight } = computeFilePaneHeights(mainHeight, showFiles, layout);
-      const profileLines = SidebarView.render(state, sidebarWidth, profileHeight, layout.visibleWidgets);
-      const filesLines = FilesView.render(state, sidebarWidth, filesHeight);
+  if (g.sidebarWidth > 0) {
+    if (layout.showFilesExplorer) {
+      const profileLines = SidebarView.render(state, g.sidebarWidth, g.profileHeight, layout.visibleWidgets, theme);
+      const filesLines = FilesView.render(state, g.sidebarWidth, g.filesHeight, theme);
       sidebarColumnLines = [...profileLines, ...filesLines];
     } else {
-      sidebarColumnLines = SidebarView.render(state, sidebarWidth, mainHeight, layout.visibleWidgets);
+      sidebarColumnLines = SidebarView.render(state, g.sidebarWidth, g.mainHeight, layout.visibleWidgets, theme);
     }
   }
 
   const mainLines = activeTab === 'chat'
-    ? ChatView.render(state, mainWidth, mainHeight)
-    : ToolsView.render(state, mainWidth, mainHeight);
+    ? ChatView.render(state, g.mainWidth, g.mainHeight, theme)
+    : ToolsView.render(state, g.mainWidth, g.mainHeight, theme);
 
   const compositeBody: string[] = [];
-  for (let i = 0; i < mainHeight; i++) {
-    if (sidebarPos === 'hidden') {
-      compositeBody.push(mainLines[i] || ' '.repeat(mainWidth));
-    } else if (sidebarPos === 'right') {
-      const mainPart = mainLines[i] || ' '.repeat(mainWidth);
-      const sidePart = sidebarColumnLines[i] || ' '.repeat(sidebarWidth);
-      compositeBody.push(mainPart + sidePart);
-    } else {
-      const sidePart = sidebarColumnLines[i] || ' '.repeat(sidebarWidth);
-      const mainPart = mainLines[i] || ' '.repeat(mainWidth);
-      compositeBody.push(sidePart + mainPart);
+  for (let i = 0; i < g.mainHeight; i++) {
+    const mainPart = mainLines[i] || ' '.repeat(g.mainWidth);
+    if (g.sidebarWidth === 0) {
+      compositeBody.push(mainPart);
+      continue;
     }
+    const sidePart = sidebarColumnLines[i] || ' '.repeat(g.sidebarWidth);
+    compositeBody.push(g.sidebarStart === 1 ? sidePart + mainPart : mainPart + sidePart);
   }
 
-  const inputLines = InputView.render(state, effectiveWidth, inputHeight);
+  const inputLines = InputView.render(state, g.effectiveWidth, g.inputHeight, theme);
   let screenBuffer = [...headerLines, ...compositeBody, ...inputLines];
 
   if (state.activeModal) {
-    screenBuffer = ModalView.renderOverlay(state.activeModal, screenBuffer, effectiveWidth, height);
+    screenBuffer = ModalView.renderOverlay(state.activeModal, screenBuffer, g.effectiveWidth, height, theme);
   }
 
   return screenBuffer;

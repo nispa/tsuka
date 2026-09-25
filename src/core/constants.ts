@@ -256,6 +256,8 @@ export const TUI_DEFAULTS = {
   inputMinLines: 3,
   inputMaxLines: 6,
   inputPaddingLines: 2,
+  /** Header columns kept free for the brand and version after the tab row. */
+  headerBrandReserve: 16,
   /** Modal geometry shared by full-screen text and file viewers. */
   viewerMaxWidth: 105,
   viewerMinWidth: 40,

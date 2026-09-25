@@ -7,7 +7,8 @@ import { ChatView } from '../views/Chat';
 import { FilesView } from '../views/Files';
 import { entryPath } from '../fileExplorer';
 import { TuiScreen } from '../screen';
-import { computeFilePaneHeights, computeSidebarWidth } from './geometry';
+import { FrameGeometry, computeFrameGeometry, isSidebarColumn } from './geometry';
+import { HeaderView } from '../views/Header';
 
 /**
  * Mouse event router extracted from TuiApp: wheel scrolling, header-tab click
@@ -32,22 +33,16 @@ export function routeMouseEvent(deps: MouseRouterDeps, mouse: TuiMouseEvent): vo
   const { store } = deps;
   const state = store.getState();
   const dims = deps.dimensions();
-  const effectiveWidth = Math.max(20, dims.width - 1);
-  const headerHeight = 3;
-  const inputHeight = 3;
-  const mainHeight = Math.max(5, dims.height - headerHeight - inputHeight);
-
-  const layout = deps.layout;
-  const sidebarPos = layout.sidebarPosition;
-  const showFiles = layout.showFilesExplorer;
-
-  const sidebarWidth = sidebarPos !== 'hidden' ? computeSidebarWidth(effectiveWidth, layout) : 0;
-  const { filesHeight, profileHeight } = computeFilePaneHeights(mainHeight, showFiles, layout);
+  const g = computeFrameGeometry(dims.width, dims.height, deps.layout, {
+    headerHeight: HeaderView.lineCount(state),
+    inputText: state.inputText,
+  });
+  const { headerHeight, profileHeight } = g;
+  const showFiles = deps.layout.showFilesExplorer;
+  const inSidebar = isSidebarColumn(g, mouse.col);
 
   // 1. Mouse Wheel Scrolling
   if (mouse.button === 'wheelup') {
-    const inSidebar = (sidebarPos === 'left' && mouse.col <= sidebarWidth) ||
-                      (sidebarPos === 'right' && mouse.col >= effectiveWidth - sidebarWidth);
     if (inSidebar) {
       if (showFiles && mouse.row > headerHeight + profileHeight) store.scroll('files', -2);
       else store.scroll('sidebar', -2);
@@ -58,8 +53,6 @@ export function routeMouseEvent(deps: MouseRouterDeps, mouse: TuiMouseEvent): vo
     return;
   }
   if (mouse.button === 'wheeldown') {
-    const inSidebar = (sidebarPos === 'left' && mouse.col <= sidebarWidth) ||
-                      (sidebarPos === 'right' && mouse.col >= effectiveWidth - sidebarWidth);
     if (inSidebar) {
       if (showFiles && mouse.row > headerHeight + profileHeight) store.scroll('files', 2);
       else store.scroll('sidebar', 2);
@@ -81,49 +74,44 @@ export function routeMouseEvent(deps: MouseRouterDeps, mouse: TuiMouseEvent): vo
     // draws, so a relabelled tab keeps a click zone that matches what is shown.
     if (mouse.row <= headerHeight) {
       if (mouse.action !== 'down') return;
-      const clicked = tabAtColumn(effectiveWidth, deps.getActiveTab(), mouse.col);
+      const clicked = tabAtColumn(g.effectiveWidth, deps.getActiveTab(), mouse.col);
       if (clicked) deps.activateTab(clicked);
       return;
     }
 
     // Bottom Input Click
-    if (mouse.row >= dims.height - inputHeight) {
+    if (mouse.row > dims.height - g.inputHeight) {
       store.setFocus('input');
       return;
     }
 
     // Middle Body Click
-    const isSidebarClick = sidebarPos !== 'hidden' && (
-      (sidebarPos === 'left' && mouse.col <= sidebarWidth) ||
-      (sidebarPos === 'right' && mouse.col >= effectiveWidth - sidebarWidth)
-    );
-
-    if (isSidebarClick) {
+    if (inSidebar) {
       if (!showFiles || mouse.row <= headerHeight + profileHeight) {
         store.setFocus('sidebar');
       } else {
-        handleFilesClick(deps, { mouse, effectiveWidth, headerHeight, filesHeight, profileHeight });
+        handleFilesClick(deps, mouse, g);
       }
     } else {
       store.setFocus(deps.getActiveTab() === 'chat' ? 'chat' : 'tools');
-      if (mouse.col >= effectiveWidth - 2) {
-        scrollbarJump(store, state.messages.length, { mainHeight, headerHeight, mouse });
+      // The scrollbar is the main pane's right edge (plus one column of slack), which is
+      // not the screen edge when the sidebar sits on the right.
+      const mainRightEdge = g.mainStart + g.mainWidth - 1;
+      if (mouse.col >= mainRightEdge - 1) {
+        scrollbarJump(store, state.messages.length, mouse, g);
       } else if (mouse.action === 'down' && deps.getActiveTab() === 'chat') {
-        chatThinkingClick(deps, { mouse, effectiveWidth, sidebarWidth, mainHeight, headerHeight });
+        chatThinkingClick(deps, mouse, g);
       }
     }
   }
 }
 
-function handleFilesClick(
-  deps: MouseRouterDeps,
-  g: { mouse: TuiMouseEvent; effectiveWidth: number; headerHeight: number; filesHeight: number; profileHeight: number }
-): void {
+function handleFilesClick(deps: MouseRouterDeps, mouse: TuiMouseEvent, g: FrameGeometry): void {
   const { store } = deps;
   const state = store.getState();
   store.setFocus('files');
   const files = deps.currentFiles();
-  const clickedRow = TuiScreen.paneContentRow(g.mouse.row, g.headerHeight, g.profileHeight);
+  const clickedRow = TuiScreen.paneContentRow(mouse.row, g.headerHeight, g.profileHeight);
   const targetIndex = FilesView.indexAtRow(state, g.filesHeight, clickedRow);
   if (targetIndex !== undefined) {
     const isAlreadySelected = state.selectedFileIndex === targetIndex;
@@ -146,12 +134,8 @@ function handleFilesClick(
 }
 
 /** Dragging on the right-edge scrollbar jumps the chat feed proportionally. */
-function scrollbarJump(
-  store: TuiStore,
-  messageCount: number,
-  g: { mainHeight: number; headerHeight: number; mouse: TuiMouseEvent }
-): void {
-  const trackY = Math.max(0, Math.min(g.mainHeight - 1, g.mouse.row - g.headerHeight - 1));
+function scrollbarJump(store: TuiStore, messageCount: number, mouse: TuiMouseEvent, g: FrameGeometry): void {
+  const trackY = Math.max(0, Math.min(g.mainHeight - 1, mouse.row - g.headerHeight - 1));
   const scrollRatio = 1 - (trackY / (g.mainHeight - 1));
   const totalMsgs = messageCount * 4;
   const targetOffset = Math.round(scrollRatio * Math.max(0, totalMsgs));
@@ -159,17 +143,13 @@ function scrollbarJump(
 }
 
 /** A plain click on a reasoning header toggles that message's thinking block. */
-function chatThinkingClick(
-  deps: MouseRouterDeps,
-  g: { mouse: TuiMouseEvent; effectiveWidth: number; sidebarWidth: number; mainHeight: number; headerHeight: number }
-): void {
+function chatThinkingClick(deps: MouseRouterDeps, mouse: TuiMouseEvent, g: FrameGeometry): void {
   const { store } = deps;
   const state = store.getState();
-  const chatWidth = g.effectiveWidth - g.sidebarWidth;
-  const clickedRow = TuiScreen.paneContentRow(g.mouse.row, g.headerHeight);
+  const clickedRow = TuiScreen.paneContentRow(mouse.row, g.headerHeight);
   // A click on the pane border resolves to no content row at all.
   const thinkTarget = clickedRow >= 0
-    ? ChatView.getThinkingHeaderAtRow(state, chatWidth, g.mainHeight, clickedRow)
+    ? ChatView.getThinkingHeaderAtRow(state, g.mainWidth, g.mainHeight, clickedRow)
     : undefined;
   if (thinkTarget) {
     const isExpanded = store.toggleMessageThinking(thinkTarget.id);

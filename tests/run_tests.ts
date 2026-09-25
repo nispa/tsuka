@@ -120,6 +120,7 @@ const suites = [
   'test_multiline_tools_filter.ts',
   'test_inference_telemetry.ts',
   'test_tui_data_driven.ts',
+  'test_tui_layout.ts',
   'test_cli_spinner.ts',
   'test_model_warmup.ts',
   'test_provider_model_fallback.ts',

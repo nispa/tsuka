@@ -4,11 +4,14 @@
  */
 
 import * as fs from 'fs';
-import * as path from 'path';
 import chalk from 'chalk';
+import type { FrameSpec } from './boxDrawing';
+import { homePath } from '../core/apphome';
 
 export type SidebarPosition = 'left' | 'right' | 'hidden';
-export type TuiThemeName = 'cyan' | 'neon' | 'amber' | 'matrix' | 'minimal';
+export type TuiThemeName = 'lcars' | 'cyan' | 'neon' | 'amber' | 'matrix' | 'minimal';
+/** Boxed panes a theme can colour individually. */
+export type TuiPaneId = 'chat' | 'tools' | 'sidebar' | 'files' | 'input' | 'busy' | 'modal';
 export type TuiWidgetId = 'persona' | 'metrics' | 'telemetry' | 'telemetry_leds' | 'tool_activity' | 'quick_keys';
 
 export interface TuiLayoutConfig {
@@ -28,12 +31,61 @@ export interface TuiThemePalette {
   accent: (s: string) => string;
   borderFocused: (s: string) => string;
   borderUnfocused: (s: string) => string;
+  /**
+   * LCARS-style chrome: when present, every pane is framed as an LCARS elbow in its
+   * own colour and the header draws pill buttons and a segmented bar. Absent, panes
+   * keep the classic thin rounded box — so a theme opts in to the frame, it never
+   * silently inherits it.
+   */
+  lcars?: LcarsChrome;
+}
+
+/** Colour data of an LCARS theme: one `[focused, idle]` pair per pane, plus header accents. */
+export interface LcarsChrome {
+  panes: Record<TuiPaneId, [string, string]>;
+  /** Pill colour of the active tab. */
+  activeTab: string;
+  /** Inactive tab pills cycle through these, as on a real LCARS button bank. */
+  tabs: string[];
+  /** Segments of the bar closing the header, as `[colour, share of the width]`. */
+  headerBar: Array<[string, number]>;
+}
+
+/** Frame of one pane under the given theme; undefined means the classic rounded box. */
+export function paneFrame(theme: TuiThemePalette | undefined, pane: TuiPaneId, isFocused: boolean): FrameSpec | undefined {
+  const colors = theme?.lcars?.panes[pane];
+  if (!colors) return undefined;
+  return { style: 'lcars', color: isFocused ? colors[0] : colors[1] };
 }
 
 export const TUI_THEMES: Record<TuiThemeName, TuiThemePalette> = {
+  // Star Trek: The Next Generation's LCARS palette (Okuda): flat pastel bands on black.
+  lcars: {
+    name: 'lcars',
+    label: '🖖 LCARS (Star Trek TNG)',
+    primary: chalk.hex('#ff9900'),
+    secondary: chalk.hex('#cc99cc'),
+    accent: chalk.hex('#99ccff'),
+    borderFocused: chalk.hex('#ffcc66'),
+    borderUnfocused: chalk.hex('#664d33'),
+    lcars: {
+      panes: {
+        sidebar: ['#ff9900', '#995c00'],
+        files: ['#9999ff', '#5c5c99'],
+        chat: ['#cc99cc', '#7a5c7a'],
+        tools: ['#99ccff', '#5c7a99'],
+        input: ['#ffcc99', '#997a5c'],
+        busy: ['#ff7700', '#ff7700'],
+        modal: ['#ffcc66', '#ffcc66'],
+      },
+      activeTab: '#ff9900',
+      tabs: ['#cc99cc', '#9999ff', '#99ccff', '#ffcc99'],
+      headerBar: [['#ff9900', 0.55], ['#cc99cc', 0.15], ['#9999ff', 0.2], ['#cc6666', 0.1]],
+    },
+  },
   cyan: {
     name: 'cyan',
-    label: '🌊 Cyberpunk Cyan (Default)',
+    label: '🌊 Cyberpunk Cyan',
     primary: chalk.hex('#38bdf8'),
     secondary: chalk.hex('#818cf8'),
     accent: chalk.hex('#e879f9'),
@@ -84,10 +136,15 @@ export const DEFAULT_LAYOUT_CONFIG: TuiLayoutConfig = {
   showFilesExplorer: true,
   filesHeightPercent: 55,
   visibleWidgets: ['persona', 'metrics', 'telemetry_leds', 'tool_activity', 'quick_keys'],
-  theme: 'cyan',
+  theme: 'lcars',
 };
 
 export const LAYOUT_PRESETS: Record<string, { label: string; description: string; config: Partial<TuiLayoutConfig> }> = {
+  lcars: {
+    label: '🖖 LCARS Bridge Console',
+    description: 'Star Trek TNG panels: agent profile & files on the left elbow, LCARS frames',
+    config: { ...DEFAULT_LAYOUT_CONFIG },
+  },
   default: {
     label: '📐 Default Quadrant',
     description: 'Sidebar & Files on Left (26%), Chat on Right',
@@ -134,26 +191,58 @@ export const LAYOUT_PRESETS: Record<string, { label: string; description: string
   },
 };
 
+/** Every widget the sidebar can host, in its default display order. */
+export const TUI_WIDGET_IDS: TuiWidgetId[] = ['persona', 'metrics', 'telemetry_leds', 'telemetry', 'tool_activity', 'quick_keys'];
+const SIDEBAR_POSITIONS: SidebarPosition[] = ['left', 'right', 'hidden'];
+
+/**
+ * Applies a preset or saved patch onto the live config. The live object is shared by
+ * the frame composer and the mouse router, so it is updated in place — but arrays are
+ * copied: assigning a preset's `visibleWidgets` by reference let a later widget toggle
+ * mutate the preset (and DEFAULT_LAYOUT_CONFIG itself), so "reset" stopped resetting.
+ */
+export function applyLayout(target: TuiLayoutConfig, patch: Partial<TuiLayoutConfig>): TuiLayoutConfig {
+  Object.assign(target, patch);
+  target.visibleWidgets = [...(patch.visibleWidgets ?? target.visibleWidgets)];
+  return target;
+}
+
+/** Keeps only the fields of a user-edited JSON that the TUI can actually honour. */
+function sanitizeLayout(raw: any): TuiLayoutConfig {
+  const config = applyLayout({ ...DEFAULT_LAYOUT_CONFIG }, {});
+  if (!raw || typeof raw !== 'object') return config;
+  if (SIDEBAR_POSITIONS.includes(raw.sidebarPosition)) config.sidebarPosition = raw.sidebarPosition;
+  if (Number.isFinite(raw.sidebarWidthPercent)) config.sidebarWidthPercent = raw.sidebarWidthPercent;
+  if (typeof raw.showFilesExplorer === 'boolean') config.showFilesExplorer = raw.showFilesExplorer;
+  if (Number.isFinite(raw.filesHeightPercent)) config.filesHeightPercent = raw.filesHeightPercent;
+  if (Array.isArray(raw.visibleWidgets)) config.visibleWidgets = raw.visibleWidgets.filter((w: any) => TUI_WIDGET_IDS.includes(w));
+  if (raw.theme in TUI_THEMES) config.theme = raw.theme;
+  return config;
+}
+
 export class LayoutConfigManager {
-  private static readonly CONFIG_PATH = path.join(__dirname, 'tui.layout.json');
+  /**
+   * User preference, so it lives in the app home next to tsuka.config.json — not beside
+   * this module, which put it in src/tui/ under tsx (tracked by git) and in dist/tui/
+   * once built, two different files for the same setting.
+   */
+  static configPath(): string {
+    return homePath('tui.layout.json');
+  }
 
   static load(): TuiLayoutConfig {
     try {
-      if (fs.existsSync(this.CONFIG_PATH)) {
-        const raw = fs.readFileSync(this.CONFIG_PATH, 'utf-8');
-        const parsed = JSON.parse(raw);
-        return {
-          ...DEFAULT_LAYOUT_CONFIG,
-          ...parsed,
-        };
+      const file = this.configPath();
+      if (fs.existsSync(file)) {
+        return sanitizeLayout(JSON.parse(fs.readFileSync(file, 'utf-8')));
       }
     } catch {}
-    return { ...DEFAULT_LAYOUT_CONFIG };
+    return sanitizeLayout(undefined);
   }
 
   static save(config: TuiLayoutConfig): boolean {
     try {
-      fs.writeFileSync(this.CONFIG_PATH, JSON.stringify(config, null, 2), 'utf-8');
+      fs.writeFileSync(this.configPath(), JSON.stringify(config, null, 2), 'utf-8');
       return true;
     } catch {
       return false;
@@ -161,6 +250,6 @@ export class LayoutConfigManager {
   }
 
   static getTheme(themeName: TuiThemeName): TuiThemePalette {
-    return TUI_THEMES[themeName] || TUI_THEMES.cyan;
+    return TUI_THEMES[themeName] || TUI_THEMES[DEFAULT_LAYOUT_CONFIG.theme];
   }
 }

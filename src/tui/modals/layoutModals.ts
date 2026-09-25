@@ -7,6 +7,8 @@ import {
   TuiThemeName,
   TuiWidgetId,
   DEFAULT_LAYOUT_CONFIG,
+  TUI_WIDGET_IDS,
+  applyLayout,
 } from '../layoutConfig';
 
 export class LayoutModals {
@@ -17,12 +19,12 @@ export class LayoutModals {
       {
         label: '🔄 Layout Presets',
         value: 'presets',
-        hint: 'Default Quadrant, Wide Chat, Sidebar on Right, Zen Focus',
+        hint: Object.values(LAYOUT_PRESETS).map((p) => p.label).join(', '),
       },
       {
         label: `🎨 Color Theme [${currentTheme}]`,
         value: 'theme',
-        hint: 'Cyberpunk Cyan, Neon Magenta, Retro Amber, Matrix, Minimal',
+        hint: Object.values(TUI_THEMES).map((t) => t.label).join(', '),
       },
       {
         label: `📐 Sidebar Position [${layoutConfig.sidebarPosition.toUpperCase()}]`,
@@ -85,7 +87,7 @@ export class LayoutModals {
             store.notify('Error saving layout configuration', 'error');
           }
         } else if (chosen === 'reset') {
-          Object.assign(layoutConfig, DEFAULT_LAYOUT_CONFIG);
+          applyLayout(layoutConfig, DEFAULT_LAYOUT_CONFIG);
           LayoutConfigManager.save(layoutConfig);
           store.closeModal();
           store.notify('Layout reset to defaults', 'info');
@@ -111,7 +113,7 @@ export class LayoutModals {
       onSelect: (chosenKey) => {
         const preset = LAYOUT_PRESETS[chosenKey];
         if (preset) {
-          Object.assign(layoutConfig, preset.config);
+          applyLayout(layoutConfig, preset.config);
           store.closeModal();
           store.notify(`Preset applied: ${preset.label}`, 'success');
         } else {
@@ -209,16 +211,15 @@ export class LayoutModals {
       options,
       onSelect: (chosen) => {
         if (chosen === 'all') {
-          layoutConfig.visibleWidgets = ['persona', 'metrics', 'telemetry_leds', 'telemetry', 'tool_activity', 'quick_keys'];
+          layoutConfig.visibleWidgets = [...TUI_WIDGET_IDS];
         } else if (chosen === 'minimal') {
           layoutConfig.visibleWidgets = ['persona', 'metrics', 'telemetry_leds'];
         } else {
+          // Never push into the current array: it may still be shared with a preset.
           const wId = chosen as TuiWidgetId;
-          if (current.has(wId)) {
-            layoutConfig.visibleWidgets = layoutConfig.visibleWidgets.filter((id) => id !== wId);
-          } else {
-            layoutConfig.visibleWidgets.push(wId);
-          }
+          layoutConfig.visibleWidgets = current.has(wId)
+            ? layoutConfig.visibleWidgets.filter((id) => id !== wId)
+            : [...layoutConfig.visibleWidgets, wId];
         }
         store.closeModal();
         store.notify('Sidebar widgets updated', 'success');

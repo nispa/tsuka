@@ -328,7 +328,7 @@ TSUKA features a zero-flicker, Component-Driven terminal user interface:
 * **Data-Driven Dispatch Tables**: behaviour lives in lists, not in conditional chains, so extending the TUI means adding a row.
   * `src/tui/commands/`: the slash command table (`registry.ts`) — name, aliases, description and handler per command, grouped in `sessionCommands` / `workflowCommands` / `configCommands`. `TuiCommandController` only parses the line and looks it up; `assertMenuCoverage()` keeps the table and the slash menu (`commands/menu.json`) from drifting apart.
   * `src/tui/navigation.ts`: the tab table — function key, per-width labels, and the modal each tab toggles. The header row, the mouse click zones and the help cheatsheet all derive from it, so a relabelled tab cannot lose its click target.
-  * `src/tui/layoutConfig.ts`: layout presets, themes and widget order (`tui.layout.json`).
+  * `src/tui/layoutConfig.ts`: layout presets, themes (default: LCARS) and widget order, saved to `tui.layout.json` in the app home.
   * `src/tui/keybindings.json`: raw escape sequences mapped to key names.
 
 ---

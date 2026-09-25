@@ -4,7 +4,7 @@
  */
 
 import { InputParser, KeyPressEvent, KeyPressHandler, ResizeHandler, TuiMouseEvent, TuiMouseHandler } from './inputParser';
-import { BoxDrawing, ScrollbarOptions } from './boxDrawing';
+import { BoxDrawing, FrameSpec, ScrollbarOptions } from './boxDrawing';
 
 export { KeyPressEvent, KeyPressHandler, ResizeHandler, TuiMouseEvent, TuiMouseHandler, ScrollbarOptions };
 
@@ -188,8 +188,9 @@ export class TuiScreen {
     height: number,
     isFocused: boolean = false,
     borderColor?: (s: string) => string,
-    scrollbar?: ScrollbarOptions
+    scrollbar?: ScrollbarOptions,
+    frame?: FrameSpec
   ): string[] {
-    return BoxDrawing.drawBox(title, contentLines, width, height, isFocused, borderColor, scrollbar);
+    return BoxDrawing.drawBox(title, contentLines, width, height, isFocused, borderColor, scrollbar, frame);
   }
 }

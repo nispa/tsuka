@@ -189,6 +189,7 @@
 | T23.13 | ✅ Fatto | **Web search data-driven e pluggable**: `WebSearchBackend` con registry/factory, backend HTTP guidato da `web_search_providers.json`, adapter DOM registrato per DuckDuckGo e mapping JSON per Google/Tavily; selettori CLI/TUI derivati dal catalogo e contratto MCP esterno senza browser. Credenziali solo tramite riferimenti a variabili d'ambiente, valori mascherati negli errori e normalizzazione bounded comune. Suite `test_web_search_backends.ts`; 98 suite, build e typecheck verdi. |
 | T23.14 | ✅ Fatto | **Recupero write_file incompleto**: schema con obbligatorietà congiunta di `path` e `content` esplicitata, feedback di validazione che elenca tutti i campi obbligatori mancanti insieme, flag `isValidationError` strutturato nel contratto `ToolResult`, tracciamento degli errori consecutivi per tool in `reactState.ts` con limite centralizzato (`TOOLS_DEFAULTS.maxConsecutiveValidationErrors = 3`), emissione dell'evento `validation_limit` e arresto sicuro senza salvataggio spurio; staging preservato e azzeramento su chiamata valida. Nuova suite `test_write_file_recovery.ts` (12 check). I tre gate verdi (111 suite). |
 | T23.15 | ✅ Fatto | **Tool call in streaming invisibile nella TUI**: i delta degli argomenti di una tool call non producevano né chunk né telemetria, quindi dopo il ragionamento la TUI restava ferma sull'ultimo pensiero per tutta la composizione (minuti per un `write_file` grande). Ora contano come token decodificati e l'evento `decode` porta `toolCall: { name, argChars }`; la TUI mostra la fase `composing` (card, titoli, header). |
+| T23.16 | ✅ Fatto | **Tema LCARS di default e verifica della gestione layout**: tema `lcars` (Star Trek TNG) con cornici a gomito per pannello, tab a pillola e barra a segmenti, impostato come default e disponibile come preset. La verifica ha trovato cinque difetti, corretti: temi mai applicati alle viste, `visibleWidgets` condiviso per riferimento con preset e default, geometria del mouse con header e input fissi a 3 righe e scrollbar cercata al bordo dello schermo, `tui.layout.json` salvato accanto al sorgente (tracciato in git), prima riga dell'header oltre la larghezza del terminale tra 110 e ~130 colonne. Nuova suite `tests/test_tui_layout.ts`. |
 
 Tutti i task pianificati e di backlog sono completati; la serie T15 (memoria, modelli <30B) è implementata e chiusa con 72 suite di test verdi. Pianificata la serie **T16 (benchmark significativi)** su architettura a due velocità: **`/benchmark` fast** (1 colpo/test, deterministico — resta il gate del tier) e **`/benchmark --deep`** (repliche con variazione del prompt, mediana+varianza, per validazione/calibrazione). Pianificato anche **T17.1** (retrieval BM25/TF-IDF), il primo livello del percorso di apprendimento documentato in `docs/memory.md` §12. Valore di ritorno — i benchmark attuali saturano in alto e non discriminano tra i modelli, ma il gating dei tool (`registry.ts`) dipende proprio da quel tier: se tutto diventa `large` il gating è codice morto. Restano da fare T14.24 (commenti tests/ in inglese), T14.25 (token di protocollo multi-agente) e le serie T16/T17.
 
@@ -4895,6 +4896,47 @@ Non accorpare T23.6, T23.7 e T23.8: sono confini di sicurezza differenti e devon
 avere review e rollback indipendenti. T23.9 dipende dalla policy di rete già chiusa;
 T23.12 non può essere usato per rinviare finding critici senza una mitigazione
 esplicita.
+
+---
+
+## T23.16 — Tema LCARS di default e verifica della gestione layout
+
+**Stato:** ✅ Fatto · **Priorità:** media
+
+**Richiesta del maintainer (2026-09-25):** una dashboard in stile LCARS (i display di
+Star Trek: The Next Generation) come layout di default, verificando che la gestione del
+layout funzioni davvero.
+
+**Difetti trovati nella verifica (tutti corretti):**
+- I temi (`cyan`, `neon`, `amber`, …) venivano scelti in F7 e salvati, ma nessuna vista
+  li leggeva: colori cablati in ogni view. Ora `composeFrame` risolve la palette e la
+  passa a header, pannelli e modali.
+- `Object.assign(layoutConfig, preset)` copiava per riferimento l'array
+  `visibleWidgets`: dopo un reset, attivare un widget mutava `DEFAULT_LAYOUT_CONFIG` e
+  il reset successivo non ripristinava più nulla. Nuovo `applyLayout` che copia gli
+  array; i toggle non fanno più `push` sull'array corrente.
+- Il router del mouse assumeva header e input sempre alti 3 righe (click spostati con
+  prompt multi-riga o con la riga di progresso) e cercava la scrollbar della chat al
+  bordo dello schermo anche con la sidebar a destra. Nuova `computeFrameGeometry`
+  unica per composer e router; `HeaderView.lineCount` condiviso.
+- `tui.layout.json` veniva scritto accanto a `layoutConfig.ts` (`src/tui/` sotto tsx,
+  tracciato in git; `dist/tui/` dopo la build). Ora vive nella app home come
+  `tsuka.config.json`, è in `.gitignore`, e il caricamento scarta valori non validi.
+- Tra 110 e ~130 colonne la prima riga dell'header superava la larghezza del terminale
+  (etichette con emoji scelte con una soglia fissa, e `slice-ansi` che conta `⚡` come 1
+  colonna): il terminale andava a capo e il frame scivolava di una riga. Le etichette
+  ora si scelgono misurando lo spazio (`headerBrandReserve`), e `truncateOrPad`
+  accorcia finché la riga entra davvero.
+
+**Tema LCARS:** `FrameSpec` in `boxDrawing.ts` disegna il gomito (banda piena con
+titolo, barra verticale, banda inferiore sottile, lato destro aperto) con la stessa
+geometria del riquadro classico, così hit-testing e scrollbar restano invariati. Colori
+per pannello e per focus come dati in `TUI_THEMES.lcars.lcars`; i temi classici
+mantengono il riquadro arrotondato.
+
+**Residuo noto:** i campi `primary`/`secondary`/`accent`/`border*` dei temi classici
+restano non usati dalle viste; i widget della sidebar e la chat mantengono i propri
+colori anche sotto LCARS.
 
 ---
 

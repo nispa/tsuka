@@ -2,10 +2,10 @@ import chalk from 'chalk';
 import { TuiState } from '../types';
 import { TuiScreen } from '../screen';
 import { PersonaWidget, MetricsWidget, InferenceTelemetryWidget, InferenceLedsWidget, ToolActivityWidget, QuickKeysWidget } from '../widgets';
-import { TuiWidgetId } from '../layoutConfig';
+import { TuiWidgetId, TuiThemePalette, paneFrame } from '../layoutConfig';
 
 export class SidebarView {
-  static render(state: TuiState, width: number, height: number, visibleWidgets: TuiWidgetId[] = ['persona', 'metrics', 'telemetry_leds', 'tool_activity', 'quick_keys']): string[] {
+  static render(state: TuiState, width: number, height: number, visibleWidgets: TuiWidgetId[] = ['persona', 'metrics', 'telemetry_leds', 'tool_activity', 'quick_keys'], theme?: TuiThemePalette): string[] {
     const divider = chalk.hex('#334155')('  ' + '─'.repeat(Math.max(10, width - 6)));
     const rawLines: string[] = [];
 
@@ -36,6 +36,6 @@ export class SidebarView {
     const scrollOffset = Math.min(state.sidebarScrollOffset, Math.max(0, rawLines.length - innerHeight));
     const visibleLines = rawLines.slice(scrollOffset, scrollOffset + innerHeight);
 
-    return TuiScreen.drawBox('Agent Profile', visibleLines, width, height, state.focus === 'sidebar');
+    return TuiScreen.drawBox('Agent Profile', visibleLines, width, height, state.focus === 'sidebar', undefined, undefined, paneFrame(theme, 'sidebar', state.focus === 'sidebar'));
   }
 }

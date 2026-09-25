@@ -9,12 +9,13 @@
 
 import { BoxDrawing } from './boxDrawing';
 import { isHelpShortcut, KeyPressEvent } from './inputParser';
+import { TUI_DEFAULTS } from '../core/constants';
 
 export interface TuiTabSpec {
   id: string;
   /** Function key that activates the tab (`inputParser` key names). */
   key: string;
-  /** Labels for narrow (<80), medium (<110) and wide terminals. */
+  /** Labels from narrowest to widest; the header shows the widest set that fits. */
   labels: [string, string, string];
   /** Wording used by the help cheatsheet. */
   description: string;
@@ -56,10 +57,24 @@ export function resolveTabShortcut(
   return tabByKey(key.name) || (isHelpShortcut(key, focus, hasModal) ? tabByKey('f12') : undefined);
 }
 
+/**
+ * Widest label set whose tab row still leaves room for the brand. Chosen by measuring
+ * rather than by fixed width thresholds: the emoji labels used to kick in at 110
+ * columns although they need ~125, so the first header row overflowed, the terminal
+ * wrapped it, and the whole frame slid down a line.
+ */
+function labelTier(width: number): number {
+  const available = width - TUI_DEFAULTS.headerBrandReserve;
+  for (let tier = 2; tier > 0; tier--) {
+    // One leading space, then per tab: the label, its two padding cells and a separator.
+    const rowWidth = 1 + TUI_TABS.reduce((sum, t) => sum + BoxDrawing.stringWidth(t.labels[tier]) + 3, 0);
+    if (rowWidth <= available) return tier;
+  }
+  return 0;
+}
+
 export function labelForWidth(spec: TuiTabSpec, width: number): string {
-  if (width < 80) return spec.labels[0];
-  if (width < 110) return spec.labels[1];
-  return spec.labels[2];
+  return spec.labels[labelTier(width)];
 }
 
 /** A tab as placed on the header row: 1-based inclusive column range. */

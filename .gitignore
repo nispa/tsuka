@@ -26,3 +26,5 @@ models_profile.json
 
 # Tool Outputs
 /output/
+# TUI layout preference (saved from F7)
+/tui.layout.json

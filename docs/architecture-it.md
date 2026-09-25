@@ -374,7 +374,7 @@ TSUKA include una dashboard terminale grafica interattiva a componenti puri:
 * **Tabelle di Dispatch Data-Driven**: il comportamento sta in liste, non in catene di condizioni; estendere la TUI significa aggiungere una riga.
   * `src/tui/commands/`: tabella dei comandi slash (`registry.ts`) — nome, alias, descrizione e handler per ciascun comando, raggruppati in `sessionCommands` / `workflowCommands` / `configCommands`. `TuiCommandController` si limita a fare il parsing della riga e la lookup; `assertMenuCoverage()` impedisce che tabella e menu slash (`commands/menu.json`) divergano.
   * `src/tui/navigation.ts`: tabella delle schede — tasto funzione, etichette per larghezza e modale associata. Riga dell'header, zone di click del mouse e cheatsheet dell'help derivano tutte da qui: una scheda rinominata non può perdere la propria area cliccabile.
-  * `src/tui/layoutConfig.ts`: preset di layout, temi e ordine dei widget (`tui.layout.json`).
+  * `src/tui/layoutConfig.ts`: preset di layout, temi (default: LCARS) e ordine dei widget, salvati in `tui.layout.json` nella app home.
   * `src/tui/keybindings.json`: sequenze di escape grezze mappate sui nomi dei tasti.
 
 ---

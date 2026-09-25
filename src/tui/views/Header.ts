@@ -9,20 +9,60 @@ import { TuiScreen } from '../screen';
 import { composingLabel } from './composingLabel';
 import { layoutTabs } from '../navigation';
 import { TSUKA_PACKAGE } from '../../core/packageInfo';
+import { LcarsChrome, TuiThemePalette } from '../layoutConfig';
+
+/** The progress detail line appears only while generating, and only once there is one. */
+function hasDetailLine(state: TuiState): boolean {
+  return !!(state.isGenerating && state.generationStatus?.detail);
+}
+
+/**
+ * LCARS separator: coloured segments with one-cell gaps, the way the TNG consoles
+ * split a bar into blocks. Shares are fractions of the width; the last one absorbs
+ * rounding so the bar always spans the row exactly.
+ */
+function lcarsBar(lcars: LcarsChrome, width: number): string {
+  let out = '';
+  let used = 0;
+  lcars.headerBar.forEach(([hex, share], i) => {
+    const isLast = i === lcars.headerBar.length - 1;
+    const run = isLast ? width - used : Math.max(1, Math.floor(width * share));
+    const gap = isLast ? 0 : 1;
+    out += chalk.hex(hex)('▀'.repeat(Math.max(0, run - gap))) + ' '.repeat(gap);
+    used += run;
+  });
+  return out;
+}
 
 export class HeaderView {
-  static render(state: TuiState, width: number, activeTab: string = 'chat'): string[] {
+  /** Rows the header occupies; the frame geometry and the mouse router read this. */
+  static lineCount(state: TuiState): number {
+    return hasDetailLine(state) ? 4 : 3;
+  }
+
+  static render(state: TuiState, width: number, activeTab: string = 'chat', theme?: TuiThemePalette): string[] {
     const lines: string[] = [];
+    const lcars = theme?.lcars;
 
-    // Line 1: Top Navigation Menu Tabs (labels and click zones come from `navigation.ts`)
+    // Line 1: Top Navigation Menu Tabs (labels and click zones come from `navigation.ts`).
+    // An LCARS pill ` label ` is exactly as wide as `[label]`, so the zones still match.
     let tabsRow = ' ';
-    for (const zone of layoutTabs(width, activeTab)) {
-      tabsRow += zone.isActive
-        ? chalk.bgHex('#3178c6').white.bold(` ${zone.label} `) + ' '
-        : chalk.hex('#818cf8')(`[${zone.label}]`) + ' ';
-    }
+    layoutTabs(width, activeTab).forEach((zone, i) => {
+      if (lcars) {
+        const hex = zone.isActive ? lcars.activeTab : lcars.tabs[i % lcars.tabs.length];
+        const pill = chalk.bgHex(hex).hex('#000000');
+        tabsRow += (zone.isActive ? pill.bold : pill)(` ${zone.label} `) + ' ';
+      } else {
+        tabsRow += zone.isActive
+          ? chalk.bgHex('#3178c6').white.bold(` ${zone.label} `) + ' '
+          : chalk.hex('#818cf8')(`[${zone.label}]`) + ' ';
+      }
+    });
 
-    const brand = chalk.bold.hex('#e879f9')('TSUKA') + (width > 95 ? chalk.gray(` v${TSUKA_PACKAGE.version}`) : '');
+    const version = width > 95 ? ` v${TSUKA_PACKAGE.version}` : '';
+    const brand = lcars
+      ? chalk.bgHex(lcars.activeTab).hex('#000000').bold(' TSUKA ') + chalk.hex(lcars.activeTab)(version)
+      : chalk.bold.hex('#e879f9')('TSUKA') + chalk.gray(version);
     const tabsRowWidth = TuiScreen.stringWidth(tabsRow);
     const brandWidth = TuiScreen.stringWidth(brand);
     const spacing0 = Math.max(1, width - tabsRowWidth - brandWidth - 2);
@@ -134,7 +174,7 @@ export class HeaderView {
     // Line 3 (optional): live progress detail from a long-running CLI workflow's spinner
     // (e.g. `/benchmark`'s current model/step — see core/progressSink.ts). Only while
     // generating, and only once there is something to say — most turns never set it.
-    if (state.isGenerating && state.generationStatus?.detail) {
+    if (hasDetailLine(state) && state.generationStatus?.detail) {
       const prefix = '     └─ ';
       const maxDetailWidth = Math.max(4, width - prefix.length);
       const detail = state.generationStatus.detail.length > maxDetailWidth
@@ -144,7 +184,7 @@ export class HeaderView {
     }
 
     // Line: Separator bar
-    lines.push(chalk.hex('#475569')('━'.repeat(width)));
+    lines.push(lcars ? lcarsBar(lcars, width) : chalk.hex('#475569')('━'.repeat(width)));
 
     return lines;
   }
