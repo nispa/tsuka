@@ -34,7 +34,7 @@ export class SystemModals {
     const options = facts.map((f: MemoryFact) => {
       const pinIcon = f.pinned ? '📌 ' : '';
       // T14.20: the label is now the fact's short summary, not a raw truncation of `content` —
-      // most facts share a long common prefix (`[Goal] `, `AGENTE: `, …), so a 40-char slice of
+      // most facts share a long common prefix (`[Goal] `, `AGENT: `, …), so a 40-char slice of
       // content made every entry in the list look the same. Full content is still one keypress
       // away via "View Full Text".
       return {

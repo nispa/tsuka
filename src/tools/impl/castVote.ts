@@ -1,6 +1,7 @@
 import { Tool } from '../registry';
+import { VOTES } from '../../core/protocolTokens';
 
-const VALID_VOTES = ['APPROVO', 'MODIFICARE', 'RIFIUTO'];
+const VALID_VOTES: readonly string[] = VOTES;
 
 /**
  * Protocol tool (T2.1): used in discussion rounds with voting enabled (hybrid teams)

@@ -63,7 +63,7 @@ export async function runReasoningBudgetTests(): Promise<void> {
       },
       // Round 3: Chiusura
       {
-        content: 'STATO: COMPLETATO\nFile scritto.',
+        content: 'STATUS: COMPLETED\nFile scritto.',
         toolCalls: []
       }
     ]);
@@ -71,7 +71,7 @@ export async function runReasoningBudgetTests(): Promise<void> {
     const registry = new ToolRegistry();
     const pm = new PermissionManager();
     // AcceptTextOnlyIf richiede marker di stato o tool
-    const acceptTextOnlyIf = (text: string) => text.includes('STATO: COMPLETATO');
+    const acceptTextOnlyIf = (text: string) => text.includes('STATUS: COMPLETED');
     const agent = new Agent(mock as any, registry, pm, 'system prompt', ['write_file'], 500, 32768, 'test-agent', 'xhigh', acceptTextOnlyIf);
 
     await agent.run('crea out.txt');

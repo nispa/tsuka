@@ -1,6 +1,6 @@
 {
   "name": "route_next",
-  "description": "Decides which team member works the next turn, or signals that the work is done. ALWAYS use this instead of (or in addition to) the text markers 'AGENTE: @name' / 'FINE': it's the reliable way to route the team.",
+  "description": "Decides which team member works the next turn, or signals that the work is done. ALWAYS use this instead of (or in addition to) the text markers 'AGENT: @name' / 'END': it's the reliable way to route the team.",
   "requiredTier": "small",
   "riskLevel": "SAFE",
   "parameters": {
@@ -8,7 +8,7 @@
     "properties": {
       "agent": {
         "type": "string",
-        "description": "Name of the member chosen for the next turn, as it appears in the team member list (with or without '@'), or 'FINE' if the task is resolved."
+        "description": "Name of the member chosen for the next turn, as it appears in the team member list (with or without '@'), or 'END' if the task is resolved."
       },
       "reason": {
         "type": "string",

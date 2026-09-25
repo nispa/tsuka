@@ -9,6 +9,10 @@ import { ChatMessage, ToolCall, Vote } from '../../../core/types';
 import { ProtocolLogEntry, warnProtocolDegrade } from './common';
 import { sanitizeToolCallArguments } from '../../../tools/jsonRepair';
 import { logSink } from '../../../core/logSink';
+import { VOTES } from '../../../core/protocolTokens';
+
+// Text-marker fallback of cast_vote, built from the shared vocabulary (T14.25).
+const VOTE_MARKER_RE = new RegExp(`VOTE:\\s*(${VOTES.join('|')})`, 'i');
 
 /**
  * Hybrid team mode: discussion round (/call style, no tools) inserted
@@ -23,9 +27,9 @@ function extractCastVoteCall(toolCalls?: ToolCall[]): Vote | null {
     try {
       const raw = tc.function.arguments;
       const args = typeof raw === 'string' ? sanitizeToolCallArguments(raw).parsed : raw;
-      const vote = String(args?.vote || '').trim().toUpperCase();
-      if (vote === 'APPROVO' || vote === 'MODIFICARE' || vote === 'RIFIUTO') {
-        return vote as Vote;
+      const vote = String(args?.vote || '').trim().toUpperCase() as Vote;
+      if (VOTES.includes(vote)) {
+        return vote;
       }
     } catch {}
   }
@@ -77,14 +81,14 @@ No tools available — just your voice.`;
 
     if (votingEnabled) {
       sysPrompt += `\n\nAt the end, cast your vote by calling the 'cast_vote' tool with your vote and a reason.
-If for any reason you cannot call the tool, fall back to writing it on a separate line in this exact format instead:
-- VOTO: APPROVO — if work is satisfactory;
-- VOTO: MODIFICARE — if changes are needed (specify what);
-- VOTO: RIFIUTO — if work is wrong and must be redone.
+If for any reason you cannot call the tool, fall back to writing it on a separate line in this exact format instead (fixed English protocol tokens: never translate them, whatever language you are replying in):
+- VOTE: APPROVE — if work is satisfactory;
+- VOTE: REVISE — if changes are needed (specify what);
+- VOTE: REJECT — if work is wrong and must be redone.
 
 Example:
 "...analysis comment... I think the configuration is correct but tests are missing."
-VOTO: MODIFICARE — Add unit tests before deploy`;
+VOTE: REVISE — Add unit tests before deploy`;
     }
 
     const discMessages: ChatMessage[] = [{ role: 'system', content: sysPrompt }];
@@ -121,14 +125,14 @@ VOTO: MODIFICARE — Add unit tests before deploy`;
       const toolVote = extractCastVoteCall(toolCalls);
       if (toolVote) {
         turnLog?.push({ agent: memberChar.aiName, role: 'vote', protocol: 'tool_call', outcome: toolVote });
-        if (toolVote !== 'APPROVO') allApproved = false;
+        if (toolVote !== 'APPROVE') allApproved = false;
       } else if (responseText) {
-        const voteMatch = responseText.match(/VOTO:\s*(APPROVO|MODIFICARE|RIFIUTO)/i);
+        const voteMatch = responseText.match(VOTE_MARKER_RE);
         if (voteMatch) {
           const vote = voteMatch[1].toUpperCase();
           turnLog?.push({ agent: memberChar.aiName, role: 'vote', protocol: 'regex', outcome: vote });
           warnProtocolDegrade('cast_vote', memberChar.aiName, 'regex');
-          if (vote !== 'APPROVO') {
+          if (vote !== 'APPROVE') {
             allApproved = false;
           }
         } else {
@@ -154,10 +158,10 @@ VOTO: MODIFICARE — Add unit tests before deploy`;
 /** Checks whether all votes in messages are approvals */
 export function hasUnanimousApproval(messages: ChatMessage[]): boolean {
   const votingMessages = messages.filter(
-    (m) => m.role === 'user' && /VOTO:\s*(APPROVO|MODIFICARE|RIFIUTO)/i.test(m.content || '')
+    (m) => m.role === 'user' && VOTE_MARKER_RE.test(m.content || '')
   );
   if (votingMessages.length === 0) return false;
   return votingMessages.every(
-    (m) => /VOTO:\s*APPROVO/i.test(m.content || '')
+    (m) => (m.content || '').match(VOTE_MARKER_RE)?.[1].toUpperCase() === 'APPROVE'
   );
 }

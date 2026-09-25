@@ -31,8 +31,8 @@ export type TurnOutcome = 'completed' | 'interrupted' | 'continue' | 'failed';
  */
 export type ProtocolSource = 'tool_call' | 'regex' | 'fallback';
 
-/** Cast vote in a discussion round with voting enabled. */
-export type Vote = 'APPROVO' | 'MODIFICARE' | 'RIFIUTO';
+/** Cast vote in a discussion round with voting enabled (vocabulary owned by protocolTokens). */
+export type { Vote } from './protocolTokens';
 
 /** Objective acceptance criteria for iterative execution loops (T6.3). */
 export interface AcceptanceCriteria {

@@ -110,8 +110,8 @@ function main() {
     let seq = 0;
     for (let copy = 0; copy < 10; copy++) {
       for (const content of [
-        '[Goal] Pike: AGENTE: @developer — do work FINE',
-        '[Goal] Geordi: AGENTE: @developer — do work FINE',
+        '[Goal] Pike: AGENT: @developer — do work END',
+        '[Goal] Geordi: AGENT: @developer — do work END',
         'Global rule: use TypeScript strict mode.',
         'Project fact: port is 8080.'
       ]) {
@@ -146,7 +146,7 @@ function main() {
     store.addFact('Decision: the API listens on port 8080.', 'agent', { kind: 'decisione' });
     store.addFact('Project fact: the workspace jail blocks "..".', 'agent', { kind: 'fatto' });
     for (let i = 0; i < 6; i++) {
-      store.addFact(`[Goal] Pike: AGENTE: @developer — routing note ${i}`, 'goal_orchestrator', { kind: 'run' });
+      store.addFact(`[Goal] Pike: AGENT: @developer — routing note ${i}`, 'goal_orchestrator', { kind: 'run' });
     }
 
     const section = store.formatForPrompt(4);
@@ -173,14 +173,14 @@ function main() {
     const store = tmpStore();
     store.addFact('Decision: the harness targets local llama-server first.', 'agent', { kind: 'decisione' });
     for (let i = 0; i < 20; i++) {
-      store.addFact('[Goal] Pike: AGENTE: @developer — do work FINE', 'goal_orchestrator', { kind: 'run' });
+      store.addFact('[Goal] Pike: AGENT: @developer — do work END', 'goal_orchestrator', { kind: 'run' });
     }
     const section = store.formatForPrompt(10, 600);
     check('E1', section.length <= 600 + 80,
       `the section respects the character budget (${section.length} chars including the "more memories" footer)`);
     check('E2', section.includes('Decision: the harness targets local llama-server first.'),
       'and twenty repeats of one routing note can no longer squeeze the only real decision out of the prompt');
-    const noise = (section.match(/do work FINE/g) || []).length;
+    const noise = (section.match(/do work END/g) || []).length;
     check('E3', noise <= 1,
       `the repeated note appears at most once (${noise}) instead of twenty times`);
   }

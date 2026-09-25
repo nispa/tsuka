@@ -64,6 +64,7 @@ const suites = [
   'test_workspace_jail_canonical.ts',
   'test_mock_provider.ts',
   'test_protocol_parsing.ts',
+  'test_protocol_tokens.ts',
   'test_token_calibration.ts',
   'test_react_state.ts',
   'test_team_modes.ts',

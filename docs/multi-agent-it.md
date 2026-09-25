@@ -48,16 +48,17 @@ Il comando `/team` avvia una sessione operativa in cui gli agenti collaborano su
 Nella TUI, Tab completa l'identificativo del team dopo `/team`.
 
 ### Le 4 strategie di coordinamento (`mode`):
-1. **`orchestrated` (consigliata)**: un agente supervisore dedicato (`orchestrator`, es. `pike`) riceve un digest dei progressi ad ogni turno e decide chi far intervenire tramite il tool `route_next(agent, reason)` (o dichiara `FINE`).
+1. **`orchestrated` (consigliata)**: un agente supervisore dedicato (`orchestrator`, es. `pike`) riceve un digest dei progressi ad ogni turno e decide chi far intervenire tramite il tool `route_next(agent, reason)` (o dichiara `END`).
 2. **`round-robin`**: sequenza ciclica fissa tra i membri del team per un massimo di round (`teamMaxRounds`, default 3).
 3. **`pipeline`**: catena di montaggio a passaggio singolo in cui ogni stazione riceve l'output della precedente, lo perfeziona e lo trasmette alla successiva. Supporta criteri di accettazione oggettivi ([`src/core/loop.ts`](../src/core/loop.ts)).
 4. **`hybrid`**: impostando `discussionRounds > 0`, al termine di ogni round operativo si apre una discussione collegiale con votazione formale (`cast_vote`).
 
 ### Protocollo di coordinamento a tool call:
-* `report_status(status, summary, next_hint)`: chiude il turno dell'agente (`COMPLETATO`, `DA_CONTINUARE`, `FALLITO`).
+* `report_status(status, summary, next_hint)`: chiude il turno dell'agente (`COMPLETED`, `CONTINUE`, `FAILED`).
 * `route_next(agent, reason)`: utilizzato dall'orchestratore per indirizzare il turno successivo.
-* `cast_vote(vote, reason)`: voto di approvazione nelle discussioni di squadra (`APPROVO`, `MODIFICARE`, `RIFIUTO`).
-* *Risoluzione gerarchica*: **Tool call → Regex testuale di fallback (`STATO:`) → Default di sicurezza** (con segnalazione visiva di degrado).
+* `cast_vote(vote, reason)`: voto di approvazione nelle discussioni di squadra (`APPROVE`, `REVISE`, `REJECT`).
+* *Risoluzione gerarchica*: **Tool call → Regex testuale di fallback (`STATUS:`) → Default di sicurezza** (con segnalazione visiva di degrado).
+* *Vocabolario del protocollo*: ogni token (`STATUS:`, `VOTE:`, `AGENT:`, `PARALLEL`, `END` e i valori enum sopra) è un identificatore inglese fisso, definito una sola volta in `src/core/protocolTokens.ts` e mai tradotto, qualunque sia la lingua in cui rispondono gli agenti (T14.25).
 
 ### Blackboard di Run (`post_note` / `read_notes`):
 Spazio temporaneo condiviso tra i membri di uno stesso run (isolato tramite `AsyncLocalStorage`) per scambiare decisioni intermedie, note e artefatti senza inquinare la memoria a lungo termine.
@@ -75,18 +76,18 @@ Il comando `/goal` analizza l'obiettivo fornito dall'utente e **assembla dinamic
 ### 1. Fase di Pianificazione (Orchestrator Planner)
 L'orchestratore analizza il catalogo dei personaggi e genera un piano strutturato:
 ```
-AGENTE: @una — Progetta l'architettura dei moduli e i contratti TypeScript
-PARALLELO:
-AGENTE: @geordi — Sviluppa l'implementazione del core
-AGENTE: @data — Redige la documentazione tecnica
-FINE PARALLELO
-AGENTE: @worf — Esegue l'audit di sicurezza sul codice
-AGENTE: @pike — Revisiona e valida il risultato finale
-FINE
+AGENT: @una — Progetta l'architettura dei moduli e i contratti TypeScript
+PARALLEL:
+AGENT: @geordi — Sviluppa l'implementazione del core
+AGENT: @data — Redige la documentazione tecnica
+END PARALLEL
+AGENT: @worf — Esegue l'audit di sicurezza sul codice
+AGENT: @pike — Revisiona e valida il risultato finale
+END
 ```
 
-### 2. Esecuzione e Concorrenza nei Blocchi `PARALLELO`
-* I sotto-compiti indipendenti all'interno dei blocchi `PARALLELO` vengono eseguiti concorrentemente con `Promise.all`.
+### 2. Esecuzione e Concorrenza nei Blocchi `PARALLEL`
+* I sotto-compiti indipendenti all'interno dei blocchi `PARALLEL` vengono eseguiti concorrentemente con `Promise.all`.
 * **Workspace di staging isolati**: ogni ramo parallelo lavora in una sandbox temporanea (`parallelWorkspace.ts`). A fine blocco le modifiche vengono unite segnalando eventuali conflitti su file modificati contemporaneamente.
 * **Coda unificata dei permessi**: le richieste interattive (`[y/N]`) vengono serializzate in ordine di arrivo.
 

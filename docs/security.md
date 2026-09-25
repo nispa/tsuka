@@ -90,7 +90,7 @@ TSUKA automatically scrubs sensitive credentials from all communication pipeline
 
 ## ⚡ 4. Serialized Permission Queue (FIFO Prompt Queue)
 
-In concurrent multi-agent or parallel branch workflows (`PARALLELO` blocks in `/goal`):
+In concurrent multi-agent or parallel branch workflows (`PARALLEL` blocks in `/goal`):
 * Multiple concurrent agents may request permissions simultaneously.
 * The `PermissionManager` sequentially chains interactive prompts through an asynchronous FIFO queue (`enqueuePrompt`).
 * **Terminal Stream Protection**: Prompts appear one at a time, eliminating stdin collisions and double-buffered TUI modal corruption.

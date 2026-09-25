@@ -312,19 +312,19 @@ La gestione del team collaborativo supporta tre strategie principali:
 | **Momento della decisione** | Dinamica, dopo ogni singolo turno. | Globale, all'inizio del workflow. |
 | **Output prodotto** | L'agente designato per il turno successivo. | Un piano di lavoro strutturato in step sequenziali/paralleli. |
 | **Selezione agenti** | Limitata ai membri definiti nel team JSON. | Dinamica, selezionata tra **tutti** i personaggi installati. |
-| **Parallelismo** | No (sequenziale, un turno alla volta). | Sì, supporta blocchi `PARALLELO` concorrenti. |
+| **Parallelismo** | No (sequenziale, un turno alla volta). | Sì, supporta blocchi `PARALLEL` concorrenti. |
 | **Rilavorazione** | Progressiva turno dopo turno. | Verdetto del supervisore finale con riapertura mirata degli step. |
 
 #### Protocollo di comunicazione tra agenti
 Il coordinamento operativo si affida a tre tool dedicati con livello `SAFE`:
-* `report_status(status, summary, next_hint)`: notifica lo stato del turno (`COMPLETATO`, `DA_CONTINUARE`, `FALLITO`).
-* `route_next(agent, reason)`: utilizzato dall'orchestratore per designare il prossimo agente o dichiarare la `FINE`.
-* `cast_vote(vote, reason)`: impiegato nelle discussioni collegiali per approvare o richiedere modifiche (`APPROVO`, `MODIFICARE`, `RIFIUTO`).
+* `report_status(status, summary, next_hint)`: notifica lo stato del turno (`COMPLETED`, `CONTINUE`, `FAILED`).
+* `route_next(agent, reason)`: utilizzato dall'orchestratore per designare il prossimo agente o dichiarare la fine (`END`).
+* `cast_vote(vote, reason)`: impiegato nelle discussioni collegiali per approvare o richiedere modifiche (`APPROVE`, `REVISE`, `REJECT`).
 
 La risoluzione segue una gerarchia rigorosa: **Tool call esplicita → Parsing regex del testo (fallback) → Default di sicurezza**. Qualsiasi degradazione al livello di fallback genera un avviso visibile a terminale e viene tracciata nei log del workflow.
 
 #### Concorrenza e Blackboard di sessione
-Nei blocchi `PARALLELO` di `/goal` (eseguiti tramite `Promise.all` che comunque io ho disabilitato perché uso una sola GPU locale):
+Nei blocchi `PARALLEL` di `/goal` (eseguiti tramite `Promise.all` che comunque io ho disabilitato perché uso una sola GPU locale):
 * **Coda unificata dei permessi**: le richieste di autorizzazione interattiva vengono accodate ed elaborate una alla volta in modo deterministico.
 * **Workspace isolati di staging**: ogni ramo parallelo opera in una cartella temporanea dedicata isolata tramite `AsyncLocalStorage` (`withWorkspaceOverride`), riconciliando le modifiche al termine e segnalando eventuali conflitti su file condivisi.
 * **Blackboard di run (`blackboard.ts`)**: uno spazio condiviso temporaneo accessibile tramite i tool `post_note` e `read_notes` per consentire agli agenti dello stesso run di scambiarsi appunti, decisioni e artefatti intermedi senza inquinare la memoria a lungo termine.

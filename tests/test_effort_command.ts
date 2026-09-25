@@ -284,7 +284,7 @@ async function main() {
       setAskMode(true); // vincolo: deve degradare comunque a log, MAI a un prompt
 
       const provider = new MockLLMProvider([
-        { content: 'Fatto.\nSTATO: COMPLETATO' }
+        { content: 'Fatto.\nSTATUS: COMPLETED' }
       ]);
       const ctx = buildMockCtx(provider);
       const team = { members: [DEV] }; // developer → reasoningEffort 'medium' (roles/developer.json)
@@ -320,7 +320,7 @@ async function main() {
     setEffortPin('low');
     try {
       const provider = new MockLLMProvider([
-        { content: 'Fatto.\nSTATO: COMPLETATO' }
+        { content: 'Fatto.\nSTATUS: COMPLETED' }
       ]);
       const ctx = buildMockCtx(provider);
       const team = { members: [DEV] };

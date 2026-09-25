@@ -167,17 +167,18 @@ harness/
 
 ### 2. Coordination Protocol Tools (T2.1)
 In collaborative multi-agent workflows (`/team`, `/goal`), coordination uses structured tools:
-* `report_status(status, summary, next_hint)` — `COMPLETATO`, `DA_CONTINUARE`, `FALLITO` (`FALLITO` halts execution chain).
-* `route_next(agent, reason)` — Dynamic orchestrator routing (`@agent_name` or `FINE`).
-* `cast_vote(vote, reason)` — Formal voting during hybrid discussion rounds (`APPROVO`, `MODIFICARE`, `RIFIUTO`).
+* `report_status(status, summary, next_hint)` — `COMPLETED`, `CONTINUE`, `FAILED` (`FAILED` halts execution chain).
+* `route_next(agent, reason)` — Dynamic orchestrator routing (`@agent_name` or `END`).
+* `cast_vote(vote, reason)` — Formal voting during hybrid discussion rounds (`APPROVE`, `REVISE`, `REJECT`).
 * **Resolution Order**: `Tool Call` $\to$ `Regex Text Marker (Fallback)` $\to$ `Safety Default` (with visual degradation warnings and logging to `workflow_logs/`).
+* **Vocabulary**: all protocol tokens (enum values and the `STATUS:` / `VOTE:` / `AGENT:` / `PARALLEL` / `END` markers) are fixed English identifiers owned by `src/core/protocolTokens.ts`; parsers build their regexes from it and `tests/test_protocol_tokens.ts` pins the schema enums to it (T14.25).
 
 ### 3. State Management: Three Strict Levels
 1. **Turn History (RAM)**: Ephemeral exchange messages and raw tool outputs within the active turn. Subject to pruning.
 2. **Run Blackboard (`blackboard.ts`)**: Shared scratchpad across members of a **single workflow run** (`/team` or `/goal`), isolated via `AsyncLocalStorage`. Read/written via `post_note` and `read_notes`. Exported into the run's JSON log report and destroyed on completion.
 3. **Long-Term Persistent Memory (`memory/memory.json`)**: Cross-session knowledge store shared by all agents. Eviction prioritizes transient execution logs while protecting lessons and permanently preserving `pinned` facts.
 
-### 4. Parallel Execution in `/goal` (`PARALLELO` blocks)
+### 4. Parallel Execution in `/goal` (`PARALLEL` blocks)
 * Independent branches execute concurrently via `Promise.all`.
 * **Staging Sandbox**: Each branch writes to an isolated folder via `AsyncLocalStorage` (`parallelWorkspace.ts`). On block exit, changes are merged into the real workspace with conflict detection (no silent overwrites).
 * **Serialized UI Prompts**: `PermissionManager` queues interactive prompts sequentially (`enqueuePrompt`) so parallel branches never collide on the terminal.

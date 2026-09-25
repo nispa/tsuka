@@ -10,7 +10,7 @@
  *     tool, attraverso lo stack reale Agent → ToolRegistry → tool (MockLLMProvider
  *     + runRoundRobin, come test_team_modes.ts), non chiamando Blackboard a mano;
  * (b) la nota compare nel JSON scritto in workflow_logs/ (writeWorkflowLog);
- * (c) due run concorrenti (Promise.all, come il blocco PARALLELO di /goal) non si
+ * (c) due run concorrenti (Promise.all, come il blocco PARALLEL di /goal) non si
  *     vedono le note a vicenda — prova diretta dell'isolamento via AsyncLocalStorage.
  *
  * Le funzioni di modalità (runRoundRobin) sono chiamate direttamente, come in
@@ -66,9 +66,9 @@ async function main() {
   {
     const provider = new MockLLMProvider([
       { toolCalls: [mockToolCall('post_note', { key: 'decisione-db', value: 'Uso SQLite per il db' })] }, // il primo agente: scrive
-      { content: 'Nota lasciata.\nSTATO: DA_CONTINUARE' },                                                 // il primo agente: chiude il turno (non completo)
+      { content: 'Nota lasciata.\nSTATUS: CONTINUE' },                                                 // il primo agente: chiude il turno (non completo)
       { toolCalls: [mockToolCall('read_notes', {})] },                                                     // il secondo agente: legge
-      { content: 'Vista la nota di il primo agente.\nSTATO: COMPLETATO' },                                           // il secondo agente: chiude
+      { content: 'Vista la nota di il primo agente.\nSTATUS: COMPLETED' },                                           // il secondo agente: chiude
     ]);
     const ctx = buildMockCtx(provider);
     const team = { members: [WRITER, READER] };
@@ -82,7 +82,7 @@ async function main() {
     );
 
     check('BB-a-1', r.completed === true && r.roundsDone === 1, `round-robin completato al round 1 (completed=${r.completed}, roundsDone=${r.roundsDone})`);
-    check('BB-a-2', provider.remaining === 0, 'copione consumato interamente: 2 chiamate per il primo agente (post_note + STATO) + 2 per il secondo agente (read_notes + STATO)');
+    check('BB-a-2', provider.remaining === 0, 'copione consumato interamente: 2 chiamate per il primo agente (post_note + STATUS) + 2 per il secondo agente (read_notes + STATUS)');
 
     // callLog[3] = seconda chiamata LLM di il secondo agente (dopo l'esecuzione di
     // read_notes): la history inviata al modello deve includere il messaggio
@@ -154,11 +154,11 @@ async function main() {
   {
     const providerX = new MockLLMProvider([
       { toolCalls: [mockToolCall('post_note', { key: 'segreto-x', value: 'Solo il run X conosce questo' })] },
-      { content: 'Fatto.\nSTATO: COMPLETATO' },
+      { content: 'Fatto.\nSTATUS: COMPLETED' },
     ]);
     const providerY = new MockLLMProvider([
       { toolCalls: [mockToolCall('read_notes', {})] },
-      { content: 'Nessuna nota vista.\nSTATO: COMPLETATO' },
+      { content: 'Nessuna nota vista.\nSTATUS: COMPLETED' },
     ]);
     const ctxX = buildMockCtx(providerX);
     const ctxY = buildMockCtx(providerY);
@@ -172,7 +172,7 @@ async function main() {
     check('BB-c-runid', runIdX !== runIdY, 'i due run generano runId distinti');
 
     // Due run distinti eseguiti in Promise.all, ognuno nel proprio Blackboard.withRun:
-    // stesso schema del blocco PARALLELO di /goal (branch diversi in Promise.all
+    // stesso schema del blocco PARALLEL di /goal (branch diversi in Promise.all
     // nello stesso processo), qui applicato a due workflow indipendenti.
     const [resX, resY] = await Promise.all([
       Blackboard.withRun(runIdX, () => runRoundRobin(ctxX, teamX, 'compito segreto X', 1, interruptX, seedTeamMessages('compito segreto X'))),

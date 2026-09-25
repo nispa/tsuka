@@ -3,7 +3,7 @@
  *
  * The TUI's `/memory` picker labeled every fact with a ~40-char slice of raw `content` and a
  * date that was actually just a time (`toLocaleTimeString()`, no day/month/year) — most facts
- * share a long common prefix (`[Goal] …`, `AGENTE: …`), so the part that would distinguish one
+ * share a long common prefix (`[Goal] …`, `AGENT: …`), so the part that would distinguish one
  * from another was exactly what got cut, and two facts saved on different days at a similar
  * hour looked identical. Fixed in three steps:
  *

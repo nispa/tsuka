@@ -6,8 +6,8 @@
  * MockLLMProvider iniettato tramite CommandCtx (possibile da T1.1: CommandCtx.provider
  * è tipato su ILLMProvider, non sulla classe concreta LLMProvider).
  *
- * NOTA su STATO: FALLITO — il piano di pipeline (PLANNING.md) prevedeva uno stop
- * anticipato su "STATO: FALLITO", ma non è implementato da nessuna parte nel codice
+ * NOTA su STATUS: FAILED — il piano di pipeline (PLANNING.md) prevedeva uno stop
+ * anticipato su "STATUS: FAILED", ma non è implementato da nessuna parte nel codice
  * attuale (nessuna funzione lo controlla). Lo scenario di rottura della pipeline
  * qui sotto riflette il comportamento REALE: nessuna stazione completa → la
  * pipeline scorre fino in fondo e ritorna completed:false. Segnalato per T2.1.
@@ -66,24 +66,24 @@ async function main() {
 
   // ── ROUND-ROBIN ──────────────────────────────────────────────────────────
 
-  // T1: felice — STATO: COMPLETATO al primo turno → early stop, secondo membro mai chiamato
+  // T1: felice — STATUS: COMPLETED al primo turno → early stop, secondo membro mai chiamato
   {
     const provider = new MockLLMProvider([
-      { content: 'Ho controllato tutto.\nSTATO: COMPLETATO' }
+      { content: 'Ho controllato tutto.\nSTATUS: COMPLETED' }
     ]);
     const ctx = buildMockCtx(provider);
     const team = { members: [WORKER, SECOND] };
     const interrupt = new GenerationInterrupt();
     const r = await runRoundRobin(ctx, team, 'verifica il sistema', 3, interrupt, seedTeamMessages('verifica il sistema'));
     check('RR1a', r.completed === true && r.roundsDone === 1, `early stop al round 1 (completed=${r.completed}, roundsDone=${r.roundsDone})`);
-    check('RR1b', provider.remaining === 0, 'script consumato esattamente 1 volta: il secondo agente non è mai stato chiamato dopo il COMPLETATO del primo agente');
+    check('RR1b', provider.remaining === 0, 'script consumato esattamente 1 volta: il secondo agente non è mai stato chiamato dopo il COMPLETED del primo agente');
   }
 
   // T2: rottura — nessun marker in nessun round → stop al max round, non completato
   {
     const provider = new MockLLMProvider([
-      { content: 'Lavoro in corso.\nSTATO: DA_CONTINUARE' },
-      { content: 'Ancora in corso.\nSTATO: DA_CONTINUARE' }
+      { content: 'Lavoro in corso.\nSTATUS: CONTINUE' },
+      { content: 'Ancora in corso.\nSTATUS: CONTINUE' }
     ]);
     const ctx = buildMockCtx(provider);
     const team = { members: [WORKER] };
@@ -97,8 +97,8 @@ async function main() {
   // T3: felice — l'orchestrator sceglie un membro valido, il routing viene seguito
   {
     const provider = new MockLLMProvider([
-      { content: `AGENTE: @${WORKER}` },                    // decisione dell'orchestrator
-      { content: 'Fatto.\nSTATO: COMPLETATO' }           // turno del primo agente
+      { content: `AGENT: @${WORKER}` },                    // decisione dell'orchestrator
+      { content: 'Fatto.\nSTATUS: COMPLETED' }           // turno del primo agente
     ]);
     const ctx = buildMockCtx(provider);
     const team = { members: [LEAD, WORKER, SECOND], orchestrator: LEAD };
@@ -110,8 +110,8 @@ async function main() {
   // T4: rottura — risposta dell'orchestrator non parseabile → fallback round-robin, con warning visibile
   {
     const provider = new MockLLMProvider([
-      { content: 'Non saprei proprio chi dovrebbe continuare qui.' }, // orchestrator: né AGENTE: né FINE
-      { content: 'Ok, procedo io.\nSTATO: COMPLETATO' }               // turno del fallback (primo agente)
+      { content: 'Non saprei proprio chi dovrebbe continuare qui.' }, // orchestrator: né AGENT: né END
+      { content: 'Ok, procedo io.\nSTATUS: COMPLETED' }               // turno del fallback (primo agente)
     ]);
     const ctx = buildMockCtx(provider);
     const team = { members: [LEAD, WORKER], orchestrator: LEAD };
@@ -129,11 +129,11 @@ async function main() {
 
   // ── PIPELINE ─────────────────────────────────────────────────────────────
 
-  // T5: felice — catena completa, l'ultima stazione dichiara COMPLETATO
+  // T5: felice — catena completa, l'ultima stazione dichiara COMPLETED
   {
     const provider = new MockLLMProvider([
-      { content: 'Ho iniziato il lavoro.\nSTATO: DA_CONTINUARE' }, // stazione 1
-      { content: 'Ho finito tutto.\nSTATO: COMPLETATO' }           // stazione 2
+      { content: 'Ho iniziato il lavoro.\nSTATUS: CONTINUE' }, // stazione 1
+      { content: 'Ho finito tutto.\nSTATUS: COMPLETED' }           // stazione 2
     ]);
     const ctx = buildMockCtx(provider);
     const team = { members: [WORKER, SECOND] };
@@ -146,11 +146,11 @@ async function main() {
   }
 
   // T6: rottura — nessuna stazione completa → la pipeline scorre fino in fondo, completed:false
-  // (STATO: FALLITO non è implementato: vedi nota in testa al file)
+  // (STATUS: FAILED non è implementato: vedi nota in testa al file)
   {
     const provider = new MockLLMProvider([
-      { content: 'Parzialmente fatto.\nSTATO: DA_CONTINUARE' },
-      { content: 'Ancora parziale.\nSTATO: DA_CONTINUARE' }
+      { content: 'Parzialmente fatto.\nSTATUS: CONTINUE' },
+      { content: 'Ancora parziale.\nSTATUS: CONTINUE' }
     ]);
     const ctx = buildMockCtx(provider);
     const team = { members: [WORKER, SECOND] };
@@ -159,7 +159,7 @@ async function main() {
     check(
       'PL2',
       r.completed === false && r.roundsDone === 2,
-      `[gap PLANNING.md] nessun marker STATO: FALLITO gestito: la pipeline scorre comunque fino in fondo (completed=${r.completed}, roundsDone=${r.roundsDone})`
+      `[gap PLANNING.md] nessun marker STATUS: FAILED gestito: la pipeline scorre comunque fino in fondo (completed=${r.completed}, roundsDone=${r.roundsDone})`
     );
   }
 
@@ -168,22 +168,22 @@ async function main() {
   // T7: felice — unanimità di voto dopo il lavoro → completato
   {
     const provider = new MockLLMProvider([
-      { content: 'Ho lavorato.\nSTATO: DA_CONTINUARE' },     // turno di lavoro del primo agente
-      { content: '"Ottimo lavoro."\nVOTO: APPROVO' }          // discussione/voto del primo agente
+      { content: 'Ho lavorato.\nSTATUS: CONTINUE' },     // turno di lavoro del primo agente
+      { content: '"Ottimo lavoro."\nVOTE: APPROVE' }          // discussione/voto del primo agente
     ]);
     const ctx = buildMockCtx(provider);
     const team = { members: [WORKER], discussionRounds: 1, voting: true };
     const interrupt = new GenerationInterrupt();
     const r = await runRoundRobin(ctx, team, 'task con voto', 2, interrupt, seedTeamMessages('task con voto'));
-    check('HV1', r.completed === true && r.roundsDone === 1, `voto unanime (APPROVO) → completato dopo il round di discussione (completed=${r.completed}, roundsDone=${r.roundsDone})`);
+    check('HV1', r.completed === true && r.roundsDone === 1, `voto unanime (APPROVE) → completato dopo il round di discussione (completed=${r.completed}, roundsDone=${r.roundsDone})`);
   }
 
-  // T8: rottura — un MODIFICARE rompe l'unanimità → turno di lavoro extra
+  // T8: rottura — un REVISE rompe l'unanimità → turno di lavoro extra
   {
     const provider = new MockLLMProvider([
-      { content: 'Prima bozza.\nSTATO: DA_CONTINUARE' },        // round 1: lavoro
-      { content: '"Manca qualcosa."\nVOTO: MODIFICARE' },       // round 1: voto (non unanime)
-      { content: 'Corretto.\nSTATO: COMPLETATO' }                // round 2: lavoro extra, completa
+      { content: 'Prima bozza.\nSTATUS: CONTINUE' },        // round 1: lavoro
+      { content: '"Manca qualcosa."\nVOTE: REVISE' },       // round 1: voto (non unanime)
+      { content: 'Corretto.\nSTATUS: COMPLETED' }                // round 2: lavoro extra, completa
     ]);
     const ctx = buildMockCtx(provider);
     const team = { members: [WORKER], discussionRounds: 1, voting: true };
@@ -192,7 +192,7 @@ async function main() {
     check(
       'HV2',
       r.completed === true && r.roundsDone === 2,
-      `MODIFICARE al round 1 forza un turno extra (round 2) che completa (completed=${r.completed}, roundsDone=${r.roundsDone})`
+      `REVISE al round 1 forza un turno extra (round 2) che completa (completed=${r.completed}, roundsDone=${r.roundsDone})`
     );
   }
 
@@ -203,24 +203,24 @@ async function main() {
 
   console.log('\n--- Protocollo a tool call (T2.1) ---');
 
-  // RRT1: round-robin, felice — report_status(COMPLETATO) via tool call, nessun marker testuale
+  // RRT1: round-robin, felice — report_status(COMPLETED) via tool call, nessun marker testuale
   {
     const provider = new MockLLMProvider([
-      { toolCalls: [mockToolCall('report_status', { status: 'COMPLETATO', summary: 'Verificato tutto.' })] }, // turno 1: tool call
+      { toolCalls: [mockToolCall('report_status', { status: 'COMPLETED', summary: 'Verificato tutto.' })] }, // turno 1: tool call
       { content: 'Fatto, stato registrato.' } // turno 2: risposta finale dopo l'esecuzione del tool
     ]);
     const ctx = buildMockCtx(provider);
     const team = { members: [WORKER, SECOND] };
     const interrupt = new GenerationInterrupt();
     const r = await runRoundRobin(ctx, team, 'verifica il sistema', 3, interrupt, seedTeamMessages('verifica il sistema'));
-    check('RRT1a', r.completed === true && r.roundsDone === 1, `report_status(COMPLETATO) via tool call → early stop (completed=${r.completed}, roundsDone=${r.roundsDone})`);
+    check('RRT1a', r.completed === true && r.roundsDone === 1, `report_status(COMPLETED) via tool call → early stop (completed=${r.completed}, roundsDone=${r.roundsDone})`);
     check('RRT1b', provider.remaining === 0, 'il secondo agente non è mai stato chiamato: la tool call ha chiuso il turno del primo agente, non un marker testuale');
   }
 
-  // RRT2: round-robin, rottura — solo testo (marker STATO:) → fallback a regex, degrado segnalato in giallo
+  // RRT2: round-robin, rottura — solo testo (marker STATUS:) → fallback a regex, degrado segnalato in giallo
   {
     const provider = new MockLLMProvider([
-      { content: 'Fatto tutto.\nSTATO: COMPLETATO' }
+      { content: 'Fatto tutto.\nSTATUS: COMPLETED' }
     ]);
     const ctx = buildMockCtx(provider);
     const team = { members: [WORKER] };
@@ -228,15 +228,15 @@ async function main() {
     const { result: r, logs } = await captureLogs(() =>
       runRoundRobin(ctx, team, 'task testuale', 2, interrupt, seedTeamMessages('task testuale'))
     );
-    check('RRT2a', r.completed === true && r.roundsDone === 1, `nessuna tool call: fallback a regex STATO: COMPLETATO → comunque completato (completed=${r.completed})`);
+    check('RRT2a', r.completed === true && r.roundsDone === 1, `nessuna tool call: fallback a regex STATUS: COMPLETED → comunque completato (completed=${r.completed})`);
     check('RRT2b', logs.some((l) => l.includes("non ha usato la tool call 'report_status'") || l.includes("did not invoke 'report_status'")), 'caduta di livello a regex segnalata in UI (riga gialla)');
   }
 
-  // ORT1: orchestrated, felice — route_next(@${WORKER}) via tool call, nessun marker AGENTE: testuale
+  // ORT1: orchestrated, felice — route_next(@${WORKER}) via tool call, nessun marker AGENT: testuale
   {
     const provider = new MockLLMProvider([
       { toolCalls: [mockToolCall('route_next', { agent: WORKER, reason: 'È il più adatto al compito.' })] }, // decisione orchestrator via tool
-      { content: 'Fatto.\nSTATO: COMPLETATO' } // turno del primo agente
+      { content: 'Fatto.\nSTATUS: COMPLETED' } // turno del primo agente
     ]);
     const ctx = buildMockCtx(provider);
     const team = { members: [LEAD, WORKER, SECOND], orchestrator: LEAD };
@@ -245,11 +245,11 @@ async function main() {
     check('ORT1', r.completed === true && r.roundsDone === 1, `routing via tool call route_next verso @${WORKER} seguito e completato (completed=${r.completed}, roundsDone=${r.roundsDone})`);
   }
 
-  // ORT2: orchestrated, rottura — solo testo (AGENTE: @nome) → fallback a regex, degrado segnalato
+  // ORT2: orchestrated, rottura — solo testo (AGENT: @nome) → fallback a regex, degrado segnalato
   {
     const provider = new MockLLMProvider([
-      { content: `AGENTE: @${WORKER}` },
-      { content: 'Fatto.\nSTATO: COMPLETATO' }
+      { content: `AGENT: @${WORKER}` },
+      { content: 'Fatto.\nSTATUS: COMPLETED' }
     ]);
     const ctx = buildMockCtx(provider);
     const team = { members: [LEAD, WORKER], orchestrator: LEAD };
@@ -257,27 +257,27 @@ async function main() {
     const { result: r, logs } = await captureLogs(() =>
       runOrchestrated(ctx, team, 'compito testuale', 1, interrupt, seedTeamMessages('compito testuale'))
     );
-    check('ORT2a', r.completed === true, `nessuna tool call route_next: fallback a regex AGENTE: @${WORKER} → comunque instradato (completed=${r.completed})`);
+    check('ORT2a', r.completed === true, `nessuna tool call route_next: fallback a regex AGENT: @${WORKER} → comunque instradato (completed=${r.completed})`);
     check('ORT2b', logs.some((l) => l.includes("non ha usato la tool call 'route_next'") || l.includes("did not invoke 'route_next'")), 'caduta di livello a regex segnalata in UI (riga gialla)');
   }
 
-  // PLT1: pipeline, felice — report_status(COMPLETATO) via tool call ferma la catena alla prima stazione
+  // PLT1: pipeline, felice — report_status(COMPLETED) via tool call ferma la catena alla prima stazione
   {
     const provider = new MockLLMProvider([
-      { toolCalls: [mockToolCall('report_status', { status: 'COMPLETATO', summary: 'Fatto tutto.' })] },
+      { toolCalls: [mockToolCall('report_status', { status: 'COMPLETED', summary: 'Fatto tutto.' })] },
       { content: 'Registrato.' }
     ]);
     const ctx = buildMockCtx(provider);
     const team = { members: [WORKER, SECOND] };
     const interrupt = new GenerationInterrupt();
     const r = await runPipeline(ctx, team, 'catena di lavoro', interrupt, seedTeamMessages('catena di lavoro'));
-    check('PLT1', r.completed === true && r.roundsDone === 1, `report_status(COMPLETATO) via tool call ferma la pipeline alla stazione 1 (completed=${r.completed}, roundsDone=${r.roundsDone})`);
+    check('PLT1', r.completed === true && r.roundsDone === 1, `report_status(COMPLETED) via tool call ferma la pipeline alla stazione 1 (completed=${r.completed}, roundsDone=${r.roundsDone})`);
   }
 
-  // PLT2: pipeline — report_status(FALLITO) via tool call interrompe la catena (gap T1.2/PLANNING.md ora chiuso)
+  // PLT2: pipeline — report_status(FAILED) via tool call interrompe la catena (gap T1.2/PLANNING.md ora chiuso)
   {
     const provider = new MockLLMProvider([
-      { toolCalls: [mockToolCall('report_status', { status: 'FALLITO', summary: 'Impossibile procedere: dipendenza mancante.' })] },
+      { toolCalls: [mockToolCall('report_status', { status: 'FAILED', summary: 'Impossibile procedere: dipendenza mancante.' })] },
       { content: 'Segnalato il fallimento.' }
     ]);
     const ctx = buildMockCtx(provider);
@@ -287,15 +287,15 @@ async function main() {
     check(
       'PLT2',
       r.completed === false && r.failed === true && r.roundsDone === 1,
-      `[T2.1] STATO: FALLITO via report_status ora ferma la pipeline (gap PLANNING.md chiuso): completed=${r.completed}, failed=${r.failed}, roundsDone=${r.roundsDone}, secondo agente mai chiamato`
+      `[T2.1] STATUS: FAILED via report_status ora ferma la pipeline (gap PLANNING.md chiuso): completed=${r.completed}, failed=${r.failed}, roundsDone=${r.roundsDone}, secondo agente mai chiamato`
     );
   }
 
-  // PLT3: pipeline, rottura — solo testo (STATO:) su entrambe le stazioni → fallback a regex, degrado segnalato
+  // PLT3: pipeline, rottura — solo testo (STATUS:) su entrambe le stazioni → fallback a regex, degrado segnalato
   {
     const provider = new MockLLMProvider([
-      { content: 'Parzialmente fatto.\nSTATO: DA_CONTINUARE' },
-      { content: 'Ho concluso tutto.\nSTATO: COMPLETATO' }
+      { content: 'Parzialmente fatto.\nSTATUS: CONTINUE' },
+      { content: 'Ho concluso tutto.\nSTATUS: COMPLETED' }
     ]);
     const ctx = buildMockCtx(provider);
     const team = { members: [WORKER, SECOND] };
@@ -308,24 +308,24 @@ async function main() {
     check('PLT3b', degradeCount === 2, `caduta di livello segnalata per entrambe le stazioni (trovate ${degradeCount} righe)`);
   }
 
-  // HVT1: hybrid/voting, felice — cast_vote(APPROVO) via tool call, nessun marker VOTO: testuale
+  // HVT1: hybrid/voting, felice — cast_vote(APPROVE) via tool call, nessun marker VOTE: testuale
   {
     const provider = new MockLLMProvider([
-      { content: 'Ho lavorato.\nSTATO: DA_CONTINUARE' },
-      { toolCalls: [mockToolCall('cast_vote', { vote: 'APPROVO', reason: 'Ottimo lavoro.' })] }
+      { content: 'Ho lavorato.\nSTATUS: CONTINUE' },
+      { toolCalls: [mockToolCall('cast_vote', { vote: 'APPROVE', reason: 'Ottimo lavoro.' })] }
     ]);
     const ctx = buildMockCtx(provider);
     const team = { members: [WORKER], discussionRounds: 1, voting: true };
     const interrupt = new GenerationInterrupt();
     const r = await runRoundRobin(ctx, team, 'task con voto', 2, interrupt, seedTeamMessages('task con voto'));
-    check('HVT1', r.completed === true && r.roundsDone === 1, `voto APPROVO via tool call cast_vote → unanimità → completato (completed=${r.completed}, roundsDone=${r.roundsDone})`);
+    check('HVT1', r.completed === true && r.roundsDone === 1, `voto APPROVE via tool call cast_vote → unanimità → completato (completed=${r.completed}, roundsDone=${r.roundsDone})`);
   }
 
-  // HVT2: hybrid/voting, rottura — solo testo (VOTO:) → fallback a regex, degrado segnalato
+  // HVT2: hybrid/voting, rottura — solo testo (VOTE:) → fallback a regex, degrado segnalato
   {
     const provider = new MockLLMProvider([
-      { content: 'Ho lavorato.\nSTATO: DA_CONTINUARE' },
-      { content: '"Ottimo lavoro."\nVOTO: APPROVO' }
+      { content: 'Ho lavorato.\nSTATUS: CONTINUE' },
+      { content: '"Ottimo lavoro."\nVOTE: APPROVE' }
     ]);
     const ctx = buildMockCtx(provider);
     const team = { members: [WORKER], discussionRounds: 1, voting: true };
@@ -333,16 +333,16 @@ async function main() {
     const { result: r, logs } = await captureLogs(() =>
       runRoundRobin(ctx, team, 'task con voto testuale', 2, interrupt, seedTeamMessages('task con voto testuale'))
     );
-    check('HVT2a', r.completed === true && r.roundsDone === 1, `nessuna tool call cast_vote: fallback a regex VOTO: APPROVO → comunque unanime (completed=${r.completed})`);
+    check('HVT2a', r.completed === true && r.roundsDone === 1, `nessuna tool call cast_vote: fallback a regex VOTE: APPROVE → comunque unanime (completed=${r.completed})`);
     check('HVT2b', logs.some((l) => l.includes("non ha usato la tool call 'cast_vote'") || l.includes("did not invoke 'cast_vote'")), 'caduta di livello a regex segnalata in UI (riga gialla)');
   }
 
-  // PLT4: pipeline con acceptance e retry loop (T6.4) — tent. 1 fallisce (FALLITO), tent. 2 passa
+  // PLT4: pipeline con acceptance e retry loop (T6.4) — tent. 1 fallisce (FAILED), tent. 2 passa
   {
     const provider = new MockLLMProvider([
-      { toolCalls: [mockToolCall('report_status', { status: 'FALLITO', summary: 'Prima prova fallita' })] },
+      { toolCalls: [mockToolCall('report_status', { status: 'FAILED', summary: 'Prima prova fallita' })] },
       { content: 'Errore nel turno.' },
-      { toolCalls: [mockToolCall('report_status', { status: 'COMPLETATO', summary: 'Seconda prova superata' })] },
+      { toolCalls: [mockToolCall('report_status', { status: 'COMPLETED', summary: 'Seconda prova superata' })] },
       { content: 'Registrato con successo.' }
     ]);
     const ctx = buildMockCtx(provider);
@@ -355,7 +355,7 @@ async function main() {
   // PLT5: pipeline con campi assenti → comportamento classico invariato
   {
     const provider = new MockLLMProvider([
-      { content: 'Turno unico.\nSTATO: COMPLETATO' }
+      { content: 'Turno unico.\nSTATUS: COMPLETED' }
     ]);
     const ctx = buildMockCtx(provider);
     const team = { members: [WORKER] };
@@ -375,7 +375,7 @@ async function main() {
   {
     const provider = new MockLLMProvider([
       { content: 'Sto valutando come procedere, ci sono diverse opzioni da considerare...' }, // solo ragionamento, nessun segnale → nudge
-      { toolCalls: [mockToolCall('report_status', { status: 'COMPLETATO', summary: 'Fatto dopo il nudge.' })] }, // agisce
+      { toolCalls: [mockToolCall('report_status', { status: 'COMPLETED', summary: 'Fatto dopo il nudge.' })] }, // agisce
       { content: 'Fatto, stato registrato.' } // chiusura dopo l'esecuzione del tool (come RRT1a)
     ]);
     const ctx = buildMockCtx(provider);
@@ -401,17 +401,17 @@ async function main() {
     check('NA2b', r.completed === false, `senza segnale nemmeno dopo il nudge, il turno NON risulta completato (completed=${r.completed})`);
   }
 
-  // NA3: un marker DA_CONTINUARE (non solo COMPLETATO) è comunque una chiusura
+  // NA3: un marker CONTINUE (non solo COMPLETED) è comunque una chiusura
   // testuale legittima → nessun nudge.
   {
     const provider = new MockLLMProvider([
-      { content: 'Lavoro avviato ma non ancora finito.\nSTATO: DA_CONTINUARE' }
+      { content: 'Lavoro avviato ma non ancora finito.\nSTATUS: CONTINUE' }
     ]);
     const ctx = buildMockCtx(provider);
     const team = { members: [WORKER] };
     const interrupt = new GenerationInterrupt();
-    const r = await runRoundRobin(ctx, team, 'compito con DA_CONTINUARE esplicito', 1, interrupt, seedTeamMessages('compito con DA_CONTINUARE esplicito'));
-    check('NA3', provider.remaining === 0, 'STATO: DA_CONTINUARE (non solo COMPLETATO) evita il nudge: unica chiamata scriptata consumata');
+    const r = await runRoundRobin(ctx, team, 'compito con CONTINUE esplicito', 1, interrupt, seedTeamMessages('compito con CONTINUE esplicito'));
+    check('NA3', provider.remaining === 0, 'STATUS: CONTINUE (non solo COMPLETED) evita il nudge: unica chiamata scriptata consumata');
   }
 
   ContextTracker.getInstance().clear();

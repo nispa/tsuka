@@ -252,7 +252,7 @@ Global Pin (/effort) ──► Caller Override ──► Character ──► Rol
 ```
 
 * **Team Strategies**: `orchestrated` (supervisor routes each turn via `route_next`), `round-robin` (fixed cycle), `pipeline` (assembly line with acceptance loop in `loop.ts`), `hybrid` (discussion and voting).
-* **Parallel Workspace Isolation**: `PARALLELO` blocks execute concurrently via `Promise.all` in isolated staging folders (`AsyncLocalStorage`), followed by safe conflict-detecting file merges.
+* **Parallel Workspace Isolation**: `PARALLEL` blocks execute concurrently via `Promise.all` in isolated staging folders (`AsyncLocalStorage`), followed by safe conflict-detecting file merges.
 
 ---
 

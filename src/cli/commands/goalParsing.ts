@@ -35,7 +35,7 @@ function lookupValidName(name: string, validMap?: Map<string, string> | (Charact
   return null;
 }
 
-/** Parses an AGENTE: / AGENT: / @name line across varying formatting. */
+/** Parses an AGENT: / @name line across varying formatting. */
 export function parseAgentLine(
   lines: string[],
   startIdx: number,
@@ -47,7 +47,7 @@ export function parseAgentLine(
     .replace(/\*\*/g, '')
     .trim();
 
-  const FLEXIBLE_RE = /^(?:AGENTE|AGENT)?:\s*@?([a-zA-Z0-9_\-\s]+?)\s*(?:[—–\-:]|->|=>|\|)\s*(.*)/i;
+  const FLEXIBLE_RE = /^(?:AGENT)?:\s*@?([a-zA-Z0-9_\-\s]+?)\s*(?:[—–\-:]|->|=>|\|)\s*(.*)/i;
   const AT_DIRECT_RE = /^@([a-zA-Z0-9_\-\s]+?)\s*(?:[—–\-:]|->|=>|\|)\s*(.*)/i;
 
   let match = cleanLine.match(FLEXIBLE_RE);
@@ -69,7 +69,7 @@ export function parseAgentLine(
     for (let j = startIdx + 1; j < lines.length; j++) {
       const nextRaw = lines[j].trim();
       const nextClean = nextRaw.replace(/^(?:\d+\.|\*|-)\s*/, '').replace(/\*\*/g, '').trim();
-      if (/^(?:AGENTE|AGENT)?:\s*@/i.test(nextClean) || /^PARALLELO/i.test(nextClean) || /^FINE\b/i.test(nextClean)) break;
+      if (/^(?:AGENT)?:\s*@/i.test(nextClean) || /^PARALLEL/i.test(nextClean) || /^END\b/i.test(nextClean)) break;
       taskLines.push(nextClean);
       consumed++;
     }
@@ -104,12 +104,12 @@ export function parsePlan(
     const line = rawLine.replace(/^(?:\d+\.|\*|-)\s*/, '').replace(/\*\*/g, '').trim();
 
     // Parallel block
-    if (/^PARALLELO/i.test(line)) {
+    if (/^PARALLEL/i.test(line)) {
       i++;
       const parallelSteps: PlanStep[] = [];
       while (i < lines.length) {
         const subLine = lines[i].trim().replace(/^(?:\d+\.|\*|-)\s*/, '').replace(/\*\*/g, '').trim();
-        if (/^FINE\s*PARALLELO/i.test(subLine)) break;
+        if (/^END\s*PARALLEL/i.test(subLine)) break;
 
         const step = parseAgentLine(lines, i, validMap);
         if (step) {
@@ -124,7 +124,7 @@ export function parsePlan(
           groups.push({
             mode: 'parallel',
             steps: parallelSteps,
-            label: `Parallelo (${parallelSteps.map((s) => s.agentName).join(' + ')})`
+            label: `Parallel (${parallelSteps.map((s) => s.agentName).join(' + ')})`
           });
         } else {
           for (const step of parallelSteps) {

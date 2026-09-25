@@ -1,7 +1,7 @@
 /**
  * Test della coda di permessi (T3.1, PLANNING-QUALITA.md).
  *
- * Bug: `PermissionManager` è condiviso tra gli agenti di un blocco PARALLELO di
+ * Bug: `PermissionManager` è condiviso tra gli agenti di un blocco PARALLEL di
  * /goal (Promise.all in goal.ts): due richieste RESTRICTED concorrenti facevano
  * partire due `InteractiveMenu.select()` in parallelo, sovrapponendo due prompt
  * sullo stesso stdin. Fix: promise-chain interna a `PermissionManager` — le

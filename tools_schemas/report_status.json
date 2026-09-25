@@ -1,6 +1,6 @@
 {
   "name": "report_status",
-  "description": "Declares the status of your turn in a team or pipeline. ALWAYS use this instead of (or in addition to) the text marker 'STATO: ...' to close your turn: it's the reliable way to communicate the outcome to colleagues and the coordinator.",
+  "description": "Declares the status of your turn in a team or pipeline. ALWAYS use this instead of (or in addition to) the text marker 'STATUS: ...' to close your turn: it's the reliable way to communicate the outcome to colleagues and the coordinator.",
   "requiredTier": "small",
   "riskLevel": "SAFE",
   "parameters": {
@@ -8,8 +8,8 @@
     "properties": {
       "status": {
         "type": "string",
-        "enum": ["COMPLETATO", "DA_CONTINUARE", "FALLITO"],
-        "description": "COMPLETATO if the group task is definitively resolved; DA_CONTINUARE if more work is still needed; FALLITO if the task cannot be solved with the means available."
+        "enum": ["COMPLETED", "CONTINUE", "FAILED"],
+        "description": "COMPLETED if the group task is definitively resolved; CONTINUE if more work is still needed; FAILED if the task cannot be solved with the means available."
       },
       "summary": {
         "type": "string",

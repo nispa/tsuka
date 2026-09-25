@@ -10,6 +10,7 @@ import { sanitizeToolCallArguments } from '../../../tools/jsonRepair';
 import { runRoundRobin } from './roundRobin';
 import { runDiscussionRound } from './hybrid';
 import { logSink } from '../../../core/logSink';
+import { END_TOKEN } from '../../../core/protocolTokens';
 
 // Orchestrator prompt generator
 
@@ -55,11 +56,11 @@ Round ${round}/${maxRounds}.
 INSTRUCTIONS: Decide which team member should work next.
 Analyze progress, each member's skills, and choose who can best advance the task.
 
-Call the 'route_next' tool with the chosen member (or "FINE" if the task is solved) and a short reason.
-If for any reason you cannot call the tool, fall back to responding EXCLUSIVELY with a single line instead:
-AGENTE: @member_name
+Call the 'route_next' tool with the chosen member (or "END" if the task is solved) and a short reason.
+If for any reason you cannot call the tool, fall back to responding EXCLUSIVELY with a single line instead (fixed English protocol tokens: never translate them):
+AGENT: @member_name
 or, if the task is solved:
-FINE
+END
 No other text. No explanations.`;
 }
 
@@ -78,7 +79,7 @@ function resolveMemberName(raw: string, validMembers: string[]): string | null {
 }
 
 export function parseOrchestratorDecision(content: string, validMembers: string[]): { agent: string } | null {
-  const agentMatch = content.match(/AGENTE:\s*@?(\w+)/i);
+  const agentMatch = content.match(/AGENT:\s*@?(\w+)/i);
   if (agentMatch) {
     const resolved = resolveMemberName(agentMatch[1], validMembers);
     if (resolved) return { agent: resolved };
@@ -87,11 +88,11 @@ export function parseOrchestratorDecision(content: string, validMembers: string[
 }
 
 export function hasDoneSignal(content: string): boolean {
-  return /^FINE\b/im.test(content.trim());
+  return /^END\b/im.test(content.trim());
 }
 
 /** Extracts decision from `route_next` tool call in orchestrator response. */
-function extractRouteNextCall(toolCalls: ToolCall[] | undefined, validMembers: string[]): { agent: string } | 'FINE' | null {
+function extractRouteNextCall(toolCalls: ToolCall[] | undefined, validMembers: string[]): { agent: string } | typeof END_TOKEN | null {
   if (!Array.isArray(toolCalls)) return null;
   for (const tc of toolCalls) {
     if (tc?.function?.name !== 'route_next') continue;
@@ -100,7 +101,7 @@ function extractRouteNextCall(toolCalls: ToolCall[] | undefined, validMembers: s
       const args = typeof raw === 'string' ? sanitizeToolCallArguments(raw).parsed : raw;
       const rawAgent = String(args?.agent || '').trim();
       if (!rawAgent) continue;
-      if (/^FINE$/i.test(rawAgent)) return 'FINE';
+      if (rawAgent.toUpperCase() === END_TOKEN) return END_TOKEN;
       const resolved = resolveMemberName(rawAgent, validMembers);
       if (resolved) return { agent: resolved };
     } catch {}
@@ -198,7 +199,7 @@ export async function runOrchestrated(
 
       if (toolDecision) {
         source = 'tool_call';
-        if (toolDecision === 'FINE') doneSignal = true;
+        if (toolDecision === END_TOKEN) doneSignal = true;
         else decision = toolDecision;
       } else {
         source = hasDoneSignal(decisionText) || parseOrchestratorDecision(decisionText, allMemberNames) ? 'regex' : 'fallback';
@@ -211,7 +212,7 @@ export async function runOrchestrated(
         agent: orchestratorChar.aiName,
         role: 'orchestrator',
         protocol: source,
-        outcome: doneSignal ? 'FINE' : decision ? `@${decision.agent}` : 'unrecognized'
+        outcome: doneSignal ? END_TOKEN : decision ? `@${decision.agent}` : 'unrecognized'
       });
 
       if (doneSignal) {

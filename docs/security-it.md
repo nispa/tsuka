@@ -90,7 +90,7 @@ TSUKA integra una pipeline automatica di sanitizzazione dell'output (`maskEnvVar
 
 ## ⚡ 4. Coda di Permessi Serializzata (Sequential FIFO Prompt Queue)
 
-Nelle modalità multi-agente o nei workflow con esecuzione concorrente (`PARALLELO` in `/goal` o team paralleli):
+Nelle modalità multi-agente o nei workflow con esecuzione concorrente (`PARALLEL` in `/goal` o team paralleli):
 * Più rami di esecuzione indipendenti possono richiedere autorizzazioni contemporaneamente.
 * Il `PermissionManager` accoda sequenzialmente le richieste interattive tramite una promessa FIFO (`enqueuePrompt`).
 * **Nessuna collisione su terminale**: I prompt utente compaiono uno alla volta in ordine atomico, prevenendo corruzioni dello stream TTY o conflitti sui modali della TUI.

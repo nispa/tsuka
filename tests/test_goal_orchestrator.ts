@@ -45,8 +45,8 @@ async function main() {
   {
     ContextTracker.getInstance().clear();
     const provider = new MockLLMProvider([
-      { content: `AGENTE: @${WORKER} — Controlla il sistema\nFINE` },   // piano dell'orchestrator
-      { content: 'Controllo completato.\nSTATO: COMPLETATO' }        // turno di il primo agente
+      { content: `AGENT: @${WORKER} — Controlla il sistema\nEND` },   // piano dell'orchestrator
+      { content: 'Controllo completato.\nSTATUS: COMPLETED' }        // turno di il primo agente
     ]);
     const ctx = buildMockCtx(provider);
 
@@ -76,13 +76,13 @@ async function main() {
     );
   }
 
-  // T2: rottura/robustezza — blocco PARALLELO: entrambi gli step vengono eseguiti (non solo il primo)
+  // T2: rottura/robustezza — blocco PARALLEL: entrambi gli step vengono eseguiti (non solo il primo)
   {
     ContextTracker.getInstance().clear();
     const provider = new MockLLMProvider([
-      { content: `PARALLELO:\nAGENTE: @${WORKER} — Task A\nAGENTE: @${SECOND} — Task B\nFINE PARALLELO\nFINE` }, // piano
-      { content: 'Task A fatto.\nSTATO: COMPLETATO' },  // turno parallelo di il primo agente (script[0] del gruppo)
-      { content: 'Task B fatto.\nSTATO: COMPLETATO' }   // turno parallelo di il secondo agente (script[1] del gruppo)
+      { content: `PARALLEL:\nAGENT: @${WORKER} — Task A\nAGENT: @${SECOND} — Task B\nEND PARALLEL\nEND` }, // piano
+      { content: 'Task A fatto.\nSTATUS: COMPLETED' },  // turno parallelo di il primo agente (script[0] del gruppo)
+      { content: 'Task B fatto.\nSTATUS: COMPLETED' }   // turno parallelo di il secondo agente (script[1] del gruppo)
     ]);
     // NOTA: l'ordine di consumo dello script nel blocco Promise.all è deterministico
     // SOLO perché MockLLMProvider.chatWithTools non ha alcun `await` interno: ogni
@@ -103,7 +103,7 @@ async function main() {
     check(
       'G2b',
       hasL && hasT,
-      `entrambi gli step del blocco PARALLELO sono stati eseguiti, non solo il primo (${WORKER_AI}:${hasL}, ${SECOND_AI}:${hasT})`
+      `entrambi gli step del blocco PARALLEL sono stati eseguiti, non solo il primo (${WORKER_AI}:${hasL}, ${SECOND_AI}:${hasT})`
     );
   }
 
@@ -111,11 +111,11 @@ async function main() {
   {
     ContextTracker.getInstance().clear();
     const provider = new MockLLMProvider([
-      { content: `AGENTE: @${DEV} — Implementa il modulo auth\nAGENTE: @${LEAD} — Revisiona il codice\nFINE` }, // piano
-      { content: 'Codice iniziale scritto.\nSTATO: DA_CONTINUARE' },                                              // turno 1: lo sviluppatore
-      { content: 'Riscontrati problemi di sicurezza. REVISION: Mancano i test.\nSTATO: DA_CONTINUARE' },          // turno 1: il supervisore -> innesca rilavorazione!
-      { content: 'Aggiunti i test richiesti.\nSTATO: COMPLETATO' },                                             // turno 2: lo sviluppatore (rilavorazione)
-      { content: 'Tutto perfetto ora.\nSTATO: COMPLETATO' }                                                      // turno 2: il supervisore (post-rilavorazione)
+      { content: `AGENT: @${DEV} — Implementa il modulo auth\nAGENT: @${LEAD} — Revisiona il codice\nEND` }, // piano
+      { content: 'Codice iniziale scritto.\nSTATUS: CONTINUE' },                                              // turno 1: lo sviluppatore
+      { content: 'Riscontrati problemi di sicurezza. REVISION: Mancano i test.\nSTATUS: CONTINUE' },          // turno 1: il supervisore -> innesca rilavorazione!
+      { content: 'Aggiunti i test richiesti.\nSTATUS: COMPLETED' },                                             // turno 2: lo sviluppatore (rilavorazione)
+      { content: 'Tutto perfetto ora.\nSTATUS: COMPLETED' }                                                      // turno 2: il supervisore (post-rilavorazione)
     ]);
     const ctx = buildMockCtx(provider);
 
@@ -141,9 +141,9 @@ async function main() {
     ];
     const planMarkdown = `
 Ecco il piano per il progetto:
-1. **AGENTE:** @dev_agent: Crea il gioco puzznic
+1. **AGENT:** @dev_agent: Crea il gioco puzznic
 2. AGENT: lead_agent -> Verifica il codice
-FINE
+END
 `;
     const { groups, flatSteps } = parsePlan(planMarkdown, mockChars);
     check('G4a', flatSteps === 2, `parsing flessibile rileva 2 step nonostante il formato markdown e due punti (trovati: ${flatSteps})`);
@@ -205,14 +205,14 @@ FINE
   {
     const provider = new MockLLMProvider([
       {
-        content: `AGENTE: @${WORKER} — Inspect shared notes\nFINE`,
+        content: `AGENT: @${WORKER} — Inspect shared notes\nEND`,
         reasoningText: 'Selecting the best agent for this goal.'
       },
       {
         toolCalls: [mockToolCall('read_notes')],
         reasoningText: 'Checking the workflow blackboard first.'
       },
-      { content: 'Inspection completed.\nSTATO: COMPLETATO' }
+      { content: 'Inspection completed.\nSTATUS: COMPLETED' }
     ]);
     const ctx = buildMockCtx(provider);
     const chunks: Array<{ text: string; channel?: string; author?: string }> = [];
@@ -259,9 +259,9 @@ FINE
   // whichever agent most recently produced a streamed chunk.
   {
     const provider = new MockLLMProvider([
-      { content: `PARALLELO:\nAGENTE: @${WORKER} — Inspect A\nAGENTE: @${SECOND} — Inspect B\nFINE PARALLELO\nFINE` },
-      { content: 'A done.\nSTATO: COMPLETATO' },
-      { content: 'B done.\nSTATO: COMPLETATO' },
+      { content: `PARALLEL:\nAGENT: @${WORKER} — Inspect A\nAGENT: @${SECOND} — Inspect B\nEND PARALLEL\nEND` },
+      { content: 'A done.\nSTATUS: COMPLETED' },
+      { content: 'B done.\nSTATUS: COMPLETED' },
     ]);
     const ctx = buildMockCtx(provider);
     // This scenario explicitly exercises the parallel presentation contract.

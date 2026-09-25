@@ -1,9 +1,10 @@
 import { Tool } from '../registry';
+import { TURN_STATUSES } from '../../core/protocolTokens';
 
-const VALID_STATUSES = ['COMPLETATO', 'DA_CONTINUARE', 'FALLITO'];
+const VALID_STATUSES: readonly string[] = TURN_STATUSES;
 
 /**
- * Protocol tool (T2.1): replaces free text "STATO: ..." with a structured tool call.
+ * Protocol tool (T2.1): replaces free text "STATUS: ..." with a structured tool call.
  * strategies/common.ts reads tool_calls from turn history to determine outcome.
  */
 export const reportStatusTool: Tool = {

@@ -100,27 +100,27 @@ INSTRUCTIONS:
 ${blueprintRule}2. An agent listed with several roles (role=a,b) owns the tools of ALL of them: prefer ONE such agent over two specialists when the tasks are adjacent — it avoids a handoff whose only purpose is reaching another role's tool.
 3. The @handle is just how you address the agent that holds the craft: use ONLY the @names listed above, any other name is discarded.
 4. For each selected agent, specify a concrete task.
-5. If some tasks are INDEPENDENT (can run concurrently), wrap them in a PARALLELO block.
-6. If the goal is trivial (simple question, answer, info), respond with just FINE.
+5. If some tasks are INDEPENDENT (can run concurrently), wrap them in a PARALLEL block.
+6. If the goal is trivial (simple question, answer, info), respond with just END.
 
-RESPONSE FORMAT:
-AGENTE: @name — Task
-PARALLELO:
-AGENTE: @name1 — Task1 (independent from others)
-AGENTE: @name2 — Task2 (independent from others)
-FINE PARALLELO
-AGENTE: @name3 — Task3 (after parallel tasks)
-FINE
+RESPONSE FORMAT (AGENT, PARALLEL and END are fixed English protocol tokens: never translate them):
+AGENT: @name — Task
+PARALLEL:
+AGENT: @name1 — Task1 (independent from others)
+AGENT: @name2 — Task2 (independent from others)
+END PARALLEL
+AGENT: @name3 — Task3 (after parallel tasks)
+END
 
 Example with parallel tasks:
-AGENTE: ${ex(0, 'agent1')} — First step of the work
-PARALLELO:
-AGENTE: ${ex(1, 'agent2')} — Independent step A
-AGENTE: ${ex(2, 'agent3')} — Independent step B
-FINE PARALLELO
-AGENTE: ${exReviewer} — Review and validate the work
-FINE
+AGENT: ${ex(0, 'agent1')} — First step of the work
+PARALLEL:
+AGENT: ${ex(1, 'agent2')} — Independent step A
+AGENT: ${ex(2, 'agent3')} — Independent step B
+END PARALLEL
+AGENT: ${exReviewer} — Review and validate the work
+END
 
 If no team is needed:
-FINE`;
+END`;
 }

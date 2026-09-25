@@ -251,7 +251,7 @@ ROLE (roles/)  ×  TRAIT (traits/)  =  CHARACTER / AGENT (e.g. @geordi, @worf, @
 * **`hybrid`**: periodic discussion and voting rounds (`cast_vote`).
 
 #### 7.3 Goal Orchestrator (`/goal`)
-Dynamically plans, recruits agents from all 24 characters, and executes objectives with concurrent `PARALLELO` blocks isolated via `AsyncLocalStorage` and conflict-aware filesystem merges.
+Dynamically plans, recruits agents from all 24 characters, and executes objectives with concurrent `PARALLEL` blocks isolated via `AsyncLocalStorage` and conflict-aware filesystem merges.
 
 ---
 

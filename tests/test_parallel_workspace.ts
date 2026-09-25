@@ -1,7 +1,7 @@
 /**
- * Test dei workspace isolati per il blocco PARALLELO di /goal (T3.2, PLANNING-QUALITA.md).
+ * Test dei workspace isolati per il blocco PARALLEL di /goal (T3.2, PLANNING-QUALITA.md).
  *
- * Bug: nel blocco `PARALLELO` (`Promise.all` in goal.ts), tutti gli agenti condividono
+ * Bug: nel blocco `PARALLEL` (`Promise.all` in goal.ts), tutti gli agenti condividono
  * lo stesso workspace: due branch che scrivono lo stesso file con contenuto diverso si
  * sovrascrivono a vicenda in modo silenzioso, senza alcuna segnalazione.
  *
@@ -15,7 +15,7 @@
  *
  * Parte 1: unit test diretto di `mergeParallelWorkspaces` (deterministico, senza
  * LLM/tool). Parte 2: test end-to-end con 2 "agenti mock" (MockLLMProvider) che
- * chiamano davvero il tool `write_file` dentro un blocco PARALLELO di /goal —
+ * chiamano davvero il tool `write_file` dentro un blocco PARALLEL di /goal —
  * prova che l'isolamento (AsyncLocalStorage) e il merge funzionano attraversando
  * lo stack reale (Agent → ToolRegistry → resolveSafePath).
  *
@@ -65,7 +65,7 @@ async function captureLogs<T>(fn: () => Promise<T>): Promise<{ result: T; logs: 
 }
 
 async function main() {
-  console.log('=== Test Workspace Isolati Blocco PARALLELO (T3.2) ===\n');
+  console.log('=== Test Workspace Isolati Blocco PARALLEL (T3.2) ===\n');
 
   // Isola TSUKA_HOME per l'intero test PRIMA di importare qualunque modulo che
   // dipenda da homePath/ConfigManager (createParallelBranches usa homePath: se
@@ -186,18 +186,18 @@ async function main() {
   {
     ContextTracker.getInstance().clear();
     const provider = new MockLLMProvider([
-      { content: `PARALLELO:\nAGENTE: @${FIRST} — Scrivi file A\nAGENTE: @${SECOND} — Scrivi file B\nFINE PARALLELO\nFINE` }, // piano
+      { content: `PARALLEL:\nAGENT: @${FIRST} — Scrivi file A\nAGENT: @${SECOND} — Scrivi file B\nEND PARALLEL\nEND` }, // piano
       { toolCalls: [mockToolCall('write_file', { path: 'a.txt', content: 'Contenuto A' })] },
       { toolCalls: [mockToolCall('write_file', { path: 'b.txt', content: 'Contenuto B' })] },
-      { content: 'Fatto.\nSTATO: COMPLETATO' },
-      { content: 'Fatto.\nSTATO: COMPLETATO' },
+      { content: 'Fatto.\nSTATUS: COMPLETED' },
+      { content: 'Fatto.\nSTATUS: COMPLETED' },
     ]);
     const ctx = buildMockCtx(provider);
     ctx.permissionManager.setPromptHandler(async () => 'yes');
     ctx.registry.register(writeFileTool);
     // T9.10: parallelExecutionEnabled è false di default (una singola GPU non trae
     // vantaggio dal parallelismo). Questo test valida PROPRIO il meccanismo di
-    // branch/merge/conflitto del blocco PARALLELO, quindi lo forza esplicitamente
+    // branch/merge/conflitto del blocco PARALLEL, quindi lo forza esplicitamente
     // attivo — indipendentemente dal default reale letto da tsuka.config.json.
     ctx.configManager.isParallelExecutionEnabled = () => true;
 
@@ -228,18 +228,18 @@ async function main() {
     fs.writeFileSync(preexisting, 'Originale prima del parallelo');
 
     const provider = new MockLLMProvider([
-      { content: `PARALLELO:\nAGENTE: @${FIRST} — Scrivi conflitto\nAGENTE: @${SECOND} — Scrivi conflitto\nFINE PARALLELO\nFINE` },
+      { content: `PARALLEL:\nAGENT: @${FIRST} — Scrivi conflitto\nAGENT: @${SECOND} — Scrivi conflitto\nEND PARALLEL\nEND` },
       { toolCalls: [mockToolCall('write_file', { path: 'conflict.txt', content: `Versione di ${FIRST}` })] },
       { toolCalls: [mockToolCall('write_file', { path: 'conflict.txt', content: `Versione di ${SECOND}` })] },
-      { content: 'Fatto.\nSTATO: COMPLETATO' },
-      { content: 'Fatto.\nSTATO: COMPLETATO' },
+      { content: 'Fatto.\nSTATUS: COMPLETED' },
+      { content: 'Fatto.\nSTATUS: COMPLETED' },
     ]);
     const ctx = buildMockCtx(provider);
     ctx.permissionManager.setPromptHandler(async () => 'yes');
     ctx.registry.register(writeFileTool);
     // T9.10: parallelExecutionEnabled è false di default (una singola GPU non trae
     // vantaggio dal parallelismo). Questo test valida PROPRIO il meccanismo di
-    // branch/merge/conflitto del blocco PARALLELO, quindi lo forza esplicitamente
+    // branch/merge/conflitto del blocco PARALLEL, quindi lo forza esplicitamente
     // attivo — indipendentemente dal default reale letto da tsuka.config.json.
     ctx.configManager.isParallelExecutionEnabled = () => true;
 

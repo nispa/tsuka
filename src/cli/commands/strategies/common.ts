@@ -13,10 +13,11 @@ import { getContextPressure } from '../../../core/contextBudget';
 import { sanitizeToolCallArguments } from '../../../tools/jsonRepair';
 import { ChatMessage, TurnOutcome, ProtocolSource, TeamConfig } from '../../../core/types';
 import { logSink } from '../../../core/logSink';
+import { TURN_STATUSES, TurnStatus } from '../../../core/protocolTokens';
 
 /**
  * Shared team strategy utilities (T4.2):
- * `runMemberTurn`, status protocol resolution (report_status/STATO: marker),
+ * `runMemberTurn`, status protocol resolution (report_status/STATUS: marker),
  * and shared strategy types (`TeamStrategy`, `TeamResult`).
  */
 
@@ -50,12 +51,21 @@ export function seedTeamMessages(task: string): ChatMessage[] {
   ];
 }
 
+// Text-marker fallback of report_status. The alternation comes from the shared
+// vocabulary so it can never drift from the tool's enum (T14.25).
+const STATUS_MARKER_RE = new RegExp(`(^|\\n)\\s*STATUS:\\s*(${TURN_STATUSES.join('|')})`, 'i');
+
+function statusMarker(content: string): TurnStatus | null {
+  const match = (content || '').match(STATUS_MARKER_RE);
+  return match ? (match[2].toUpperCase() as TurnStatus) : null;
+}
+
 /**
  * Checks for completion status marker across generated messages in a turn.
  */
 export function hasCompletionMarker(messages: ChatMessage[]): boolean {
   return messages.some(
-    (m) => m.role === 'assistant' && typeof m.content === 'string' && /(^|\n)\s*STATO:\s*COMPLETATO/i.test(m.content)
+    (m) => m.role === 'assistant' && typeof m.content === 'string' && statusMarker(m.content) === 'COMPLETED'
   );
 }
 
@@ -63,7 +73,7 @@ export function hasCompletionMarker(messages: ChatMessage[]): boolean {
  * Accepts text-only assistant response if it declares any valid protocol status marker.
  */
 export function hasAnyStatusMarker(content: string): boolean {
-  return /(^|\n)\s*STATO:\s*(COMPLETATO|DA_CONTINUARE|FALLITO)/i.test(content || '');
+  return statusMarker(content) !== null;
 }
 
 export interface ProtocolLogEntry {
@@ -74,7 +84,7 @@ export interface ProtocolLogEntry {
 }
 
 /** Extracts last valid `report_status` tool_call from assistant messages. */
-function extractReportStatusCall(messages: ChatMessage[]): { status: string; summary: string } | null {
+function extractReportStatusCall(messages: ChatMessage[]): { status: TurnStatus; summary: string } | null {
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i];
     if (m.role !== 'assistant' || !Array.isArray(m.tool_calls)) continue;
@@ -83,8 +93,8 @@ function extractReportStatusCall(messages: ChatMessage[]): { status: string; sum
       try {
         const raw = tc.function.arguments;
         const args = typeof raw === 'string' ? sanitizeToolCallArguments(raw).parsed : raw;
-        const status = String(args?.status || '').trim().toUpperCase();
-        if (status === 'COMPLETATO' || status === 'DA_CONTINUARE' || status === 'FALLITO') {
+        const status = String(args?.status || '').trim().toUpperCase() as TurnStatus;
+        if (TURN_STATUSES.includes(status)) {
           return { status, summary: String(args?.summary || '') };
         }
       } catch {}
@@ -94,12 +104,12 @@ function extractReportStatusCall(messages: ChatMessage[]): { status: string; sum
 }
 
 /**
- * Resolves member turn outcome: tool_call report_status -> regex STATO: -> default (continue).
+ * Resolves member turn outcome: tool_call report_status -> regex STATUS: -> default (continue).
  */
 function resolveTurnStatus(messages: ChatMessage[]): { status: 'completed' | 'failed' | 'continue'; source: ProtocolSource } {
   const toolCall = extractReportStatusCall(messages);
   if (toolCall) {
-    const status = toolCall.status === 'COMPLETATO' ? 'completed' : toolCall.status === 'FALLITO' ? 'failed' : 'continue';
+    const status = toolCall.status === 'COMPLETED' ? 'completed' : toolCall.status === 'FAILED' ? 'failed' : 'continue';
     return { status, source: 'tool_call' };
   }
   if (hasCompletionMarker(messages)) {
@@ -164,12 +174,12 @@ export async function runMemberTurn(
     Use your tools (read, write, edit, search, commands) to advance or complete the work YOURSELF. 'spawn_agent' is for splitting off an INDEPENDENT sub-task while you keep working on the rest — never for handing off this entire assigned task verbatim: that is not delegation, it is skipping your turn. If spawn_agent rejects your call for being too long, that is a signal to do the work directly, not to retry the same call.
     After execution, write a text summary explaining what you did and what the next colleague should do (if applicable). Stay faithful to your personality.
 
-WORK STATUS PROTOCOL (mandatory): ALWAYS end your intervention by calling the 'report_status' tool with your status, a summary, and (if useful) a hint for the next colleague. If for any reason you cannot call the tool, fall back to writing exactly one of these lines instead:
-- "STATO: COMPLETATO" — only if the group task is definitively solved and no more work turns are needed;
-- "STATO: DA_CONTINUARE" — if more work is needed from you or colleagues;
-- "STATO: FALLITO" — if the task cannot be solved with the means available.
-Do NOT declare COMPLETATO unless you have concretely verified (with tools) that the work is finished.
-Do NOT declare FALLITO just because the blackboard or a tool call was empty/unhelpful: your task is the one stated above, not whatever the blackboard contains. Only use FALLITO when you attempted the actual work with your tools and it could not be done.
+WORK STATUS PROTOCOL (mandatory): ALWAYS end your intervention by calling the 'report_status' tool with your status, a summary, and (if useful) a hint for the next colleague. If for any reason you cannot call the tool, fall back to writing exactly one of these lines instead (fixed English protocol tokens: never translate them, whatever language you are replying in):
+- "STATUS: COMPLETED" — only if the group task is definitively solved and no more work turns are needed;
+- "STATUS: CONTINUE" — if more work is needed from you or colleagues;
+- "STATUS: FAILED" — if the task cannot be solved with the means available.
+Do NOT declare COMPLETED unless you have concretely verified (with tools) that the work is finished.
+Do NOT declare FAILED just because the blackboard or a tool call was empty/unhelpful: your task is the one stated above, not whatever the blackboard contains. Only use FAILED when you attempted the actual work with your tools and it could not be done.
 
 SHARED BLACKBOARD (optional): this run has a shared blackboard, separate from the message history. Use 'read_notes' at the start of your turn to see decisions, artifacts or open points colleagues left for THIS run, and 'post_note' to leave your own before finishing — it is NOT persistent memory, it disappears when the run ends. An EMPTY blackboard is normal (e.g. you are the first to work, or no shared context was needed) — it is not a reason to skip your task.`;
 

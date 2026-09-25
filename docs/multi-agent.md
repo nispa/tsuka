@@ -48,16 +48,17 @@ The `/team` command starts a multi-agent workflow where characters cooperate on 
 In the TUI, Tab completes the team identifier after `/team`.
 
 ### The 4 Collaboration Strategies (`mode`):
-1. **`orchestrated` (recommended)**: a dedicated supervisor (`orchestrator`, e.g. `pike`) receives a progress digest after each turn and dynamically routes the next step via `route_next(agent, reason)` (or calls `FINE`).
+1. **`orchestrated` (recommended)**: a dedicated supervisor (`orchestrator`, e.g. `pike`) receives a progress digest after each turn and dynamically routes the next step via `route_next(agent, reason)` (or calls `END`).
 2. **`round-robin`**: fixed cyclical rotation among team members up to configured rounds (`teamMaxRounds`, default 3).
 3. **`pipeline`**: single-pass assembly line where each station refines previous outputs. Supports objective acceptance loops via `RunController` ([`src/core/loop.ts`](../src/core/loop.ts)).
 4. **`hybrid`**: when `discussionRounds > 0`, adds a formal debate and voting round (`cast_vote`) after each working cycle.
 
 ### Coordination Protocol Tools:
-* `report_status(status, summary, next_hint)`: marks turn completion (`COMPLETATO`, `DA_CONTINUARE`, `FALLITO`).
+* `report_status(status, summary, next_hint)`: marks turn completion (`COMPLETED`, `CONTINUE`, `FAILED`).
 * `route_next(agent, reason)`: used by the orchestrator to route the next turn.
-* `cast_vote(vote, reason)`: cast vote during hybrid team discussions (`APPROVO`, `MODIFICARE`, `RIFIUTO`).
-* *Resolution Hierarchy*: **Tool Call → Legacy Regex Marker (`STATO:`) → Safety Default** (with visible degradation warnings).
+* `cast_vote(vote, reason)`: cast vote during hybrid team discussions (`APPROVE`, `REVISE`, `REJECT`).
+* *Resolution Hierarchy*: **Tool Call → Legacy Regex Marker (`STATUS:`) → Safety Default** (with visible degradation warnings).
+* *Protocol vocabulary*: every token (`STATUS:`, `VOTE:`, `AGENT:`, `PARALLEL`, `END`, and the enum values above) is a fixed English identifier defined once in `src/core/protocolTokens.ts` and never translated, whatever language the agents reply in (T14.25).
 
 ### Run Blackboard (`post_note` / `read_notes`):
 A temporary shared scratchpad scoped to a specific run via `AsyncLocalStorage` for exchanging intermediate decisions, notes, and artifacts without polluting persistent long-term memory.
@@ -75,18 +76,18 @@ The `/goal` command dynamically plans, recruits agents from all 24 characters, a
 ### 1. Planning Phase (Orchestrator Planner)
 The orchestrator inspects available character capabilities and emits a structured plan:
 ```
-AGENTE: @una — Design module architecture and TypeScript interfaces
-PARALLELO:
-AGENTE: @geordi — Implement core logic
-AGENTE: @data — Author technical documentation
-FINE PARALLELO
-AGENTE: @worf — Run static security audit
-AGENTE: @pike — Review and validate final deliverables
-FINE
+AGENT: @una — Design module architecture and TypeScript interfaces
+PARALLEL:
+AGENT: @geordi — Implement core logic
+AGENT: @data — Author technical documentation
+END PARALLEL
+AGENT: @worf — Run static security audit
+AGENT: @pike — Review and validate final deliverables
+END
 ```
 
-### 2. Execution & Concurrency in `PARALLELO` Blocks
-* Independent subtasks inside `PARALLELO` blocks execute concurrently using `Promise.all`.
+### 2. Execution & Concurrency in `PARALLEL` Blocks
+* Independent subtasks inside `PARALLEL` blocks execute concurrently using `Promise.all`.
 * **Isolated Staging Workspaces**: each parallel branch writes to a temporary sandbox (`parallelWorkspace.ts`). On block completion, changes are merged with conflict detection.
 * **Serialized Permission Queue**: interactive permission prompts (`[y/N]`) are queued cleanly without overlapping.
 

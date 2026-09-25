@@ -277,7 +277,7 @@ Nei modelli di reasoning (es. DeepSeek R1, Qwen QwQ), il tempo di elaborazione d
 * **`pipeline`**: catena di montaggio a passaggio singolo in cui ogni stazione perfeziona l'output della precedente, con supporto per il loop di verifica oggettiva ([`src/core/loop.ts`](../src/core/loop.ts)).
 * **`hybrid`**: inserisce round periodici di discussione e votazione formale (`cast_vote`) tra i cicli di lavoro operativo.
 
-### Concorrenza nei blocchi `PARALLELO` di `/goal`:
+### Concorrenza nei blocchi `PARALLEL` di `/goal`:
 Quando l'orchestratore emette sotto-compiti concorrenti, l'esecuzione avviene tramite `Promise.all`. L'isolamento è garantito da:
 * **Staging Filesystem Indipendente (`parallelWorkspace.ts`)**: ogni branch scrive su una directory temporanea isolata via `AsyncLocalStorage` (`withWorkspaceOverride`). La fusione finale applica un merge conservativo che evidenzia eventuali conflitti senza sovrascritture distruttive.
 * **Coda Atomica dei Permessi**: le richieste di autorizzazione interattiva vengono accodate, garantendo che i prompt utente non si sovrappongano mai a video.

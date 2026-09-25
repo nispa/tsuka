@@ -31,28 +31,28 @@ async function main() {
   // --- hasCompletionMarker ---
   check('TM.1a', hasCompletionMarker([
     { role: 'user', content: 'lavora' },
-    { role: 'assistant', content: 'Ho finito tutto.\nSTATO: COMPLETATO' }
-  ]), 'marker COMPLETATO rilevato in messaggio assistant');
+    { role: 'assistant', content: 'Ho finito tutto.\nSTATUS: COMPLETED' }
+  ]), 'marker COMPLETED rilevato in messaggio assistant');
 
   check('TM.1b', !hasCompletionMarker([
-    { role: 'assistant', content: 'Ho fatto una parte.\nSTATO: DA_CONTINUARE' }
-  ]), 'DA_CONTINUARE non è completamento');
+    { role: 'assistant', content: 'Ho fatto una parte.\nSTATUS: CONTINUE' }
+  ]), 'CONTINUE non è completamento');
 
   check('TM.1c', !hasCompletionMarker([
-    { role: 'tool', content: 'output che contiene STATO: COMPLETATO per caso' },
+    { role: 'tool', content: 'output che contiene STATUS: COMPLETED per caso' },
     { role: 'assistant', content: null, tool_calls: [{}] }
   ]), 'marker in messaggi tool/content null ignorati');
 
   check('TM.1d', hasCompletionMarker([
-    { role: 'assistant', content: 'stato: completato' }
+    { role: 'assistant', content: 'status: completed' }
   ]), 'marker case-insensitive');
 
   check('TM.1e', !hasCompletionMarker([
-    { role: 'assistant', content: 'Non scriverò STATO: COMPLETATO finché non ho verificato i file.' }
+    { role: 'assistant', content: 'Non scriverò STATUS: COMPLETED finché non ho verificato i file.' }
   ]), 'citazione a metà frase non è una dichiarazione (marker richiesto a inizio riga)');
 
   check('TM.1f', hasCompletionMarker([
-    { role: 'assistant', content: 'Verificato con i tool.\n  STATO: COMPLETATO' }
+    { role: 'assistant', content: 'Verificato con i tool.\n  STATUS: COMPLETED' }
   ]), 'marker a inizio riga con indentazione rilevato');
 
   // Verify defaults independently of the maintainer's active configuration.
@@ -92,21 +92,21 @@ async function main() {
 
   // --- hasUnanimousApproval ---
   check('TM.4a', hasUnanimousApproval([
-    { role: 'user', content: 'Bene. VOTO: APPROVO' },
-    { role: 'user', content: 'OK. VOTO: APPROVO' },
+    { role: 'user', content: 'Bene. VOTE: APPROVE' },
+    { role: 'user', content: 'OK. VOTE: APPROVE' },
   ]), 'tutti approvano → true');
 
   check('TM.4b', !hasUnanimousApproval([
-    { role: 'user', content: 'Bene. VOTO: APPROVO' },
-    { role: 'user', content: 'No. VOTO: MODIFICARE' },
+    { role: 'user', content: 'Bene. VOTE: APPROVE' },
+    { role: 'user', content: 'No. VOTE: REVISE' },
   ]), 'un modificare → false');
 
   check('TM.4c', !hasUnanimousApproval([
-    { role: 'assistant', content: 'VOTO: APPROVO' },
+    { role: 'assistant', content: 'VOTE: APPROVE' },
   ]), 'solo assistant ignorato (deve essere user)');
 
   check('TM.4d', hasUnanimousApproval([
-    { role: 'user', content: 'Lavoro fatto. VOTO: APPROVO\nAltro testo' },
+    { role: 'user', content: 'Lavoro fatto. VOTE: APPROVE\nAltro testo' },
     { role: 'user', content: 'voto: approvo' },
   ]), 'case-insensitive');
 

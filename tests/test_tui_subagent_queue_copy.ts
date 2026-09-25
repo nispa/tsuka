@@ -391,7 +391,7 @@ function test(name: string, fn: () => void | Promise<void>) {
       } as any,
       provider: {
         getCurrentModel: () => 'test-model',
-        chatWithTools: async () => ({ content: 'AGENTE: @developer — do work\nFINE' }),
+        chatWithTools: async () => ({ content: 'AGENT: @developer — do work\nEND' }),
       } as any,
       registry: new ToolRegistry(),
       permissionManager: new PermissionManager(),
@@ -443,7 +443,7 @@ function test(name: string, fn: () => void | Promise<void>) {
       provider: {
         getCurrentModel: () => 'test-model',
         reconfigure: () => {},
-        chatWithTools: async () => ({ content: 'STATO: COMPLETATO' }),
+        chatWithTools: async () => ({ content: 'STATUS: COMPLETED' }),
       } as any,
       registry: new ToolRegistry(),
       permissionManager: new PermissionManager(),

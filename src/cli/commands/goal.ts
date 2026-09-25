@@ -141,7 +141,7 @@ export async function handleGoal(ctx: CommandCtx, arg: string): Promise<void> {
       return;
     }
 
-    if (!/AGENTE:/i.test(planText) && /^FINE\b/im.test(planText)) {
+    if (!/AGENT:/i.test(planText) && /^END\b/im.test(planText)) {
       CLITheme.info('The orchestrator determined this goal does not require a multi-agent team.');
       CLITheme.info('You can continue the conversation with the default agent.\n');
       interrupt.disarm();
@@ -151,7 +151,7 @@ export async function handleGoal(ctx: CommandCtx, arg: string): Promise<void> {
     const { groups, flatSteps } = parsePlan(planText, allCharacters, ctx.configManager.isParallelExecutionEnabled());
 
     if (groups.length === 0) {
-      CLITheme.warning('No direct AGENTE: format found in plan. Recovering mentioned agents...');
+      CLITheme.warning('No direct AGENT: format found in plan. Recovering mentioned agents...');
       
       const mentionedNames = new Set<string>();
       for (const c of allCharacters) {
