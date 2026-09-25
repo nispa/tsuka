@@ -59,28 +59,30 @@ export function paneFrame(theme: TuiThemePalette | undefined, pane: TuiPaneId, i
 }
 
 export const TUI_THEMES: Record<TuiThemeName, TuiThemePalette> = {
-  // Star Trek: The Next Generation's LCARS palette (Okuda): flat pastel bands on black.
+  // Star Trek: The Next Generation's LCARS layout (Okuda): flat bands on black. The hues
+  // are LCARS's (orange, lavender, periwinkle, sky, tan), but at reduced brightness: the
+  // on-screen full-strength pastels are glaring on a terminal you read for hours.
   lcars: {
     name: 'lcars',
     label: '🖖 LCARS (Star Trek TNG)',
-    primary: chalk.hex('#ff9900'),
-    secondary: chalk.hex('#cc99cc'),
-    accent: chalk.hex('#99ccff'),
-    borderFocused: chalk.hex('#ffcc66'),
-    borderUnfocused: chalk.hex('#664d33'),
+    primary: chalk.hex('#c7853a'),
+    secondary: chalk.hex('#a086a0'),
+    accent: chalk.hex('#7c9ebd'),
+    borderFocused: chalk.hex('#b8965a'),
+    borderUnfocused: chalk.hex('#4d3d2b'),
     lcars: {
       panes: {
-        sidebar: ['#ff9900', '#995c00'],
-        files: ['#9999ff', '#5c5c99'],
-        chat: ['#cc99cc', '#7a5c7a'],
-        tools: ['#99ccff', '#5c7a99'],
-        input: ['#ffcc99', '#997a5c'],
-        busy: ['#ff7700', '#ff7700'],
-        modal: ['#ffcc66', '#ffcc66'],
+        sidebar: ['#c7853a', '#6e4c26'],
+        files: ['#7c7cb8', '#46466b'],
+        chat: ['#a086a0', '#5c4c5c'],
+        tools: ['#7c9ebd', '#46596b'],
+        input: ['#9c8068', '#5c4c3e'],
+        busy: ['#a8552a', '#a8552a'],
+        modal: ['#b8965a', '#b8965a'],
       },
-      activeTab: '#ff9900',
-      tabs: ['#cc99cc', '#9999ff', '#99ccff', '#ffcc99'],
-      headerBar: [['#ff9900', 0.55], ['#cc99cc', 0.15], ['#9999ff', 0.2], ['#cc6666', 0.1]],
+      activeTab: '#c7853a',
+      tabs: ['#8a738a', '#6b6ba3', '#6b88a3', '#8c735d'],
+      headerBar: [['#c7853a', 0.55], ['#a086a0', 0.15], ['#7c7cb8', 0.2], ['#9e5a5a', 0.1]],
     },
   },
   cyan: {
