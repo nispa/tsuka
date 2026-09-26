@@ -1,12 +1,13 @@
 import { Tool } from '../registry';
 import { MemoryStore } from '../../core/memory';
+import { MEMORY_DEFAULTS } from '../../core/constants';
 
 export const recallMemoryTool: Tool = {
   name: 'recall_memory',
   riskLevel: 'SAFE',
   execute: async (args: { query?: string; limit?: number }) => {
     const store = MemoryStore.getInstance();
-    const limit = args.limit && args.limit > 0 ? Math.min(args.limit, 50) : 10;
+    const limit = args.limit && args.limit > 0 ? Math.min(args.limit, MEMORY_DEFAULTS.recallMaxLimit) : MEMORY_DEFAULTS.recallDefaultLimit;
     const results = args.query ? store.search(args.query, limit) : store.getRecent(limit);
 
     if (results.length === 0) {

@@ -452,10 +452,11 @@ async function main(): Promise<void> {
       check('CSB5.2h', removed === true, 'forgetFact successfully removes fact by id');
       check('CSB5.2i', backend.count() === 0, 'backend.count() returns 0 after removal');
 
-      // 5.3 memoryMaxChars Capping in formatForPrompt and formatRelevant
-      // Each fact line formatted is: "- [2026-09-22][FACT] (test_agent) Short fact entry X." (~55 chars).
-      // With cap = 140 chars, exactly 2 facts fit (55 * 2 = 110 chars < 140, 3rd would be 165 > 140).
-      // Total facts = 8, so 6 are omitted with notice.
+      // 5.3 memoryMaxChars caps the whole injected section (T22.11): fact lines, the
+      // newlines between them and the "more available" notice. Each fact line is
+      // "- [YYYY-MM-DD][FACT] (test_agent) Short fact entry X about lifecycle." (~69 chars)
+      // and the notice ~64, so a 140-char cap holds exactly one fact plus the notice.
+      // The old accounting counted fact lines only and returned ~200 chars here.
       for (let i = 0; i < 8; i++) {
         backend.addFact(
           `Short fact entry ${i} about lifecycle.`,
@@ -466,16 +467,16 @@ async function main(): Promise<void> {
 
       const promptFormatted = backend.formatForPrompt(10, 140);
       const promptLines = promptFormatted.split('\n');
-      check('CSB5.3a', promptLines.length === 3, `formatForPrompt renders exactly 2 fact lines plus 1 notice line (got ${promptLines.length} lines)`);
-      check('CSB5.3b', promptLines[0].startsWith('- [') && promptLines[1].startsWith('- ['), 'Included lines are formatted fact bullets');
-      check('CSB5.3c', promptLines[2].includes('… (6 more memories available: use recall_memory to search)'), 'Omission notice accurately reports 6 omitted memories');
+      check('CSB5.3a', promptFormatted.length <= 140, `formatForPrompt stays within the 140-char cap (got ${promptFormatted.length})`);
+      check('CSB5.3b', promptLines.length === 2 && promptLines[0].startsWith('- ['), `one fact bullet plus the notice (got ${promptLines.length} lines)`);
+      check('CSB5.3c', promptLines[1].includes('… (7 more memories available: use recall_memory to search)'), 'Omission notice accurately reports 7 omitted memories');
       check('CSB5.3d', promptFormatted.includes('Short fact entry 7') && !promptFormatted.includes('Short fact entry 0'), 'Most recent entries (7) are prioritized while older ones (0) are omitted');
 
       const relevantFormatted = backend.formatRelevant('lifecycle', 10, 140);
       const relevantLines = relevantFormatted.split('\n');
-      check('CSB5.3e', relevantLines.length === 3, `formatRelevant renders exactly 2 relevant fact lines plus notice (got ${relevantLines.length} lines)`);
-      check('CSB5.3f', relevantLines[0].startsWith('- [') && relevantLines[1].startsWith('- ['), 'Included relevant lines are formatted fact bullets');
-      check('CSB5.3g', relevantLines[2].includes('… (6 more relevant memories available: use recall_memory to search)'), 'Relevant omission notice reports 6 omitted memories');
+      check('CSB5.3e', relevantFormatted.length <= 140, `formatRelevant stays within the 140-char cap (got ${relevantFormatted.length})`);
+      check('CSB5.3f', relevantLines.length === 2 && relevantLines[0].startsWith('- ['), `one relevant fact bullet plus the notice (got ${relevantLines.length} lines)`);
+      check('CSB5.3g', /… \(\d+ more relevant memories available: use recall_memory to search\)/.test(relevantLines[1]), 'Relevant omission notice is present');
       check('CSB5.3h', relevantFormatted.includes('Short fact entry') && !relevantFormatted.includes('Short fact entry 0'), 'Older matching entries (0) are omitted due to maxChars cap');
     } finally {
       if (fs.existsSync(tmpMemPath)) fs.unlinkSync(tmpMemPath);

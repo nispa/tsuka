@@ -112,31 +112,25 @@ export function formatFactLine(f: MemoryFact): string {
 }
 
 /**
- * Fits formatted memory lines into character budget and appends recall guidance.
+ * Fits formatted memory lines into the character budget and appends recall guidance.
+ * `cap` bounds the whole section as injected into the prompt — separators and the
+ * "more available" footer included. Counting only the fact lines (T22.11) let a
+ * 600-char budget produce a ~660-char section.
  */
-export function renderMemorySection(
-  selected: MemoryFact[],
-  totalAvailable: number,
-  cap: number,
-  noun: string,
-  relevant = false
-): string {
+export function renderMemorySection(selected: MemoryFact[], totalAvailable: number, cap: number, noun: string): string {
+  const footer = (omitted: number) => (omitted > 0 ? `\n… (${omitted} more ${noun} available: use recall_memory to search)` : '');
   const lines: string[] = [];
-  let total = 0;
+  let used = 0;
   for (const f of selected) {
     const line = formatFactLine(f);
-    if (total + line.length > cap) {
-      break;
-    }
+    const cost = line.length + (lines.length > 0 ? 1 : 0);
+    if (used + cost > cap) break;
     lines.push(line);
-    total += line.length;
+    used += cost;
   }
-  const omitted = Math.max(0, totalAvailable - lines.length);
-  let section = lines.join('\n');
-  if (omitted > 0) {
-    section += relevant
-      ? `\n… (${omitted} more relevant memories available: use recall_memory to search)`
-      : `\n… (${omitted} more memories available: use recall_memory to search)`;
+  // Drop the lowest-ranked lines until the footer fits too; its length depends on the count.
+  while (lines.length > 0 && lines.join('\n').length + footer(totalAvailable - lines.length).length > cap) {
+    lines.pop();
   }
-  return section;
+  return lines.join('\n') + footer(Math.max(0, totalAvailable - lines.length));
 }

@@ -1,5 +1,6 @@
 import { Tool } from '../registry';
 import { MemoryStore, GLOBAL_SCOPE, AddFactOptions, resolveMemoryKind } from '../../core/memory';
+import { MEMORY_DEFAULTS } from '../../core/constants';
 
 export const saveMemoryTool: Tool = {
   name: 'save_memory',
@@ -9,8 +10,8 @@ export const saveMemoryTool: Tool = {
     if (!content) {
       throw new Error("Memory content cannot be empty.");
     }
-    if (content.length > 500) {
-      throw new Error('Memory content too long (max 500 characters): summarize essential facts.');
+    if (content.length > MEMORY_DEFAULTS.factMaxChars) {
+      throw new Error(`Memory content too long (max ${MEMORY_DEFAULTS.factMaxChars} characters): summarize essential facts.`);
     }
 
     const opts: AddFactOptions = {};

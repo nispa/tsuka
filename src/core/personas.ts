@@ -210,6 +210,7 @@ export function resolveCreativity(
 
 // ── System Prompt Assembly ──
 
+import { MEMORY_DEFAULTS } from './constants';
 import { MemoryStore } from './memory';
 import { IToolRegistry } from '../tools/registry';
 import { resolveToolSet } from './toolSet';
@@ -243,8 +244,8 @@ export function loadSystemPrompt(
   const trimmedTask = (taskText || '').trim();
   const memorySources = character?.aiName ? [character.aiName] : undefined;
   const memorySection = trimmedTask
-    ? MemoryStore.getInstance().formatRelevant(trimmedTask, 10, undefined, memorySources)
-    : MemoryStore.getInstance().formatForPrompt(10, undefined, memorySources);
+    ? MemoryStore.getInstance().formatRelevant(trimmedTask, MEMORY_DEFAULTS.promptMaxFacts, undefined, memorySources)
+    : MemoryStore.getInstance().formatForPrompt(MEMORY_DEFAULTS.promptMaxFacts, undefined, memorySources);
   if (memorySection) {
     prompt += `\n\nPersistent shared memory (facts from you and other agents, valid beyond this session):\n${memorySection}`;
   }

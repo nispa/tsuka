@@ -53,6 +53,13 @@ export const MEMORY_DEFAULTS = {
   maxFacts: 200,
   /** Character cap for memory sections injected into prompts (memoryMaxChars). */
   promptMaxChars: 600,
+  /** Facts considered for the system-prompt memory section before the character cap. */
+  promptMaxFacts: 10,
+  /** Longest content save_memory accepts: a fact, not a document. */
+  factMaxChars: 500,
+  /** recall_memory results when the caller gives no limit, and the highest limit honoured. */
+  recallDefaultLimit: 10,
+  recallMaxLimit: 50,
   /** Width of the short human-readable summary label (T14.20), git-subject convention. */
   summaryMaxLen: 72,
   /** Auto-derived tags per fact when the caller passes none (T15.4). */

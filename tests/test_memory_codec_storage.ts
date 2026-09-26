@@ -99,6 +99,13 @@ async function runTests(): Promise<void> {
   const section = renderMemorySection([fA], 5, 200, 'memories');
   check('CODEC.13', section.includes('Important rule') && section.includes('4 more memories available'), 'renders section with recall footer');
 
+  // T22.11: the cap bounds the whole injected section, separators and footer included.
+  const many = Array.from({ length: 12 }, (_, i) => ({ ...fA, id: `m${i}`, content: `fact number ${i} `.padEnd(30, 'x') }));
+  const cappedSection = renderMemorySection(many, 40, 600, 'memories');
+  check('CODEC.13b', cappedSection.length <= 600 && cappedSection.includes('more memories available'), `section fits the 600-char cap with its footer (${cappedSection.length})`);
+  const tight = renderMemorySection(many, 12, 120, 'relevant memories');
+  check('CODEC.13c', tight.length <= 120 && tight.includes('more relevant memories available'), `a tight cap drops lines rather than overflowing (${tight.length})`);
+
   // Group 4: Storage Operations
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tsuka-mem-storage-test-'));
   const testFile = path.join(tempDir, 'memory.json');

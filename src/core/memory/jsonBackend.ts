@@ -276,6 +276,6 @@ export class JsonMemoryBackend implements MemoryBackend {
     if (relevant.length === 0) {
       return '';
     }
-    return renderMemorySection(relevant, relevant.length, cap, 'relevant memories', true);
+    return renderMemorySection(relevant, relevant.length, cap, 'relevant memories');
   }
 }
