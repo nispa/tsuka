@@ -168,6 +168,11 @@ export interface TuiState {
   historyIndex: number;
   chatScrollOffset: number;
   sidebarScrollOffset: number;
+  /**
+   * Completion menu selection, valid only for the input state it was made on (`key`):
+   * any edit makes it stale, which reopens the menu on the first suggestion.
+   */
+  completion?: { key: string; index: number; dismissed: boolean };
   filesScrollOffset: number;
   selectedFileIndex: number;
   toolsScrollOffset: number;

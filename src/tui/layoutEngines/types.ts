@@ -1,6 +1,7 @@
 import type { TuiFocus, TuiState } from '../types';
 import type { TuiLayoutConfig, TuiThemePalette } from '../layoutConfig';
 import type { TuiTabSpec } from '../navigation';
+import type { CompletionItem } from '../../cli/commands/completion';
 
 /** A pane's rectangle on screen, its frame included; 1-based terminal column and row. */
 export interface PaneRect {
@@ -31,6 +32,12 @@ export interface TuiFrame {
   tabs: TabZone[];
 }
 
+/** An open prompt completion menu: its candidates and the selected one. */
+export interface CompletionMenuView {
+  items: CompletionItem[];
+  index: number;
+}
+
 export interface LayoutRequest {
   state: TuiState;
   width: number;
@@ -38,6 +45,8 @@ export interface LayoutRequest {
   activeTab: 'chat' | 'tools';
   layout: TuiLayoutConfig;
   theme: TuiThemePalette;
+  /** Open completion menu, drawn over the frame above the prompt pane. */
+  completion?: CompletionMenuView;
 }
 
 /**

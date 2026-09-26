@@ -1,6 +1,6 @@
 /**
  * Input view for TSUKA TUI.
- * Renders the bottom command input box, cursor, status indicators, and slash suggestions.
+ * Renders the bottom command input box, cursor and status indicators (suggestions: CompletionMenu).
  */
 
 import chalk from 'chalk';
@@ -9,27 +9,6 @@ import { TuiScreen } from '../screen';
 import { composingLabel } from './composingLabel';
 import { PaneFramer } from '../layoutConfig';
 
-const SLASH_COMMANDS = [
-  { cmd: '/agent', desc: 'Switch active Character or Persona' },
-  { cmd: '/role', desc: 'Switch active Role' },
-  { cmd: '/trait', desc: 'Switch active Trait' },
-  { cmd: '/team', desc: 'Run multi-agent Team workflow' },
-  { cmd: '/goal', desc: 'Decompose and solve complex goal' },
-  { cmd: '/call', desc: 'Start conference debate between agents' },
-  { cmd: '/tools', desc: 'Inspect available tools and security tiers' },
-  { cmd: '/models', desc: 'List and switch LLM backend models' },
-  { cmd: '/provider', desc: 'Configure LLM provider endpoint' },
-  { cmd: '/effort', desc: 'Set reasoning effort (low, medium, xhigh, auto)' },
-  { cmd: '/memory', desc: 'Query and manage persistent memory facts' },
-  { cmd: '/blackboard', desc: 'Inspect current session run notes' },
-  { cmd: '/context', desc: 'Show context token breakdown & limits' },
-  { cmd: '/benchmark', desc: 'Run capability benchmark fingerprinting' },
-  { cmd: '/stop', desc: 'Stop running agent activity / reasoning / tools' },
-  { cmd: '/reset', desc: 'Reset conversation session context' },
-  { cmd: '/clear', desc: 'Clear screen messages' },
-  { cmd: '/info', desc: 'Show system configuration summary' },
-  { cmd: '/exit', desc: 'Exit TSUKA' },
-];
 
 export class InputView {
   static render(state: TuiState, width: number, height: number, framer?: PaneFramer): string[] {
@@ -123,11 +102,5 @@ export class InputView {
     const borderColor = state.isGenerating ? (s: string) => chalk.hex('#fbbf24')(s) : undefined;
     const frame = framer?.(state.isGenerating ? 'busy' : 'input', state.focus === 'input');
     return TuiScreen.drawBox(title, lines, width, height, state.focus === 'input', borderColor, undefined, frame);
-  }
-
-  static getMatchingSlashCommands(text: string): Array<{ cmd: string; desc: string }> {
-    if (!text.startsWith('/')) return [];
-    const query = text.toLowerCase();
-    return SLASH_COMMANDS.filter((c) => c.cmd.toLowerCase().startsWith(query));
   }
 }

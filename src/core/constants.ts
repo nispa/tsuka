@@ -279,6 +279,10 @@ export const TUI_DEFAULTS = {
   consoleLowerRows: 6,
   /** Header columns kept free for the brand and version after the tab row. */
   headerBrandReserve: 16,
+  /** Narrowest terminal where the console also shows its right data column (widgets, files). */
+  consoleSideMinWidth: 110,
+  /** Suggestions shown at once in the prompt's completion menu. */
+  completionMenuMaxItems: 8,
   /** Modal geometry shared by full-screen text and file viewers. */
   viewerMaxWidth: 105,
   viewerMinWidth: 40,

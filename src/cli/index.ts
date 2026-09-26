@@ -19,6 +19,7 @@ import { CLITheme, InteractiveMenu } from './ui';
 import { StreamRenderer } from './stream';
 import { StatusLine } from './statusline';
 import { askInput, setCompletionSource } from './input';
+import { argumentCompletions, mentionCompletions } from './commands/completion';
 import { lockRawMode } from './rawlock';
 import { GenerationInterrupt } from './interrupt';
 import { ContextTracker } from '../core/contextTracker';
@@ -300,27 +301,12 @@ async function main() {
       ...Object.keys(commandMap),
       '/clear', '/help', '/reset', '/info', '/exit', '/continue',
     ])].sort(),
-    argumentsFor: (command) => {
-      if (command === '/sudo') return ['on', 'off', 'status'];
-      if (command === '/models' || command === '/benchmark') return commandCtx.availableModels.current;
-      if (command === '/provider') return configManager.getProviderNames();
-      if (command === '/continue') return listThinkingTraces().map((t) => t.filename);
-      if (command === '/agent') return commandCtx.listAvailableCharacters().map(c => c.name);
-      if (command === '/team') return listAvailableTeams().map(t => t.name);
-      if (command === '/call') {
-        const chars = commandCtx.listAvailableCharacters().map(c => `@${c.name}`);
-        const roles = listAvailableRoles().map(r => `@${r.name}`);
-        return [...new Set([...chars, ...roles])];
-      }
-      if (command === '/memory') return ['clear'];
-      if (command === '/effort') return ['none', 'low', 'medium', 'high', 'xhigh', 'auto', 'ask'];
-      return [];
-    },
-    mentions: () => {
-      const chars = commandCtx.listAvailableCharacters().map(c => `@${c.name}`);
-      const roles = listAvailableRoles().map(r => `@${r.name}`);
-      return [...new Set([...chars, ...roles])];
-    }
+    // Shared with the TUI suggestion menu: one table, not two drifting lists.
+    argumentsFor: (command) => argumentCompletions(command, {
+      models: () => commandCtx.availableModels.current,
+      providers: () => configManager.getProviderNames(),
+    }).map((item) => item.value),
+    mentions: () => mentionCompletions().map((item) => item.value),
   });
 
   while (true) {

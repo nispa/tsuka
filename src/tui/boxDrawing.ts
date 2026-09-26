@@ -137,6 +137,23 @@ export class BoxDrawing {
     return lines;
   }
 
+  /**
+   * Paints `box` over `lines` with its top-left corner at 1-based column `x`, row `y`,
+   * ANSI-safely; each touched row keeps its original display width.
+   */
+  static overlay(lines: string[], box: string[], x: number, y: number): string[] {
+    const out = [...lines];
+    box.forEach((row, i) => {
+      const index = y - 1 + i;
+      if (index < 0 || index >= out.length) return;
+      const line = out[index];
+      const width = BoxDrawing.stringWidth(BoxDrawing.stripAnsi(line));
+      const spliced = sliceAnsi(line, 0, x - 1) + row + sliceAnsi(line, x - 1 + BoxDrawing.stringWidth(BoxDrawing.stripAnsi(row)));
+      out[index] = BoxDrawing.truncateOrPad(spliced, width);
+    });
+    return out;
+  }
+
   /** Scrollbar thumb rows `[start, end)` inside `innerHeight`, or null when everything fits. */
   private static scrollThumb(scrollbar: ScrollbarOptions | undefined, innerHeight: number): [number, number] | null {
     if (!scrollbar || scrollbar.total <= scrollbar.visible || innerHeight <= 0) return null;

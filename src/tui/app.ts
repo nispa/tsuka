@@ -7,7 +7,7 @@
 
 import { TuiScreen, KeyPressEvent, TuiMouseEvent } from './screen';
 import { TuiTabSpec, resolveTabShortcut } from './navigation';
-import { completeTuiInput } from './inputCompletion';
+import { CompletionMenu } from './interaction/completionMenu';
 import { TuiStore } from './store';
 import { TuiBridge } from './bridge';
 import { Agent, ToolRoundsAction, resolveReasoningEffort } from '../core/agent';
@@ -61,6 +61,12 @@ export class TuiApp {
   private layoutConfig: TuiLayoutConfig;
   /** Frame last painted: mouse hit-testing and the focus cycle read its regions. */
   private lastFrame?: TuiFrame;
+  /** Prompt suggestions (commands, agents, teams, mentions) shared with the CLI table. */
+  private readonly completionMenu = new CompletionMenu({
+    // The TUI picks models from the F6 modal; only providers are listed here.
+    models: () => [],
+    providers: () => this.configManager.getProviderNames(),
+  });
   private commandController: TuiCommandController;
   private turnRunner: TuiTurnRunner;
   private onShutdown?: () => void | Promise<void>;
@@ -386,7 +392,10 @@ export class TuiApp {
   private renderFrame(): string[] {
     const { width, height } = this.screen.getDimensions();
     const state = this.store.getState();
-    const frame = composeLayoutFrame({ state, width, height, activeTab: this.activeTab, layout: this.layoutConfig });
+    const frame = composeLayoutFrame({
+      state, width, height, activeTab: this.activeTab, layout: this.layoutConfig,
+      completion: this.completionMenu.view(state),
+    });
     this.lastFrame = frame;
     // A layout change can hide the focused pane (e.g. files under the console layout):
     // hand focus back to the prompt after this paint, never during it.
@@ -453,6 +462,9 @@ export class TuiApp {
       return;
     }
 
+    // Open suggestions own ↑/↓/Tab/Esc first; a second Esc then reaches the interrupt below.
+    if (this.completionMenu.handleKey(key, state, this.store)) return;
+
     if (key.name === 'escape' || (key.ctrl && key.name === 'x')) {
       // During processing Escape always means "request interruption". If another
       // modal owns the screen, cancel it first so its pending promise is resolved.
@@ -491,17 +503,6 @@ export class TuiApp {
     }
 
     if (key.name === 'tab') {
-      if (state.focus === 'input' && state.inputText) {
-        const completion = completeTuiInput(state.inputText, state.inputCursor);
-        if (completion.changed) {
-          this.store.setInputText(completion.text, completion.cursor);
-          return;
-        }
-        if (completion.candidates.length > 1) {
-          this.store.notify(`Matches: ${completion.candidates.join(', ')}`, 'info');
-          return;
-        }
-      }
       this.store.cycleFocus(this.lastFrame ? (Object.keys(this.lastFrame.panes) as TuiFocus[]) : undefined);
       return;
     }
