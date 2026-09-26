@@ -18,7 +18,7 @@ import { IToolRegistry } from '../tools/registry';
 import { PermissionManager } from '../safety/permissions';
 import { loadCharacter, loadRole, loadTrait, loadSystemPrompt } from '../cli/shared';
 import { withEffortPin, describeEffortSource, setEffortPin } from '../core/effortControl';
-import { detectContextWindow, scanProviders } from '../core/discovery';
+import { chooseStartupModel, detectContextWindow, scanProviders } from '../core/discovery';
 import { LayoutConfigManager, TuiLayoutConfig } from './layoutConfig';
 import { composeLayoutFrame, TuiFrame } from './layoutEngines';
 import { ModalKeyHandler, PersonaModals, SystemModals, LayoutModals } from './modals';
@@ -344,8 +344,7 @@ export class TuiApp {
       }
       const configuredModel = this.provider.getCurrentModel();
 
-      // RAM-loaded model beats config (same precedence as cli/index.ts startup).
-      const chosen = scan.loadedModel ?? (scan.models.includes(configuredModel) ? configuredModel : (scan.models[0] ?? ''));
+      const chosen = chooseStartupModel(scan, configuredModel);
       if (chosen && chosen !== configuredModel) {
         this.provider.setCurrentModel(chosen);
         this.configManager.updateActiveModel(chosen);

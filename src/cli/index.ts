@@ -7,7 +7,7 @@ import * as path from 'path';
 import type { ILLMProvider } from '../core/provider';
 import { homePath, loadEnvironmentVariables } from '../core/apphome';
 import { ConfigManager } from '../core/config';
-import { scanProviders, detectContextWindow } from '../core/discovery';
+import { scanProviders, detectContextWindow, chooseStartupModel } from '../core/discovery';
 import { MemoryStore } from '../core/memory';
 import { createHarnessRuntime } from '../core/runtime';
 import { Agent, resolveReasoningEffort } from '../core/agent';
@@ -198,7 +198,7 @@ async function main() {
       CLITheme.warning('No models found on server.');
     } else {
       const configured = activeConfig.model;
-      const chosen = scan.loadedModel ?? (availableModels.includes(configured) ? configured : availableModels[0]);
+      const chosen = chooseStartupModel(scan, configured);
       if (chosen !== provider.getCurrentModel()) {
         provider.setCurrentModel(chosen);
         configManager.updateActiveModel(chosen);

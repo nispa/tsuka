@@ -125,6 +125,17 @@ async function fetchJson(url: string, timeoutMs: number, headers?: Record<string
 }
 
 /**
+ * The model a session starts on. What the server already holds in RAM wins over the config
+ * (switching would cost a reload, or fail on single-model servers like llama-server); then
+ * the configured model if the server lists it; then the first listed one. One rule shared
+ * by the CLI, the TUI and scripts, which used to repeat it inline.
+ */
+export function chooseStartupModel(scan: Pick<ProviderScanResult, 'models' | 'loadedModel'>, configured: string): string {
+  if (scan.loadedModel) return scan.loadedModel;
+  return scan.models.length === 0 || scan.models.includes(configured) ? configured : scan.models[0];
+}
+
+/**
  * Probes a single provider: returns available models and loaded model if reachable, or null.
  */
 export async function probeProvider(
@@ -176,7 +187,7 @@ export async function probeProvider(
     } catch {}
   }
 
-  const activeModel = loadedModel ?? config.model ?? (models.length > 0 ? models[0] : '');
+  const activeModel = chooseStartupModel({ models, loadedModel }, config.model ?? '');
   const contextWindow = await detectContextWindow(config.baseUrl, apiKey, activeModel, DISCOVERY_DEFAULTS.metadataTimeoutMs);
 
   return { name, config, models, zeroPricedModels, loadedModel, contextWindow };

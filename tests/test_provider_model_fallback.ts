@@ -48,7 +48,7 @@ async function main(): Promise<void> {
   }, null, 2));
   process.env.TSUKA_HOME = temporaryHome;
 
-  const { scanProviders } = await import('../src/core/discovery');
+  const { scanProviders, chooseStartupModel } = await import('../src/core/discovery');
   const { ConfigManager } = await import('../src/core/config');
   const { TuiStore } = await import('../src/tui/store');
   const { SystemModals } = await import('../src/tui/modals/systemModals');
@@ -192,6 +192,14 @@ async function main(): Promise<void> {
     ], 'unsloth');
     check('PF10', cold?.name === 'unsloth' && cold.loadedModel === 'local/gemma',
       `a slow first answer from the configured local server is awaited instead of failing over (got ${cold?.name})`);
+
+    // PF11: one startup rule for CLI, TUI and scripts — RAM beats config, then config if
+    // listed, then the first listed model (llama-server lists only what it serves).
+    check('PF11', chooseStartupModel({ models: ['a', 'b'], loadedModel: 'b' }, 'a') === 'b'
+      && chooseStartupModel({ models: ['ornith-9b'], loadedModel: null }, 'gemma') === 'ornith-9b'
+      && chooseStartupModel({ models: ['a', 'gemma'], loadedModel: null }, 'gemma') === 'gemma'
+      && chooseStartupModel({ models: [], loadedModel: null }, 'gemma') === 'gemma',
+      'the startup model follows RAM, then config, then the server list');
   } finally {
     globalThis.fetch = originalFetch;
     fs.rmSync(temporaryHome, { recursive: true, force: true });

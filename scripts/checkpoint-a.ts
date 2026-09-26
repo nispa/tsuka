@@ -79,7 +79,7 @@ async function runTrial(taskId: string): Promise<void> {
   // is resolved at construction time.
   const { ConfigManager } = await import('../src/core/config');
   const { createHarnessRuntime } = await import('../src/core/runtime');
-  const { detectContextWindow } = await import('../src/core/discovery');
+  const { chooseStartupModel, detectContextWindow, probeProvider } = await import('../src/core/discovery');
   const { DISCOVERY_DEFAULTS } = await import('../src/core/constants');
   const { Agent, resolveReasoningEffort } = await import('../src/core/agent');
   const { loadCharacter, loadRole, loadTrait, loadSystemPrompt } = await import('../src/core/personas');
@@ -103,10 +103,16 @@ async function runTrial(taskId: string): Promise<void> {
     const { provider, registry, permissionManager } = runtime;
     const active = configManager.getActiveProviderConfig();
     result.provider = configManager.getActiveProviderName();
+    // Start on whatever the server has loaded, like the CLI/TUI startup: a checkpoint run
+    // measures the model in RAM, not the one last saved in the config. Long wait on
+    // purpose: a cold local server can miss the short probe, and without the real window
+    // pressure is measured against maxHistoryTokens and delegation never fires.
+    const scan = await probeProvider(result.provider, active, configManager.getApiKey(), DISCOVERY_DEFAULTS.configuredProbeTimeoutMs);
+    if (!scan) throw new Error(`Provider '${result.provider}' is not reachable at ${active.baseUrl}.`);
+    provider.setCurrentModel(chooseStartupModel(scan, provider.getCurrentModel()));
     result.model = provider.getCurrentModel();
-    // Long wait on purpose: a cold local server can miss the short probe, and without the
-    // real window pressure is measured against maxHistoryTokens and delegation never fires.
-    result.contextWindow = await detectContextWindow(active.baseUrl, configManager.getApiKey(), provider.getCurrentModel(), DISCOVERY_DEFAULTS.configuredProbeTimeoutMs);
+    result.contextWindow = scan.contextWindow
+      ?? await detectContextWindow(active.baseUrl, configManager.getApiKey(), result.model, DISCOVERY_DEFAULTS.configuredProbeTimeoutMs);
     if (result.contextWindow) configManager.setRuntimeContextTokens(result.contextWindow);
 
     // Same assembly as the CLI's recreateAgent.
