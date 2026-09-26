@@ -12,6 +12,8 @@ export type AgentEvent =
   | { type: 'round_continue'; round: number; agentLabel?: string }
   | { type: 'max_rounds'; limit: number; agentLabel?: string }
   | { type: 'context_action'; action: 'continue' | 'prepare' | 'delegate'; ratio: number; agentLabel?: string; amplification?: number | null }
-  | { type: 'validation_limit'; toolName: string; limit: number; message: string; agentLabel?: string };
+  | { type: 'validation_limit'; toolName: string; limit: number; message: string; agentLabel?: string }
+  /** Human-facing trace of a running tool (e.g. a search provider's raw answer); never enters the history. */
+  | { type: 'tool_diagnostics'; name: string; text: string; agentLabel?: string };
 
 export type AgentEventHandler = (ev: AgentEvent) => void;

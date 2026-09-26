@@ -122,6 +122,42 @@ async function main(): Promise<void> {
     const mcpResults = await mcp.search('query');
     check('WS.11', mcpResults[0]?.title === 'MCP Title' && mcpResults[0]?.snippet === 'MCP Snippet', 'external MCP adapter contract returns only normalized result fields');
 
+    // --- Raw exchange for the Tools view; non-200 is a reported failure, not "no results" ---
+    const html200 = '<div class="web-result"><a class="result__a" href="https://example.org/a">A title</a><a class="result__snippet">Snippet A</a></div>';
+    const traces: any[] = [];
+    const ddgOk = new HttpWebSearchBackend('duckduckgo', catalog, async () => new Response(html200, { status: 200, headers: { 'content-type': 'text/html' } }));
+    const okResults = await ddgOk.search('anything', (trace) => traces.push(trace));
+    check('WS.12', traces.length === 1 && traces[0].status === 200 && okResults.length === 1 && traces[0].results === 1 && traces[0].body.includes('result__a'),
+      `a successful search reports its raw exchange (status 200, ${traces[0]?.results} result(s), body kept)`);
+
+    const blockedTraces: any[] = [];
+    const ddgBlocked = new HttpWebSearchBackend('duckduckgo', catalog, async () => new Response('<html>anomaly challenge</html>', { status: 202 }));
+    const blockedRejected = await rejects(() => ddgBlocked.search('anything', (trace) => blockedTraces.push(trace)), 'HTTP 202 instead of 200');
+    check('WS.13', blockedRejected && blockedTraces[0]?.status === 202 && blockedTraces[0]?.body.includes('anomaly'),
+      "a 202 bot-detection page is an explicit failure, and its body still reaches the trace");
+
+    process.env.GOOGLE_SEARCH_API_KEY = 'google-secret-must-not-leak';
+    process.env.GOOGLE_SEARCH_CX = 'search-engine-id';
+    const googleTraces: any[] = [];
+    const googleTraced = new HttpWebSearchBackend('google', catalog, async () => new Response(JSON.stringify({ items: [] }), { status: 200 }));
+    await googleTraced.search('q', (trace) => googleTraces.push(trace));
+    check('WS.14', !googleTraces[0].request.includes('google-secret-must-not-leak') && googleTraces[0].request.includes('[REDACTED'),
+      `the traced request never shows a provider credential (${googleTraces[0].request.slice(0, 80)}…)`);
+
+    const { formatWebSearchTrace } = await import('../src/tools/impl/webSearch');
+    const { TuiStore } = await import('../src/tui/store');
+    const { TuiBridge } = await import('../src/tui/bridge');
+    const { ToolsView } = await import('../src/tui/views/Tools');
+    const tuiStore = new TuiStore();
+    const { PermissionManager } = await import('../src/safety/permissions');
+    const handler = new TuiBridge(tuiStore, new PermissionManager()).createEventHandler();
+    handler({ type: 'tool_start', name: 'web_search', args: { query: 'q' } });
+    handler({ type: 'tool_diagnostics', name: 'web_search', text: formatWebSearchTrace(blockedTraces[0]) });
+    handler({ type: 'tool_end', name: 'web_search', args: { query: 'q' }, success: false, output: 'Error executing tool' });
+    const shown = ToolsView.render(tuiStore.getState(), 100, 60).join('\n');
+    check('WS.15', shown.includes('server:') && shown.includes('status:   202') && shown.includes('anomaly challenge'),
+      'the Tools view shows what the server answered under the execution');
+
     assert.ok(!toolOutput.includes('tavily-secret-must-not-leak'));
   } finally {
     if (previousHome === undefined) delete process.env.TSUKA_HOME; else process.env.TSUKA_HOME = previousHome;

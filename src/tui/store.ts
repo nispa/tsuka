@@ -271,6 +271,10 @@ export class TuiStore {
     return id;
   }
 
+  setToolDiagnostics(id: string, diagnostics: string): void {
+    this.setState({ activeTools: this.state.activeTools.map((t) => (t.id === id ? { ...t, diagnostics } : t)) });
+  }
+
   finishTool(id: string, output: string, success: boolean): void {
     const activeTools = this.state.activeTools.map((t) =>
       t.id === id

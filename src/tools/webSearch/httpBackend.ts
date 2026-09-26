@@ -2,7 +2,8 @@ import { loadWebSearchCatalog, type WebSearchDomResponseMapping, type WebSearchH
 import { safeFetch } from '../../core/network';
 import { TOOLS_DEFAULTS } from '../../core/constants';
 import { normalizeWebSearchResult, parseDuckDuckGoResults, type WebSearchResult } from '../impl/webSearchParsing';
-import type { WebSearchBackend } from './types';
+import type { WebSearchBackend, WebSearchTrace } from './types';
+import { redactCredentials } from '../../core/credentials';
 
 type DomResponseAdapter = (html: string) => WebSearchResult[];
 export type WebSearchHttpFetch = (input: string | URL, init?: RequestInit) => Promise<Response>;
@@ -97,7 +98,7 @@ export class HttpWebSearchBackend implements WebSearchBackend {
     this.request = request;
   }
 
-  async search(query: string): Promise<WebSearchResult[]> {
+  async search(query: string, onTrace?: (trace: WebSearchTrace) => void): Promise<WebSearchResult[]> {
     const url = new URL(this.definition.endpoint);
     try {
       addQuery(url, this.definition.query, query);
@@ -108,10 +109,33 @@ export class HttpWebSearchBackend implements WebSearchBackend {
         headers,
         body,
       });
-      if (!response.ok) throw new Error(`HTTP status ${response.status}.`);
-      return this.definition.transport === 'dom'
-        ? parseDomResponse(await response.text(), this.definition.response as WebSearchDomResponseMapping)
-        : parseJsonResponse(await response.json(), this.definition.response as WebSearchJsonResponseMapping);
+      const text = await response.text();
+      const redact = (value: string) => redactCredentials(redactProviderCredentials(value, this.definition));
+      const trace = (results: number): WebSearchTrace => ({
+        provider: this.id,
+        request: redact(`${this.definition.method} ${url.toString()}`),
+        status: response.status,
+        statusText: response.statusText,
+        contentType: response.headers.get('content-type') ?? '',
+        bytes: Buffer.byteLength(text),
+        results,
+        body: redact(text.slice(0, TOOLS_DEFAULTS.webSearchTraceMaxChars)),
+      });
+      // Only 200 carries results. Any other status — even a 2xx such as DuckDuckGo's 202
+      // bot-detection page — used to be parsed, found empty and reported as "no results",
+      // which hid a blocked provider behind what looked like a legitimately empty search.
+      if (response.status !== 200) {
+        onTrace?.(trace(0));
+        throw new Error(
+          `HTTP ${response.status} instead of 200 — most likely a bot-detection or rate-limit page. ` +
+          `Retry later, or switch provider with /search-engine (API providers need a key).`
+        );
+      }
+      const results = this.definition.transport === 'dom'
+        ? parseDomResponse(text, this.definition.response as WebSearchDomResponseMapping)
+        : parseJsonResponse(JSON.parse(text), this.definition.response as WebSearchJsonResponseMapping);
+      onTrace?.(trace(results.length));
+      return results;
     } catch (error: unknown) {
       const message = redactProviderCredentials(error instanceof Error ? error.message : 'Unknown error.', this.definition);
       // Values resolved from env are never interpolated into errors or logs.

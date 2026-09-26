@@ -356,6 +356,10 @@ export class TuiBridge {
         ]);
       },
 
+      tool_diagnostics: (ev) => {
+        const execution = this.currentToolExecMap.get(this.toolExecutionKey(ev.name, ev.agentLabel));
+        if (execution) this.store.setToolDiagnostics(execution.toolId, ev.text);
+      },
       tool_end: (ev) => {
         if (ev.agentLabel) this.store.updateSpawnedAgent({ currentTool: undefined });
         this.backToThinking(ev.agentLabel);

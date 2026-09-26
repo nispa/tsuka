@@ -38,6 +38,8 @@ export interface TuiToolExecution {
   startedAt: number;
   completedAt?: number;
   riskLevel?: RiskLevel;
+  /** What the tool saw from the outside (e.g. a search provider's raw answer); UI only. */
+  diagnostics?: string;
 }
 
 export interface TuiPermissionRequest {
@@ -166,13 +168,13 @@ export interface TuiState {
   inputCursor: number;
   inputHistory: string[];
   historyIndex: number;
-  chatScrollOffset: number;
-  sidebarScrollOffset: number;
   /**
    * Completion menu selection, valid only for the input state it was made on (`key`):
    * any edit makes it stale, which reopens the menu on the first suggestion.
    */
   completion?: { key: string; index: number; dismissed: boolean };
+  chatScrollOffset: number;
+  sidebarScrollOffset: number;
   filesScrollOffset: number;
   selectedFileIndex: number;
   toolsScrollOffset: number;

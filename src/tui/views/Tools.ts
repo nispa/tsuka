@@ -32,7 +32,8 @@ export class ToolsView {
           (t.riskLevel && t.riskLevel.toLowerCase().includes(query)) ||
           (t.status && t.status.toLowerCase().includes(query)) ||
           (t.args && t.args.toLowerCase().includes(query)) ||
-          (t.output && t.output.toLowerCase().includes(query))
+          (t.output && t.output.toLowerCase().includes(query)) ||
+          (t.diagnostics && t.diagnostics.toLowerCase().includes(query))
         )
       : state.activeTools;
 
@@ -54,6 +55,15 @@ export class ToolsView {
           rawLines.push(chalk.gray('  out:'));
           const outputLines = renderMarkdownToLines(t.output.trim(), Math.max(6, innerWidth - 6));
           for (const outputLine of outputLines) rawLines.push(`    ${outputLine}`);
+        }
+        if (t.diagnostics) {
+          // Verbatim, not Markdown: this is what the server sent (often HTML), shown to explain
+          // what the tool found — or why it found nothing.
+          rawLines.push(chalk.gray('  server:'));
+          const rowWidth = Math.max(6, innerWidth - 6);
+          for (const line of t.diagnostics.split(/\r?\n/)) {
+            for (let i = 0; i < Math.max(1, line.length); i += rowWidth) rawLines.push(chalk.hex('#94a3b8')(`    ${line.slice(i, i + rowWidth)}`));
+          }
         }
         rawLines.push(chalk.gray('─'.repeat(Math.min(innerWidth, 30))));
       }

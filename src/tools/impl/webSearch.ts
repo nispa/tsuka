@@ -1,4 +1,5 @@
-import { Tool } from '../registry';
+import { Tool, ToolExecutionContext } from '../registry';
+import type { WebSearchTrace } from '../webSearch/types';
 import { capForContext } from '../../core/contextBudget';
 import { createHotPathConfigCache } from '../../core/config/hotPathCache';
 import { formatWebSearchResults, normalizeWebSearchResults } from './webSearchParsing';
@@ -16,10 +17,12 @@ registerWebSearchBackend('http', ({ provider }) => new HttpWebSearchBackend(prov
 export const webSearchTool: Tool = {
   name: 'web_search',
   riskLevel: 'SAFE',
-  execute: async (args: { query: string }) => {
+  execute: async (args: { query: string }, context?: ToolExecutionContext) => {
     const config = configCache.get();
     const backend = createWebSearchBackend(config.getWebSearchBackend(), { provider: config.getWebSearchProvider() });
-    const result = formatWebSearchResults(normalizeWebSearchResults(await backend.search(args.query)));
+    const onTrace = (trace: WebSearchTrace) =>
+      context?.onEvent?.({ type: 'tool_diagnostics', name: 'web_search', text: formatWebSearchTrace(trace), agentLabel: context.requesterLabel });
+    const result = formatWebSearchResults(normalizeWebSearchResults(await backend.search(args.query, onTrace)));
 
     return capForContext(result, undefined, {
       label: `search results for "${args.query}"`,
@@ -27,6 +30,19 @@ export const webSearchTool: Tool = {
     });
   }
 };
+
+/** The raw exchange as the Tools view shows it: request, status, headers of interest, body. */
+export function formatWebSearchTrace(trace: WebSearchTrace): string {
+  return [
+    `provider: ${trace.provider}`,
+    `request:  ${trace.request}`,
+    `status:   ${trace.status} ${trace.statusText}`.trimEnd(),
+    `type:     ${trace.contentType}`,
+    `size:     ${trace.bytes} bytes · ${trace.results} result(s) parsed`,
+    '',
+    trace.body,
+  ].join('\n');
+}
 
 /** Resolves the configured provider through the local hot-path snapshot. */
 export function getConfiguredWebSearchProvider(): string {
