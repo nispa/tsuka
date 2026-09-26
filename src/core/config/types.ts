@@ -103,6 +103,12 @@ export interface AppConfig {
   parallelExecutionEnabled?: boolean;
   /** Enables loading and creating executable custom tools. Default: false. */
   selfAuthoringEnabled?: boolean;
+  /**
+   * Credential-like environment variables execute_command may still see (T24.1), e.g.
+   * ["GITHUB_TOKEN"] for `gh`. Every other name matching the sensitive pattern is removed
+   * from the shell's environment. Default: none.
+   */
+  commandEnvPassthrough?: string[];
   /** Maximum number of activity records kept in the in-memory ContextTracker ring buffer. Default: 100. */
   contextTrackerMaxEntries?: number;
   /** Enables autonomous subagent delegation when context pressure crosses configured thresholds (T22.8). Default: false. */

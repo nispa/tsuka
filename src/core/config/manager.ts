@@ -54,6 +54,12 @@ function validateConfigShape(value: unknown): AppConfig {
     }
   }
 
+  if (candidate.commandEnvPassthrough !== undefined &&
+    (!Array.isArray(candidate.commandEnvPassthrough) ||
+      candidate.commandEnvPassthrough.some((name) => typeof name !== 'string' || !name.trim()))) {
+    throw new Error("Configuration field 'commandEnvPassthrough' must be an array of variable names.");
+  }
+
   if (candidate.webSearch !== undefined) {
     if (!candidate.webSearch || typeof candidate.webSearch !== 'object' || Array.isArray(candidate.webSearch)) {
       throw new Error("Configuration field 'webSearch' must be an object.");
@@ -525,6 +531,11 @@ export class ConfigManager {
   /** Executable custom tools are opt-in: their out-of-process confinement is defense in depth, not a sandbox. */
   isSelfAuthoringEnabled(): boolean {
     return this.config.selfAuthoringEnabled === true;
+  }
+
+  /** Credential-like variables explicitly allowed into execute_command's environment (T24.1). */
+  getCommandEnvPassthrough(): string[] {
+    return (this.config.commandEnvPassthrough ?? []).map((name) => name.trim());
   }
 
   /**

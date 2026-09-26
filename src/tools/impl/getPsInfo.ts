@@ -1,9 +1,7 @@
 import { spawn } from 'child_process';
 import { Tool } from '../registry';
 import { getShellConfig, isWindows } from '../../core/platform';
-
-// Pattern to exclude sensitive environment variables (API keys, secrets, passwords)
-const SENSITIVE_ENV_PATTERN = /KEY|SECRET|TOKEN|PASSWORD|PASSWD|PWD|CREDENTIAL|AUTH/i;
+import { buildChildEnv } from '../../core/childEnv';
 
 function buildCommand(category: 'processes' | 'services' | 'disk' | 'env'): string {
   if (isWindows()) {
@@ -15,7 +13,7 @@ function buildCommand(category: 'processes' | 'services' | 'disk' | 'env'): stri
       case 'disk':
         return 'Get-Volume | Select-Object -Property DriveLetter, FriendlyName, Size, SizeRemaining | ConvertTo-Json';
       case 'env':
-        return 'Get-ChildItem Env: | Where-Object { $_.Name -notmatch \'KEY|SECRET|TOKEN|PASSWORD|PASSWD|PWD|CREDENTIAL|AUTH\' } | Select-Object -Property Name, Value | ConvertTo-Json';
+        return 'Get-ChildItem Env: | Select-Object -Property Name, Value | ConvertTo-Json';
     }
   }
 
@@ -44,7 +42,9 @@ export const getPsInfoTool: Tool = {
     const shellConfig = getShellConfig();
 
     return new Promise<string>((resolve) => {
-      const child = spawn(shellConfig.shell, shellConfig.buildArgs(command), shellConfig.spawnOptions);
+      // The listing shows the child's own environment, already stripped of credentials
+      // (T24.1) — one rule for every platform instead of a filter per shell.
+      const child = spawn(shellConfig.shell, shellConfig.buildArgs(command), { ...shellConfig.spawnOptions, env: buildChildEnv() });
 
       let output = '';
       child.stdout.on('data', (data) => {
@@ -55,13 +55,6 @@ export const getPsInfoTool: Tool = {
       });
 
       child.on('close', (code) => {
-        if (args.category === 'env' && !isWindows()) {
-          output = output
-            .split(/\r?\n/)
-            .filter((line) => !SENSITIVE_ENV_PATTERN.test(line.split('=')[0]))
-            .join('\n');
-        }
-
         if (code !== 0) {
           resolve(`Error executing system command (Exit code: ${code}).\nOutput: ${output}`);
         } else {

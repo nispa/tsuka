@@ -44,6 +44,7 @@ const CONFIG_CLASSIFICATION: Record<string, FlagCategory> = {
   creativity: 'product',
   parallelExecutionEnabled: 'product',
   selfAuthoringEnabled: 'product',
+  commandEnvPassthrough: 'product',
   contextTrackerMaxEntries: 'diagnostic',
   cliMaxHistory: 'presentation',
   goalCondensedHistoryCharLimit: 'product',

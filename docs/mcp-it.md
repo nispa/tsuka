@@ -49,7 +49,7 @@ Per abilitare uno o più server MCP, basta aggiungere la sezione `mcpServers` ne
 |---|---|---|---|
 | `command` | `string` | *(obbligatorio)* | Eseguibile del server MCP (es. `npx`, `node`, `python`, `uvx`). |
 | `args` | `string[]` | `[]` | Argomenti passati al comando di avvio. |
-| `env` | `object` | `{}` | Variabili d'ambiente aggiuntive (es. token API). Vengono oscurate nei log per sicurezza. |
+| `env` | `object` | `{}` | Variabili per questo server (es. token API). Per il resto il server eredita l'ambiente di TSUKA privato delle credenziali, quindi ogni token che gli serve va dichiarato qui. Non vengono mai loggate. |
 | `enabled` | `boolean` | `true` | Se impostato a `false`, il server rimane configurato ma non viene avviato. |
 | `riskLevel` | `string` | `"RESTRICTED"` | Livello di sicurezza assegnato ai tool del server (`SAFE`, `RESTRICTED`, `DANGEROUS`). |
 | `timeoutMs` | `number` | `60000` | Tempo massimo (in millisecondi) per l'esecuzione di ciascuna chiamata tool o richiesta di lista. |

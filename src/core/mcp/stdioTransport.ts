@@ -12,6 +12,7 @@
 
 import { spawn, ChildProcess } from 'child_process';
 import { logSink } from '../logSink';
+import { buildChildEnv } from '../childEnv';
 import type { JsonRpcRequest, JsonRpcNotification, JsonRpcResponse } from './types';
 
 interface PendingRequest {
@@ -61,11 +62,12 @@ export class StdioTransport {
     if (this.child) {
       throw new McpTransportError('Transport already started');
     }
-    // Directive 4: the merged env may carry credentials — it is passed to the
-    // child but never logged, here or anywhere else in the MCP package.
+    // T24.1: the server gets TSUKA's environment without credentials, plus exactly what
+    // its configuration declares in `env` (the place to give it the token it needs).
+    // Directive 4: that declared env may carry credentials — it is never logged.
     this.child = spawn(this.options.command, this.options.args ?? [], {
       stdio: ['pipe', 'pipe', 'pipe'],
-      env: { ...process.env, ...(this.options.env ?? {}) },
+      env: buildChildEnv([], this.options.env ?? {}),
       windowsHide: true,
       shell: false,
     });

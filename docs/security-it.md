@@ -69,7 +69,7 @@ Tutti i tool HTTP nativi usano il boundary condiviso `safeFetch`. Esso valida HT
 
 ---
 
-## 🏢 7. Confinamento Rigoroso nel Workspace (Workspace Jail)
+## 🏢 2. Confinamento Rigoroso nel Workspace (Workspace Jail)
 
 Tutte le operazioni sul filesystem (`read_file`, `write_file`, `edit_file`, `delete_file`, `list_dir`, `grep_search`, `audit_code`) sono obbligatoriamente vincolate alla directory del workspace attivo tramite la funzione protetta `resolveSafePath()`:
 
@@ -80,11 +80,12 @@ Tutte le operazioni sul filesystem (`read_file`, `write_file`, `edit_file`, `del
 
 ---
 
-## 🔑 0. Mascheramento Automatico di Credenziali e Segreti
+## 🔑 3. Credenziali e Dati Sensibili
 
-TSUKA integra una pipeline automatica di sanitizzazione dell'output (`maskEnvVars`):
-* **Filtro delle Variabili d'Ambiente**: Tutte le variabili d'ambiente caricate da `.env` o dal sistema contenenti pattern sensibili (`KEY`, `SECRET`, `TOKEN`, `PASSWORD`, `CREDENTIAL`, `AUTH`) vengono mascherate automaticamente.
-* **Sanitizzazione su Tutti i Canali**: Il mascheramento avviene prima che i dati vengano inviati ai prompt dei modelli LLM, registrati nei file di log (`workflow_logs/`), stampati a video nella CLI o visualizzati nella TUI.
+Le chiavi API dei provider stanno nell'ambiente di TSUKA. Le misure seguenti le tengono fuori dalla portata di ciò che il modello può eseguire o leggere; resta aperta una lacuna.
+* **Processi Figli senza Credenziali (T24.1)**: `execute_command`, `get_ps_info` e i server MCP partono con l'ambiente di TSUKA privato di ogni variabile il cui nome corrisponde al pattern sensibile (`KEY`, `SECRET`, `TOKEN`, `PASSWORD`, `PASSWD`, `CREDENTIAL`, `AUTH`; un'unica definizione in `src/core/childEnv.ts`). `SSH_AUTH_SOCK` e `XAUTHORITY` contengono percorsi, non segreti, e passano. Un comando che ha davvero bisogno di una credenziale la riceve solo se è elencata in `commandEnvPassthrough` in `tsuka.config.json` (es. `["GITHUB_TOKEN"]`); un server MCP riceve esattamente ciò che dichiara nel proprio `env`. I tool generati ricevono un ambiente vuoto.
+* **Oscuramento in Log ed Errori**: i log dei fallimenti del provider e i messaggi d'errore della ricerca web oscurano le credenziali; i valori `env` dichiarati per i server MCP non vengono mai loggati.
+* **Lacuna Aperta (T24.2)**: i *risultati* dei tool non vengono filtrati. Leggere per esempio un file `.env` dal workspace ne porta il contenuto nel prompt. Finché T24.2 non è chiuso, tieni i segreti fuori dal workspace.
 
 ---
 

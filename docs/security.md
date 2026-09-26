@@ -82,9 +82,10 @@ All filesystem operations (`read_file`, `write_file`, `edit_file`, `delete_file`
 
 ## 🔑 3. Sensitive Data & Credential Masking
 
-TSUKA automatically scrubs sensitive credentials from all communication pipelines (`maskEnvVars`):
-* **Environment Variable Redaction**: Any loaded `.env` variables or system environment keys matching sensitive patterns (`KEY`, `SECRET`, `TOKEN`, `PASSWORD`, `CREDENTIAL`, `AUTH`) are automatically masked.
-* **Omnichannel Protection**: Scrubbing occurs before data reaches LLM prompts, persistent run logs (`workflow_logs/`), the CLI console stream, or the TUI screen buffers.
+Provider API keys live in TSUKA's own environment. The controls below keep them out of reach of what the model can run or read; one gap remains open.
+* **Credential-Free Child Processes (T24.1)**: `execute_command`, `get_ps_info` and MCP servers start with TSUKA's environment minus every variable whose name matches the sensitive pattern (`KEY`, `SECRET`, `TOKEN`, `PASSWORD`, `PASSWD`, `CREDENTIAL`, `AUTH`; one definition in `src/core/childEnv.ts`). `SSH_AUTH_SOCK` and `XAUTHORITY` hold paths, not secrets, and pass through. A command that genuinely needs a credential gets it only when named in `commandEnvPassthrough` in `tsuka.config.json` (e.g. `["GITHUB_TOKEN"]`); an MCP server gets exactly what its own `env` declares. Self-authored tools receive an empty environment.
+* **Redaction in Logs and Errors**: provider failure logs and web-search error messages redact credentials; declared MCP `env` values are never logged.
+* **Open Gap (T24.2)**: tool *results* are not filtered. Reading a `.env` file from the workspace, for instance, places its contents in the prompt. Keep secrets out of the workspace until T24.2 is closed.
 
 ---
 

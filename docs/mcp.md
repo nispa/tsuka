@@ -49,7 +49,7 @@ To enable one or more MCP servers, add the `mcpServers` section to `tsuka.config
 |---|---|---|---|
 | `command` | `string` | *(required)* | Executable command of the MCP server (e.g. `npx`, `node`, `python`, `uvx`). |
 | `args` | `string[]` | `[]` | Arguments passed to the launch command. |
-| `env` | `object` | `{}` | Additional environment variables (e.g. API tokens). Redacted from logs for safety. |
+| `env` | `object` | `{}` | Variables for this server (e.g. API tokens). The server otherwise inherits TSUKA's environment without credentials, so any token it needs must be declared here. Never logged. |
 | `enabled` | `boolean` | `true` | When set to `false`, the server remains configured but is not started. |
 | `riskLevel` | `string` | `"RESTRICTED"` | Security tier assigned to all tools from this server (`SAFE`, `RESTRICTED`, `DANGEROUS`). |
 | `timeoutMs` | `number` | `60000` | Maximum timeout (in milliseconds) for `tools/list` and `tools/call` requests. |

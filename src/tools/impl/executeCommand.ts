@@ -7,6 +7,7 @@ import { logSink } from '../../core/logSink';
 import { ConfigManager } from '../../core/config';
 import { classifyCommandRisk } from '../../safety/commandRisk';
 import { TOOLS_DEFAULTS } from '../../core/constants';
+import { buildChildEnv } from '../../core/childEnv';
 
 
 export const executeCommandTool: Tool = {
@@ -40,7 +41,12 @@ export const executeCommandTool: Tool = {
         child = spawn(
           shellConfig.shell,
           shellConfig.buildArgs(args.command),
-          { ...shellConfig.spawnOptions, cwd: configManager.getWorkspaceRoot() }
+          {
+            ...shellConfig.spawnOptions,
+            cwd: configManager.getWorkspaceRoot(),
+            // T24.1: the shell never sees TSUKA's credentials unless the user named them.
+            env: buildChildEnv(configManager.getCommandEnvPassthrough()),
+          }
         );
       } catch (err: any) {
         resolve(`Error launching command: ${err.message}`);
