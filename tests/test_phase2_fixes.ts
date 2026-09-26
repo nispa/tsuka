@@ -85,6 +85,16 @@ async function main() {
   check('T2.3e', tAfter[0].role === 'system' && tAfter.length >= 4,
     'system prompt preservato e almeno gli ultimi 3 messaggi mantenuti');
 
+  // --- T2.3f: pruning leaves headroom for estimate error and the reply (checkpoint A) ---
+  const { AGENT_DEFAULTS } = await import('../src/core/constants');
+  const roomAgent = new Agent(fakeProvider, registry, new PermissionManager(), 'sys', undefined, 400, 10000);
+  const rMsgs = roomAgent.getMessages();
+  for (let i = 0; i < 60; i++) rMsgs.push({ role: i % 2 ? 'assistant' : 'user', content: 'y'.repeat(700) });
+  roomAgent.pruneHistory();
+  const rTokens = roomAgent.estimateMessagesTokens(roomAgent.getMessages());
+  check('T2.3f', rTokens <= 10000 * (1 - AGENT_DEFAULTS.historyHeadroomRatio) && rTokens > 10000 * 0.7,
+    `history pruned below the window minus headroom, not to the full window (~${rTokens} of 10000)`);
+
   // --- T2.4: cache JSON dei config (via loadToolSchema come proxy è già coperto; qui testiamo il pattern generico) ---
   // Il meccanismo è identico (mtime-based) e condiviso: verifichiamo che getModelTier resti coerente
   check('T2.4', getModelTier('qwenpaw-9b') === 'small' && getModelTier('modello-senza-taglia') === 'small' && getModelTier('qwen-27b') === 'medium',

@@ -357,13 +357,14 @@ export class Agent implements ToolSetController {
    * Prunes history to stay within message count and estimated token budgets.
    */
   pruneHistory(): number {
+    const budget = Math.floor(this.maxHistoryTokens * (1 - AGENT_DEFAULTS.historyHeadroomRatio));
     return this.history.prune(
       this.maxHistoryMessages,
-      this.maxHistoryTokens,
+      budget,
       this.estimateToolsTokens(),
       (message) => this.estimateTokens(message),
       (removed) => logSink.log(
-        chalk.gray(`[History: pruned ${removed} older messages to stay within context window (~${this.maxHistoryTokens} tokens)]`)
+        chalk.gray(`[History: pruned ${removed} older messages to stay within context window (~${budget} of ${this.maxHistoryTokens} tokens)]`)
       )
     );
   }

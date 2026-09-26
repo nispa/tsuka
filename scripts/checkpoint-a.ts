@@ -137,38 +137,48 @@ async function runTrial(taskId: string): Promise<void> {
 
     ContextTracker.getInstance().clear();
     const started = Date.now();
-    result.answer = await agent.run(
-      task.prompt,
-      () => {},
-      (stats) => {
-        result.rounds++;
-        result.totalTokens += stats.totalTokens || 0;
-        result.peakPromptTokens = Math.max(result.peakPromptTokens, stats.promptTokens || 0);
-      },
-      (event) => {
-        if (event.type === 'tool_start') result.toolCalls++;
-      }
-    );
-    result.durationMs = Date.now() - started;
-
-    const m = ContextTracker.getInstance().getSchedulerMetrics();
-    Object.assign(result, {
-      ok: true,
-      peakPressure: Math.round(m.peakEstimatedPressure * 100) / 100,
-      prepareDecisions: m.prepareDecisions,
-      delegateDecisions: m.delegateDecisions,
-      delegationsCompleted: m.delegationsCompleted,
-      delegationsBlocked: m.delegationsBlocked,
-      delegationsFailed: m.delegationsFailed,
-      childTokens: m.totalChildTokens,
-      returnedTokens: m.totalReturnedTokens,
-      amplification: m.contextAmplification,
-    });
+    // onStats carries running totals per agent (the parent unlabelled, a delegated child
+    // under its label): keep each agent's latest and add them up, never sum the events.
+    const latestTotals = new Map<string, number>();
+    try {
+      result.answer = await agent.run(
+        task.prompt,
+        () => {},
+        (stats, label) => {
+          if (!label) result.rounds++;
+          latestTotals.set(label ?? '', stats.totalTokens || 0);
+          result.peakPromptTokens = Math.max(result.peakPromptTokens, stats.promptTokens || 0);
+        },
+        (event) => {
+          if (event.type === 'tool_start') result.toolCalls++;
+        }
+      );
+      result.ok = true;
+    } finally {
+      // Also on failure: an overflow after several rounds still has telling metrics.
+      result.durationMs = Date.now() - started;
+      result.totalTokens = [...latestTotals.values()].reduce((sum, n) => sum + n, 0);
+      recordSchedulerMetrics(result, ContextTracker.getInstance().getSchedulerMetrics());
+    }
     await runtime.close();
   } catch (error: any) {
     result.error = String(error?.message ?? error);
   }
   process.stdout.write(`\nCHECKPOINT_RESULT ${JSON.stringify(result)}\n`);
+}
+
+function recordSchedulerMetrics(result: TrialMetrics, m: import('../src/core/contextTracker').ContextSchedulerMetrics): void {
+  Object.assign(result, {
+    peakPressure: Math.round(m.peakEstimatedPressure * 100) / 100,
+    prepareDecisions: m.prepareDecisions,
+    delegateDecisions: m.delegateDecisions,
+    delegationsCompleted: m.delegationsCompleted,
+    delegationsBlocked: m.delegationsBlocked,
+    delegationsFailed: m.delegationsFailed,
+    childTokens: m.totalChildTokens,
+    returnedTokens: m.totalReturnedTokens,
+    amplification: m.contextAmplification,
+  });
 }
 
 // ───────────────────────────── orchestration (parent) ─────────────────────────────

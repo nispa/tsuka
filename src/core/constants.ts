@@ -100,6 +100,13 @@ export const AGENT_DEFAULTS = {
   staticCharsPerToken: 3.5,
   /** Single tool-result context cap in estimated tokens (maxToolResultTokens). */
   maxToolResultTokens: 4000,
+  /**
+   * Share of the context window pruning keeps free. Pruning works on estimated tokens,
+   * and the server counts the real ones plus the reply: pruned to the full window, a
+   * request can still overflow it (checkpoint A, 2026-09-26: 12596 real tokens against a
+   * 12544 window). Pressure is still measured against the whole window.
+   */
+  historyHeadroomRatio: 0.1,
   /** Character threshold above which /goal turn outputs are condensed to memory. */
   goalCondensedHistoryCharLimit: 1500,
   /** Minimum reasoning trace length worth persisting to disk and memory. */
