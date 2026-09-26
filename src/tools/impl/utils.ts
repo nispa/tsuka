@@ -16,7 +16,7 @@ export function withWorkspaceOverride<T>(root: string, fn: () => Promise<T>): Pr
 }
 
 /** Returns the effective workspace root (override if active, else configured workspace root). */
-function getEffectiveRoot(): string {
+export function getEffectiveRoot(): string {
   return workspaceOverride.getStore() ?? new ConfigManager().getWorkspaceRoot();
 }
 

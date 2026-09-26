@@ -112,7 +112,7 @@ TSUKA rileva le implementazioni dei tool nativi attraverso il proprio registro e
 
 I tool nativi sui file applicano il confinamento al workspace. L'esecuzione usa i livelli di rischio `SAFE`, `RESTRICTED` e `DANGEROUS`; le richieste di approvazione dipendono dall'operazione e dai permessi della sessione.
 
-Comandi shell, server MCP esterni e tool eseguibili personalizzati possono agire con i permessi del processo che li ospita. I controlli sui percorsi dei file non rendono questi processi una sandbox del sistema operativo. Anche le verifiche con `node:vm` sui tool generati non costituiscono un confine di sicurezza.
+Comandi shell e server MCP esterni possono agire con i permessi del processo che li ospita. I controlli sui percorsi dei file non rendono questi processi una sandbox del sistema operativo.
 
 La [guida a sicurezza e permessi](docs/security-it.md) descrive le policy e i loro limiti.
 

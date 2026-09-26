@@ -10,14 +10,14 @@ Il self-authoring consente a un agente di creare una piccola utility JavaScript,
 
 Questo modello di sicurezza deriva dai rilievi di un **audit di sicurezza esterno** ricevuto dal progetto. L'audit ha evidenziato che il precedente affidamento a `node:vm`, a una blocklist e al livello di rischio dichiarato dal codice generato non costituiva un confine di sicurezza sufficiente.
 
-Le remediation immediate sono quindi fail-closed:
+Le difese sono a più livelli:
 
 - `create_tool` e i moduli custom non vengono caricati per default;
 - creazione ed esecuzione dei tool custom sono sempre `DANGEROUS`;
-- il filesystem fornito al tool è confinato nel workspace;
-- `node:vm` verifica soltanto forma e timeout del modulo, non isola JavaScript ostile.
+- il codice generato non gira mai dentro TSUKA: la validazione e ogni chiamata avviano un processo Node separato con il permission model, accesso ai file solo dentro il workspace, niente rete, niente sottoprocessi, niente worker, niente `eval`/`Function`, ambiente vuoto (le chiavi API non ci arrivano), tetto di memoria, timeout e output limitato;
+- i runtime senza questo contenimento (Node.js precedente alla 25, privo di `--allow-net`) rifiutano di eseguire i tool custom invece di eseguirli senza confini.
 
-Abilitare la capability significa autorizzare codice JavaScript generato a essere eseguito nello stesso processo di TSUKA. Usala solo con modelli e richieste di cui ti fidi. Il contenimento strutturale futuro richiede un processo OS o container separato.
+Node documenta il suo permission model come una cintura di sicurezza per codice fidato, **non** come una sandbox contro codice malevolo. Il processo separato mantiene TSUKA integro e limitato (un crash, un loop infinito o una memoria che esplode chiudono solo il figlio) e toglie le vie di fuga ovvie, ma non rende sicuro codice ostile. Usa la capability solo con modelli e richieste di cui ti fidi.
 
 ## 1. Abilitazione
 
@@ -50,7 +50,7 @@ La creazione va trattata come un flusso di revisione, non come delega di fiducia
 3. provalo in un workspace controllato;
 4. soltanto dopo aggiungi il suo nome alla lista persistente `allowedTools` di un ruolo.
 
-Ogni esecuzione successiva resta `DANGEROUS` e richiede una conferma propria. Né il flag di configurazione né la revisione del sorgente dimostrano che il codice sia sicuro: registrano la scelta consapevole dell'utente di esporre ed eseguire un'estensione non isolata. L'abilitazione del self-authoring carica anche i moduli custom esistenti all'avvio: revisiona quindi i file già su disco prima di abilitarla; il caricamento non è un passaggio sandboxato e non ha una conferma per singolo modulo.
+Ogni esecuzione successiva resta `DANGEROUS` e richiede una conferma propria. Né il flag di configurazione né la revisione del sorgente dimostrano che il codice sia sicuro: registrano la scelta consapevole dell'utente di esporre ed eseguire un'estensione. All'avvio, con il self-authoring abilitato, i moduli custom presenti su disco vengono registrati senza essere eseguiti; ciascuno gira, confinato, solo quando viene chiamato e confermato. Revisiona comunque i file già su disco prima di abilitarlo.
 
 Una chiamata equivalente è:
 
@@ -73,7 +73,7 @@ Una chiamata equivalente è:
 }
 ```
 
-Il corpo riceve `args`, `fs` confinato nel workspace e `path`, e deve restituire una stringa. Non deve usare `require`, import dinamici, `eval`, `child_process`, API `process` o accesso al costruttore `Function`.
+Il corpo riceve `args`, `fs` (confinato nel workspace dai permessi del processo figlio) e `path`, e deve restituire una stringa. Nient'altro può essere richiesto con `require`. `create_tool` rifiuta anche i corpi che usano `require`, import dinamici, `eval`, `child_process`, API `process` o il costruttore `Function`; il contenimento non dipende da questo controllo.
 
 ## 3. Persistenza e disponibilità
 
@@ -110,4 +110,4 @@ Riavvia quindi TSUKA. Questa operazione non elimina i file esistenti. Per rimuov
 
 ## 5. Confini delle garanzie
 
-Le conferme `DANGEROUS`, la workspace jail, la blocklist, i backup e la validazione dello schema sono difese complementari. Non trasformano codice generato potenzialmente ostile in codice isolato. Se non serve davvero il self-authoring, lascia l'opzione disabilitata.
+Le conferme `DANGEROUS`, il processo figlio confinato, la blocklist, i backup e la validazione dello schema sono difese complementari. Il processo figlio protegge TSUKA e limita ciò che un tool può raggiungere, ma si appoggia al permission model di Node, che non è progettato contro codice deliberatamente malevolo; un isolamento più forte richiederebbe una sandbox del sistema operativo o un container, che non sono uniformi fra Windows, Linux e macOS. Se non serve davvero il self-authoring, lascia l'opzione disabilitata.

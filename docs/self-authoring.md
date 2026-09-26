@@ -10,14 +10,14 @@ Self-authoring lets an agent create a small JavaScript utility, describe its arg
 
 This security model follows findings from an **external security audit** received by the project. The audit identified that relying on `node:vm`, a blocklist, and the risk level claimed by generated code did not provide an adequate security boundary.
 
-The immediate remediations are fail-closed:
+The controls are layered:
 
 - `create_tool` and custom modules are not loaded by default;
 - custom tool creation and execution are always `DANGEROUS`;
-- the filesystem exposed to a tool is confined to the workspace;
-- `node:vm` checks module shape and timeout only; it does not isolate hostile JavaScript.
+- generated code never runs inside TSUKA: validation and every call start a separate Node process under the permission model, with filesystem access only inside the workspace, no network, no child processes, no workers, no `eval`/`Function`, an empty environment (API keys never reach it), a heap ceiling, a timeout and a capped output;
+- runtimes without that confinement (Node.js older than 25, which lacks `--allow-net`) refuse to run custom tools instead of running them unconfined.
 
-Enabling this capability authorizes generated JavaScript to execute inside the TSUKA process. Use it only with models and requests you trust. Structural containment requires a separate OS process or container.
+Node documents its permission model as a safety belt for trusted code, **not** a sandbox against malicious code. The separate process keeps TSUKA intact and bounded (a crash, an infinite loop or a memory blow-up only ends the child) and removes the obvious escape routes, but it does not make hostile code safe. Use the capability only with models and requests you trust.
 
 ## 1. Enable self-authoring
 
@@ -50,7 +50,7 @@ Treat creation as a review workflow, not as delegation of trust:
 3. test it in a controlled workspace;
 4. only then add its name to a role's persistent `allowedTools` list.
 
-Every later execution remains `DANGEROUS` and requires its own confirmation. Neither the configuration flag nor source review proves that the code is safe; they record the user's deliberate decision to expose and run a non-isolated extension. Enabling self-authoring also loads existing custom modules during startup, so review files already on disk before enabling it; loading is not a sandboxed execution step and has no per-module prompt.
+Every later execution remains `DANGEROUS` and requires its own confirmation. Neither the configuration flag nor source review proves that the code is safe; they record the user's deliberate decision to expose and run an extension. Enabling self-authoring registers existing custom modules found on disk at startup without running them; each module runs, confined, only when called and confirmed. Review files already on disk before enabling it.
 
 An equivalent call is:
 
@@ -73,7 +73,7 @@ An equivalent call is:
 }
 ```
 
-The body receives `args`, workspace-confined `fs`, and `path`, and must return a string. It must not use `require`, dynamic imports, `eval`, `child_process`, `process` APIs, or access to the `Function` constructor.
+The body receives `args`, `fs` (confined to the workspace by the child's permissions) and `path`, and must return a string. Nothing else can be required. `create_tool` also rejects bodies using `require`, dynamic imports, `eval`, `child_process`, `process` APIs or the `Function` constructor; the confinement does not depend on that check.
 
 ## 3. Persistence and availability
 
@@ -110,4 +110,4 @@ Restart TSUKA afterward. This does not delete existing files. To remove a tool p
 
 ## 5. Guarantee boundaries
 
-`DANGEROUS` confirmations, the workspace jail, blocklists, backups, and schema validation are complementary defenses. They do not turn potentially hostile generated code into isolated code. Leave self-authoring disabled when it is not needed.
+`DANGEROUS` confirmations, the confined child process, the blocklist, backups and schema validation are complementary defenses. The child process protects TSUKA and limits what a tool can reach, but it relies on Node's permission model, which is not designed against deliberately malicious code; stronger isolation would need an operating-system sandbox or container, which is not uniform across Windows, Linux and macOS. Leave self-authoring disabled when it is not needed.

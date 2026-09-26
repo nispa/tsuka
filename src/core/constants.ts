@@ -183,8 +183,14 @@ export const TOOLS_DEFAULTS = {
   auditDefaultMaxIssues: 50,
   /** Maximum JavaScript body accepted by create_tool when self-authoring is enabled. */
   createToolMaxBodyChars: 4_000,
-  /** Shape-validation timeout for generated tool modules. */
-  createToolValidationTimeoutMs: 1_000,
+  /** Shape-validation timeout for generated tool modules (child process start-up included). */
+  createToolValidationTimeoutMs: 10_000,
+  /** Wall-clock limit of one isolated custom tool call before the child is killed. */
+  customToolTimeoutMs: 30_000,
+  /** V8 heap ceiling of the isolated custom tool child process. */
+  customToolMaxMemoryMb: 256,
+  /** Result bytes accepted from an isolated custom tool call. */
+  customToolMaxOutputBytes: 1024 * 1024,
   /** Shell command execution timeout for execute_command (commandTimeoutMs). */
   commandTimeoutMs: 120_000,
   /** Lowest accepted per-call command timeout override. */

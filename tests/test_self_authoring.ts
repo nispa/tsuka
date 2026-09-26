@@ -126,7 +126,8 @@ async function main() {
     const escapeRun = await registry.executeTool('__escape_tool', { target: path.join(require('os').tmpdir(), '..', '..', 'Windows', 'win.ini') }, perm);
     check('X4.7b', !escapeRun.success, `lettura fuori dalla workspace bloccata dal jail invece di riuscire: success=${escapeRun.success}`);
     const escapeGenerated = fs.readFileSync(path.join(customToolsDir, '__escape_tool.js'), 'utf-8');
-    check('X4.7c', /jailedFs["'\\]/.test(escapeGenerated) && !/require\(\s*['"]fs['"]\s*\)/.test(escapeGenerated), `codice generato richiede il wrapper jailato, non 'fs' grezzo: ${escapeGenerated.split('\n')[1]}`);
+    // T23.8: the module requires nothing; fs and path are injected by the isolated runner.
+    check('X4.7c', !/\brequire\s*\(/.test(escapeGenerated) && /out of process/.test(escapeGenerated), `generated module requires nothing and states it runs out of process: ${escapeGenerated.split('\n')[1]}`);
     for (const p of [path.join(customToolsDir, '__escape_tool.js'), homePath('custom_tools_schemas', '__escape_tool.json')]) {
       if (fs.existsSync(p)) fs.unlinkSync(p);
     }

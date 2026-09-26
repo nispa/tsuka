@@ -338,7 +338,7 @@ TSUKA features a zero-flicker, Component-Driven terminal user interface:
 * **3-tier risk system**: `SAFE` (instant), `RESTRICTED` (prompt with session bypass option), `DANGEROUS` (always interactive manual confirmation).
 * **Workspace Jail**: file operations are restricted to `workspaceRoot`.
 * **Credential Masking**: automatic redaction of sensitive environment keys.
-* **Opt-in Self-Authoring**: `create_tool` and executable custom modules are disabled by default. When explicitly enabled, all generated tools are DANGEROUS; `node:vm` performs bounded shape validation only and is not treated as a security boundary.
+* **Opt-in Self-Authoring**: `create_tool` and executable custom modules are disabled by default. When explicitly enabled, all generated tools are DANGEROUS and run in a separate Node process under the permission model (`src/tools/customToolRunner.ts`): workspace-only filesystem, no network or child processes, empty environment, time/memory/output limits.
 
 ---
 

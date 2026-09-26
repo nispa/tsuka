@@ -268,15 +268,44 @@ Local models range from 1B to 70B parameters. Instead of guessing capabilities f
 
 ### Milestone 9 — Extensibility: Dynamic Tools & MCP Ecosystem
 
-*Code references: `src/tools/impl/createTool.ts`, `src/core/mcp/` (`types.ts`, `stdioTransport.ts`, `client.ts`, `adapter.ts`, `connectMcpServers.ts`)*
+*Code references: `src/tools/impl/createTool.ts`, `src/tools/customToolRunner.ts`, `src/core/mcp/` (`types.ts`, `stdioTransport.ts`, `client.ts`, `adapter.ts`, `connectMcpServers.ts`)*
 
 A mature agent harness cannot remain confined to its initial static tool set. TSUKA supports two complementary extension pathways:
 
 #### 9.1 Internal Extensibility: Dynamic Runtime Tool Creation (`create_tool`)
-Agents equipped with development permissions can author new JavaScript/TypeScript tools on the fly:
-* **Opt-in Shape Validation**: self-authoring is disabled by default. With `selfAuthoringEnabled: true`, `node:vm` checks module shape and timeout but is not a security sandbox; creation and loaded custom tools are always DANGEROUS.
-* **Risk Capped**: generated tools can only be assigned `SAFE` or `RESTRICTED` tiers (never `DANGEROUS`).
-* **Core Protection**: native system tools cannot be overwritten, and automated backups are preserved in the workspace.
+With `selfAuthoringEnabled: true`, an agent holding `create_tool` can write a new JavaScript tool, describe its arguments with JSON Schema and use it in the same session. The capability is disabled by default, and it is the clearest example in the project of a question every agent harness eventually faces: **where does code written by the model run?**
+
+**The problem.** A generated tool is code nobody has reviewed yet, written by a model that may have read a hostile web page a few turns earlier. Loaded with `require()`, it would run *inside* TSUKA, with everything TSUKA has: the whole disk, the network, the API keys in the environment, the ability to launch processes. An earlier version validated modules with `node:vm` and a blocklist of forbidden patterns; an external audit pointed out that neither is a security boundary. `node:vm` separates global variables, not privileges (`({}).constructor.constructor('return process')()` walks out of it), and a blocklist only sees the text it was written for (`fs['read' + 'FileSync']` does not contain `readFileSync`).
+
+**The design: another process, fewer permissions** (`customToolRunner.ts`). Validation and every call start a fresh Node child:
+
+```
+TSUKA ──spawn──► node --permission --allow-fs-read=<workspace> --allow-fs-write=<workspace>
+  │                   --disallow-code-generation-from-strings --max-old-space-size=256 -e <runner>
+  │  stdin:  { source, name, args }            env: {}      cwd: <workspace>
+  └◄ stdout: { ok, result }  (one JSON line; console.* goes to stderr)
+```
+
+Each choice answers a specific attack:
+
+| Choice | What it stops |
+|---|---|
+| Separate process | A crash, an infinite loop or a memory blow-up ends the child, never TSUKA; a timeout kills it |
+| `--permission` + `--allow-fs-*` on the workspace only | Reading or writing files elsewhere, however the path is spelled |
+| No `--allow-net`, `--allow-child-process`, `--allow-worker` | Network, new processes, workers — even through `process.getBuiltinModule` |
+| `--disallow-code-generation-from-strings` | `eval`, `Function` and the constructor-chain trick above |
+| Empty `env` | API keys and tokens never reach generated code |
+| Output cap and JSON protocol | A tool cannot flood TSUKA or inject anything but a string result |
+| Refuse on Node < 25 | Older runtimes lack `--allow-net`: better not to run than to run unconfined (**fail closed**) |
+
+The module receives `fs` and `path` as injected parameters, and a local `require` serves nothing else. Startup only *registers* modules found on disk; their code runs, confined, when called.
+
+**The honest limit.** Node's documentation calls its permission model a *seat belt* for trusted code, not a sandbox against malicious code. Real containment would need an operating-system sandbox or a container, which differ on Windows, Linux and macOS. The project compared three options — confined process, OS sandbox, permanent disable — and chose the confined process as defense in depth, keeping the other two keys in place:
+* **Opt-in**: nothing loads unless the project configuration says so;
+* **Always DANGEROUS**: creation and every call need an explicit confirmation, whatever the module declares about itself;
+* **Core Protection**: native tools cannot be overwritten, and the previous version of a replaced tool is backed up.
+
+The lesson carries beyond this feature: *a check is not a boundary*. Validation and pattern matching describe code; only the operating system, through a separate process, can actually take a privilege away. And when even that is not enough, say so plainly.
 
 #### 9.2 External Extensibility: Native MCP Client (Model Context Protocol)
 To connect the agent with complex external services (GitHub repositories, SQLite databases, web browsers, external filesystems) without writing bespoke TypeScript libraries, TSUKA implements the open **Model Context Protocol (MCP)**.

@@ -32,8 +32,8 @@
 └────────────────────────────────────┬────────────────────────────────────┘
                                      │
 ┌────────────────────────────────────▼────────────────────────────────────┐
-│                  5. RUNTIME VM SANDBOX & USER-SPACE TOOLS               │
-│        node:vm Isolation · Blocklist Policies · custom_tools/ User Space│
+│               5. ISOLATED USER-SPACE TOOLS (self-authoring)             │
+│  Separate Node process · Permission model · custom_tools/ User Space    │
 └────────────────────────────────────┬────────────────────────────────────┘
                                      │
 ┌────────────────────────────────────▼────────────────────────────────────┐
@@ -110,12 +110,12 @@ Quando il Goal Orchestrator esegue rami paralleli:
 
 Le misure di questa sezione sono remediation dei rilievi ricevuti da un **audit di sicurezza esterno** del progetto. L'audit ha identificato come insufficienti il livello di rischio autodichiarato dal tool e l'uso di `node:vm` come presunto confine di sicurezza. La procedura completa di configurazione e utilizzo è nella [guida al self-authoring](self-authoring-it.md).
 
-`node:vm`, blocklist e wrapper `fs` jailato validano convenzioni ma non isolano JavaScript ostile. La mitigazione immediata è fail-closed:
+Il codice generato non gira mai dentro TSUKA (T23.8). Le difese sono a più livelli:
 * **Disabilitato per Default**: `create_tool` non viene registrato e i moduli custom eseguibili non vengono caricati finché `selfAuthoringEnabled: true` non è configurato.
 * **Permesso Massimo**: Creazione e tool custom caricati sono sempre forzati a `DANGEROUS`, indipendentemente da quanto dichiarano.
-* **Validazione Bounded della Forma**: `node:vm` verifica entro un timeout breve che il modulo abbia la forma prevista; non è un sandbox di sicurezza.
-* **Rischio Residuo**: Abilitare il self-authoring autorizza JavaScript eseguibile nel processo TSUKA. La soluzione strutturale richiede processo OS/container separato con capability esplicite per filesystem, rete, CPU, memoria, tempo e output.
-* **Defense in Depth Esistente**: Blocco collisioni con tool core, backup versionati, pattern vietati e `fs` confinato dalla jail canonica restano attivi ma non cambiano il modello di fiducia residuo.
+* **Esecuzione in un Processo Separato**: validazione e ogni chiamata girano in un processo Node figlio con il permission model: file in lettura e scrittura solo dentro il workspace, rete, sottoprocessi, worker e addon negati, `eval`/`Function` vietati, ambiente vuoto, tetto di memoria, timeout e output limitato. I runtime senza `--allow-net` (Node.js < 25) rifiutano di eseguire i tool custom.
+* **Rischio Residuo**: Node documenta il permission model come cintura di sicurezza per codice fidato, non come sandbox contro codice malevolo. Il processo figlio mantiene TSUKA integro e limitato ma non rende sicuro codice ostile; sandbox del sistema operativo o container sarebbero più forti ma non sono uniformi fra Windows, Linux e macOS.
+* **Defense in Depth Esistente**: Blocco collisioni con tool core, backup versionati e pattern vietati in creazione restano attivi.
 
 ---
 

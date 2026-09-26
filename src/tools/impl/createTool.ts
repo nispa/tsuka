@@ -1,23 +1,18 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import * as vm from 'vm';
 import { homePath, localWorkspacePath } from '../../core/apphome';
 import { Tool, ToolExecutionContext } from '../registry';
-import { jailedFs } from './jailedFs';
 import { TOOLS_DEFAULTS } from '../../core/constants';
-
-/** Absolute path to the jailedFs module — embedded as a require() target in generated tool code
- *  (see moduleCode below), so it resolves regardless of where the generated .js file itself ends
- *  up (workspace-local .tsuka/custom_tools/ or global TSUKA_HOME/custom_tools/). Extension left
- *  off deliberately: Node resolves `jailedFs.js` from dist/, tsx resolves `jailedFs.ts` from src/. */
-const JAILED_FS_MODULE_PATH = path.join(__dirname, 'jailedFs');
+import { isolatedCustomTool, runCustomToolIsolated } from '../customToolRunner';
 
 /**
  * create_tool: self-authoring of agent tools.
- * Generates and shape-validates an execute function inside a VM context,
- * persists the implementation and schema, and hot-registers into the active registry.
+ * Writes an execute function into a module, validates its shape in a confined child
+ * process, persists module and schema, and hot-registers an isolated proxy. The code
+ * never runs inside TSUKA (T23.8): see customToolRunner.ts for what the child may do.
  */
 
+// Defense in depth only: the confinement is the child process, not these patterns.
 const FORBIDDEN_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
   { pattern: /child_process/, reason: 'child_process is not permitted (use execute_command tool instead)' },
   { pattern: /\beval\s*\(/, reason: 'eval() is not permitted' },
@@ -112,17 +107,13 @@ export const createToolTool: Tool = {
       }
     }
 
-    // 4. Construct tool module
-    // T14.22: `fs` here is the workspace-jailed wrapper (jailedFs.ts), not the real module — the
-    // generated file is loaded via plain require()/import() on every future startup (see
-    // tools/index.ts), never through a sandbox again after this one-time validation, so whatever
-    // this line requires is what the tool has for as long as it exists.
+    // 4. Construct tool module. `fs` and `path` are injected by the isolated runner; the
+    // module requires nothing, so it has exactly what the child process allows.
     const exportName = `${toCamelCase(cleanName)}Tool`;
     const indentedBody = body.split('\n').map((l) => '    ' + l).join('\n');
     const moduleCode =
       `// Auto-generated tool by create_tool on ${new Date().toISOString()}\n` +
-      `const fs = require(${JSON.stringify(JAILED_FS_MODULE_PATH)}).jailedFs;\n` +
-      `const path = require('path');\n\n` +
+      `// Runs out of process with 'fs' (workspace only) and 'path' injected; no network, no processes.\n` +
       `exports.${exportName} = {\n` +
       `  name: '${cleanName}',\n` +
       `  riskLevel: '${riskLevel}',\n` +
@@ -131,33 +122,18 @@ export const createToolTool: Tool = {
       `  }\n` +
       `};\n`;
 
-    // 5. VM shape validation, not a security sandbox. `fs` here is the same jailed wrapper the generated file will
-    // require on disk — the closures this VM run produces are exactly what gets hot-registered
-    // for the rest of this session (step 8), so this must not be more permissive than that.
-    const sandbox: { exports: Record<string, any> } = { exports: {} };
-    const sandboxRequire = (mod: string) => {
-      // The generated module requires jailedFs by absolute path (it has to resolve from wherever
-      // the file lands on disk); accept that exact target here, and nothing else.
-      if (mod === JAILED_FS_MODULE_PATH) return { jailedFs };
-      if (mod === 'fs') return jailedFs;
-      if (mod === 'path') return require('path');
-      throw new Error(`Module not allowed: ${mod}`);
-    };
+    // 5. Shape validation in the same confined child that will run it: the module's
+    // top-level code executes there, never in this process.
     try {
-      vm.runInNewContext(
-        moduleCode,
-        { exports: sandbox.exports, require: sandboxRequire, console },
-        { timeout: TOOLS_DEFAULTS.createToolValidationTimeoutMs }
-      );
+      await runCustomToolIsolated({
+        name: cleanName,
+        source: moduleCode,
+        mode: 'validate',
+        signal: context?.signal,
+        timeoutMs: TOOLS_DEFAULTS.createToolValidationTimeoutMs,
+      });
     } catch (err: any) {
       throw new Error(`Generated code is invalid: ${err.message}`);
-    }
-
-    const exported = Object.values(sandbox.exports).find(
-      (v: any) => v && typeof v.name === 'string' && typeof v.execute === 'function' && typeof v.riskLevel === 'string'
-    ) as any;
-    if (!exported || exported.name !== cleanName) {
-      throw new Error("Validation failed: module does not export a valid Tool instance.");
     }
 
     // 6. Versioning backup
@@ -200,7 +176,7 @@ export const createToolTool: Tool = {
           context.registry.unregister(cleanName);
         }
         if (!context.registry.getTool(cleanName)) {
-          context.registry.register(exported as Tool);
+          context.registry.register(isolatedCustomTool(cleanName, targetPath));
           hotNote = '\nTool hot-registered. Add it to the active role allowedTools before an agent can call it.';
         } else {
           hotNote = '\nName conflict with core tool: not hot-registered.';

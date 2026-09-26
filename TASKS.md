@@ -166,10 +166,10 @@
 | T22.7 | ✅ Fatto | **Runner sub-agent condiviso**: estratto `SubagentRunner` (`ISubagentRunner`, `DefaultSubagentRunner`) da `spawn_agent`, integrato nella composition root (`createHarnessRuntime`) e testato con 35 check (108 suite verdi). |
 | T22.8 | ✅ Fatto | **Delega nel ReAct loop**: integrata la policy in `Agent.run()` valutata dopo pruning e prima di `chatWithTools()`; opt-in disabilitato di default, guardia max 1 delega automatica per run, disattivazione del context scheduler sui child spawned (`DefaultSubagentRunner`), invalidazione del packet su tool round completati, handoff strutturato bounded con `safeParseAgentResult`, `reduceAgentResult` (preservazione di status, summary e `unresolved`) e `formatAgentResultSummary` senza leak di raw output, confinamento del perimetro tool e del ruolo parent (anti privilege-escalation), fail-closed su errore con logSink e fallback al parent. Suite `test_agent_context_scheduler.ts` (58 check) e `test_agent_result.ts` (91 check), 109 suite verdi, build e typecheck puliti. |
 | T22.9 | ✅ Fatto | **Budget strutturale di AgentResult**: riduttore prioritizzato (`reduceAgentResult`) che rimuove prima `changes` e `decisions`, condensa le `evidence` preservando i riferimenti essenziali a file/test con indicazione esplicita del report completo, e accorcia il summary mantenendo integri gli elementi `unresolved`; gestione Unicode sicura (`Array.from`) e budget centralizzato (`AGENT_DEFAULTS.agentResultMaxChars = 2000`). Suite `tests/test_agent_result.ts` estesa a 107 check. I tre gate verdi (111 suite). |
-| T22.10 | ⬜ Da verificare | **Audit MemoryBackend**: verificare requisiti, sostituibilità e gap dopo checkpoint A; nessuna nuova capability senza evidenze. |
-| T22.11 | ⬜ Da verificare | **Budget memory**: tracciare limiti, unità e capping fino al prompt; riusare memoryMaxChars e correggere solo gap dimostrati. |
+| T22.10 | ✅ Verificato (codice) | **Audit MemoryBackend**: matrice requisito/contratto/evidenza/gap nel dettaglio. Sostituibilità confermata (tutti i consumer passano da `MemoryStore`, nessun import dell'implementazione JSON fuori dal package; `test_memory_backend_registry.ts` instrada un backend alternativo). Gap documentati senza modifiche runtime: policy di formattazione e budget dentro il backend, contratto sincrono, `remove`/`forgetFact` duplicati. Checkpoint A (task reali) ancora da eseguire. |
+| T22.11 | ✅ Fatto | **Budget memory**: percorso `memoryMaxChars` → `formatForPrompt`/`formatRelevant` → `renderMemorySection` → system prompt mappato. Trovato e corretto un difetto: il tetto contava solo le righe dei fatti, non gli a capo né la nota finale (limite 600 → sezione da 659 caratteri). Numeri fissi spostati in `MEMORY_DEFAULTS` (`promptMaxFacts`, `factMaxChars`, `recallDefaultLimit`, `recallMaxLimit`). |
 | T22.12 | ⏸️ Rinviato | **ShadowMemoryBackend**: attendere un limite misurato e un candidato concreto da confrontare. |
-| T22.13 | ⬜ Da verificare | **Metriche memory**: censire recall, latenza, dimensione, errori e qualità del retrieval; la telemetria scheduler non ne prova la copertura. |
+| T22.13 | ✅ Verificato (codice) | **Metriche memory**: censimento nel dettaglio. Esistono solo `hits`/`lastUsed` per fatto (uso, non qualità) e i log d'errore dello storage; mancano latenza, dimensione restituita, contatori d'errore e qualità del retrieval a runtime (solo test su fixture). Nessuna misura aggiunta: il task le lega a una domanda concreta del checkpoint A, non ancora eseguito. |
 | T22.14 | ⏸️ Rinviato | **Memoria esterna MCP**: attendere un requisito operativo; checkpoint C condizionale prima di qualsiasi adapter. |
 | T22.15 | ⏸️ Rinviato | **Backend alternativo**: nessuna implementazione senza limite misurato; promozione subordinata al checkpoint B. |
 | T22.16 | ✅ Fatto | **Metriche scheduler**: corretta la distinzione tra esecuzione terminata ed esiti `done`/`blocked`/`failed` (aggiunto `delegationsBlocked` e invocazione di `recordDelegationResult` con status reale del child); accumulo corretto dei token prompt/completion/total sui child multi-round; visualizzazione della contabilità token in `/context` CLI/TUI ogni volta che ci sono state deleghe. Suite `tests/test_context_scheduler_metrics.ts` estesa a 69 check. I tre gate verdi (111 suite). |
@@ -180,8 +180,8 @@
 | T23.4 | ✅ Fatto | **Parser reasoning caratterizzato**: parser a stati unico per streaming e risposta completa; apertura orfana privata, chiusura orfana e tag malformati letterali, casing/whitespace normalizzati, blocchi multipli ordinati e buffer bounded. Suite `test_think_parser.ts` (18 check). Gate: 96 suite OK, build e typecheck verdi. |
 | T23.5 | ✅ Fatto | **Abort idempotente dell'albero processi**: `execute_command` collega `ToolExecutionContext.signal` a un'unica transizione terminale per completamento, errore, timeout e abort; cleanup immediato di watchdog/listener; terminazione gentile e poi forzata dell'albero tramite process group POSIX o `taskkill /T` Windows. Suite reale `test_execute_command_abort.ts` con figlio ritardato, pre-abort, timeout, race e listener cleanup. Gate: 95 suite OK, build e typecheck verdi. |
 | T23.6 | ✅ Fatto | **Workspace jail canonica**: resolver basato su `realpath` per target esistenti e antenato esistente più vicino per destinazioni nuove; link interni ammessi, link esterni/dangling negati; walker condiviso con deduplica dei real path e limiti di profondità/file/byte per `grep_search` e `audit_code`; `list_dir` usa `lstat`. Suite `test_workspace_jail_canonical.ts`. Gate: 94 suite OK, build e typecheck verdi. |
-| T23.7 | 🟨 Mitigato | **Policy SSRF condivisa**: `safeFetch` valida schema, porte, tutti gli indirizzi DNS e ogni redirect per `browse_url`, `download_file` e `web_search`; indirizzi privati, loopback, link-local, multicast, reserved e DNS misti sono negati. Resta un rischio residuo TOCTOU fra preflight DNS e resolver interno di `fetch`; la chiusura strutturale richiede trasporto HTTP con lookup fissato all'indirizzo validato. Suite `test_network_policy.ts` (10 check). |
-| T23.8 | 🟨 Mitigato | **Self-authoring fail-closed**: `create_tool` e il caricamento dei moduli custom sono disabilitati per default tramite `selfAuthoringEnabled`; opt-in richiede grant esplicito del ruolo e ogni invocazione resta DANGEROUS, senza classifier custom. `node:vm` è documentato e usato solo per shape validation bounded. Resta aperta la sostituzione strutturale con contenimento OS/processo. |
+| T23.7 | ✅ Fatto | **Policy SSRF condivisa**: chiuso il residuo TOCTOU. `safeFetch` usa un trasporto `node:http(s)` con `lookup` validato: il controllo avviene sulla stessa risposta DNS usata dal socket, quindi un rebind tra preflight e connessione non raggiunge mai il target. Nessuna dipendenza nuova. `overrideDefaultNetworkPolicy` sostituisce il vecchio mock di `globalThis.fetch` nei test (che dipendevano anche dal DNS reale). `test_network_policy.ts` 13 check, incluso il rebind simulato. |
+| T23.8 | 🟨 Mitigato (opzione A implementata) | **Self-authoring fuori processo**: decisione del maintainer per l'opzione A. I tool generati non girano più dentro TSUKA: validazione e ogni chiamata avviano un processo Node figlio (`customToolRunner.ts`) con permission model (file solo nel workspace, rete, sottoprocessi, worker e addon negati, `eval`/`Function` vietati), ambiente vuoto, tetto di heap, timeout e output limitato; Node < 25 (senza `--allow-net`) rifiuta l'esecuzione. Rimossi `node:vm` e `jailedFs`. Suite `test_custom_tool_isolation.ts` (18 payload). Resta "mitigato" perché Node dichiara il permission model non adatto contro codice malevolo. |
 | T23.9 | ✅ Fatto | **Download bounded e atomico**: streaming con limite reale, preflight `Content-Length`, abort/timeout e pulizia atomica dei file parziali; originale preservato. Suite `test_download_file.ts`. |
 | T23.10 | ✅ Fatto | **Lifecycle provider senza leak**: owner unico per timer first-token/generation e listener abort, cleanup idempotente in `finally`; coperti errori, retry, abort e race con decisione timeout. Suite `test_provider_lifecycle.ts`. |
 | T23.11 | ✅ Fatto | **I/O e parsing web robusti**: cache TTL con invalidazione per la config nei percorsi caldi e parsing DOM bounded di DuckDuckGo con risultato esplicitamente non fidato. Suite `test_context_budget.ts` e `test_browser_evolution.ts`. |
@@ -4269,11 +4269,30 @@ Documentare l'esito e i limiti osservati, anche se non emerge alcun vantaggio. I
 
 Verificare il contratto esistente e la sua sostituibilità sui percorsi reali. La presenza di interfaccia, registry e factory è una base architetturale, non prova della copertura di ogni requisito operativo. Produrre una breve matrice requisito/contratto/evidenza/gap. Aggiungere capability solo per differenze dimostrate; è ammesso chiudere senza modifiche runtime se l'audit non trova gap.
 
+
+**Esito (2026-09-26, audit sul codice):**
+
+| Requisito | Contratto / meccanismo | Evidenza | Gap |
+|---|---|---|---|
+| Sostituibilità | `MemoryBackend` + `registerMemoryBackend` + `createMemoryBackend` (config `memoryBackend` / `TSUKA_MEMORY_BACKEND`) | Nessun import di `JsonMemoryBackend`, `bm25`, `storage`, `retention`, `codec` fuori da `src/core/memory/`; `test_memory_backend_registry.ts` instrada `MemoryStore` su un backend volatile | — |
+| Nome sbagliato non ricade in silenzio | `createMemoryBackend` lancia errore con l'elenco dei registrati | codice in `registry.ts` | — |
+| Stato esterno | `refresh?()` opzionale, invocato da `getInstance()` | JSON rilegge su cambio di mtime | Cambio di backend a runtime richiede riavvio (singleton) |
+| Budget del prompt | `formatForPrompt` / `formatRelevant` sono nel contratto | implementati solo in `jsonBackend.ts` | **Policy duplicata per costruzione**: ogni nuovo backend deve reimplementare tetto e nota finale. Da risolvere spostando il rendering nel facade quando arriva un secondo backend (T22.15), non prima |
+| Backend remoti / MCP | contratto sincrono | tutti i metodi ritornano valori, non Promise | Blocca adapter asincroni; già annotato in T22.14 |
+| Superficie minima | `remove` e `forgetFact` | `forgetFact` delega a `remove` | Metodo duplicato nel contratto; innocuo, da unificare al prossimo cambio di contratto |
+
+Nessuna modifica runtime: nessuna differenza di comportamento dimostrata. Il checkpoint A (confronto su task reali con modello vivo) resta da eseguire e può riaprire questa matrice.
+
 ## T22.11 — Budget memory unificato
 
 **Stato:** da verificare dopo checkpoint A · **Priorità:** media
 
 Tracciare `memoryMaxChars`, formatter, recall e capping fino al prompt effettivo. Verificare unità, limiti e assenza di duplicazioni con fixture rappresentative. Riutilizzare i contratti esistenti e correggere solo discrepanze dimostrate. La presenza di BM25 e retention non dimostra da sola l'unificazione del budget. **Accettazione:** mappa dei percorsi ed evidenze riproducibili, con tre gate verdi per eventuali correzioni.
+
+
+**Esito (2026-09-26):** percorso verificato: `ConfigManager.getMemoryMaxChars()` (default `MEMORY_DEFAULTS.promptMaxChars`, minimo 100) → `formatForPrompt`/`formatRelevant` (`jsonBackend.ts`) → `renderMemorySection` (`codec.ts`) → `loadSystemPrompt` (`personas.ts`), unico punto d'iniezione. Unità: caratteri, non token.
+
+Discrepanza dimostrata e corretta: `renderMemorySection` confrontava con il tetto solo la somma delle righe, escludendo gli a capo e la nota "… (N more … available)". Fixture: 12 fatti con tetto 600 → sezione di 659 caratteri. Ora il tetto copre l'intera sezione; se la nota non entra si scartano le righe di rango più basso. Rimosso il parametro `relevant` ridondante (la nota usa il `noun` già passato). Numeri fissi spostati in `MEMORY_DEFAULTS`: `promptMaxFacts` (era `10` in `personas.ts`), `factMaxChars` (`500` in `save_memory`), `recallDefaultLimit`/`recallMaxLimit` (`10`/`50` in `recall_memory`). Test: `CODEC.13b/13c` in `test_memory_codec_storage.ts`; la caratterizzazione CSB5.3 di `test_context_scheduler_baseline.ts`, che fotografava il vecchio sforamento (~200 caratteri con tetto 140), ora verifica il tetto.
 
 ## T22.12 — `ShadowMemoryBackend`
 
@@ -4286,6 +4305,20 @@ Nessun wrapper da implementare ora. Riaprire soltanto se checkpoint A/T22.10 ide
 **Stato:** da verificare · **Priorità:** media
 
 Censire le misure effettivamente disponibili per recall, latenza, dimensione restituita, errori e qualità del retrieval su fixture note. La telemetria scheduler T22.16 non sostituisce queste misure. Riutilizzare l'osservabilità esistente; aggiungere soltanto le misure necessarie a una domanda concreta del checkpoint, senza registrare contenuti della memoria. **Accettazione:** copertura e lacune documentate, verifiche riproducibili e tre gate verdi per eventuali modifiche.
+
+
+**Esito (2026-09-26, censimento sul codice):**
+
+| Misura | Disponibile | Dove | Lacuna |
+|---|---|---|---|
+| Recall (uso) | Sì | `hits` e `lastUsed` per fatto, aggiornati da `search()`; `×hits` nel modal memoria della TUI | Misura l'uso, non se il fatto era pertinente |
+| Qualità del retrieval | Solo offline | fixture in `test_memory_bm25.ts`, `test_memory_phase3.ts` | Nessuna misura a runtime |
+| Latenza | No | — | Nessun tempo su `search`/`formatRelevant` |
+| Dimensione restituita | No | — | `/context` non separa la quota di memoria nel system prompt |
+| Errori | Solo log | `storage.ts` via `logSink` (file corrotto, lettura, salvataggio) | Nessun contatore |
+| Dimensione dello store | Parziale | `count()`, elenco `/memory` | Evizioni silenziose |
+
+Nessuna misura aggiunta: il task le subordina a una domanda concreta del checkpoint A. Candidata naturale quando il checkpoint verrà eseguito: quota di memoria nel prompt dentro `/context`, perché è l'unica che tocca il budget di contesto.
 
 ## T22.14 — Feasibility memoria esterna su MCP stdio
 
@@ -4618,6 +4651,11 @@ richiede un'allowlist esplicita e visibile, non un'eccezione hardcoded.
 IPv4-mapped IPv6, DNS misto, redirect pubblico→privato, schema/porta non consentiti e
 rebind simulato; nessuna richiesta raggiunge il target vietato; tre gate verdi.
 
+
+**Chiusura del residuo (2026-09-26):** il TOCTOU fra preflight DNS e resolver interno di `fetch` è eliminato. `safeFetch` non usa più `globalThis.fetch`: il trasporto (`pinnedFetch`, `node:http`/`node:https`) passa al socket un `lookup` che risolve, rifiuta se anche un solo indirizzo non è pubblico e consegna al socket esattamente gli indirizzi validati. Un server che risponde "pubblico" al preflight e "127.0.0.1" alla connessione viene fermato prima di aprire qualunque socket. Il preflight resta per un errore precoce e leggibile. Il riuso keep-alive di un socket è sicuro: quel socket è stato validato alla connessione con la stessa regola.
+
+Scelte: nessuna dipendenza nuova (`undici` servirebbe solo per passare un dispatcher a `fetch`); `accept-encoding: identity` perché il socket non decomprime come `fetch`; body solo stringa, altrimenti errore esplicito. `overrideDefaultNetworkPolicy()` è l'aggancio dei test per trasporto e resolver: `test_download_file.ts` sostituiva `globalThis.fetch` e dipendeva dal DNS reale di `example.com`. Nuovi check in `test_network_policy.ts`: NET.11 (rebind dopo il preflight, 2 risoluzioni, nessuna connessione), NET.12 (loopback mai raggiunto con la regola di default), NET.13 (trasporto contro un server locale: status, header, body, POST, identity).
+
 ## T23.8 — Sostituire `node:vm` come confine di sicurezza di `create_tool`
 
 **Dipende da:** T23.1 · **Sforzo:** molto alto · **Priorità:** critica
@@ -4666,6 +4704,34 @@ tutti gli OS supportati.
 **Accettazione:** payload con bracket notation, constructor chain, prototype,
 dynamic import, require indiretto, process, rete, filesystem esterno e loop infinito;
 il processo TSUKA resta integro e bounded; degradazione visibile; tre gate verdi.
+
+
+### Checkpoint (2026-09-26) — modello di minaccia e confronto delle opzioni
+
+**Stato attuale verificato:** i tool custom (`custom_tools/*.js`) vengono caricati con `require()` **dentro il processo TSUKA**, con tutti i suoi privilegi; `node:vm` valida solo la forma una volta, alla creazione. Blocklist e `jailedFs` sono aggirabili da codice ostile. Mitigazioni in essere: feature spenta di default (`selfAuthoringEnabled`), grant esplicito nel ruolo, ogni esecuzione `DANGEROUS` con conferma puntuale.
+
+**Minaccia:** un modello (per errore, prompt injection da pagine web o file letti) scrive un tool che, eseguito, legge o scrive fuori dal workspace, esfiltra segreti (`.env`, chiavi), apre connessioni di rete, lancia processi, blocca o fa crescere senza limite il processo TSUKA.
+
+| Opzione | Integrità di TSUKA (crash, loop, memoria) | Contenimento di codice ostile | Coerenza Windows/Linux/macOS | Costo |
+|---|---|---|---|---|
+| **A. Processo figlio Node + permission model** (`--permission`, fs solo in lettura/scrittura sulla cartella del tool, niente rete/processi/worker/addon, timeout e `--max-old-space-size`, IPC su stdin/stdout) | Sì: kill a timeout, memoria limitata, un crash non tocca TSUKA | **No, per dichiarazione di Node**: la documentazione del permission model lo definisce una "cintura di sicurezza" per codice fidato e avverte che codice malevolo può aggirarlo | Sì (è nel runtime). Richiede Node ≥ 25 per `--allow-net`; su versioni precedenti la rete resterebbe aperta → andrebbe rifiutata l'esecuzione | Alto |
+| **B. Sandbox di sistema / container** (Docker; bubblewrap/seccomp; `sandbox-exec`; AppContainer/Job Object) | Sì | Sì, dove disponibile | **No**: meccanismi diversi per OS, `sandbox-exec` deprecato su macOS, Docker è una dipendenza esterna non garantita | Molto alto |
+| **C. Disabilitazione permanente** dell'esecuzione dei tool generati (resta la generazione di file da revisionare e caricare a mano) | Sì | Sì (nessun codice eseguito) | Sì | Basso |
+
+**Conclusione:** come previsto dal task, ci si ferma: nessuna opzione offre contenimento di codice ostile coerente su tutti gli OS supportati. A migliora molto l'integrità del processo ma non va presentata come sandbox; B dà garanzie reali solo per-piattaforma; C è l'unica con garanzia completa. **Decisione richiesta al maintainer** fra A (difesa in profondità, T23.8 resta "mitigato"), B (per-piattaforma, fuori scope multipiattaforma) e C.
+
+
+### Esito — opzione A (decisione del maintainer, 2026-09-26)
+
+**Implementazione:**
+- `src/tools/customToolRunner.ts`: `runCustomToolIsolated` avvia `process.execPath` con `--permission`, `--allow-fs-read`/`--allow-fs-write` sulla radice effettiva del workspace (rispetta lo staging dei blocchi paralleli), `--disallow-code-generation-from-strings`, `--max-old-space-size`, `cwd` sul workspace e ambiente vuoto. Il programma figlio passa con `-e`, quindi nessun file fuori dal workspace deve essere leggibile. Il modulo riceve `fs` e `path` come parametri; un `require` locale serve solo quelli (e mappa il vecchio `jailedFs` per i moduli già su disco). Il risultato torna come una riga JSON su stdout; `console.*` va su stderr. Timeout, abort e output oltre soglia uccidono il figlio. Limiti in `TOOLS_DEFAULTS` (`customToolTimeoutMs`, `customToolMaxMemoryMb`, `customToolMaxOutputBytes`; `createToolValidationTimeoutMs` portato a 10 s perché include l'avvio del processo).
+- Fail closed: senza i flag `--permission` e `--allow-net` (Node < 25) l'esecuzione viene rifiutata con un errore esplicito, mai eseguita senza confini.
+- `tools/index.ts`: i moduli in `custom_tools/` non vengono più importati; ognuno diventa un proxy `DANGEROUS` (nome = nome del file) che esegue il file isolato a ogni chiamata. `create_tool` valida la forma nello stesso processo figlio e registra lo stesso proxy.
+- Rimossi `node:vm` da `createTool.ts` e `src/tools/impl/jailedFs.ts`: il confine è ora il processo. La blocklist resta come difesa in profondità.
+
+**Verifica (`tests/test_custom_tool_isolation.ts`, 18 check, eseguiti senza la blocklist):** accesso con parentesi quadre fuori dal workspace (lettura e scrittura), catena `constructor`, `AsyncFunction` via prototype, `import()` dinamico, `child_process` tramite `process.getBuiltinModule`, `require` di moduli non ammessi, `fetch`, socket `net`, loop infinito (ucciso al timeout), esaurimento della memoria, output oltre soglia, `process.exit`, nessun segreto nell'ambiente; dopo tutti i payload TSUKA risponde ancora e il file esterno è intatto. Anche i moduli scritti col vecchio template girano.
+
+**Rischio residuo documentato:** la documentazione di Node definisce il permission model una cintura di sicurezza per codice fidato, non una sandbox contro codice malevolo. Il task resta "mitigato": self-authoring opt-in e ogni chiamata `DANGEROUS` restano necessari. Documentazione aggiornata: `self-authoring`, `security`, `architecture`, guide didattiche IT/EN, README, AGENTS.md (corretta anche l'affermazione errata delle guide didattiche "mai `DANGEROUS`").
 
 ## T23.9 — `download_file` bounded, abortable e atomico
 

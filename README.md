@@ -112,7 +112,7 @@ TSUKA discovers native tool implementations through its registry and supports ex
 
 Native file tools enforce workspace confinement. Tool execution uses `SAFE`, `RESTRICTED`, and `DANGEROUS` risk levels, with approval requirements determined by the operation and session permissions.
 
-Shell commands, external MCP servers, and custom executable tools can act with the permissions of their host process. Workspace file checks do not turn those processes into an operating-system sandbox. Likewise, `node:vm` checks used by self-authored tools are not a security boundary.
+Shell commands and external MCP servers can act with the permissions of their host process. Workspace file checks do not turn those processes into an operating-system sandbox.
 
 Read [security and permissions](docs/security.md) for the policies and their limits.
 

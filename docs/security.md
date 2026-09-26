@@ -32,8 +32,8 @@
 └────────────────────────────────────┬────────────────────────────────────┘
                                      │
 ┌────────────────────────────────────▼────────────────────────────────────┐
-│                  5. RUNTIME VM SANDBOX & USER-SPACE TOOLS               │
-│        node:vm Isolation · Blocklist Policies · custom_tools/ User Space│
+│               5. ISOLATED USER-SPACE TOOLS (self-authoring)             │
+│  Separate Node process · Permission model · custom_tools/ User Space    │
 └────────────────────────────────────┬────────────────────────────────────┘
                                      │
 ┌────────────────────────────────────▼────────────────────────────────────┐
@@ -110,12 +110,12 @@ During parallel branch execution in the Goal Orchestrator:
 
 The controls in this section remediate findings from an **external security audit** received by the project. The audit identified the tool's self-declared risk level and the use of `node:vm` as a presumed security boundary as inadequate. The complete configuration and usage procedure is in the [self-authoring guide](self-authoring.md).
 
-`node:vm`, blocklists, and a jailed `fs` wrapper validate conventions but do not isolate hostile JavaScript. The immediate mitigation is fail-closed:
+Generated code never runs inside TSUKA (T23.8). The controls are layered:
 * **Disabled by Default**: `create_tool` is not registered and custom executable modules are not loaded unless `selfAuthoringEnabled: true` is set.
 * **Maximum Permission Tier**: Creation and every loaded custom tool are forced to `DANGEROUS`, regardless of their own declaration.
-* **Bounded Shape Validation**: `node:vm` checks that generated code loads with the expected module shape within a short timeout; it is explicitly not a security sandbox.
-* **Residual Risk**: Enabling self-authoring authorizes executable JavaScript in the TSUKA process. A structural replacement requires a separate OS process/container with explicit filesystem, network, CPU, memory, time, and output capabilities.
-* **Existing Defenses in Depth**: Core-name collision checks, versioned backups, pattern rejection, and canonical workspace-jailed `fs` remain active but do not change the residual trust model.
+* **Out-of-Process Execution**: validation and every call run in a fresh Node child under the permission model: filesystem read/write only inside the workspace, network, child processes, workers and addons denied, `eval`/`Function` disallowed, empty environment, heap ceiling, wall-clock timeout and capped output. Runtimes without `--allow-net` (Node.js < 25) refuse to run custom tools.
+* **Residual Risk**: Node documents its permission model as a safety belt for trusted code, not a sandbox against malicious code. The child keeps TSUKA intact and bounded but does not make hostile code safe; OS sandboxes or containers would be stronger but are not uniform across Windows, Linux and macOS.
+* **Existing Defenses in Depth**: Core-name collision checks, versioned backups and pattern rejection at creation remain active.
 
 ---
 

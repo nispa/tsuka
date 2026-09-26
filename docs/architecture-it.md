@@ -384,7 +384,7 @@ TSUKA include una dashboard terminale grafica interattiva a componenti puri:
 * **Tre livelli di rischio**: `SAFE` (esecuzione immediata), `RESTRICTED` (richiede conferma con facoltà di autorizzazione per l'intera sessione), `DANGEROUS` (richiede sempre autorizzazione puntuale esplicita).
 * **Workspace Jail**: tutte le operazioni su filesystem sono confinate all'interno del percorso `workspaceRoot`.
 * **Protezione Credenziali**: censura preventiva automatica delle variabili d'ambiente riservate (`KEY`, `SECRET`, `TOKEN`, `PASSWORD`, `CREDENTIAL`, `AUTH`).
-* **Self-Authoring Opt-in**: `create_tool` e i moduli custom eseguibili sono disabilitati per default. Quando abilitati esplicitamente, tutti i tool generati sono DANGEROUS; `node:vm` esegue soltanto una validazione bounded della forma e non è considerato un confine di sicurezza.
+* **Self-Authoring Opt-in**: `create_tool` e i moduli custom eseguibili sono disabilitati per default. Quando abilitati esplicitamente, tutti i tool generati sono DANGEROUS e girano in un processo Node separato con il permission model (`src/tools/customToolRunner.ts`): file solo nel workspace, niente rete né sottoprocessi, ambiente vuoto, limiti di tempo, memoria e output.
 
 ---
 

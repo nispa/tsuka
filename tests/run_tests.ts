@@ -49,6 +49,7 @@ const suites = [
   'test_fingerprinting.ts',
   'test_benchmark_dsl.ts',
   'test_self_authoring.ts',
+  'test_custom_tool_isolation.ts',
   'test_platform.ts',
   'test_execute_command_abort.ts',
   'test_network_policy.ts',

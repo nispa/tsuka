@@ -522,7 +522,7 @@ export class ConfigManager {
     return normalizeProviderClass(this.getActiveProviderConfig()?.class) === 'CLOUD' || this.config.parallelExecutionEnabled === true;
   }
 
-  /** Executable custom tools are opt-in because node:vm is not a security boundary. */
+  /** Executable custom tools are opt-in: their out-of-process confinement is defense in depth, not a sandbox. */
   isSelfAuthoringEnabled(): boolean {
     return this.config.selfAuthoringEnabled === true;
   }

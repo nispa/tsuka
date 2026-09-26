@@ -347,15 +347,44 @@ Anziché affidarsi a euristiche basate sul nome del file di modello, TSUKA adott
 
 ### Tappa 9 — Estendibilità: Tool dinamici in sandbox ed ecosistema MCP
 
-*Riferimenti nel codice: `src/tools/impl/createTool.ts`, `src/core/mcp/` (`types.ts`, `stdioTransport.ts`, `client.ts`, `adapter.ts`, `connectMcpServers.ts`)*
+*Riferimenti nel codice: `src/tools/impl/createTool.ts`, `src/tools/customToolRunner.ts`, `src/core/mcp/` (`types.ts`, `stdioTransport.ts`, `client.ts`, `adapter.ts`, `connectMcpServers.ts`)*
 
 Un harness completo non può rimanere vincolato al catalogo iniziale di tool statici. Per consentire all'agente di affrontare compiti imprevisti e interagire con servizi esterni, l'architettura adotta due meccanismi complementari di estensione:
 
 #### 9.1 Estensione Interna: creazione dinamica di tool a runtime (`create_tool`)
-Con `selfAuthoringEnabled: true`, un agente con competenze di sviluppo può generare nuove utility JavaScript/TypeScript tramite `create_tool`; la capability è disabilitata per default:
-* **Validazione, non sandbox**: `node:vm` verifica forma e timeout del modulo ma non isola codice ostile. Creazione e tool custom caricati sono sempre DANGEROUS; il contenimento reale richiede un processo OS/container separato.
-* **Tiers vincolati**: i tool autogenerati possono assumere al massimo il livello `SAFE` o `RESTRICTED` (mai `DANGEROUS`).
-* **Protezione del Core**: è vietata la sovrascrittura dei tool nativi e viene sempre conservato un backup automatico nella cartella di lavoro prima del caricamento a caldo nel registro.
+Con `selfAuthoringEnabled: true`, un agente che possiede `create_tool` può scrivere un nuovo tool JavaScript, descriverne gli argomenti con JSON Schema e usarlo nella stessa sessione. La capability è disabilitata per default, ed è l'esempio più chiaro nel progetto di una domanda che ogni harness di agenti prima o poi incontra: **dove gira il codice scritto dal modello?**
+
+**Il problema.** Un tool generato è codice che nessuno ha ancora rivisto, scritto da un modello che magari pochi turni prima ha letto una pagina web ostile. Caricato con `require()`, girerebbe *dentro* TSUKA, con tutto ciò che TSUKA ha: l'intero disco, la rete, le chiavi API nell'ambiente, la possibilità di lanciare processi. Una versione precedente validava i moduli con `node:vm` e una blocklist di pattern vietati; un audit esterno ha fatto notare che nessuno dei due è un confine di sicurezza. `node:vm` separa le variabili globali, non i privilegi (`({}).constructor.constructor('return process')()` ne esce), e una blocklist vede solo il testo per cui è stata scritta (`fs['read' + 'FileSync']` non contiene `readFileSync`).
+
+**Il progetto: un altro processo, meno permessi** (`customToolRunner.ts`). La validazione e ogni chiamata avviano un processo Node figlio nuovo:
+
+```
+TSUKA ──spawn──► node --permission --allow-fs-read=<workspace> --allow-fs-write=<workspace>
+  │                   --disallow-code-generation-from-strings --max-old-space-size=256 -e <runner>
+  │  stdin:  { source, name, args }            env: {}      cwd: <workspace>
+  └◄ stdout: { ok, result }  (una riga JSON; console.* va su stderr)
+```
+
+Ogni scelta risponde a un attacco preciso:
+
+| Scelta | Cosa impedisce |
+|---|---|
+| Processo separato | Un crash, un loop infinito o una memoria che esplode chiudono il figlio, mai TSUKA; un timeout lo uccide |
+| `--permission` + `--allow-fs-*` solo sul workspace | Leggere o scrivere file altrove, comunque sia scritto il percorso |
+| Nessun `--allow-net`, `--allow-child-process`, `--allow-worker` | Rete, nuovi processi, worker — anche tramite `process.getBuiltinModule` |
+| `--disallow-code-generation-from-strings` | `eval`, `Function` e il trucco della catena di constructor visto sopra |
+| `env` vuoto | Chiavi API e token non arrivano mai al codice generato |
+| Tetto all'output e protocollo JSON | Un tool non può inondare TSUKA né restituire altro che una stringa |
+| Rifiuto su Node < 25 | I runtime precedenti non hanno `--allow-net`: meglio non eseguire che eseguire senza confini (**fail closed**) |
+
+Il modulo riceve `fs` e `path` come parametri iniettati, e un `require` locale non serve nient'altro. All'avvio i moduli trovati su disco vengono solo *registrati*: il loro codice gira, confinato, quando vengono chiamati.
+
+**Il limite dichiarato.** La documentazione di Node definisce il suo permission model una *cintura di sicurezza* per codice fidato, non una sandbox contro codice malevolo. Un contenimento vero richiederebbe una sandbox del sistema operativo o un container, che sono diversi su Windows, Linux e macOS. Il progetto ha confrontato tre opzioni — processo confinato, sandbox del sistema operativo, disabilitazione permanente — e ha scelto il processo confinato come difesa in profondità, mantenendo le altre due chiavi:
+* **Opt-in**: non si carica nulla se la configurazione del progetto non lo dice;
+* **Sempre DANGEROUS**: la creazione e ogni chiamata richiedono una conferma esplicita, qualunque cosa il modulo dichiari di sé;
+* **Protezione del Core**: i tool nativi non si possono sovrascrivere, e la versione precedente di un tool sostituito viene salvata in backup.
+
+La lezione va oltre questa funzione: *un controllo non è un confine*. Validazione e pattern matching descrivono il codice; solo il sistema operativo, attraverso un processo separato, può davvero togliere un privilegio. E quando nemmeno questo basta, va detto chiaramente.
 
 #### 9.2 Estensione Esterna: Client MCP nativo (Model Context Protocol)
 Per connettere l'agente a fonti dati e servizi complessi (repository GitHub, database SQLite, browser web, filesystem esterni) senza dover implementare decine di librerie dedicate in TypeScript, l'harness supporta lo standard aperto **Model Context Protocol (MCP)**.

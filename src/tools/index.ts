@@ -5,6 +5,7 @@ import { ToolRegistry, Tool } from './registry';
 import { logSink } from '../core/logSink';
 
 import { homePath, localWorkspacePath } from '../core/apphome';
+import { isolatedCustomTool } from './customToolRunner';
 
 export interface DefaultRegistryOptions {
   /** Loads create_tool and executable custom tool modules. Disabled by default. */
@@ -14,11 +15,29 @@ export interface DefaultRegistryOptions {
 /**
  * Loads tools from a directory into the given ToolRegistry.
  */
-async function loadToolsFromDir(
-  dirPath: string,
-  registry: ToolRegistry,
-  options: { forceDangerous?: boolean } = {}
-): Promise<void> {
+/**
+ * Registers self-authored modules (T23.8). They are never imported into this process:
+ * each becomes a DANGEROUS proxy that runs the file in a confined child on every call
+ * (customToolRunner). The tool name is the file name, as written by create_tool.
+ */
+function loadCustomToolsFromDir(dirPath: string, registry: ToolRegistry): void {
+  if (!fs.existsSync(dirPath)) return;
+  for (const file of fs.readdirSync(dirPath)) {
+    if (path.extname(file) !== '.js') continue;
+    const name = path.basename(file, '.js');
+    if (!/^[a-z0-9_]+$/.test(name)) {
+      logSink.warn(`Skipping custom tool '${file}': name must use lowercase letters, digits and underscores.`);
+      continue;
+    }
+    if (registry.getTool(name)) {
+      logSink.warn(`Skipping custom tool '${file}': a tool named '${name}' is already registered.`);
+      continue;
+    }
+    registry.register(isolatedCustomTool(name, path.join(dirPath, file)));
+  }
+}
+
+async function loadToolsFromDir(dirPath: string, registry: ToolRegistry): Promise<void> {
   if (!fs.existsSync(dirPath)) return;
 
   const files = fs.readdirSync(dirPath);
@@ -44,15 +63,7 @@ async function loadToolsFromDir(
             typeof exportItem.riskLevel === 'string' &&
             typeof exportItem.execute === 'function'
           ) {
-            const tool = exportItem as Tool;
-            if (options.forceDangerous) {
-              // Custom module source is not trusted to lower its own permission boundary.
-              // In particular, classifyRisk would otherwise turn a DANGEROUS custom tool
-              // into SAFE for a selected call after the user enabled self-authoring.
-              tool.riskLevel = 'DANGEROUS';
-              tool.classifyRisk = undefined;
-            }
-            registry.register(tool);
+            registry.register(exportItem as Tool);
           }
         }
       } catch (error: any) {
@@ -84,12 +95,12 @@ export async function createDefaultRegistry(options: DefaultRegistryOptions = {}
 
   // 2. Load global custom tools (TSUKA_HOME)
   const globalCustomDir = homePath('custom_tools');
-  await loadToolsFromDir(globalCustomDir, registry, { forceDangerous: true });
+  loadCustomToolsFromDir(globalCustomDir, registry);
 
   // 3. Load local custom tools (.tsuka/ in project workspace)
   const localCustomDir = localWorkspacePath('custom_tools');
   if (localCustomDir) {
-    await loadToolsFromDir(localCustomDir, registry, { forceDangerous: true });
+    loadCustomToolsFromDir(localCustomDir, registry);
   }
 
   return registry;
