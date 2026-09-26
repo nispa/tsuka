@@ -8,6 +8,7 @@ import { TuiState } from '../types';
 import { TuiScreen } from '../screen';
 import { composingLabel } from './composingLabel';
 import { PaneFramer } from '../layoutConfig';
+import { PromptRow, cursorRow, promptTextWidth, wrapPrompt } from '../promptWrap';
 
 
 export class InputView {
@@ -20,52 +21,36 @@ export class InputView {
     const rawLines = inputText.split(/\r?\n/);
     const isMultiline = rawLines.length > 1;
 
+    // Soft wrap (promptWrap.ts): a long line continues on the next row instead of running
+    // off the pane. Real newlines keep their "│" marker; wrapped continuations are indented.
+    const rows = wrapPrompt(inputText, promptTextWidth(width));
+    const prefixFor = (row: PromptRow, focused: boolean): string => {
+      if (!row.firstOfLine) return '  ';
+      if (row.line > 0) return chalk.gray('│ ');
+      return focused ? chalk.bold.cyan('❯ ') : chalk.cyan('❯ ');
+    };
+
     if (state.focus === 'input') {
-      // Find line and column of cursor
-      let runningChars = 0;
-      let cursorLine = 0;
-      let cursorCol = 0;
-
-      for (let l = 0; l < rawLines.length; l++) {
-        const lineLen = rawLines[l].length;
-        if (inputCursor <= runningChars + lineLen) {
-          cursorLine = l;
-          cursorCol = inputCursor - runningChars;
-          break;
+      const cursorAt = cursorRow(rows, inputCursor);
+      // Scroll the visible window to keep the cursor row on screen.
+      const startRow = cursorAt >= innerHeight ? cursorAt - innerHeight + 1 : 0;
+      for (let r = startRow; r < Math.min(rows.length, startRow + innerHeight); r++) {
+        const row = rows[r];
+        const text = inputText.slice(row.start, row.end);
+        let rendered = text;
+        if (r === cursorAt) {
+          const col = inputCursor - row.start;
+          const under = text.slice(col, col + 1) || ' ';
+          rendered = text.slice(0, col) + chalk.inverse(under) + text.slice(col + 1);
         }
-        runningChars += lineLen + 1; // +1 for the newline
+        lines.push(TuiScreen.truncateOrPad(prefixFor(row, true) + rendered, innerWidth));
       }
-
-      // Calculate vertical window of lines
-      let startLine = 0;
-      if (cursorLine >= innerHeight) {
-        startLine = cursorLine - innerHeight + 1;
-      }
-      const endLine = Math.min(rawLines.length, startLine + innerHeight);
-
-      for (let l = startLine; l < endLine; l++) {
-        const lineStr = rawLines[l] ?? '';
-        const linePrefix = l === 0 ? chalk.bold.cyan('❯ ') : chalk.gray('│ ');
-
-        let renderedLine = '';
-        if (l === cursorLine) {
-          const before = lineStr.slice(0, cursorCol);
-          const under = lineStr.slice(cursorCol, cursorCol + 1) || ' ';
-          const after = lineStr.slice(cursorCol + 1);
-          renderedLine = before + chalk.inverse(under) + after;
-        } else {
-          renderedLine = lineStr;
-        }
-
-        lines.push(TuiScreen.truncateOrPad(linePrefix + renderedLine, innerWidth));
+    } else if (inputText) {
+      for (const row of rows.slice(0, innerHeight)) {
+        lines.push(TuiScreen.truncateOrPad(prefixFor(row, false) + inputText.slice(row.start, row.end), innerWidth));
       }
     } else {
-      const displayLines = inputText
-        ? rawLines.slice(0, innerHeight).map((l, i) => (i === 0 ? chalk.cyan('❯ ') : chalk.gray('│ ')) + l)
-        : [chalk.gray('❯ (Press Tab to focus input)')];
-      for (const d of displayLines) {
-        lines.push(TuiScreen.truncateOrPad(d, innerWidth));
-      }
+      lines.push(TuiScreen.truncateOrPad(chalk.gray('❯ (Press Tab to focus input)'), innerWidth));
     }
 
     // Fill blank lines if fewer than innerHeight

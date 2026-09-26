@@ -89,7 +89,7 @@ export const consoleLayoutEngine: TuiLayoutEngine = {
 
     const statusRows = [HeaderView.statusLine(state, contentW), HeaderView.detailLine(state, contentW)]
       .filter((row): row is string => !!row);
-    const lowerH = Math.max(computeInputHeight(state.inputText), TUI_DEFAULTS.consoleLowerRows);
+    const lowerH = Math.max(computeInputHeight(state.inputText, contentW), TUI_DEFAULTS.consoleLowerRows);
     const mainH = Math.max(TUI_DEFAULTS.minMainHeight, height - 3 - statusRows.length - lowerH);
     const mainTop = 2 + statusRows.length;
     const midRow = mainTop + mainH;

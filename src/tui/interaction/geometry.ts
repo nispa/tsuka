@@ -1,5 +1,6 @@
 import { TUI_DEFAULTS } from '../../core/constants';
 import { TuiLayoutConfig } from '../layoutConfig';
+import { promptTextWidth, wrapPrompt } from '../promptWrap';
 
 /**
  * Pure pane-geometry math shared by the frame composer and the mouse router, so a
@@ -33,12 +34,16 @@ export function computeFilePaneHeights(
   return { filesHeight, profileHeight: Math.max(TUI_DEFAULTS.minProfileHeight, mainHeight - filesHeight) };
 }
 
-/** Input box height: raw line count plus padding, clamped between the bounds. */
-export function computeInputHeight(inputText: string | undefined): number {
-  const rawLineCount = inputText ? inputText.split(/\r?\n/).length : 1;
+/**
+ * Input box height for a pane `paneWidth` columns wide: the wrapped row count plus
+ * padding, clamped between the bounds. Counting only real newlines kept a long single
+ * line at minimum height while it ran off the pane.
+ */
+export function computeInputHeight(inputText: string | undefined, paneWidth: number): number {
+  const rowCount = inputText ? wrapPrompt(inputText, promptTextWidth(paneWidth)).length : 1;
   return Math.min(
     TUI_DEFAULTS.inputMaxLines,
-    Math.max(TUI_DEFAULTS.inputMinLines, rawLineCount + TUI_DEFAULTS.inputPaddingLines)
+    Math.max(TUI_DEFAULTS.inputMinLines, rowCount + TUI_DEFAULTS.inputPaddingLines)
   );
 }
 
@@ -69,7 +74,7 @@ export function computeFrameGeometry(
   rows: { headerHeight: number; inputText: string | undefined }
 ): FrameGeometry {
   const effectiveWidth = Math.max(TUI_DEFAULTS.minEffectiveWidth, width - 1);
-  const inputHeight = computeInputHeight(rows.inputText);
+  const inputHeight = computeInputHeight(rows.inputText, effectiveWidth);
   const mainHeight = Math.max(TUI_DEFAULTS.minMainHeight, height - rows.headerHeight - inputHeight);
 
   const hasSidebar = layout.sidebarPosition !== 'hidden';

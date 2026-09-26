@@ -123,6 +123,7 @@ const suites = [
   'test_inference_telemetry.ts',
   'test_tui_data_driven.ts',
   'test_tui_layout.ts',
+  'test_prompt_wrap.ts',
   'test_cli_spinner.ts',
   'test_model_warmup.ts',
   'test_provider_model_fallback.ts',
