@@ -171,6 +171,27 @@ async function main(): Promise<void> {
       pricedFreeModal?.options?.some((option) => option.value === 'stealth/ox-alpha') === true,
       'the TUI free view includes models advertised with zero prompt and completion pricing'
     );
+
+    // PF10 (2026-09-27): a cold local server answering its first /models after ~3 s must not
+    // lose to a cloud fallback. The mock honours the abort signal, like real fetch.
+    globalThis.fetch = ((url: string | URL | Request, init?: RequestInit) => {
+      const target = String(url);
+      const reply = (body: unknown): Response => ({ ok: true, status: 200, json: async () => body }) as Response;
+      if (target === 'http://127.0.0.1:8888/v1/models') {
+        return new Promise<Response>((resolve, reject) => {
+          const timer = setTimeout(() => resolve(reply({ data: [{ id: 'local/gemma', loaded: true }] })), 3_000);
+          init?.signal?.addEventListener('abort', () => { clearTimeout(timer); reject(new Error('aborted')); });
+        });
+      }
+      if (target.startsWith('https://openrouter.test/')) return Promise.resolve(reply({ data: [{ id: 'cloud/model', context_length: 512_000 }] }));
+      return Promise.resolve({ ok: false, status: 503, json: async () => ({}) } as Response);
+    }) as typeof fetch;
+    const cold = await scanProviders([
+      { name: 'unsloth', config: { baseUrl: 'http://127.0.0.1:8888/v1', model: 'local/gemma' }, apiKey: 'local' },
+      { name: 'openrouter', config: { baseUrl: 'https://openrouter.test/api/v1', model: 'cloud/model' }, apiKey: 'secret-key' },
+    ], 'unsloth');
+    check('PF10', cold?.name === 'unsloth' && cold.loadedModel === 'local/gemma',
+      `a slow first answer from the configured local server is awaited instead of failing over (got ${cold?.name})`);
   } finally {
     globalThis.fetch = originalFetch;
     fs.rmSync(temporaryHome, { recursive: true, force: true });

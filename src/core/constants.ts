@@ -29,6 +29,12 @@ export const LLM_DEFAULTS = {
 export const DISCOVERY_DEFAULTS = {
   /** Maximum wait for a provider or context metadata probe. */
   probeTimeoutMs: 2_500,
+  /**
+   * Wait granted to the provider the user configured before failing over. A local server's
+   * first request after idle can be slow (Unsloth Studio: ~2.5 s cold, 0.2 s warm), and
+   * losing that race silently moved the session to a cloud provider.
+   */
+  configuredProbeTimeoutMs: 10_000,
   /** Short follow-up probe used after a provider has already responded. */
   metadataTimeoutMs: 1_500,
   /** Model swaps can legitimately take several minutes on local hardware. */

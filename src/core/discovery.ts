@@ -225,7 +225,9 @@ export async function scanProviders(
 ): Promise<ProviderScanResult | null> {
   const active = candidates.find((c) => c.name === activeName);
   if (active) {
-    const result = await probeProvider(active.name, active.config, active.apiKey);
+    // The user's own choice gets a longer wait than fallbacks: better a slower start than
+    // a silent switch to another service because the first request hit a cold server.
+    const result = await probeProvider(active.name, active.config, active.apiKey, DISCOVERY_DEFAULTS.configuredProbeTimeoutMs);
     // A reachable server with an empty catalogue cannot serve a chat request.
     // Continue discovery so an authenticated cloud provider can recover the session.
     if (result && result.models.length > 0) return result;
