@@ -16,6 +16,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import chalk from 'chalk';
+import { TUI_DEFAULTS } from '../src/core/constants';
 import { TuiStore } from '../src/tui/store';
 import { TuiScreen } from '../src/tui/screen';
 import { HeaderView } from '../src/tui/views/Header';
@@ -207,9 +208,18 @@ describe('the LCARS console', () => {
     }
   });
 
-  it('shows the conversation and the prompt, and no sidebar or files pane', () => {
-    const frame = frameFor(new TuiStore(), layout());
-    assert.deepStrictEqual(Object.keys(frame.panes).sort(), ['chat', 'input']);
+  it('keeps the files under the buttons and adds the widgets column only where it fits', () => {
+    const wide = frameFor(new TuiStore(), layout());
+    assert.deepStrictEqual(Object.keys(wide.panes).sort(), ['chat', 'files', 'input', 'sidebar']);
+    const files = wide.panes.files!;
+    const lastButton = Math.max(...wide.tabs.map((t) => t.y));
+    assert.ok(files.x <= TUI_DEFAULTS.consoleColumnWidth && files.y > lastButton, 'files sit in the left column, below the buttons');
+    assert.ok(plain(wide.lines[files.y - 1]).includes('FILES'), 'the explorer is drawn where its rect says');
+    assert.ok(plain(wide.lines[wide.panes.sidebar!.y - 1]).includes('OPERATIONS'), 'so is the widgets pane');
+    const noFiles = frameFor(new TuiStore(), layout({ showFilesExplorer: false }));
+    assert.deepStrictEqual(Object.keys(noFiles.panes).sort(), ['chat', 'input', 'sidebar'], 'F7 can still hide the explorer');
+    const narrow = frameFor(new TuiStore(), layout(), 100);
+    assert.deepStrictEqual(Object.keys(narrow.panes).sort(), ['chat', 'files', 'input'], 'narrow: no widgets column, files kept');
   });
 
   it('degrades to the classic quadrant on a terminal too narrow for the column', () => {
@@ -263,6 +273,14 @@ describe('input follows the frame on screen', () => {
     assert.ok(store.getState().chatScrollOffset > 0, 'a click at the top of the track scrolls to older messages');
   });
 
+  it('focuses the files explorer when it is clicked in the console left column', () => {
+    const store = new TuiStore();
+    const frame = frameFor(store, layout());
+    const files = frame.panes.files!;
+    click(store, frame, files.y + 2, files.x + 4);
+    assert.strictEqual(store.getState().focus, 'files');
+  });
+
   it('activates a tab by clicking its LCARS button', () => {
     const store = new TuiStore();
     const frame = frameFor(store, layout());
@@ -274,13 +292,13 @@ describe('input follows the frame on screen', () => {
 
   it('cycles focus only through the panes the layout shows', () => {
     const store = new TuiStore();
-    const frame = frameFor(store, layout());
+    const frame = frameFor(store, layout(), 100);
     const visible = Object.keys(frame.panes) as TuiFocus[];
     const seen = new Set<string>();
     for (let i = 0; i < 6; i++) {
       store.cycleFocus(visible);
       seen.add(store.getState().focus);
     }
-    assert.deepStrictEqual([...seen].sort(), ['chat', 'input'], 'console: never sidebar, files or tools');
+    assert.deepStrictEqual([...seen].sort(), ['chat', 'files', 'input'], 'narrow console: never the hidden sidebar, nor tools');
   });
 });

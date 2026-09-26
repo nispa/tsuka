@@ -5,7 +5,7 @@ import { PersonaWidget, MetricsWidget, InferenceTelemetryWidget, InferenceLedsWi
 import { TuiWidgetId, PaneFramer } from '../layoutConfig';
 
 export class SidebarView {
-  static render(state: TuiState, width: number, height: number, visibleWidgets: TuiWidgetId[] = ['persona', 'metrics', 'telemetry_leds', 'tool_activity', 'quick_keys'], framer?: PaneFramer): string[] {
+  static render(state: TuiState, width: number, height: number, visibleWidgets: TuiWidgetId[] = ['persona', 'metrics', 'telemetry_leds', 'tool_activity', 'quick_keys'], framer?: PaneFramer, title = 'Agent Profile'): string[] {
     const divider = chalk.hex('#334155')('  ' + '─'.repeat(Math.max(10, width - 6)));
     const rawLines: string[] = [];
 
@@ -36,6 +36,6 @@ export class SidebarView {
     const scrollOffset = Math.min(state.sidebarScrollOffset, Math.max(0, rawLines.length - innerHeight));
     const visibleLines = rawLines.slice(scrollOffset, scrollOffset + innerHeight);
 
-    return TuiScreen.drawBox('Agent Profile', visibleLines, width, height, state.focus === 'sidebar', undefined, undefined, framer?.('sidebar', state.focus === 'sidebar'));
+    return TuiScreen.drawBox(title, visibleLines, width, height, state.focus === 'sidebar', undefined, undefined, framer?.('sidebar', state.focus === 'sidebar'));
   }
 }
