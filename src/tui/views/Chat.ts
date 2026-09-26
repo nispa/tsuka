@@ -8,7 +8,7 @@ import { TuiState, TuiChatMessage } from '../types';
 import { TuiScreen } from '../screen';
 import { renderMarkdownToLines } from '../../cli/markdown';
 import { composingLabel } from './composingLabel';
-import { TuiThemePalette, paneFrame } from '../layoutConfig';
+import { PaneFramer } from '../layoutConfig';
 
 /**
  * Lines of a live thought kept on screen while it streams. A running thought is shown
@@ -58,7 +58,7 @@ interface ChatLayout {
 }
 
 export class ChatView {
-  static render(state: TuiState, width: number, height: number, theme?: TuiThemePalette): string[] {
+  static render(state: TuiState, width: number, height: number, framer?: PaneFramer): string[] {
     const { lines, startLine, innerHeight } = ChatView.layout(state, width, height);
     const endLine = Math.min(lines.length, startLine + innerHeight);
     const visibleLines = lines.slice(startLine, endLine);
@@ -84,7 +84,7 @@ export class ChatView {
       state.focus === 'chat',
       undefined,
       { total: lines.length, visible: innerHeight, offset: state.chatScrollOffset },
-      paneFrame(theme, 'chat', state.focus === 'chat')
+      framer?.('chat', state.focus === 'chat')
     );
   }
 

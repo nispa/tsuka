@@ -15,6 +15,11 @@ export type TuiPaneId = 'chat' | 'tools' | 'sidebar' | 'files' | 'input' | 'busy
 export type TuiWidgetId = 'persona' | 'metrics' | 'telemetry' | 'telemetry_leds' | 'tool_activity' | 'quick_keys';
 
 export interface TuiLayoutConfig {
+  /**
+   * Registered layout engine drawing the screen structure (`layoutEngines/registry.ts`).
+   * A free string on purpose: a plug-in engine becomes selectable by registering itself.
+   */
+  engine: string;
   sidebarPosition: SidebarPosition;
   sidebarWidthPercent: number;
   showFilesExplorer: boolean;
@@ -49,13 +54,28 @@ export interface LcarsChrome {
   tabs: string[];
   /** Segments of the bar closing the header, as `[colour, share of the width]`. */
   headerBar: Array<[string, number]>;
+  /** Decorative LCARS panel code shown in the console column. */
+  code: string;
+  /** Selected button in the console column, lighter than the column it sits in. */
+  highlight: string;
 }
 
-/** Frame of one pane under the given theme; undefined means the classic rounded box. */
-export function paneFrame(theme: TuiThemePalette | undefined, pane: TuiPaneId, isFocused: boolean): FrameSpec | undefined {
-  const colors = theme?.lcars?.panes[pane];
-  if (!colors) return undefined;
-  return { style: 'lcars', color: isFocused ? colors[0] : colors[1] };
+/**
+ * How a layout engine asks a view to frame one of its panes. Views never pick a frame
+ * themselves: the engine decides, so the same view can be a boxed pane in one layout
+ * and a captioned region inside a larger frame in another.
+ */
+export type PaneFramer = (pane: TuiPaneId, isFocused: boolean) => FrameSpec | undefined;
+
+/**
+ * Frame of one pane under a theme, for layouts that box each pane on its own: an LCARS
+ * elbow for LCARS themes, the rounded box in the theme's own colours otherwise (T24.5 —
+ * before this the classic themes' colours were never read, so all of them looked alike).
+ */
+export function paneFrame(theme: TuiThemePalette, pane: TuiPaneId, isFocused: boolean): FrameSpec {
+  const colors = theme.lcars?.panes[pane];
+  if (colors) return { style: 'lcars', color: isFocused ? colors[0] : colors[1] };
+  return { style: 'rounded', focused: theme.borderFocused, unfocused: theme.borderUnfocused, title: theme.primary };
 }
 
 export const TUI_THEMES: Record<TuiThemeName, TuiThemePalette> = {
@@ -83,6 +103,8 @@ export const TUI_THEMES: Record<TuiThemeName, TuiThemePalette> = {
       activeTab: '#c7853a',
       tabs: ['#8a738a', '#6b6ba3', '#6b88a3', '#8c735d'],
       headerBar: [['#c7853a', 0.55], ['#a086a0', 0.15], ['#7c7cb8', 0.2], ['#9e5a5a', 0.1]],
+      code: '47-1701',
+      highlight: '#e3b77a',
     },
   },
   cyan: {
@@ -133,6 +155,7 @@ export const TUI_THEMES: Record<TuiThemeName, TuiThemePalette> = {
 };
 
 export const DEFAULT_LAYOUT_CONFIG: TuiLayoutConfig = {
+  engine: 'console',
   sidebarPosition: 'left',
   sidebarWidthPercent: 26,
   showFilesExplorer: true,
@@ -144,13 +167,20 @@ export const DEFAULT_LAYOUT_CONFIG: TuiLayoutConfig = {
 export const LAYOUT_PRESETS: Record<string, { label: string; description: string; config: Partial<TuiLayoutConfig> }> = {
   lcars: {
     label: '🖖 LCARS Bridge Console',
-    description: 'Star Trek TNG panels: agent profile & files on the left elbow, LCARS frames',
+    description: 'Star Trek TNG console: LCARS button column, one elbow framing conversation and prompt',
     config: { ...DEFAULT_LAYOUT_CONFIG },
+  },
+  lcarsPanels: {
+    label: '🖖 LCARS Panels',
+    description: 'Classic quadrant with sidebar and files, every pane in its own LCARS elbow',
+    config: { ...DEFAULT_LAYOUT_CONFIG, engine: 'classic' },
   },
   default: {
     label: '📐 Default Quadrant',
     description: 'Sidebar & Files on Left (26%), Chat on Right',
     config: {
+      engine: 'classic',
+      theme: 'cyan',
       sidebarPosition: 'left',
       sidebarWidthPercent: 26,
       showFilesExplorer: true,
@@ -162,6 +192,7 @@ export const LAYOUT_PRESETS: Record<string, { label: string; description: string
     label: '💬 Wide Chat / Minimal',
     description: 'Files hidden, narrow sidebar (20%), wide conversation area',
     config: {
+      engine: 'classic',
       sidebarPosition: 'left',
       sidebarWidthPercent: 20,
       showFilesExplorer: false,
@@ -173,6 +204,7 @@ export const LAYOUT_PRESETS: Record<string, { label: string; description: string
     label: '👉 Sidebar on Right',
     description: 'Chat on Left, Sidebar & Files Explorer on Right (28%)',
     config: {
+      engine: 'classic',
       sidebarPosition: 'right',
       sidebarWidthPercent: 28,
       showFilesExplorer: true,
@@ -184,6 +216,7 @@ export const LAYOUT_PRESETS: Record<string, { label: string; description: string
     label: '🧘 Zen / Focus Mode',
     description: 'Full-screen chat feed and input, sidebar completely hidden',
     config: {
+      engine: 'classic',
       sidebarPosition: 'hidden',
       sidebarWidthPercent: 0,
       showFilesExplorer: false,
@@ -213,6 +246,8 @@ export function applyLayout(target: TuiLayoutConfig, patch: Partial<TuiLayoutCon
 function sanitizeLayout(raw: any): TuiLayoutConfig {
   const config = applyLayout({ ...DEFAULT_LAYOUT_CONFIG }, {});
   if (!raw || typeof raw !== 'object') return config;
+  // Checked against the registry when the frame is drawn: a plug-in may register later.
+  if (typeof raw.engine === 'string' && raw.engine.trim()) config.engine = raw.engine.trim();
   if (SIDEBAR_POSITIONS.includes(raw.sidebarPosition)) config.sidebarPosition = raw.sidebarPosition;
   if (Number.isFinite(raw.sidebarWidthPercent)) config.sidebarWidthPercent = raw.sidebarWidthPercent;
   if (typeof raw.showFilesExplorer === 'boolean') config.showFilesExplorer = raw.showFilesExplorer;

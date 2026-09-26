@@ -271,6 +271,12 @@ export const TUI_DEFAULTS = {
   inputMinLines: 3,
   inputMaxLines: 6,
   inputPaddingLines: 2,
+  /** Console layout: width of the LCARS button column, in columns. */
+  consoleColumnWidth: 22,
+  /** Narrowest terminal the console layout draws; below it the classic quadrant is used. */
+  consoleMinWidth: 72,
+  /** Minimum height of the console's lower section (agent block beside the prompt). */
+  consoleLowerRows: 6,
   /** Header columns kept free for the brand and version after the tab row. */
   headerBrandReserve: 16,
   /** Modal geometry shared by full-screen text and file viewers. */

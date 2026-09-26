@@ -6,7 +6,7 @@
 import chalk from 'chalk';
 import { TuiState, TuiFileItem } from '../types';
 import { TuiScreen } from '../screen';
-import { TuiThemePalette, paneFrame } from '../layoutConfig';
+import { PaneFramer } from '../layoutConfig';
 import { listDirectory, PARENT_ENTRY } from '../fileExplorer';
 import fileTypesConfig from '../fileTypes.json';
 
@@ -91,7 +91,7 @@ export class FilesView {
     return index < files.length ? index : undefined;
   }
 
-  static render(state: TuiState, width: number, height: number, theme?: TuiThemePalette): string[] {
+  static render(state: TuiState, width: number, height: number, framer?: PaneFramer): string[] {
     const files = FilesView.visibleFiles(state);
     const rawLines: string[] = [];
 
@@ -146,7 +146,7 @@ export class FilesView {
       state.focus === 'files',
       undefined,
       { total: totalLines, visible: innerHeight, offset: Math.max(0, totalLines - innerHeight - scrollOffset) },
-      paneFrame(theme, 'files', state.focus === 'files')
+      framer?.('files', state.focus === 'files')
     );
   }
 }

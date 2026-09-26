@@ -20,7 +20,7 @@ import { loadCharacter, loadRole, loadTrait, loadSystemPrompt } from '../cli/sha
 import { withEffortPin, describeEffortSource, setEffortPin } from '../core/effortControl';
 import { detectContextWindow, scanProviders } from '../core/discovery';
 import { LayoutConfigManager, TuiLayoutConfig } from './layoutConfig';
-import { composeFrame } from './layoutComposer';
+import { composeLayoutFrame, TuiFrame } from './layoutEngines';
 import { ModalKeyHandler, PersonaModals, SystemModals, LayoutModals } from './modals';
 import { FilesView } from './views/Files';
 import {
@@ -32,7 +32,7 @@ import {
   openFileEntry as openFileEntryAction,
 } from './interaction/keyHandlers';
 import { routeMouseEvent } from './interaction/mouseRouter';
-import { TuiFileItem } from './types';
+import { TuiFileItem, TuiFocus } from './types';
 import { TuiCommandController, TuiTurnRunner } from './controllers';
 import { setLogSink, resetLogSink } from '../core/logSink';
 import { setProgressSink } from '../core/progressSink';
@@ -59,6 +59,8 @@ export class TuiApp {
   private agent: Agent;
   private activeTab: 'chat' | 'tools' = 'chat';
   private layoutConfig: TuiLayoutConfig;
+  /** Frame last painted: mouse hit-testing and the focus cycle read its regions. */
+  private lastFrame?: TuiFrame;
   private commandController: TuiCommandController;
   private turnRunner: TuiTurnRunner;
   private onShutdown?: () => void | Promise<void>;
@@ -383,7 +385,17 @@ export class TuiApp {
 
   private renderFrame(): string[] {
     const { width, height } = this.screen.getDimensions();
-    return composeFrame(this.store.getState(), width, height, this.activeTab, this.layoutConfig);
+    const state = this.store.getState();
+    const frame = composeLayoutFrame({ state, width, height, activeTab: this.activeTab, layout: this.layoutConfig });
+    this.lastFrame = frame;
+    // A layout change can hide the focused pane (e.g. files under the console layout):
+    // hand focus back to the prompt after this paint, never during it.
+    if (!frame.panes[state.focus]) {
+      queueMicrotask(() => {
+        if (this.lastFrame && !this.lastFrame.panes[this.store.getState().focus]) this.store.setFocus('input');
+      });
+    }
+    return frame.lines;
   }
 
   // ── Keyboard & Mouse Event Dispatchers ──
@@ -490,7 +502,7 @@ export class TuiApp {
           return;
         }
       }
-      this.store.cycleFocus();
+      this.store.cycleFocus(this.lastFrame ? (Object.keys(this.lastFrame.panes) as TuiFocus[]) : undefined);
       return;
     }
 
@@ -536,7 +548,7 @@ export class TuiApp {
     routeMouseEvent(
       {
         store: this.store,
-        layout: this.layoutConfig,
+        getFrame: () => this.lastFrame,
         getActiveTab: () => this.activeTab,
         dimensions: () => this.screen.getDimensions(),
         currentFiles: () => this.currentFiles(),

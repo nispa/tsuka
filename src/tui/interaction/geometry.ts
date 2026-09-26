@@ -58,10 +58,9 @@ export interface FrameGeometry {
 }
 
 /**
- * The single layout computation of a frame, used by the composer to draw and by the
- * mouse router to hit-test. The router used to assume a 3-line header and a 3-line
- * input, so a multi-line prompt or the header's progress line shifted every click,
- * and it looked for the chat scrollbar at the screen edge even with the sidebar there.
+ * Pane geometry of the classic layout engine. Hit-testing no longer recomputes it:
+ * the engine reports the resulting rectangles in its frame (layoutEngines/types.ts),
+ * which is what the mouse router and the focus cycle read.
  */
 export function computeFrameGeometry(
   width: number,
@@ -91,9 +90,4 @@ export function computeFrameGeometry(
     filesHeight,
     profileHeight,
   };
-}
-
-/** Whether a 1-based column falls inside the sidebar column. */
-export function isSidebarColumn(g: FrameGeometry, column: number): boolean {
-  return g.sidebarWidth > 0 && column >= g.sidebarStart && column < g.sidebarStart + g.sidebarWidth;
 }

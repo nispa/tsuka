@@ -194,11 +194,12 @@
 | T24.2 | ✅ Fatto | **Credenziali nei risultati dei tool**: ogni risultato ed errore passa da `executeAuthorizedTool`, che sostituisce i valori segreti noti con `[REDACTED:NOME]` prima della history. Politica unica in `src/core/credentials.ts` (sostituisce `childEnv.ts`): nomi dal pattern più `apiKeyEnv` dichiarati dai provider, valori dall'ambiente più `env` dei server MCP. Direttiva 4 di `AGENTS.md` riscritta su ciò che è garantito. Suite `test_credentials.ts` (16 check). |
 | T24.3 | 🔲 Da fare (maintainer) | **Eseguire il checkpoint A**: confronto scheduler spento/acceso su task reali con modello vivo. Sblocca T22.12–T22.15, le misure di T22.13 e la documentazione T22.17. Richiede il server LLM del maintainer. |
 | T24.4 | 🔲 Da fare | **Rendering della memoria fuori dal backend**: oggi tetto e formattazione del prompt sono dentro `MemoryBackend`, quindi ogni nuovo backend li duplicherebbe (gap di T22.10). Spostarli nel facade, unificare `remove`/`forgetFact`. Da fare prima di introdurre un secondo backend. |
-| T24.5 | 🔲 Da fare | **Temi classici identici fra loro**: dopo T23.16 i temi `cyan`, `neon`, `amber`, `matrix`, `minimal` disegnano tutti le stesse cornici; i loro campi colore non sono letti da nessuna vista. Collegarli davvero o ridurre l'elenco. |
+| T24.5 | ✅ Fatto | **Temi classici identici fra loro**: `paneFrame` restituisce per i temi classici una cornice arrotondata nei loro colori (bordo con e senza focus, titolo) e l'header colora tab e marchio col tema. Test: ogni tema classico produce un frame diverso. |
 | T24.6 | 🔲 Da fare | **Palette LCARS anche su widget e chat**: sotto LCARS cornici e header sono a tema, ma widget della sidebar, badge dell'header e testo della chat mantengono i colori propri. |
-| T24.7 | 🔲 Da fare | **Layout F7: modifiche perse al riavvio**: tema, preset, posizione e widget si applicano subito ma si salvano solo con "Save", mentre "Reset" salva da solo. Rendere coerente il salvataggio. |
+| T24.7 | ✅ Fatto | **Layout F7: modifiche perse al riavvio**: ogni scelta in F7 (struttura, preset, tema, posizione, larghezza, widget, reset) viene applicata e salvata subito; tolta la voce "Save". Test su app home temporanea. |
 | T24.8 | 🔲 Da fare | **Igiene di TASKS.md e AGENTS.md**: riga T19.3 duplicata nel dashboard, intestazione ferma a "100 suite" e "Fase 10 11/13", metriche di `AGENTS.md` ferme a 96 suite. |
 | T24.9 | ⏸️ Backlog | **Sandbox di sistema per i tool generati (opzione B di T23.8)**: isolamento per piattaforma (seccomp/bubblewrap, AppContainer, container) oltre il processo confinato. Solo se il self-authoring verrà usato con input non fidati. |
+| T24.10 | ✅ Fatto | **Layout pluggabili e plancia LCARS**: la struttura dello schermo diventa un plug-in (`TuiLayoutEngine`, `registerLayoutEngine`, campo `engine`); motori di serie `classic` e `console` (plancia TNG: colonna di pulsanti F1–F12, un gomito che incornicia conversazione e prompt, lettura dell'agente). Mouse e focus leggono le regioni del frame disegnato; Tab salta i pannelli assenti (prima finiva su pannelli invisibili, anche nel preset zen). Default: console LCARS. |
 
 Tutti i task pianificati e di backlog sono completati; la serie T15 (memoria, modelli <30B) è implementata e chiusa con 72 suite di test verdi. Pianificata la serie **T16 (benchmark significativi)** su architettura a due velocità: **`/benchmark` fast** (1 colpo/test, deterministico — resta il gate del tier) e **`/benchmark --deep`** (repliche con variazione del prompt, mediana+varianza, per validazione/calibrazione). Pianificato anche **T17.1** (retrieval BM25/TF-IDF), il primo livello del percorso di apprendimento documentato in `docs/memory.md` §12. Valore di ritorno — i benchmark attuali saturano in alto e non discriminano tra i modelli, ma il gating dei tool (`registry.ts`) dipende proprio da quel tier: se tutto diventa `large` il gating è codice morto. Restano da fare T14.24 (commenti tests/ in inglese), T14.25 (token di protocollo multi-agente) e le serie T16/T17.
 
@@ -5095,6 +5096,20 @@ Sotto LCARS sono a tema cornici, tab e barra dell'header; widget della sidebar (
 - `AGENTS.md`: metriche ferme a "96 automated test suites" (direttiva 6, indice dei file, cheatsheet) e conteggi di tool, ruoli e comandi da ricontare.
 
 Preferire numeri ricavati da comandi ripetibili (conteggio file, output di `npm test`) a numeri scritti a mano che invecchiano.
+
+## T24.10 — Layout pluggabili e plancia LCARS
+
+**Stato:** ✅ Fatto (2026-09-26) · **Priorità:** media
+
+**Richiesta del maintainer:** un layout LCARS vero, non solo nei colori, progettato come plug-in perché possano esisterne altri in futuro.
+
+**Architettura:** `src/tui/layoutEngines/` definisce il contratto `TuiLayoutEngine` (`id`, `label`, `description`, `compose(request) → TuiFrame`) e un registro (`registerLayoutEngine`, `listLayoutEngines`, `resolveLayoutEngine` con fallback sul default e avviso una tantum). Il `TuiFrame` contiene le righe, i rettangoli dei pannelli presenti e le zone dei pulsanti. Il router del mouse fa hit-testing su queste regioni del frame effettivamente disegnato (non ricalcola più la geometria), e il ciclo del focus considera solo i pannelli presenti. Le viste sono condivise: ricevono un `PaneFramer` e il motore decide lo stile di cornice (`rounded`, `lcars`, `caption`). La modale si sovrappone in `composeLayoutFrame`, uguale per ogni motore. `engine` in `tui.layout.json` è una stringa libera: un plug-in diventa selezionabile registrandosi, e F7 lo elenca dal registro.
+
+**Motori di serie:** `classic` (il quadrante di prima, ora con le regioni) e `console`: colonna LCARS con i pulsanti F1–F12 (etichette lunghe senza emoji, pulsante attivo evidenziato), barra superiore unita alla colonna con il marchio, riga di stato, conversazione e prompt con la sola didascalia (il grande gomito fa da cornice), barra intermedia con il codice del pannello, lettura dell'agente (nome, ruolo, modello, contesto) accanto al prompt. Sotto `consoleMinWidth` la console lascia il posto al quadrante classico. Costanti in `TUI_DEFAULTS` (`consoleColumnWidth`, `consoleMinWidth`, `consoleLowerRows`).
+
+**Difetto chiuso strada facendo:** `cycleFocus` girava su tutti i pannelli, anche quelli nascosti (preset zen, e ora la console): il focus finiva su pannelli invisibili.
+
+**Limite:** la console non mostra esplorazione file e widget della sidebar; per quelli resta il preset con motore `classic` (anche in versione LCARS, "LCARS Panels"). Test: `tests/test_tui_layout.ts` (plug-in registrato e usato, fallback, pulsanti cliccabili sulle righe disegnate, larghezze esatte per ogni motore, tema e larghezza).
 
 ## T24.9 — Sandbox di sistema per i tool generati (opzione B di T23.8)
 

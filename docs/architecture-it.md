@@ -358,7 +358,7 @@ TSUKA include una dashboard terminale grafica interattiva a componenti puri:
 * **`TuiScreen` (`screen.ts`)**: Motore a basso livello con rendering differenziale a riga singola (0ms di latenza visiva, zero flickering) e slicing ANSI sicuro con `slice-ansi` e `string-width`.
 * **`TuiStore` (`store.ts`)**: Gestione reattiva dello stato unificato (messaggi, token, file explorer, reasoning streaming, modali).
 * **`TuiBridge` (`bridge.ts`)**: Adapter che converte gli eventi del core (`AgentEvents`, `PermissionManager`) in mutazioni dello stato TUI.
-* **Compositore Layout (`layoutComposer.ts`)**: Funzione pura deterministica di composizione `composeFrame(state, width, height, tab, layout)` priva di effetti collaterali.
+* **Motori di Layout Pluggabili (`layoutEngines/`)**: la struttura dello schermo è un `TuiLayoutEngine` registrato con `registerLayoutEngine` e scelto con `engine` in `tui.layout.json` (di serie: il quadrante `classic` e la plancia LCARS `console`). Un motore compone un `TuiFrame` puro — le righe più i rettangoli dei suoi pannelli e le zone dei suoi pulsanti — e router del mouse e ciclo del focus leggono quelle regioni dal frame sullo schermo, così un nuovo layout non richiede modifiche al livello di input. Le viste restano condivise; il motore decide come incorniciare ogni pannello (`PaneFramer`).
 * **Layer di Interazione (`src/tui/interaction/`)**: Gestione disaccoppiata degli input:
   * `geometry.ts`: Unica fonte di verità per le coordinate geometriche e le dimensioni dei pannelli.
   * `keyHandlers.ts`: Routing degli eventi tastiera per-focus (input, chat, sidebar, files, tools).

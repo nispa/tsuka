@@ -10,12 +10,30 @@ import {
   TUI_WIDGET_IDS,
   applyLayout,
 } from '../layoutConfig';
+import { listLayoutEngines } from '../layoutEngines';
+
+/**
+ * Every F7 change is applied and saved at once (T24.7): a choice that vanished on
+ * restart unless a separate "Save" entry was picked — while "Reset" saved on its own —
+ * was two rules for one screen.
+ */
+function commit(store: TuiStore, layoutConfig: TuiLayoutConfig, message: string): void {
+  const saved = LayoutConfigManager.save(layoutConfig);
+  store.closeModal();
+  store.notify(saved ? message : `${message} (could not save tui.layout.json)`, saved ? 'success' : 'error');
+}
 
 export class LayoutModals {
   static openLayoutModal(store: TuiStore, layoutConfig: TuiLayoutConfig): void {
     const currentTheme = TUI_THEMES[layoutConfig.theme]?.label || layoutConfig.theme;
 
+    const engineLabel = listLayoutEngines().find((e) => e.id === layoutConfig.engine)?.label ?? layoutConfig.engine;
     const options = [
+      {
+        label: `🧭 Screen Structure [${engineLabel}]`,
+        value: 'engine',
+        hint: listLayoutEngines().map((e) => e.label).join(', '),
+      },
       {
         label: '🔄 Layout Presets',
         value: 'presets',
@@ -47,11 +65,6 @@ export class LayoutModals {
         hint: `Active: ${layoutConfig.visibleWidgets.join(', ')}`,
       },
       {
-        label: '💾 Save Configuration (tui.layout.json)',
-        value: 'save',
-        hint: 'Persist current layout preferences to disk',
-      },
-      {
         label: '↺ Reset to Default Layout',
         value: 'reset',
         hint: 'Restore initial default configuration',
@@ -64,7 +77,9 @@ export class LayoutModals {
       selectedIndex: 0,
       options,
       onSelect: (chosen) => {
-        if (chosen === 'presets') {
+        if (chosen === 'engine') {
+          LayoutModals.openEngineModal(store, layoutConfig);
+        } else if (chosen === 'presets') {
           LayoutModals.openPresetModal(store, layoutConfig);
         } else if (chosen === 'theme') {
           LayoutModals.openThemeModal(store, layoutConfig);
@@ -72,25 +87,14 @@ export class LayoutModals {
           LayoutModals.openSidebarPositionModal(store, layoutConfig);
         } else if (chosen === 'toggle_files') {
           layoutConfig.showFilesExplorer = !layoutConfig.showFilesExplorer;
-          store.closeModal();
-          store.notify(`Files explorer ${layoutConfig.showFilesExplorer ? 'enabled' : 'hidden'}`, 'success');
+          commit(store, layoutConfig, `Files explorer ${layoutConfig.showFilesExplorer ? 'enabled' : 'hidden'}`);
         } else if (chosen === 'width') {
           LayoutModals.openSidebarWidthModal(store, layoutConfig);
         } else if (chosen === 'widgets') {
           LayoutModals.openWidgetsModal(store, layoutConfig);
-        } else if (chosen === 'save') {
-          const saved = LayoutConfigManager.save(layoutConfig);
-          store.closeModal();
-          if (saved) {
-            store.notify('Layout settings saved to tui.layout.json', 'success');
-          } else {
-            store.notify('Error saving layout configuration', 'error');
-          }
         } else if (chosen === 'reset') {
           applyLayout(layoutConfig, DEFAULT_LAYOUT_CONFIG);
-          LayoutConfigManager.save(layoutConfig);
-          store.closeModal();
-          store.notify('Layout reset to defaults', 'info');
+          commit(store, layoutConfig, 'Layout reset to defaults');
         } else {
           store.closeModal();
         }
@@ -114,11 +118,24 @@ export class LayoutModals {
         const preset = LAYOUT_PRESETS[chosenKey];
         if (preset) {
           applyLayout(layoutConfig, preset.config);
-          store.closeModal();
-          store.notify(`Preset applied: ${preset.label}`, 'success');
+          commit(store, layoutConfig, `Preset applied: ${preset.label}`);
         } else {
           store.closeModal();
         }
+      },
+    });
+  }
+
+  /** Screen structures come from the layout engine registry: a plug-in engine appears here by registering. */
+  static openEngineModal(store: TuiStore, layoutConfig: TuiLayoutConfig): void {
+    store.showModal({
+      type: 'slash_menu',
+      title: '🧭 Select Screen Structure',
+      selectedIndex: 0,
+      options: listLayoutEngines().map((engine) => ({ label: engine.label, value: engine.id, hint: engine.description })),
+      onSelect: (chosen) => {
+        layoutConfig.engine = chosen;
+        commit(store, layoutConfig, `Screen structure: ${chosen}`);
       },
     });
   }
@@ -137,8 +154,7 @@ export class LayoutModals {
       options,
       onSelect: (chosenTheme) => {
         layoutConfig.theme = chosenTheme as TuiThemeName;
-        store.closeModal();
-        store.notify(`Theme set to: ${chosenTheme}`, 'success');
+        commit(store, layoutConfig, `Theme set to: ${chosenTheme}`);
       },
     });
   }
@@ -157,8 +173,7 @@ export class LayoutModals {
       options,
       onSelect: (chosen) => {
         layoutConfig.sidebarPosition = chosen as any;
-        store.closeModal();
-        store.notify(`Sidebar position: ${chosen}`, 'success');
+        commit(store, layoutConfig, `Sidebar position: ${chosen}`);
       },
     });
   }
@@ -178,8 +193,7 @@ export class LayoutModals {
       options,
       onSelect: (chosen) => {
         layoutConfig.sidebarWidthPercent = parseInt(chosen, 10) || 26;
-        store.closeModal();
-        store.notify(`Sidebar width set to ${chosen}%`, 'success');
+        commit(store, layoutConfig, `Sidebar width set to ${chosen}%`);
       },
     });
   }
@@ -221,8 +235,7 @@ export class LayoutModals {
             ? layoutConfig.visibleWidgets.filter((id) => id !== wId)
             : [...layoutConfig.visibleWidgets, wId];
         }
-        store.closeModal();
-        store.notify('Sidebar widgets updated', 'success');
+        commit(store, layoutConfig, 'Sidebar widgets updated');
       },
     });
   }

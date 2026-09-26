@@ -70,7 +70,9 @@ harness/
 │   ├── tui/
 │   │   ├── index.ts                 # TUI entry point (npm run tui / tsuka --tui)
 │   │   ├── app.ts                   # TuiApp main orchestrator: wiring, agent lifecycle, event dispatch
-│   │   ├── layoutComposer.ts        # Pure one-frame composition from store state (no side effects)
+│   │   ├── layoutComposer.ts        # Compatibility entry: frame lines from the selected layout engine
+│   │   ├── layoutEngines/           # Pluggable screen structures: TuiLayoutEngine contract, registry,
+│   │   │                            #   classic quadrant and LCARS console; frames report pane/button regions
 │   │   ├── interaction/             # Input layer: pane geometry, per-focus key handlers, mouse router
 │   │   ├── screen.ts                # TuiScreen: differential buffer renderer, ANSI-safe box drawing
 │   │   ├── store.ts                 # TuiStore: reactive state management (Flux/Observable pattern)

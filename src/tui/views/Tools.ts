@@ -6,11 +6,11 @@
 import chalk from 'chalk';
 import { TuiState } from '../types';
 import { TuiScreen } from '../screen';
-import { TuiThemePalette, paneFrame } from '../layoutConfig';
+import { PaneFramer } from '../layoutConfig';
 import { renderMarkdownToLines } from '../../cli/markdown';
 
 export class ToolsView {
-  static render(state: TuiState, width: number, height: number, theme?: TuiThemePalette): string[] {
+  static render(state: TuiState, width: number, height: number, framer?: PaneFramer): string[] {
     const rawLines: string[] = [];
     const innerWidth = Math.max(10, width - 4);
     const innerHeight = Math.max(1, height - 2);
@@ -78,7 +78,7 @@ export class ToolsView {
       state.focus === 'tools',
       undefined,
       { total: rawLines.length, visible: innerHeight, offset: scrollOffset },
-      paneFrame(theme, 'tools', state.focus === 'tools')
+      framer?.('tools', state.focus === 'tools')
     );
   }
 }

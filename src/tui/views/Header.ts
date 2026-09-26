@@ -21,14 +21,14 @@ function hasDetailLine(state: TuiState): boolean {
  * split a bar into blocks. Shares are fractions of the width; the last one absorbs
  * rounding so the bar always spans the row exactly.
  */
-function lcarsBar(lcars: LcarsChrome, width: number): string {
+export function lcarsBar(lcars: LcarsChrome, width: number, glyph: string = '▀', segments = lcars.headerBar): string {
   let out = '';
   let used = 0;
-  lcars.headerBar.forEach(([hex, share], i) => {
-    const isLast = i === lcars.headerBar.length - 1;
+  segments.forEach(([hex, share], i) => {
+    const isLast = i === segments.length - 1;
     const run = isLast ? width - used : Math.max(1, Math.floor(width * share));
     const gap = isLast ? 0 : 1;
-    out += chalk.hex(hex)('▀'.repeat(Math.max(0, run - gap))) + ' '.repeat(gap);
+    out += chalk.hex(hex)(glyph.repeat(Math.max(0, run - gap))) + ' '.repeat(gap);
     used += run;
   });
   return out;
@@ -52,6 +52,10 @@ export class HeaderView {
         const hex = zone.isActive ? lcars.activeTab : lcars.tabs[i % lcars.tabs.length];
         const pill = chalk.bgHex(hex).hex('#000000');
         tabsRow += (zone.isActive ? pill.bold : pill)(` ${zone.label} `) + ' ';
+      } else if (theme) {
+        tabsRow += zone.isActive
+          ? chalk.inverse.bold(theme.primary(` ${zone.label} `)) + ' '
+          : theme.secondary(`[${zone.label}]`) + ' ';
       } else {
         tabsRow += zone.isActive
           ? chalk.bgHex('#3178c6').white.bold(` ${zone.label} `) + ' '
@@ -62,12 +66,28 @@ export class HeaderView {
     const version = width > 95 ? ` v${TSUKA_PACKAGE.version}` : '';
     const brand = lcars
       ? chalk.bgHex(lcars.activeTab).hex('#000000').bold(' TSUKA ') + chalk.hex(lcars.activeTab)(version)
-      : chalk.bold.hex('#e879f9')('TSUKA') + chalk.gray(version);
+      : chalk.bold((theme?.accent ?? chalk.hex('#e879f9'))('TSUKA')) + chalk.gray(version);
     const tabsRowWidth = TuiScreen.stringWidth(tabsRow);
     const brandWidth = TuiScreen.stringWidth(brand);
     const spacing0 = Math.max(1, width - tabsRowWidth - brandWidth - 2);
     lines.push(TuiScreen.truncateOrPad(tabsRow + ' '.repeat(spacing0) + brand + ' ', width));
 
+    lines.push(HeaderView.statusLine(state, width));
+
+    const detail = HeaderView.detailLine(state, width);
+    if (detail) lines.push(detail);
+
+    // Line: Separator bar
+    lines.push(lcars ? lcarsBar(lcars, width) : chalk.hex('#475569')('━'.repeat(width)));
+
+    return lines;
+  }
+
+  /**
+   * Status row: run state, active agent, model and the context gauge. Shared by every
+   * layout engine, so the same information reads the same wherever the header lives.
+   */
+  static statusLine(state: TuiState, width: number): string {
     // Line 2: Active Persona, Model & Token Gauge
     const modelName = state.activeModel || 'default';
     const providerName = state.activeProvider || 'provider';
@@ -169,23 +189,22 @@ export class HeaderView {
     const r2w = TuiScreen.stringWidth(rightLine2);
     const spacing1 = Math.max(1, width - l2w - r2w);
 
-    lines.push(TuiScreen.truncateOrPad(leftLine2 + ' '.repeat(spacing1) + rightLine2, width));
+    return TuiScreen.truncateOrPad(leftLine2 + ' '.repeat(spacing1) + rightLine2, width);
+  }
 
+  /** Live progress of a long CLI workflow while generating, when it reports one. */
+  static detailLine(state: TuiState, width: number): string | undefined {
     // Line 3 (optional): live progress detail from a long-running CLI workflow's spinner
     // (e.g. `/benchmark`'s current model/step — see core/progressSink.ts). Only while
     // generating, and only once there is something to say — most turns never set it.
-    if (hasDetailLine(state) && state.generationStatus?.detail) {
+    if (!hasDetailLine(state) || !state.generationStatus?.detail) return undefined;
+    {
       const prefix = '     └─ ';
       const maxDetailWidth = Math.max(4, width - prefix.length);
       const detail = state.generationStatus.detail.length > maxDetailWidth
         ? state.generationStatus.detail.slice(0, maxDetailWidth - 1) + '…'
         : state.generationStatus.detail;
-      lines.push(TuiScreen.truncateOrPad(chalk.gray(prefix) + chalk.hex('#94a3b8')(detail), width));
+      return TuiScreen.truncateOrPad(chalk.gray(prefix) + chalk.hex('#94a3b8')(detail), width);
     }
-
-    // Line: Separator bar
-    lines.push(lcars ? lcarsBar(lcars, width) : chalk.hex('#475569')('━'.repeat(width)));
-
-    return lines;
   }
 }

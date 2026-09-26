@@ -312,7 +312,7 @@ TSUKA features a zero-flicker, Component-Driven terminal user interface:
 * **`TuiScreen` (`screen.ts`)**: Low-level ANSI double-buffering line renderer with differential updates (0ms latency, zero flicker) and robust ANSI slicing via `slice-ansi` and `string-width`.
 * **`TuiStore` (`store.ts`)**: Reactive state container managing active tabs, conversation feed, reasoning streaming chunks, files tree, token meters, and modal queues.
 * **`TuiBridge` (`bridge.ts`)**: Decouples the Core Engine (`AgentEvents`, `PermissionManager`) from the UI.
-* **Layout Composer (`layoutComposer.ts`)**: Pure deterministic one-frame composition function `composeFrame(state, width, height, tab, layout)` with zero side-effects.
+* **Pluggable Layout Engines (`layoutEngines/`)**: the screen structure is a `TuiLayoutEngine` registered with `registerLayoutEngine` and selected by `engine` in `tui.layout.json` (built-ins: `classic` quadrant, `console` LCARS bridge). An engine composes a pure `TuiFrame` — the rows plus the rectangles of its panes and the zones of its buttons — and the mouse router and focus cycle read those regions from the frame on screen, so a new layout needs no change to the input layer. Views stay shared; the engine decides how each pane is framed (`PaneFramer`).
 * **Interaction Layer (`src/tui/interaction/`)**: Decoupled user input handling:
   * `geometry.ts`: Single source of truth for panel bounding boxes and dimensions.
   * `keyHandlers.ts`: Focused keyboard routing per pane (input, chat, sidebar, files, tools).

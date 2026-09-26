@@ -1,24 +1,23 @@
 import { TuiMouseEvent } from '../screen';
-import { TuiTabSpec, tabAtColumn } from '../navigation';
+import { TuiTabSpec } from '../navigation';
 import { TuiStore } from '../store';
-import { TuiLayoutConfig } from '../layoutConfig';
-import { TuiFileItem } from '../types';
+import { TuiFileItem, TuiFocus } from '../types';
 import { ChatView } from '../views/Chat';
 import { FilesView } from '../views/Files';
 import { entryPath } from '../fileExplorer';
-import { TuiScreen } from '../screen';
-import { FrameGeometry, computeFrameGeometry, isSidebarColumn } from './geometry';
-import { HeaderView } from '../views/Header';
+import type { PaneRect, TuiFrame } from '../layoutEngines';
 
 /**
- * Mouse event router extracted from TuiApp: wheel scrolling, header-tab click
- * zones and pane focus/selection. All geometry is computed with the same helpers
- * the frame composer uses, so click zones always match what is on screen.
+ * Mouse event router: wheel scrolling, navigation clicks and pane focus/selection.
+ * Everything is hit-tested against the regions of the frame currently on screen, as
+ * reported by the layout engine that drew it — so any layout, built-in or plug-in,
+ * gets correct click zones without this module knowing its geometry.
  */
 
 export interface MouseRouterDeps {
   store: TuiStore;
-  layout: TuiLayoutConfig;
+  /** The frame last painted; undefined before the first render. */
+  getFrame(): TuiFrame | undefined;
   getActiveTab(): 'chat' | 'tools';
   dimensions(): { width: number; height: number };
   /** Files currently listed in the explorer panel. */
@@ -29,128 +28,105 @@ export interface MouseRouterDeps {
   activateTab(spec: TuiTabSpec): void;
 }
 
+/** Scroll step per wheel-up notch; wheel-down is the opposite (chat offsets grow upwards). */
+const WHEEL_UP_STEP: Record<Exclude<TuiFocus, 'input'>, number> = { chat: 3, tools: -3, sidebar: -2, files: -2 };
+
+function paneAt(frame: TuiFrame, col: number, row: number): [TuiFocus, PaneRect] | undefined {
+  for (const [id, rect] of Object.entries(frame.panes) as Array<[TuiFocus, PaneRect]>) {
+    if (col >= rect.x && col < rect.x + rect.width && row >= rect.y && row < rect.y + rect.height) return [id, rect];
+  }
+  return undefined;
+}
+
+/** 0-based content row inside a framed pane (every frame style has one row above the content). */
+function contentRow(rect: PaneRect, row: number): number {
+  return row - rect.y - 1;
+}
+
 export function routeMouseEvent(deps: MouseRouterDeps, mouse: TuiMouseEvent): void {
   const { store } = deps;
+  const frame = deps.getFrame();
+  if (!frame) return;
+  const hit = paneAt(frame, mouse.col, mouse.row);
+
+  if (mouse.button === 'wheelup' || mouse.button === 'wheeldown') {
+    if (!hit || hit[0] === 'input') return;
+    const step = WHEEL_UP_STEP[hit[0]];
+    store.scroll(hit[0], mouse.button === 'wheelup' ? step : -step);
+    return;
+  }
+
+  if (mouse.button !== 'left' || (mouse.action !== 'down' && mouse.action !== 'move')) return;
+
   const state = store.getState();
-  const dims = deps.dimensions();
-  const g = computeFrameGeometry(dims.width, dims.height, deps.layout, {
-    headerHeight: HeaderView.lineCount(state),
-    inputText: state.inputText,
-  });
-  const { headerHeight, profileHeight } = g;
-  const showFiles = deps.layout.showFilesExplorer;
-  const inSidebar = isSidebarColumn(g, mouse.col);
-
-  // 1. Mouse Wheel Scrolling
-  if (mouse.button === 'wheelup') {
-    if (inSidebar) {
-      if (showFiles && mouse.row > headerHeight + profileHeight) store.scroll('files', -2);
-      else store.scroll('sidebar', -2);
-    } else {
-      if (deps.getActiveTab() === 'chat') store.scroll('chat', 3);
-      else store.scroll('tools', -3);
-    }
-    return;
-  }
-  if (mouse.button === 'wheeldown') {
-    if (inSidebar) {
-      if (showFiles && mouse.row > headerHeight + profileHeight) store.scroll('files', 2);
-      else store.scroll('sidebar', 2);
-    } else {
-      if (deps.getActiveTab() === 'chat') store.scroll('chat', -3);
-      else store.scroll('tools', 3);
-    }
+  if (state.activeModal) {
+    const { height } = deps.dimensions();
+    if (mouse.action === 'down' && (mouse.row <= 2 || mouse.row >= height - 2)) store.closeModal();
     return;
   }
 
-  // 2. Left Click handling
-  if (mouse.button === 'left' && (mouse.action === 'down' || mouse.action === 'move')) {
-    if (state.activeModal) {
-      if (mouse.action === 'down' && (mouse.row <= 2 || mouse.row >= dims.height - 2)) store.closeModal();
-      return;
-    }
+  const tab = frame.tabs.find((zone) => mouse.row === zone.y && mouse.col >= zone.x && mouse.col < zone.x + zone.width);
+  if (tab) {
+    if (mouse.action === 'down') deps.activateTab(tab.spec);
+    return;
+  }
 
-    // Top Header Click Tabs: zones are computed from the same table the header
-    // draws, so a relabelled tab keeps a click zone that matches what is shown.
-    if (mouse.row <= headerHeight) {
-      if (mouse.action !== 'down') return;
-      const clicked = tabAtColumn(g.effectiveWidth, deps.getActiveTab(), mouse.col);
-      if (clicked) deps.activateTab(clicked);
-      return;
-    }
-
-    // Bottom Input Click
-    if (mouse.row > dims.height - g.inputHeight) {
-      store.setFocus('input');
-      return;
-    }
-
-    // Middle Body Click
-    if (inSidebar) {
-      if (!showFiles || mouse.row <= headerHeight + profileHeight) {
-        store.setFocus('sidebar');
-      } else {
-        handleFilesClick(deps, mouse, g);
-      }
-    } else {
-      store.setFocus(deps.getActiveTab() === 'chat' ? 'chat' : 'tools');
-      // The scrollbar is the main pane's right edge (plus one column of slack), which is
-      // not the screen edge when the sidebar sits on the right.
-      const mainRightEdge = g.mainStart + g.mainWidth - 1;
-      if (mouse.col >= mainRightEdge - 1) {
-        scrollbarJump(store, state.messages.length, mouse, g);
-      } else if (mouse.action === 'down' && deps.getActiveTab() === 'chat') {
-        chatThinkingClick(deps, mouse, g);
-      }
-    }
+  if (!hit) return;
+  const [pane, rect] = hit;
+  if (pane === 'files') {
+    handleFilesClick(deps, mouse, rect);
+    return;
+  }
+  store.setFocus(pane);
+  if (pane !== 'chat' && pane !== 'tools') return;
+  // The scrollbar is the pane's right edge (plus one column of slack).
+  if (mouse.col >= rect.x + rect.width - 2) {
+    scrollbarJump(store, state.messages.length, mouse, rect);
+  } else if (mouse.action === 'down' && pane === 'chat') {
+    chatThinkingClick(deps, mouse, rect);
   }
 }
 
-function handleFilesClick(deps: MouseRouterDeps, mouse: TuiMouseEvent, g: FrameGeometry): void {
+function handleFilesClick(deps: MouseRouterDeps, mouse: TuiMouseEvent, rect: PaneRect): void {
   const { store } = deps;
   const state = store.getState();
   store.setFocus('files');
   const files = deps.currentFiles();
-  const clickedRow = TuiScreen.paneContentRow(mouse.row, g.headerHeight, g.profileHeight);
-  const targetIndex = FilesView.indexAtRow(state, g.filesHeight, clickedRow);
-  if (targetIndex !== undefined) {
-    const isAlreadySelected = state.selectedFileIndex === targetIndex;
-    store.setState({ selectedFileIndex: targetIndex });
-    const file = files[targetIndex];
-    if (file) {
-      // First click selects, second click acts: enter the directory or preview the file.
-      if (isAlreadySelected) {
-        deps.openFileEntry(file);
-      } else if (file.isDir) {
-        store.notify(`Click again to open '${file.name}'`, 'info');
-      } else {
-        const insertPath = entryPath(state.filesCwd || '', file.name);
-        const currentInput = store.getState().inputText;
-        store.setInputText((currentInput ? currentInput + ' ' : '') + insertPath);
-        store.notify(`Selected '${insertPath}' (Click again to preview)`, 'info');
-      }
-    }
+  const targetIndex = FilesView.indexAtRow(state, rect.height, contentRow(rect, mouse.row));
+  if (targetIndex === undefined) return;
+  const isAlreadySelected = state.selectedFileIndex === targetIndex;
+  store.setState({ selectedFileIndex: targetIndex });
+  const file = files[targetIndex];
+  if (!file) return;
+  // First click selects, second click acts: enter the directory or preview the file.
+  if (isAlreadySelected) {
+    deps.openFileEntry(file);
+  } else if (file.isDir) {
+    store.notify(`Click again to open '${file.name}'`, 'info');
+  } else {
+    const insertPath = entryPath(state.filesCwd || '', file.name);
+    const currentInput = store.getState().inputText;
+    store.setInputText((currentInput ? currentInput + ' ' : '') + insertPath);
+    store.notify(`Selected '${insertPath}' (Click again to preview)`, 'info');
   }
 }
 
-/** Dragging on the right-edge scrollbar jumps the chat feed proportionally. */
-function scrollbarJump(store: TuiStore, messageCount: number, mouse: TuiMouseEvent, g: FrameGeometry): void {
-  const trackY = Math.max(0, Math.min(g.mainHeight - 1, mouse.row - g.headerHeight - 1));
-  const scrollRatio = 1 - (trackY / (g.mainHeight - 1));
+/** Dragging on the pane's scrollbar jumps the chat feed proportionally. */
+function scrollbarJump(store: TuiStore, messageCount: number, mouse: TuiMouseEvent, rect: PaneRect): void {
+  const track = Math.max(1, rect.height - 2);
+  const trackY = Math.max(0, Math.min(track - 1, contentRow(rect, mouse.row)));
+  const scrollRatio = 1 - trackY / Math.max(1, track - 1);
   const totalMsgs = messageCount * 4;
-  const targetOffset = Math.round(scrollRatio * Math.max(0, totalMsgs));
-  store.setState({ chatScrollOffset: Math.max(0, targetOffset) });
+  store.setState({ chatScrollOffset: Math.max(0, Math.round(scrollRatio * Math.max(0, totalMsgs))) });
 }
 
 /** A plain click on a reasoning header toggles that message's thinking block. */
-function chatThinkingClick(deps: MouseRouterDeps, mouse: TuiMouseEvent, g: FrameGeometry): void {
+function chatThinkingClick(deps: MouseRouterDeps, mouse: TuiMouseEvent, rect: PaneRect): void {
   const { store } = deps;
   const state = store.getState();
-  const clickedRow = TuiScreen.paneContentRow(mouse.row, g.headerHeight);
-  // A click on the pane border resolves to no content row at all.
-  const thinkTarget = clickedRow >= 0
-    ? ChatView.getThinkingHeaderAtRow(state, g.mainWidth, g.mainHeight, clickedRow)
-    : undefined;
+  const row = contentRow(rect, mouse.row);
+  // A click on the pane's frame resolves to no content row at all.
+  const thinkTarget = row >= 0 ? ChatView.getThinkingHeaderAtRow(state, rect.width, rect.height, row) : undefined;
   if (thinkTarget) {
     const isExpanded = store.toggleMessageThinking(thinkTarget.id);
     store.notify(`Reasoning (${thinkTarget.authorName || 'Tsuka'}): ${isExpanded ? 'Expanded' : 'Collapsed'}`, 'info');

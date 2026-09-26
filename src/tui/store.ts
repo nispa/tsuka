@@ -6,6 +6,9 @@ import { TuiState, TuiChatMessage, TuiToolExecution, TuiPermissionRequest, TuiMo
 
 export type StoreListener = (state: TuiState) => void;
 
+/** Canonical Tab order of the focusable panes. */
+const FOCUS_ORDER: TuiFocus[] = ['input', 'chat', 'sidebar', 'files', 'tools'];
+
 export class TuiStore {
   private state: TuiState;
   private listeners: Set<StoreListener> = new Set();
@@ -89,11 +92,16 @@ export class TuiStore {
     this.setState({ focus });
   }
 
-  cycleFocus(): void {
-    const focusOrder: TuiFocus[] = ['input', 'chat', 'sidebar', 'files', 'tools'];
-    const currentIndex = focusOrder.indexOf(this.state.focus);
-    const nextIndex = (currentIndex + 1) % focusOrder.length;
-    this.setFocus(focusOrder[nextIndex]);
+  /**
+   * Moves focus to the next pane, in canonical order, among `available` — the panes the
+   * current layout actually shows. Cycling over every pane regardless sent focus to
+   * invisible panes (the zen preset hides sidebar and files; the console layout has none).
+   */
+  cycleFocus(available: TuiFocus[] = FOCUS_ORDER): void {
+    const order = FOCUS_ORDER.filter((pane) => available.includes(pane));
+    if (order.length === 0) return;
+    const currentIndex = order.indexOf(this.state.focus);
+    this.setFocus(order[(currentIndex + 1) % order.length]);
   }
 
   setInputText(text: string, cursor?: number): void {

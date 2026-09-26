@@ -7,7 +7,7 @@ import chalk from 'chalk';
 import { TuiState } from '../types';
 import { TuiScreen } from '../screen';
 import { composingLabel } from './composingLabel';
-import { TuiThemePalette, paneFrame } from '../layoutConfig';
+import { PaneFramer } from '../layoutConfig';
 
 const SLASH_COMMANDS = [
   { cmd: '/agent', desc: 'Switch active Character or Persona' },
@@ -32,7 +32,7 @@ const SLASH_COMMANDS = [
 ];
 
 export class InputView {
-  static render(state: TuiState, width: number, height: number, theme?: TuiThemePalette): string[] {
+  static render(state: TuiState, width: number, height: number, framer?: PaneFramer): string[] {
     const lines: string[] = [];
     const innerWidth = Math.max(10, width - 4);
     const innerHeight = Math.max(1, height - 2);
@@ -121,7 +121,7 @@ export class InputView {
     }
 
     const borderColor = state.isGenerating ? (s: string) => chalk.hex('#fbbf24')(s) : undefined;
-    const frame = paneFrame(theme, state.isGenerating ? 'busy' : 'input', state.focus === 'input');
+    const frame = framer?.(state.isGenerating ? 'busy' : 'input', state.focus === 'input');
     return TuiScreen.drawBox(title, lines, width, height, state.focus === 'input', borderColor, undefined, frame);
   }
 
