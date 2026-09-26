@@ -51,6 +51,7 @@ const suites = [
   'test_self_authoring.ts',
   'test_custom_tool_isolation.ts',
   'test_credentials.ts',
+  'test_session_reset_failover.ts',
   'test_platform.ts',
   'test_execute_command_abort.ts',
   'test_network_policy.ts',

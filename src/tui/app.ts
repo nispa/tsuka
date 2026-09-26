@@ -335,7 +335,8 @@ export class TuiApp {
 
       // Provider failover: same recovery as the CLI startup path.
       if (scan.name !== providerName) {
-        this.configManager.setActiveProvider(scan.name);
+        // Session only: tsuka.config.json keeps the user's choice for the next start.
+        ConfigManager.useProviderForSession(scan.name);
         const newCfg = this.configManager.getActiveProviderConfig();
         this.provider.reconfigure(newCfg.baseUrl, this.configManager.getApiKey(), newCfg.model, newCfg.class);
         this.agent = this.recreateAgent();

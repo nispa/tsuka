@@ -3,6 +3,7 @@
  */
 
 import { controlSudo } from '../../core/sudoControl';
+import { resetSessionState } from '../../core/sessionReset';
 import * as fs from 'fs';
 import * as path from 'path';
 import { copyToClipboard } from '../../core/platform';
@@ -89,9 +90,15 @@ export const SESSION_COMMANDS: TuiCommandSpec[] = [
     name: '/reset',
     description: 'Reset the agent history and restart the session',
     run: ({ store, setAgent, recreateAgent, cliContext }) => {
-      cliContext().permissionManager.resetSession();
+      resetSessionState(cliContext().permissionManager);
       setAgent(recreateAgent());
-      store.setState({ messages: [], activeTools: [] });
+      // The header gauge and counters belong to the session too; the window size stays.
+      const { maxTokens } = store.getState().stats;
+      store.setState({
+        messages: [],
+        activeTools: [],
+        stats: { usedTokens: 0, subagentUsedTokens: 0, totalSessionTokens: 0, maxTokens, percentage: 0, turnCount: 0, toolCallsCount: 0 },
+      });
       store.notify('Agent session context reset', 'success');
     },
   },

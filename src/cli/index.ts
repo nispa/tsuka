@@ -184,7 +184,8 @@ async function main() {
     if (scan.name !== activeProvider) {
       initSpinner.succeed(chalk.green(`Server '${scan.name}' online`) + chalk.gray(` (configured provider '${activeProvider}' unreachable)`));
       activeProvider = scan.name;
-      configManager.setActiveProvider(scan.name);
+      // Session only: tsuka.config.json keeps the user's choice for the next start.
+      ConfigManager.useProviderForSession(scan.name);
       activeConfig = configManager.getActiveProviderConfig();
       provider.reconfigure(activeConfig.baseUrl, configManager.getApiKey(), activeConfig.model, activeConfig.class);
       agent = recreateAgent();

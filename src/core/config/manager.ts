@@ -82,6 +82,19 @@ function validateConfigShape(value: unknown): AppConfig {
  * (AGENTS.md directive 9) when the value is missing or out of range.
  */
 export class ConfigManager {
+  /**
+   * Provider used for this process when the configured one did not answer at startup.
+   * Never saved: failing over used to rewrite activeProvider, so one slow start of a local
+   * server (Unsloth Studio still booting) moved TSUKA to a cloud provider for good. Static
+   * because many ConfigManager instances coexist and must agree on the session's provider;
+   * an explicit choice (setActiveProvider) clears it.
+   */
+  private static sessionProvider: string | null = null;
+
+  static useProviderForSession(name: string | null): void {
+    ConfigManager.sessionProvider = name;
+  }
+
   private static revision = 0;
   private config!: AppConfig;
   private readonly providerCatalog: Record<string, ProviderDefinition>;
@@ -213,23 +226,30 @@ export class ConfigManager {
     if (!this.persistConfig()) this.persistenceBlocked = true;
   }
 
+  /** Provider in use: the session failover if any, else the configured choice. */
   getActiveProviderName(): string {
+    return ConfigManager.sessionProvider ?? this.config.activeProvider;
+  }
+
+  /** The user's saved choice, whatever the session is using. */
+  getConfiguredProviderName(): string {
     return this.config.activeProvider;
   }
 
   setActiveProvider(provider: string): void {
+    ConfigManager.sessionProvider = null;
     this.config.activeProvider = provider;
     this.save();
   }
 
   getActiveProviderConfig(): ProviderConfig {
-    const config = this.getProviderConfig(this.config.activeProvider);
-    if (!config) throw new Error(`Provider '${this.config.activeProvider}' is not defined in providers.json.`);
+    const config = this.getProviderConfig(this.getActiveProviderName());
+    if (!config) throw new Error(`Provider '${this.getActiveProviderName()}' is not defined in providers.json.`);
     return config;
   }
 
   getApiKey(): string {
-    return this.getApiKeyFor(this.config.activeProvider);
+    return this.getApiKeyFor(this.getActiveProviderName());
   }
 
   getApiKeyFor(provider: string): string {
@@ -265,7 +285,7 @@ export class ConfigManager {
   }
 
   updateActiveModel(modelName: string): void {
-    const provider = this.config.activeProvider;
+    const provider = this.getActiveProviderName();
     if (!this.getProviderConfig(provider)) return;
     this.config.providerOverrides ??= {};
     this.config.providerOverrides[provider] = { ...this.config.providerOverrides[provider], model: modelName };

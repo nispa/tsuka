@@ -1,4 +1,5 @@
 import { CommandCtx } from './types';
+import { resetSessionState } from '../../core/sessionReset';
 import { CLITheme } from '../ui';
 import chalk from 'chalk';
 import { ContextTracker } from '../../core/contextTracker';
@@ -134,7 +135,6 @@ export async function handleContext(ctx: CommandCtx, _arg: string): Promise<void
 
 export async function handleReset(ctx: CommandCtx, _arg: string): Promise<void> {
   ctx.agent.current = ctx.recreateAgent();
-  ctx.permissionManager.resetSession();
-  ContextTracker.getInstance().clear();
+  resetSessionState(ctx.permissionManager);
   CLITheme.success('Session reset successfully (history and permissions cleared).');
 }
