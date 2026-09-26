@@ -80,7 +80,7 @@ async function main() {
       'repeated context caps reuse the config snapshot without per-call reloads');
 
     const writer = new ConfigManager();
-    writer.setWebSearchProvider('google');
+    writer.setWebSearchProvider('tavily');
     getMaxToolResultTokens();
     const invalidated = getContextBudgetConfigCacheMetrics();
     check('CB0b', invalidated.loads === after.loads + 1,

@@ -13,24 +13,6 @@
       },
       "response": { "adapter": "duckduckgo-html-v1" }
     },
-    "google": {
-      "displayName": "Google Search",
-      "hint": "Requires GOOGLE_SEARCH_API_KEY and GOOGLE_SEARCH_CX",
-      "transport": "json",
-      "endpoint": "https://www.googleapis.com/customsearch/v1",
-      "method": "GET",
-      "query": {
-        "key": { "source": "env", "name": "GOOGLE_SEARCH_API_KEY" },
-        "cx": { "source": "env", "name": "GOOGLE_SEARCH_CX" },
-        "q": { "source": "query" }
-      },
-      "response": {
-        "itemsPath": "items",
-        "titlePath": "title",
-        "urlPath": "link",
-        "snippetPath": "snippet"
-      }
-    },
     "tavily": {
       "displayName": "Tavily API",
       "hint": "Requires TAVILY_API_KEY",

@@ -5,12 +5,45 @@ TSUKA espone al modello un solo tool, `web_search`. Il tool delega il recupero a
 budget di contesto. I backend restituiscono dati strutturati, non testo già formattato
 per il prompt.
 
+## Scegliere il provider di ricerca
+
+Il provider attivo si sceglie con `/search-engine <nome>` (oppure `webSearch.provider` in
+`tsuka.config.json`). Il catalogo di serie, `web_search_providers.json`, ne contiene due:
+
+| Provider | Chiave | Note |
+|---|---|---|
+| `duckduckgo` | nessuna | Legge la pagina HTML dei risultati di DuckDuckGo. DuckDuckGo può rispondere alle richieste automatiche con una pagina anti-bot (HTTP 202); in quel caso `web_search` fallisce con un errore esplicito invece di riportare "nessun risultato". Riprova più tardi o cambia provider. |
+| `tavily` | `TAVILY_API_KEY` | API di ricerca JSON pensata per gli agenti. Il piano gratuito dà 1.000 crediti al mese (una ricerca base costa un credito) e non chiede la carta di credito; senza carta non può esserci alcun addebito, le ricerche falliscono semplicemente fino al mese successivo. |
+
+Per usare Tavily: crea un account su tavily.com, metti la chiave in `.env` come
+`TAVILY_API_KEY=tvly-...`, poi esegui `/search-engine tavily`. La chiave non arriva mai ai
+comandi di shell né ai server MCP, e un risultato di tool che dovesse contenerla viene
+oscurato (vedi la politica sulle credenziali in [sicurezza](security-it.md)).
+
+La Custom Search JSON API di Google è stata tolta dal catalogo: è chiusa ai nuovi clienti e
+viene spenta il 1° gennaio 2027. È prevista un'opzione locale senza chiavi, un'istanza
+SearXNG (T24.14): richiede una voce esplicita di allowlist di rete, perché altrimenti la
+policy SSRF rifiuta gli indirizzi di loopback e le porte non standard.
+
+## Vedere cosa ha risposto il server
+
+Ogni chiamata a `web_search` registra lo scambio grezzo con il provider: la richiesta (con
+le credenziali oscurate), lo status HTTP, il content type, la dimensione, quanti risultati
+sono stati estratti e il corpo della risposta (fino a `webSearchTraceMaxChars`). Apri la
+vista Tools (F2) per leggerlo sotto la chiamata, nella sezione `server:`. È mostrato solo a
+te: il modello riceve i risultati formattati, mai la pagina grezza.
+
+Solo un HTTP 200 porta risultati. Qualunque altro status è riportato come errore con il suo
+codice, così un provider bloccato o limitato non può passare per una ricerca vuota.
+
 ## Contratto del backend
 
 ```ts
 interface WebSearchBackend {
   readonly id: string;
-  search(query: string): Promise<WebSearchResult[]>;
+  // onTrace riceve lo scambio grezzo (status, corpo, ...) per la vista Tools, quando il
+  // backend ne ha uno; non arriva mai al modello.
+  search(query: string, onTrace?: (trace: WebSearchTrace) => void): Promise<WebSearchResult[]>;
 }
 
 interface WebSearchResult {
@@ -106,6 +139,7 @@ indicati e registrare la factory durante l'avvio.
 - I backend restituiscono dati strutturati, mai Markdown o testo pronto per il prompt.
 - Il boundary comune limita numero dei risultati e lunghezza di ogni campo.
 - I backend HTTP devono usare `safeFetch`, incluse policy SSRF e redirect.
+- Solo un HTTP 200 porta risultati; ogni altro status è un errore, mai una lista vuota.
 - Un errore può indicare il nome di una variabile mancante, mai il suo valore.
 - MCP e future integrazioni browser tengono cookie, token, CSRF e browser storage fuori
   dal risultato dell'adapter.

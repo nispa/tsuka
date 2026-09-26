@@ -29,8 +29,7 @@ async function rejects(action: () => Promise<unknown>, expected: string): Promis
 async function main(): Promise<void> {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tsuka-web-search-home-'));
   const previousHome = process.env.TSUKA_HOME;
-  const previousGoogleKey = process.env.GOOGLE_SEARCH_API_KEY;
-  const previousGoogleCx = process.env.GOOGLE_SEARCH_CX;
+  const previousFixtureKey = process.env.TSUKA_TEST_SEARCH_KEY;
   const previousTavilyKey = process.env.TAVILY_API_KEY;
   process.env.TSUKA_HOME = home;
   fs.copyFileSync(path.join(process.cwd(), 'providers.json'), path.join(home, 'providers.json'));
@@ -47,25 +46,38 @@ async function main(): Promise<void> {
     const { createWebSearchBackend, listWebSearchBackends, registerWebSearchBackend } = await import('../src/tools/webSearch/registry');
     const { adaptMcpWebSearchBackend } = await import('../src/tools/webSearch/mcpAdapter');
     const { webSearchTool } = await import('../src/tools/impl/webSearch');
-    const catalog = loadWebSearchCatalog();
-    const options = listWebSearchProviderOptions(catalog);
+    const builtIn = loadWebSearchCatalog();
+    const options = listWebSearchProviderOptions(builtIn);
 
-    check('WS.1', options.map((option) => option.id).join(',') === 'duckduckgo,google,tavily', 'the versioned catalog exposes all built-in HTTP providers as data');
-    check('WS.2', catalog.google.query?.key?.source === 'env' && catalog.tavily.body?.api_key?.source === 'env', 'credentials in the catalog are environment references, never values');
+    check('WS.1', options.map((option) => option.id).join(',') === 'duckduckgo,tavily', 'the versioned catalog exposes all built-in HTTP providers as data');
+    check('WS.2', builtIn.tavily.body?.api_key?.source === 'env', 'credentials in the catalog are environment references, never values');
 
-    process.env.GOOGLE_SEARCH_API_KEY = 'google-secret-must-not-leak';
-    process.env.GOOGLE_SEARCH_CX = 'search-engine-id';
+    // A JSON provider keyed through the query string (as Google's retired API was): the
+    // mechanics stay covered by a fixture, not by a real service that is going away.
+    const catalog = {
+      ...builtIn,
+      keyed: {
+        displayName: 'Keyed fixture',
+        transport: 'json',
+        endpoint: 'https://search.example.com/v1',
+        method: 'GET',
+        query: { key: { source: 'env', name: 'TSUKA_TEST_SEARCH_KEY' }, q: { source: 'query' } },
+        response: { itemsPath: 'items', titlePath: 'title', urlPath: 'link', snippetPath: 'snippet' },
+      },
+    } as typeof builtIn;
+
+    process.env.TSUKA_TEST_SEARCH_KEY = 'google-secret-must-not-leak';
     let googleRequest = '';
-    const google = new HttpWebSearchBackend('google', catalog, async (input) => {
+    const google = new HttpWebSearchBackend('keyed', catalog, async (input) => {
       googleRequest = input.toString();
       return new Response(JSON.stringify({ items: [{ title: 'Google\nTitle', link: 'https://example.com/google', snippet: 'One\ntwo' }] }), { status: 200 });
     });
     const googleResults = await google.search('safe query');
-    check('WS.3', googleRequest.includes('q=safe+query') && googleResults[0]?.title === 'Google Title' && googleResults[0]?.snippet === 'One two', 'Google request and JSON mapping are catalog-driven and normalized');
+    check('WS.3', googleRequest.includes('q=safe+query') && googleResults[0]?.title === 'Google Title' && googleResults[0]?.snippet === 'One two', 'query-keyed JSON request and mapping are catalog-driven and normalized');
     check('WS.4', !JSON.stringify(googleResults).includes('google-secret-must-not-leak'), 'credential values never appear in normalized results');
     let reflectedError = '';
     try {
-      await new HttpWebSearchBackend('google', catalog, async () => { throw new Error('request failed: google-secret-must-not-leak'); }).search('query');
+      await new HttpWebSearchBackend('keyed', catalog, async () => { throw new Error('request failed: google-secret-must-not-leak'); }).search('query');
     } catch (error: unknown) {
       reflectedError = error instanceof Error ? error.message : '';
     }
@@ -80,8 +92,8 @@ async function main(): Promise<void> {
     const tavilyResults = await tavily.search('catalog request');
     check('WS.5', tavilyBody.includes('"max_results":5') && tavilyResults.length === 1, 'Tavily POST body uses catalog sources and shared result bounds');
 
-    delete process.env.GOOGLE_SEARCH_API_KEY;
-    const missingKey = await rejects(() => new HttpWebSearchBackend('google', catalog, async () => new Response()).search('query'), 'GOOGLE_SEARCH_API_KEY');
+    delete process.env.TSUKA_TEST_SEARCH_KEY;
+    const missingKey = await rejects(() => new HttpWebSearchBackend('keyed', catalog, async () => new Response()).search('query'), 'TSUKA_TEST_SEARCH_KEY');
     check('WS.6', missingKey, 'missing environment references fail with the variable name but no credential value');
 
     const duckduckgo = new HttpWebSearchBackend('duckduckgo', catalog, async () => new Response('<div class="web-result"><a class="result__a" href="https://example.com/ddg">DDG</a><span class="result__snippet">Bounded\ntext</span></div>', { status: 200 }));
@@ -136,10 +148,9 @@ async function main(): Promise<void> {
     check('WS.13', blockedRejected && blockedTraces[0]?.status === 202 && blockedTraces[0]?.body.includes('anomaly'),
       "a 202 bot-detection page is an explicit failure, and its body still reaches the trace");
 
-    process.env.GOOGLE_SEARCH_API_KEY = 'google-secret-must-not-leak';
-    process.env.GOOGLE_SEARCH_CX = 'search-engine-id';
+    process.env.TSUKA_TEST_SEARCH_KEY = 'google-secret-must-not-leak';
     const googleTraces: any[] = [];
-    const googleTraced = new HttpWebSearchBackend('google', catalog, async () => new Response(JSON.stringify({ items: [] }), { status: 200 }));
+    const googleTraced = new HttpWebSearchBackend('keyed', catalog, async () => new Response(JSON.stringify({ items: [] }), { status: 200 }));
     await googleTraced.search('q', (trace) => googleTraces.push(trace));
     check('WS.14', !googleTraces[0].request.includes('google-secret-must-not-leak') && googleTraces[0].request.includes('[REDACTED'),
       `the traced request never shows a provider credential (${googleTraces[0].request.slice(0, 80)}…)`);
@@ -161,8 +172,7 @@ async function main(): Promise<void> {
     assert.ok(!toolOutput.includes('tavily-secret-must-not-leak'));
   } finally {
     if (previousHome === undefined) delete process.env.TSUKA_HOME; else process.env.TSUKA_HOME = previousHome;
-    if (previousGoogleKey === undefined) delete process.env.GOOGLE_SEARCH_API_KEY; else process.env.GOOGLE_SEARCH_API_KEY = previousGoogleKey;
-    if (previousGoogleCx === undefined) delete process.env.GOOGLE_SEARCH_CX; else process.env.GOOGLE_SEARCH_CX = previousGoogleCx;
+    if (previousFixtureKey === undefined) delete process.env.TSUKA_TEST_SEARCH_KEY; else process.env.TSUKA_TEST_SEARCH_KEY = previousFixtureKey;
     if (previousTavilyKey === undefined) delete process.env.TAVILY_API_KEY; else process.env.TAVILY_API_KEY = previousTavilyKey;
     fs.rmSync(home, { recursive: true, force: true });
   }

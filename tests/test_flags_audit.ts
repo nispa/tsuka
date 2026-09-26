@@ -70,8 +70,6 @@ const ENV_CLASSIFICATION: Record<string, FlagCategory> = {
   TSUKA_MEMORY_BACKEND: 'compatibility',
   TSUKA_TUI: 'presentation',
   OPENAI_API_KEY: 'compatibility',
-  GOOGLE_SEARCH_API_KEY: 'compatibility',
-  GOOGLE_SEARCH_CX: 'compatibility',
   TAVILY_API_KEY: 'compatibility',
   TERM: 'presentation',
 };

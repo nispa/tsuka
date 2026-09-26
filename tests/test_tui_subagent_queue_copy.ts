@@ -466,8 +466,8 @@ function test(name: string, fn: () => void | Promise<void>) {
     assert.strictEqual(currentProvider, 'openrouter', '/provider openrouter should update active provider');
 
     // /search-engine check
-    await cmdController.handleCommand('/search-engine google');
-    assert.strictEqual(currentSearch, 'google', '/search-engine google should update web search engine');
+    await cmdController.handleCommand('/search-engine tavily');
+    assert.strictEqual(currentSearch, 'tavily', '/search-engine tavily should update web search engine');
 
     // /runs check
     await cmdController.handleCommand('/runs');
