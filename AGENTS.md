@@ -6,7 +6,7 @@
 
 * **Runtime**: Node.js (v20+ recommended), TypeScript (strict mode, ES2022 target, CommonJS module output), `tsx` for live execution.
 * **Core Design**: Deterministic ReAct loop, hot-plug dynamic tool auto-discovery, orthogonal persona system (*Role* × *Trait* = *Character/Agent*), session-scoped run blackboard via `AsyncLocalStorage`, token-budgeted memory with semantic keyword scoring, and empirical capability fingerprinting (`/benchmark`).
-* **Metrics**: 30 native tools · 24 characters/agents · 21 roles · 9 traits · 10 preconfigured teams · 20 REPL slash commands · 96 automated test suites · Dual CLI & TUI Interactive Interfaces.
+* **Metrics** (2026-09-26; recount with `ls characters roles traits teams tools_schemas benchmarks` and `npm test`): 30 native tools · 24 characters/agents · 21 roles · 9 traits · 10 preconfigured teams · 27 TUI slash commands · 7 benchmark fixtures · 116 automated test suites · pluggable TUI layouts (LCARS console default) and CLI.
 
 ---
 
@@ -21,7 +21,7 @@
 3. **Strict Workspace Jail**: All filesystem operations (`read_file`, `write_file`, `edit_file`, `delete_file`, `list_dir`, `grep_search`, `audit_code`) must be strictly confined within `workspaceRoot` via `resolveSafePath()`. Escaping via `..` is blocked.
 4. **Credentials Never Reach the Model**: `src/core/credentials.ts` is the single credential policy. Processes started on the model's behalf (`execute_command`, `get_ps_info`, MCP servers) get TSUKA's environment without credential-named variables (`buildChildEnv`; exceptions only via `commandEnvPassthrough` or an MCP server's own `env`), and every tool result and error is scrubbed of known secret values in `executeAuthorizedTool` (`redactCredentials`) before it enters the history. Never add a spawn or a tool-output path that bypasses either; never log declared credentials. Only known secrets are recognized — values in TSUKA's environment, provider `apiKeyEnv` variables, declared MCP `env` entries.
 5. **Deterministic Multi-Agent Coordination**: Inter-agent communication in `/team` and `/goal` must use dedicated protocol tools (`report_status`, `route_next`, `cast_vote`) with automated fallback to text markers and visible degradation warnings.
-6. **No Test Regressions**: All 96 test suites (`npm test`) must pass cleanly before completing any task. Automated tests must use mock stores and temporary test directories—never mutate the active user's `memory.json`.
+6. **No Test Regressions**: The whole test suite (`npm test`) must pass cleanly before completing any task. Automated tests must use mock stores and temporary test directories—never mutate the active user's `memory.json`.
 7. **Gate di Completamento di un task**: prima di dichiarare completato qualsiasi task, i tre comandi `npm test`, `npm run build` e `npm run typecheck` devono essere verdi. La suite (`npm test`) è il contratto di regressione del comportamento; `npm run build` (tsc su `src/`) e `npm run typecheck` (tsc -p tsconfig.check.json, include anche i test) garantiscono che il repo compili in strict mode. Un task chiuso con uno dei tre rosso va riaperto, non archiviato.
 8. **Modularity by Design — Every Harness Element Is Pluggable**: All major subsystems of the harness (memory, LLM providers, tools, personas, teams, safety policies, storage formats) must be designed behind an explicit interface/contract with a registry or factory selecting the active implementation from configuration — never hard-wired as a concrete singleton consumed directly across layers. When touching any subsystem, preserve or improve its substitutability: consumers depend on the contract, not the implementation. The current implementation ships as the *default backend* of its contract (e.g. the JSON/BM25 `MemoryStore` is one `MemoryBackend` among possible SQLite/vector/remote backends). A new capability that cannot be swapped out without editing call sites is considered incomplete.
 9. **No Hardcoded Tunables — One Source of Defaults**: Tunable constants (timeouts, retries, token ceilings, memory caps, scoring parameters, quotas, ratios) must never be declared as scattered local literals inside the module that happens to use them. They live exactly once in `src/core/constants.ts` (`LLM_DEFAULTS`, `MEMORY_DEFAULTS`, `AGENT_DEFAULTS`, ...), namespaced by subsystem; modules import from there. Values users may override at runtime go through `ConfigManager` with one of these constants as the fallback. NOT in `constants.ts`: data tables that are content rather than tuning (model sampling profiles, stop-word lists) and wire-protocol literals owned by a single protocol module. When adding or touching a tunable, centralize it — a magic number found inline during any edit must be moved to `constants.ts` in the same task, not left behind.
@@ -152,9 +152,9 @@ harness/
 ├── teams/                           # 10 Team JSON definitions (members + mode + orchestrator)
 ├── presets/                         # Manifests: core.json & domain packs for tsuka init
 ├── tools_schemas/                   # 30 JSON Schema files for function calling validation
-├── benchmarks/                      # 5 JSON capability benchmark fixtures
+├── benchmarks/                      # JSON capability benchmark fixtures
 ├── providers.json                   # Provider endpoints, LOCAL/CLOUD class, keys and capabilities
-├── tests/                           # 96 automated test suites
+├── tests/                           # Automated test suites (registered in run_tests.ts)
 └── tsuka.config.json                # Runtime configuration file
 ```
 
@@ -218,7 +218,7 @@ npm run build
 # Run compiled build
 npm start
 
-# Execute full automated test suite (96 test suites)
+# Execute the full automated test suite
 npm test
 
 # Link globally for CLI usage

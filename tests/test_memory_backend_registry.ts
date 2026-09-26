@@ -77,10 +77,6 @@ class VolatileBackend implements MemoryBackend {
     return this.facts.length !== before;
   }
 
-  forgetFact(id: string): boolean {
-    return this.remove(id);
-  }
-
   updateFact(id: string, patch: { content?: string }): MemoryFact | null {
     const target = this.facts.find((f) => f.id === id);
     if (!target) return null;
@@ -96,13 +92,8 @@ class VolatileBackend implements MemoryBackend {
     return this.facts.length;
   }
 
-  formatForPrompt(limit: number = 10): string {
-    return this.getRecent(limit).map((f) => `- (${f.source}) ${f.content}`).join('\n');
-  }
-
-  formatRelevant(taskText: string, limit: number = 10): string {
-    const hits = this.search(taskText, limit);
-    return hits.map((f) => `- (${f.source}) ${f.content}`).join('\n');
+  selectForPrompt(limit: number = 10): { facts: MemoryFact[]; available: number } {
+    return { facts: this.getRecent(limit), available: this.facts.length };
   }
 }
 
@@ -149,7 +140,11 @@ function main() {
     check('MB5c', volatileStore.search('retrieval').length === 1, 'search forwarded to the plugin');
     const recentId = volatileStore.getRecent(1)[0].id;
     check('MB5d', volatileStore.remove(recentId) && volatileStore.count() === 1, 'remove forwarded to the plugin');
-    check('MB5e', volatileStore.formatForPrompt().includes('volatile backend'), 'formatForPrompt forwarded to the plugin');
+    check('MB5e', volatileStore.formatForPrompt().includes('volatile backend'), 'the facade formats the plugin selection');
+    // T24.4: the plugin implements no budget at all, yet its section is capped by the facade.
+    for (let i = 0; i < 20; i++) volatileStore.addFact(`Filler fact number ${i} with some words to take room`, 'tester');
+    const capped = volatileStore.formatForPrompt(20, 200);
+    check('MB5e2', capped.length <= 200 && capped.includes('more memories available'), `a backend without any cap logic still yields a capped section (${capped.length} chars)`);
     volatileStore.clear();
     check('MB5f', volatileStore.count() === 0, 'clear forwarded to the plugin');
   } finally {

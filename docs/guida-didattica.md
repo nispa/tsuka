@@ -66,6 +66,8 @@ L'intelligenza generativa appartiene al modello, ma il controllo operativo e la 
   └──────────────┘      └──────────────┘      └──────────────┘
 ```
 
+Poi, sul nucleo già costruito: **11.** invarianti del core e contratti stretti · **12.** sub-agenti e delega del contesto.
+
 ---
 
 ### Tappa 1 — Chat REPL e streaming in tempo reale
@@ -445,6 +447,92 @@ Quando un harness agentico cresce oltre le 80 suite di test, la sfida principale
 2. **Isolamento delle Invarianti dell'Agente**: La classe `Agent` non deve essere un monolite che calcola token, gestisce la cronologia, lancia tool e salva tracce contemporaneamente. Lo scorporo in moduli puri (`tokenCalibration.ts`, `conversationHistory.ts`, `toolRound.ts`, `reactState.ts`, `reasoningTrace.ts`) rende ogni invariante isolabile, testabile a livello unitario e priva di effetti collaterali non intenzionali.
 3. **Contratti Stretti tra i Layer**: Il motore ReAct non deve conoscere la struttura su disco dei file `.json` dei tool o il protocollo HTTP di streaming del server LLM. La definizione dell'interfaccia `IToolRegistry` e l'incapsulamento del wire format OpenAI in `provider/wireFormat.ts` e `provider/streamAccumulator.ts` consentono di sostituire il backend o il formato dei messaggi senza toccare una sola riga del loop decisionale.
 4. **Disaccoppiamento di Codec e Storage nella Memoria**: Nel backend di memoria JSON, la serializzazione dei fatti, la deduplica e la derivazione del summary risiedono in `codec.ts`, mentre l'I/O atomico (scrittura con file temporaneo e `renameSync`) e il recovery automatico da corruzione risiedono in `storage.ts`. `JsonMemoryBackend` orchestra unicamente lo stato RAM e l'interfaccia `MemoryBackend`.
+
+---
+
+### Tappa 12 — Sub-agenti e delega del contesto
+
+*Riferimenti nel codice: `src/tools/impl/spawnAgent.ts`, `src/core/subagentRunner.ts`, `src/core/taskPacket.ts`, `src/core/agentResult.ts`, `src/core/contextScheduler.ts`, `src/core/contextBudget.ts` (`getContextPressure`), `src/core/contextTracker.ts`, `src/core/agent.ts` (ramo `prepare`/`delegate` del ciclo)*
+
+> **Stato:** il meccanismo è completo e coperto dai test; la **delega automatica è spenta di default** (`contextSchedulerEnabled: false`) e il suo vantaggio su task reali **non è ancora stato misurato** (checkpoint A, T24.3). Questa tappa descrive come funziona, non promette che convenga.
+
+#### 12.1 Il problema: il contesto è una risorsa che finisce
+
+Un modello locale lavora con una finestra di 8–32k token. Ogni risultato di tool la riempie: un file letto, l'output di un comando, una pagina web. La Tappa 5 mostra la prima difesa, la potatura della storia, che però **butta via** informazione. Un'altra strada è non caricare tutto nello stesso contesto: affidare un pezzo di lavoro a un secondo agente, con una finestra pulita, e riceverne indietro solo il risultato.
+
+#### 12.2 Due modi di delegare
+
+| | Delega manuale | Delega automatica |
+|---|---|---|
+| Chi decide | il modello, chiamando `spawn_agent` | l'harness, in base alla pressione del contesto |
+| Quando | quando il modello giudica utile separare un sotto-compito | quando i token usati superano una soglia |
+| Stato | sempre disponibile ai ruoli che hanno il tool | spenta di default |
+
+In entrambi i casi il figlio è un **nuovo `Agent` nello stesso processo**, con una storia vuota. Il modo in cui nasce è uno solo, `SubagentRunner`, così le regole valgono per entrambe le strade:
+
+- **eredita** i confini: workspace jail, conferme dei permessi e il **perimetro dei tool del padre**, perché un figlio può scegliere un altro ruolo ma non ottenere tool che il padre non ha (Tappa 4);
+- **riceve** gli strumenti di memoria e, dentro un workflow, la blackboard del run: sono il canale di stato condiviso;
+- **non eredita** la storia del padre: il suo punto di partenza è il compito che gli viene scritto;
+- **non può delegare a sua volta** automaticamente: lo scheduler del figlio è spento, niente ricorsione.
+
+#### 12.3 I contratti: cosa entra e cosa esce
+
+Delegare significa scegliere **cosa deve sapere il figlio** e **cosa deve tornare al padre**. Due contratti lo rendono esplicito.
+
+```
+            TaskPacket                                  AgentResult
+ padre ──► { objective,              ──► figlio ──►  { status: done | blocked | failed,
+             constraints?,                              summary,
+             acceptanceCriteria? }                      changes?, decisions?,
+                                                        unresolved?, evidence? }
+                                                                │
+                            rapporto integrale ──► runs/<run>/<agente>.md (su disco)
+                            sintesi compatta   ──► storia del padre
+```
+
+- **`TaskPacket`**: obiettivo, vincoli e criteri di accettazione, con limiti di lunghezza. È un briefing, non una trascrizione.
+- **`AgentResult`**: il figlio deve rispondere con un JSON strutturato. Un campo non previsto (una trascrizione, un ragionamento) viene scartato: al padre arrivano dati, non la storia del figlio.
+- **Budget del ritorno**: se la sintesi supera il limite, `reduceAgentResult` taglia prima i dettagli secondari (`changes`, poi `decisions`, poi `evidence`), poi accorcia il `summary`, e sacrifica per ultimi gli elementi **irrisolti**, che sono l'informazione che il padre non può permettersi di perdere. Il rapporto completo resta sempre su disco, con il percorso indicato al padre.
+
+#### 12.4 Lo scheduler: una politica pura con due soglie
+
+La **pressione** è il rapporto fra token usati e limite (`getContextPressure`). La politica (`scheduleContext`) è una funzione pura, senza effetti collaterali, con due soglie ordinate:
+
+| Pressione | Azione | Cosa succede |
+|---|---|---|
+| sotto 0,60 | `continue` | niente |
+| da 0,60 a 0,70 | `prepare` | si prepara il `TaskPacket`, senza chiamate al modello |
+| da 0,70 in su | `delegate` | si avvia il figlio con il packet, il rapporto torna al padre |
+
+Le regole che la rendono sicura:
+- viene valutata in **un punto preciso del ciclo**: dopo la potatura della storia e prima della chiamata al modello, mai a metà di un giro di tool;
+- **una sola delega automatica per turno**, marcata come consumata *prima* di avviare il figlio;
+- un packet preparato viene **invalidato** se nel frattempo il padre esegue altri tool, così la delega parte da un briefing aggiornato;
+- un errore del figlio **non blocca** il padre: si registra un avviso e il ciclo prosegue.
+
+Le soglie si cambiano con `contextPrepareAt` e `contextDelegateAt`; `/context` mostra decisioni, deleghe (completate, bloccate, fallite), token spesi dal figlio, token restituiti e il loro rapporto (l'"amplificazione").
+
+#### 12.5 Cosa la delega non fa
+
+Tre limiti da conoscere, perché spiegano anche perché il vantaggio va misurato:
+
+1. **Il padre non si alleggerisce.** Dopo la delega la sua storia resta quella che era, più il rapporto. La delega sposta il *lavoro successivo* in un contesto nuovo; non libera quello vecchio.
+2. **Il figlio non sa cosa ha pensato il padre.** Riceve l'obiettivo originale e l'indicazione di proseguire dallo stato attuale; ciò che il padre ha già fatto lo ritrova **nel workspace**, nei file. Lo stato condiviso è il disco, non la conversazione: funziona bene quando il lavoro lascia tracce su file, meno quando è tutto nel ragionamento.
+3. **Costa token.** Il figlio rilegge ciò che gli serve. L'amplificazione misura proprio questo: quanti token spende il figlio per ogni token che restituisce.
+
+#### 12.6 Provarla
+
+```json
+{
+  "contextSchedulerEnabled": true,
+  "contextPrepareAt": 0.6,
+  "contextDelegateAt": 0.7
+}
+```
+
+Con un modello dalla finestra piccola e un compito che legge molti file, `/context` mostra quando scattano `prepare` e `delegate`, e quanto è costata la delega. Confrontare lo stesso compito con lo scheduler acceso e spento è esattamente il checkpoint A.
+
+La lezione che resta, al di là di TSUKA: **delegare è progettare un'interfaccia**. Cosa entra (il packet), cosa esce (il risultato strutturato), cosa si perde (la storia) e dove vive lo stato condiviso (il disco) contano più del fatto di avere un secondo agente.
 
 ---
 

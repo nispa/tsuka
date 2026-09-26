@@ -66,6 +66,8 @@ Intelligence belongs to the model; execution authority and safety belong entirel
   └──────────────┘      └──────────────┘      └──────────────┘
 ```
 
+Then, on top of that core: **11.** core invariants and narrow contracts · **12.** sub-agents and context delegation.
+
 ---
 
 ### Milestone 1 — REPL Chat & Real-Time Streaming
@@ -364,6 +366,92 @@ As an agent harness scales beyond 80 test suites, maintainability becomes paramo
 2. **Isolating Agent Invariants**: `Agent` is no longer a sprawling monolith. Token calibration (`tokenCalibration.ts`), conversation pruning (`conversationHistory.ts`), tool invocation lifecycles (`toolRound.ts`), state machine transitions (`reactState.ts`), and reasoning trace persistence (`reasoningTrace.ts`) are decomposed into sharp, testable units.
 3. **Strict Layer Contracts**: The ReAct engine never inspects provider wire payloads or file schema paths directly. By coding against `IToolRegistry` and encapsulating OpenAI payloads in `provider/wireFormat.ts` and `provider/streamAccumulator.ts`, providers and tools can be swapped out cleanly without touching agent logic.
 4. **Decoupled Memory Codec & Storage**: In `src/core/memory/`, fact serialization, normalization, summary derivation, and deduplication live in `codec.ts`, while atomic file writes (via `.tmp` + `renameSync`) and corruption recovery backups (`.corrupt-<timestamp>`) live in `storage.ts`. `JsonMemoryBackend` is purely responsible for RAM state orchestration.
+
+---
+
+### Milestone 12 — Sub-agents and Context Delegation
+
+*Code references: `src/tools/impl/spawnAgent.ts`, `src/core/subagentRunner.ts`, `src/core/taskPacket.ts`, `src/core/agentResult.ts`, `src/core/contextScheduler.ts`, `src/core/contextBudget.ts` (`getContextPressure`), `src/core/contextTracker.ts`, `src/core/agent.ts` (the loop's `prepare`/`delegate` branch)*
+
+> **Status:** the mechanism is complete and covered by tests; **automatic delegation is off by default** (`contextSchedulerEnabled: false`) and its benefit on real tasks **has not been measured yet** (checkpoint A, T24.3). This milestone explains how it works, not that it pays off.
+
+#### 12.1 The problem: context is a resource that runs out
+
+A local model works with an 8–32k token window. Every tool result fills it: a file read, a command's output, a web page. Milestone 5 shows the first defence, history pruning, which **throws information away**. Another route is not to load everything into one context: hand a piece of work to a second agent with a clean window and get back only its result.
+
+#### 12.2 Two ways to delegate
+
+| | Manual delegation | Automatic delegation |
+|---|---|---|
+| Who decides | the model, calling `spawn_agent` | the harness, from context pressure |
+| When | when the model judges a subtask worth separating | when used tokens cross a threshold |
+| Status | always available to roles holding the tool | off by default |
+
+Either way the child is a **new `Agent` in the same process** with an empty history. It is born one way only, `SubagentRunner`, so the same rules apply to both routes:
+
+- it **inherits** the boundaries: workspace jail, permission prompts and the **parent's tool perimeter** — a child may pick another role but never gains a tool its parent could not use (Milestone 4);
+- it **receives** the memory tools and, inside a workflow, the run blackboard: the shared-state channels;
+- it **does not inherit** the parent's history: its starting point is the task written for it;
+- it **cannot delegate again** automatically: the child's scheduler is off, no recursion.
+
+#### 12.3 The contracts: what goes in and what comes out
+
+Delegating means choosing **what the child must know** and **what must come back**. Two contracts make that explicit.
+
+```
+            TaskPacket                                   AgentResult
+ parent ──► { objective,             ──► child ──►   { status: done | blocked | failed,
+              constraints?,                             summary,
+              acceptanceCriteria? }                     changes?, decisions?,
+                                                        unresolved?, evidence? }
+                                                                │
+                            full report   ──► runs/<run>/<agent>.md (on disk)
+                            compact digest ──► parent history
+```
+
+- **`TaskPacket`**: objective, constraints and acceptance criteria, with length limits. A briefing, not a transcript.
+- **`AgentResult`**: the child must answer with structured JSON. Any unmodelled field (a transcript, a reasoning trace) is dropped: the parent receives data, not the child's history.
+- **Return budget**: when the digest exceeds its limit, `reduceAgentResult` cuts secondary detail first (`changes`, then `decisions`, then `evidence`), then shortens the `summary`, and sacrifices **unresolved** items last — the information the parent can least afford to lose. The full report always stays on disk, and the parent is told where.
+
+#### 12.4 The scheduler: a pure policy with two thresholds
+
+**Pressure** is used tokens over the limit (`getContextPressure`). The policy (`scheduleContext`) is a pure function with two ordered thresholds:
+
+| Pressure | Action | What happens |
+|---|---|---|
+| below 0.60 | `continue` | nothing |
+| 0.60 to 0.70 | `prepare` | the `TaskPacket` is built, with no model call |
+| 0.70 and above | `delegate` | the child runs with the packet; its report returns to the parent |
+
+The rules that keep it safe:
+- it is evaluated at **one precise point of the loop**: after history pruning and before the model call, never in the middle of a tool round;
+- **one automatic delegation per turn**, marked as consumed *before* the child starts;
+- a prepared packet is **invalidated** if the parent runs more tools meanwhile, so delegation starts from an up-to-date briefing;
+- a failing child **does not block** the parent: a warning is recorded and the loop goes on.
+
+Thresholds are set with `contextPrepareAt` and `contextDelegateAt`; `/context` shows decisions, delegations (completed, blocked, failed), tokens the child spent, tokens returned and their ratio (the "amplification").
+
+#### 12.5 What delegation does not do
+
+Three limits worth knowing, because they are also why the benefit must be measured:
+
+1. **The parent does not get lighter.** After delegating, its history is what it was, plus the report. Delegation moves the *next* work into a fresh context; it does not free the old one.
+2. **The child does not know what the parent thought.** It gets the original objective and the instruction to continue from the current state; what the parent already did it finds **in the workspace**, in files. Shared state is the disk, not the conversation: this works well when work leaves traces in files, less when it lives in reasoning.
+3. **It costs tokens.** The child re-reads what it needs. Amplification measures exactly that: tokens the child spends per token it returns.
+
+#### 12.6 Trying it
+
+```json
+{
+  "contextSchedulerEnabled": true,
+  "contextPrepareAt": 0.6,
+  "contextDelegateAt": 0.7
+}
+```
+
+With a small-window model and a task that reads many files, `/context` shows when `prepare` and `delegate` fire and what the delegation cost. Running the same task with the scheduler on and off is exactly checkpoint A.
+
+The lesson beyond TSUKA: **delegating is designing an interface**. What goes in (the packet), what comes out (the structured result), what is lost (the history) and where shared state lives (the disk) matter more than having a second agent at all.
 
 ---
 

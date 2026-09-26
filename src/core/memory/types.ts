@@ -124,9 +124,6 @@ export interface MemoryBackend {
   /** Removes a fact by id; returns true when something was removed. */
   remove(id: string): boolean;
 
-  /** Removes a fact by id (naming mirror of updateFact used by the forget tool). */
-  forgetFact(id: string): boolean;
-
   /** Updates a fact in place; returns the surviving fact or null when the id is unknown. */
   updateFact(id: string, patch: UpdateFactPatch): MemoryFact | null;
 
@@ -136,11 +133,13 @@ export interface MemoryBackend {
   /** Number of facts visible in the active scope. */
   count(): number;
 
-  /** Compact retention-ranked section formatted for system-prompt injection. */
-  formatForPrompt(limit?: number, maxChars?: number, sources?: string[]): string;
-
-  /** Like formatForPrompt, but ranked by relevance to the given task text. */
-  formatRelevant(taskText: string, limit?: number, maxChars?: number, sources?: string[]): string;
+  /**
+   * Facts for the system-prompt memory section, best first, plus how many were eligible.
+   * Selection only (T24.4): the facade applies the character budget and the formatting,
+   * so every backend gets the same cap and a new one cannot get it wrong. Relevance-ranked
+   * sections reuse `search` with `touch: false`.
+   */
+  selectForPrompt(limit: number, sources?: string[]): { facts: MemoryFact[]; available: number };
 
   /**
    * Optional hook invoked before every singleton use so stateful backends can pick up

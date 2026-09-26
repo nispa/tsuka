@@ -448,8 +448,8 @@ async function main(): Promise<void> {
       check('CSB5.2g', updated?.tags?.includes('core') === true, 'updateFact updates tags');
 
       // Forget / Remove
-      const removed = backend.forgetFact(fact1.id);
-      check('CSB5.2h', removed === true, 'forgetFact successfully removes fact by id');
+      const removed = backend.remove(fact1.id);
+      check('CSB5.2h', removed === true, 'remove successfully removes fact by id');
       check('CSB5.2i', backend.count() === 0, 'backend.count() returns 0 after removal');
 
       // 5.3 memoryMaxChars caps the whole injected section (T22.11): fact lines, the
@@ -465,14 +465,16 @@ async function main(): Promise<void> {
         );
       }
 
-      const promptFormatted = backend.formatForPrompt(10, 140);
+      // Budget and formatting live in the facade (T24.4); it reads the same file.
+      const store = new MemoryStore(tmpMemPath, 50);
+      const promptFormatted = store.formatForPrompt(10, 140);
       const promptLines = promptFormatted.split('\n');
       check('CSB5.3a', promptFormatted.length <= 140, `formatForPrompt stays within the 140-char cap (got ${promptFormatted.length})`);
       check('CSB5.3b', promptLines.length === 2 && promptLines[0].startsWith('- ['), `one fact bullet plus the notice (got ${promptLines.length} lines)`);
       check('CSB5.3c', promptLines[1].includes('… (7 more memories available: use recall_memory to search)'), 'Omission notice accurately reports 7 omitted memories');
       check('CSB5.3d', promptFormatted.includes('Short fact entry 7') && !promptFormatted.includes('Short fact entry 0'), 'Most recent entries (7) are prioritized while older ones (0) are omitted');
 
-      const relevantFormatted = backend.formatRelevant('lifecycle', 10, 140);
+      const relevantFormatted = store.formatRelevant('lifecycle', 10, 140);
       const relevantLines = relevantFormatted.split('\n');
       check('CSB5.3e', relevantFormatted.length <= 140, `formatRelevant stays within the 140-char cap (got ${relevantFormatted.length})`);
       check('CSB5.3f', relevantLines.length === 2 && relevantLines[0].startsWith('- ['), `one relevant fact bullet plus the notice (got ${relevantLines.length} lines)`);

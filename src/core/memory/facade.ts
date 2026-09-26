@@ -1,3 +1,5 @@
+import { ConfigManager } from '../config';
+import { renderMemorySection } from './codec';
 import { createMemoryBackend } from './registry';
 import { AddFactOptions, MemoryBackend, SearchOptions, UpdateFactPatch, MemoryFact } from './types';
 
@@ -60,8 +62,9 @@ export class MemoryStore {
     return this.backend.updateFact(id, patch);
   }
 
+  /** Name used by the forget_memory tool; the contract has a single `remove`. */
   forgetFact(id: string): boolean {
-    return this.backend.forgetFact(id);
+    return this.backend.remove(id);
   }
 
   clear(): void {
@@ -72,11 +75,23 @@ export class MemoryStore {
     return this.backend.count();
   }
 
+  /**
+   * Retention-ranked memory section for the system prompt. The budget lives here, once,
+   * for every backend (T24.4): `maxChars` bounds the whole section (T22.11), defaulting
+   * to `memoryMaxChars`.
+   */
   formatForPrompt(limit: number = 10, maxChars?: number, sources?: string[]): string {
-    return this.backend.formatForPrompt(limit, maxChars, sources);
+    const { facts, available } = this.backend.selectForPrompt(limit, sources);
+    if (available === 0) return '';
+    return renderMemorySection(facts, available, maxChars ?? new ConfigManager().getMemoryMaxChars(), 'memories');
   }
 
+  /** Like formatForPrompt, but ranked by relevance to the task; reading does not count as use. */
   formatRelevant(taskText: string, limit: number = 10, maxChars?: number, sources?: string[]): string {
-    return this.backend.formatRelevant(taskText, limit, maxChars, sources);
+    const text = (taskText || '').trim();
+    if (!text) return this.formatForPrompt(limit, maxChars, sources);
+    const relevant = this.backend.search(text, limit, { sources, touch: false });
+    if (relevant.length === 0) return '';
+    return renderMemorySection(relevant, relevant.length, maxChars ?? new ConfigManager().getMemoryMaxChars(), 'relevant memories');
   }
 }

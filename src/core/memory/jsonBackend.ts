@@ -25,7 +25,6 @@ import {
   factKey,
   mergeDuplicate,
   dedupeFacts,
-  renderMemorySection,
 } from './codec';
 import {
   safeLoadJsonMemoryFile,
@@ -242,10 +241,6 @@ export class JsonMemoryBackend implements MemoryBackend {
     return this.facts.find((f) => factKey(f.content, f.scope) === key) ?? target;
   }
 
-  forgetFact(id: string): boolean {
-    return this.remove(id);
-  }
-
   clear(): void {
     this.facts = [];
     this.useOrder = new Map();
@@ -256,26 +251,8 @@ export class JsonMemoryBackend implements MemoryBackend {
     return this.visibleFacts().length;
   }
 
-  formatForPrompt(limit: number = 10, maxChars?: number, sources?: string[]): string {
-    const cap = typeof maxChars === 'number' ? maxChars : new ConfigManager().getMemoryMaxChars();
+  selectForPrompt(limit: number, sources?: string[]): { facts: MemoryFact[]; available: number } {
     const visible = this.filterBySource(this.visibleFacts(), sources);
-    if (visible.length === 0) {
-      return '';
-    }
-    const selected = rankByRetentionValue(visible, this.useOrder).slice(0, limit);
-    return renderMemorySection(selected, visible.length, cap, 'memories');
-  }
-
-  formatRelevant(taskText: string, limit: number = 10, maxChars?: number, sources?: string[]): string {
-    const text = (taskText || '').trim();
-    const cap = typeof maxChars === 'number' ? maxChars : new ConfigManager().getMemoryMaxChars();
-    if (!text) {
-      return this.formatForPrompt(limit, cap, sources);
-    }
-    const relevant = this.search(text, limit, { sources, touch: false });
-    if (relevant.length === 0) {
-      return '';
-    }
-    return renderMemorySection(relevant, relevant.length, cap, 'relevant memories');
+    return { facts: rankByRetentionValue(visible, this.useOrder).slice(0, limit), available: visible.length };
   }
 }
