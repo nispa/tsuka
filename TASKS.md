@@ -4240,6 +4240,8 @@ valido; test d'integrazione con mock provider/runner e tre gate verdi.
 - Audit flag aggiornato (`test_flags_audit.ts`, 26 check OK).
 - I tre gate `npm test` (109 suite OK, 0 fallite), `npm run build` e `npm run typecheck` verdi.
 
+**Estensione (2026-09-26):** il perimetro valeva solo per la delega automatica; con `spawn_agent` manuale un agente poteva avviare un figlio con un ruolo dotato di tool che il padre non aveva (es. `execute_command`). Ora `spawn_agent` passa `context.toolSet.getAllowedToolPerimeter()` (aggiunto al contratto `ToolSetController`, stessa definizione usata dalla delega automatica). Corretto anche un difetto del filtro in `SubagentRunner`: toglieva al figlio gli strumenti di memoria e blackboard che il runner concede a ogni sub-agente per progetto; il perimetro ora limita solo i tool del ruolo. Test `SA-g-1`/`SA-g-2` in `test_spawn_agent_context.ts`.
+
 ## T22.9 — Applicare un budget strutturale a `AgentResult`
 
 **Dipende da:** T22.8 · **Stato:** ✅ Fatto · **Sforzo:** medio · **Priorità:** alta

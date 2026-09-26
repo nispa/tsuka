@@ -110,11 +110,14 @@ export class DefaultSubagentRunner implements ISubagentRunner {
     const blackboard = Blackboard.current();
     const memoryTools = ['save_memory', 'recall_memory', 'update_memory', 'forget_memory'];
     const blackboardTools = blackboard ? ['post_note', 'read_notes'] : [];
-    const toolSet = resolveToolSet(roleObj, { alwaysActive: [...memoryTools, ...blackboardTools] });
+    const runTools = [...memoryTools, ...blackboardTools];
+    const toolSet = resolveToolSet(roleObj, { alwaysActive: runTools });
 
-    // Restrict child tools to maximum allowed perimeter if specified (prevents privilege escalation, T22.8)
+    // Restrict child tools to the parent's perimeter when given (prevents privilege escalation, T22.8).
+    // The perimeter bounds the role's capabilities; the run infrastructure this runner hands every
+    // child by design (memory, blackboard) stays available even if the parent's role lacks it.
     if (Array.isArray(request.allowedTools)) {
-      const allowedSet = new Set(request.allowedTools);
+      const allowedSet = new Set([...request.allowedTools, ...runTools]);
       toolSet.active = toolSet.active.filter(t => allowedSet.has(t));
       toolSet.deferred = toolSet.deferred.filter(t => allowedSet.has(t));
     }

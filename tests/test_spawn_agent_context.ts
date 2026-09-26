@@ -299,6 +299,29 @@ async function main() {
     check('SA-e-9', !/^Il compito specifico da assegnare al sub-agente \(max 2000 caratteri\)\.$/.test(taskDesc), 'la descrizione nello schema non è più quella originale');
   }
 
+  // ── SA-g: the parent's tool perimeter reaches manual spawns (T22.8 extended) ──
+  {
+    const requests: any[] = [];
+    const fakeRunner = {
+      run: async (request: any) => {
+        requests.push(request);
+        return { output: 'done', agentLabel: 'child', reportPath: 'runs/x/child.md' };
+      },
+    };
+    const parentToolSet = {
+      getAllowedTools: () => ['read_file', 'spawn_agent'],
+      getDeferredTools: () => ['web_search'],
+      activateTools: () => ({ activated: [], alreadyActive: [], unknown: [] }),
+      getAllowedToolPerimeter: () => ['read_file', 'spawn_agent', 'web_search'],
+    };
+    const baseContext: any = { provider: {}, registry: {}, subagentRunner: fakeRunner };
+    await spawnAgentTool.execute({ task: 'Check the logs', roleName: 'sysadmin' }, { ...baseContext, toolSet: parentToolSet });
+    check('SA-g-1', JSON.stringify(requests[0]?.allowedTools) === JSON.stringify(['read_file', 'spawn_agent', 'web_search']),
+      `a child spawned with another role is bounded by the parent's perimeter (${JSON.stringify(requests[0]?.allowedTools)})`);
+    await spawnAgentTool.execute({ task: 'Check the logs', roleName: 'sysadmin' }, baseContext);
+    check('SA-g-2', requests[1] && requests[1].allowedTools === undefined, 'without a calling agent there is no perimeter to apply');
+  }
+
   // ============================================================
   // T9.8 — briefingFile: un briefing lungo letto da un file, non incollato inline
   // ============================================================

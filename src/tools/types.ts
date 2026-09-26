@@ -20,6 +20,8 @@ export interface ToolSetController {
   getDeferredTools(): string[];
   /** Moves the named tools from deferred to active. */
   activateTools(names: string[]): { activated: string[]; alreadyActive: string[]; unknown: string[] };
+  /** Every tool this agent may ever use (active + deferred); undefined when unrestricted. */
+  getAllowedToolPerimeter(): string[] | undefined;
 }
 
 /** Swappable contract for ToolRegistry (Directive 8) */

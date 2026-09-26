@@ -87,6 +87,10 @@ export const spawnAgentTool: Tool = {
     const runResult = await runner.run(
       {
         task,
+        // Same perimeter rule as automatic delegation (T22.8): the child may pick another
+        // role, but never gains a tool its parent could not use. Without a calling agent
+        // (a direct call) there is no parent perimeter to apply.
+        allowedTools: context?.toolSet?.getAllowedToolPerimeter(),
         roleName: args.roleName,
         traitName: args.traitName,
         charName: args.charName,
