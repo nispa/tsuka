@@ -1,7 +1,7 @@
 import { spawn } from 'child_process';
 import { Tool } from '../registry';
 import { getShellConfig, isWindows } from '../../core/platform';
-import { buildChildEnv } from '../../core/childEnv';
+import { buildChildEnv } from '../../core/credentials';
 
 function buildCommand(category: 'processes' | 'services' | 'disk' | 'env'): string {
   if (isWindows()) {

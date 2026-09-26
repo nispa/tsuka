@@ -7,7 +7,7 @@ import { logSink } from '../../core/logSink';
 import { ConfigManager } from '../../core/config';
 import { classifyCommandRisk } from '../../safety/commandRisk';
 import { TOOLS_DEFAULTS } from '../../core/constants';
-import { buildChildEnv } from '../../core/childEnv';
+import { buildChildEnv } from '../../core/credentials';
 
 
 export const executeCommandTool: Tool = {

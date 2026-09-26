@@ -12,7 +12,7 @@
 
 import { spawn, ChildProcess } from 'child_process';
 import { logSink } from '../logSink';
-import { buildChildEnv } from '../childEnv';
+import { buildChildEnv, declareCredentialValues } from '../credentials';
 import type { JsonRpcRequest, JsonRpcNotification, JsonRpcResponse } from './types';
 
 interface PendingRequest {
@@ -65,6 +65,7 @@ export class StdioTransport {
     // T24.1: the server gets TSUKA's environment without credentials, plus exactly what
     // its configuration declares in `env` (the place to give it the token it needs).
     // Directive 4: that declared env may carry credentials — it is never logged.
+    declareCredentialValues(this.options.env ?? {});
     this.child = spawn(this.options.command, this.options.args ?? [], {
       stdio: ['pipe', 'pipe', 'pipe'],
       env: buildChildEnv([], this.options.env ?? {}),

@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import { declareCredentialEnvName } from './credentials';
 import { resolveAssetPath } from './apphome';
 import { normalizeProviderClass, type ProviderClass } from './cloudProvider';
 import { logSink } from './logSink';
@@ -37,6 +38,9 @@ function sanitizeStringList(value: unknown): string[] | undefined {
 
 function parseDefinition(name: string, raw: Partial<ProviderDefinition>): ProviderDefinition | null {
   if (typeof raw.baseUrl !== 'string' || typeof raw.defaultModel !== 'string') return null;
+  // A key variable is a credential whatever its name (T24.2): declare it so it is stripped
+  // from child processes and redacted from tool results even without KEY/TOKEN in the name.
+  if (typeof raw.apiKeyEnv === 'string') declareCredentialEnvName(raw.apiKeyEnv);
   const freeRaw = raw.capabilities?.freeModels;
   return {
     displayName: typeof raw.displayName === 'string' && raw.displayName.trim() ? raw.displayName.trim() : name,

@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import { declareCredentialEnvName } from '../credentials';
 import * as path from 'path';
 import { homePath, localWorkspacePath } from '../apphome';
 import { AGENT_DEFAULTS, CLI_DEFAULTS, CONFIG_DEFAULTS, CONTEXT_SCHEDULER_DEFAULTS, LLM_DEFAULTS, MEMORY_DEFAULTS, TOOLS_DEFAULTS } from '../constants';
@@ -233,7 +234,11 @@ export class ConfigManager {
 
   getApiKeyFor(provider: string): string {
     const keyEnv = this.getProviderConfig(provider)?.apiKeyEnv;
-    if (keyEnv && /^[A-Z][A-Z0-9_]*$/.test(keyEnv)) return process.env[keyEnv] || '';
+    if (keyEnv && /^[A-Z][A-Z0-9_]*$/.test(keyEnv)) {
+      // Covers a legacy apiKeyEnv from tsuka.config.json too; the catalog declares its own (T24.2).
+      declareCredentialEnvName(keyEnv);
+      return process.env[keyEnv] || '';
+    }
     return 'local';
   }
 

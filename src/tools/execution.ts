@@ -5,6 +5,7 @@ import type { AgentEventHandler } from '../core/agentEvents';
 import type { WorkflowDispatcher } from '../core/workflowDispatcher';
 import { sanitizeToolCallArguments } from './jsonRepair';
 import { loadToolSchema, validateToolArgs } from './schema';
+import { redactCredentials } from '../core/credentials';
 import type { Tool, ToolResult, ToolExecutionContext, ToolSetController, IToolRegistry } from './types';
 
 type ToolArgumentRecord = Record<string, unknown>;
@@ -120,16 +121,18 @@ export async function executeAuthorizedTool(
     signal: options.signal
   };
 
+  // T24.2: the one gate every tool result and error passes before entering the history,
+  // the UI events and the next provider request. Known secret values never cross it.
   try {
     const output = await tool.execute(effectiveArgs, execContext);
     return {
       success: true,
-      output
+      output: redactCredentials(output)
     };
   } catch (error: any) {
     return {
       success: false,
-      output: `Error executing tool '${tool.name}': ${error.message}`
+      output: redactCredentials(`Error executing tool '${tool.name}': ${error.message}`)
     };
   }
 }

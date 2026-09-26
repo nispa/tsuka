@@ -191,6 +191,8 @@ export const TOOLS_DEFAULTS = {
   customToolMaxMemoryMb: 256,
   /** Result bytes accepted from an isolated custom tool call. */
   customToolMaxOutputBytes: 1024 * 1024,
+  /** Shortest secret value redacted from tool results; shorter ones would blank ordinary text. */
+  redactionMinSecretChars: 8,
   /** Shell command execution timeout for execute_command (commandTimeoutMs). */
   commandTimeoutMs: 120_000,
   /** Lowest accepted per-call command timeout override. */
