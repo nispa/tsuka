@@ -190,6 +190,15 @@
 | T23.14 | ✅ Fatto | **Recupero write_file incompleto**: schema con obbligatorietà congiunta di `path` e `content` esplicitata, feedback di validazione che elenca tutti i campi obbligatori mancanti insieme, flag `isValidationError` strutturato nel contratto `ToolResult`, tracciamento degli errori consecutivi per tool in `reactState.ts` con limite centralizzato (`TOOLS_DEFAULTS.maxConsecutiveValidationErrors = 3`), emissione dell'evento `validation_limit` e arresto sicuro senza salvataggio spurio; staging preservato e azzeramento su chiamata valida. Nuova suite `test_write_file_recovery.ts` (12 check). I tre gate verdi (111 suite). |
 | T23.15 | ✅ Fatto | **Tool call in streaming invisibile nella TUI**: i delta degli argomenti di una tool call non producevano né chunk né telemetria, quindi dopo il ragionamento la TUI restava ferma sull'ultimo pensiero per tutta la composizione (minuti per un `write_file` grande). Ora contano come token decodificati e l'evento `decode` porta `toolCall: { name, argChars }`; la TUI mostra la fase `composing` (card, titoli, header). |
 | T23.16 | ✅ Fatto | **Tema LCARS di default e verifica della gestione layout**: tema `lcars` (Star Trek TNG) con cornici a gomito per pannello, tab a pillola e barra a segmenti, impostato come default e disponibile come preset. La verifica ha trovato cinque difetti, corretti: temi mai applicati alle viste, `visibleWidgets` condiviso per riferimento con preset e default, geometria del mouse con header e input fissi a 3 righe e scrollbar cercata al bordo dello schermo, `tui.layout.json` salvato accanto al sorgente (tracciato in git), prima riga dell'header oltre la larghezza del terminale tra 110 e ~130 colonne. Nuova suite `tests/test_tui_layout.ts`. |
+| T24.1 | 🔲 Da fare | **Ambiente ereditato da shell e server MCP**: `execute_command` e i server MCP partono con l'intero `process.env`; un comando scritto dal modello può leggere le chiavi API (`echo $OPENROUTER_API_KEY`). Filtrare le variabili sensibili con un pattern condiviso, con passthrough esplicito da configurazione. Priorità alta. |
+| T24.2 | 🔲 Da fare | **Direttiva 4 (oscuramento credenziali) contro il codice**: `AGENTS.md` promette il mascheramento prima di log e prompt, ma esiste solo in `get_ps_info`, nei log del provider e negli errori della ricerca web; un `read_file` su `.env` finisce nel prompt in chiaro. Implementare l'oscuramento dei valori noti nei risultati dei tool o riscrivere la direttiva su ciò che è garantito. |
+| T24.3 | 🔲 Da fare (maintainer) | **Eseguire il checkpoint A**: confronto scheduler spento/acceso su task reali con modello vivo. Sblocca T22.12–T22.15, le misure di T22.13 e la documentazione T22.17. Richiede il server LLM del maintainer. |
+| T24.4 | 🔲 Da fare | **Rendering della memoria fuori dal backend**: oggi tetto e formattazione del prompt sono dentro `MemoryBackend`, quindi ogni nuovo backend li duplicherebbe (gap di T22.10). Spostarli nel facade, unificare `remove`/`forgetFact`. Da fare prima di introdurre un secondo backend. |
+| T24.5 | 🔲 Da fare | **Temi classici identici fra loro**: dopo T23.16 i temi `cyan`, `neon`, `amber`, `matrix`, `minimal` disegnano tutti le stesse cornici; i loro campi colore non sono letti da nessuna vista. Collegarli davvero o ridurre l'elenco. |
+| T24.6 | 🔲 Da fare | **Palette LCARS anche su widget e chat**: sotto LCARS cornici e header sono a tema, ma widget della sidebar, badge dell'header e testo della chat mantengono i colori propri. |
+| T24.7 | 🔲 Da fare | **Layout F7: modifiche perse al riavvio**: tema, preset, posizione e widget si applicano subito ma si salvano solo con "Save", mentre "Reset" salva da solo. Rendere coerente il salvataggio. |
+| T24.8 | 🔲 Da fare | **Igiene di TASKS.md e AGENTS.md**: riga T19.3 duplicata nel dashboard, intestazione ferma a "100 suite" e "Fase 10 11/13", metriche di `AGENTS.md` ferme a 96 suite. |
+| T24.9 | ⏸️ Backlog | **Sandbox di sistema per i tool generati (opzione B di T23.8)**: isolamento per piattaforma (seccomp/bubblewrap, AppContainer, container) oltre il processo confinato. Solo se il self-authoring verrà usato con input non fidati. |
 
 Tutti i task pianificati e di backlog sono completati; la serie T15 (memoria, modelli <30B) è implementata e chiusa con 72 suite di test verdi. Pianificata la serie **T16 (benchmark significativi)** su architettura a due velocità: **`/benchmark` fast** (1 colpo/test, deterministico — resta il gate del tier) e **`/benchmark --deep`** (repliche con variazione del prompt, mediana+varianza, per validazione/calibrazione). Pianificato anche **T17.1** (retrieval BM25/TF-IDF), il primo livello del percorso di apprendimento documentato in `docs/memory.md` §12. Valore di ritorno — i benchmark attuali saturano in alto e non discriminano tra i modelli, ma il gating dei tool (`registry.ts`) dipende proprio da quel tier: se tutto diventa `large` il gating è codice morto. Restano da fare T14.24 (commenti tests/ in inglese), T14.25 (token di protocollo multi-agente) e le serie T16/T17.
 
@@ -5005,6 +5014,89 @@ mantengono il riquadro arrotondato.
 **Residuo noto:** i campi `primary`/`secondary`/`accent`/`border*` dei temi classici
 restano non usati dalle viste; i widget della sidebar e la chat mantengono i propri
 colori anche sotto LCARS.
+
+---
+
+# FASE 11 — Seguiti della verifica di sicurezza e della TUI (T24)
+
+Problemi emersi il 2026-09-25/26 durante T14.25, T23.7, T23.8, T23.16 e gli audit T22.10–T22.13, verificati sul codice ma lasciati fuori da quei task per non allargarne lo scope.
+
+## T24.1 — Ambiente ereditato da shell e server MCP
+
+**Priorità:** alta · **Sforzo:** medio
+
+**Problema verificato:** `execute_command` avvia la shell con `spawn` senza opzione `env` (`src/tools/impl/executeCommand.ts`), quindi eredita l'intero ambiente di TSUKA, chiavi API comprese; `StdioTransport` passa ai server MCP `{ ...process.env, ...options.env }` (`src/core/mcp/stdioTransport.ts`). Un comando scritto dal modello, magari su istruzione di una pagina web ostile, può leggere e stampare una chiave, che poi entra nel contesto inviato al provider. I tool generati invece ricevono già un ambiente vuoto (T23.8).
+
+**Proposta:** un unico pattern dei nomi sensibili in `src/core/` (oggi è duplicato in `get_ps_info.ts`), usato per costruire l'ambiente dei processi figli togliendo quelle variabili. Le eccezioni necessarie (per esempio `GITHUB_TOKEN` per `gh`) si dichiarano in configurazione (`commandEnvPassthrough`); per i server MCP passano solo le variabili dichiarate nel campo `env` del server, più quelle di base.
+
+**Accettazione:** una variabile canarino con nome sensibile non è visibile da `execute_command` né da un server MCP di test; una variabile dichiarata in passthrough lo è; `get_ps_info` usa lo stesso pattern; tre gate verdi.
+
+## T24.2 — Direttiva 4 (oscuramento credenziali) contro il codice
+
+**Priorità:** alta · **Sforzo:** medio
+
+**Problema verificato:** `AGENTS.md` (direttiva 4) prescrive di mascherare le variabili sensibili "prima di loggare o inviare prompt". Nel codice l'oscuramento esiste solo in tre punti: l'elenco variabili di `get_ps_info`, `providerLogger.ts` e gli errori della ricerca web. Nessun filtro agisce sui risultati dei tool: `read_file` su un `.env` del workspace, o l'output di un comando, arriva nel prompt in chiaro. La guida didattica diceva il contrario ed è stata corretta nella tappa 4.
+
+**Proposta:** oscurare nei risultati dei tool, prima che entrino nella history, i *valori* delle variabili sensibili presenti nell'ambiente di TSUKA (non solo i nomi), in un unico punto della pipeline di esecuzione. In alternativa, se si decide di non farlo, riscrivere la direttiva su ciò che è davvero garantito.
+
+**Accettazione:** matrice dei punti coperti; un valore canarino letto da file o stampato da un comando non compare nella history; direttiva e codice coincidono; tre gate verdi.
+
+## T24.3 — Eseguire il checkpoint A
+
+**Priorità:** media · **Esecutore:** maintainer, con il proprio server LLM
+
+Il protocollo è descritto in "Checkpoint A obbligatorio" (sotto T22.9): confrontare scheduler disabilitato e abilitato su task reali riproducibili, a parità di modello e stato iniziale, registrando completamento, handoff, pressione prima/dopo, token parent/child, dimensione del report e latenza. Gli audit sul codice di T22.10, T22.11 e T22.13 sono fatti; restano bloccati da questo checkpoint T22.12–T22.15, le misure mancanti di T22.13 (candidata: quota di memoria nel prompt dentro `/context`) e la documentazione T22.17.
+
+## T24.4 — Rendering della memoria fuori dal backend
+
+**Priorità:** bassa (diventa necessaria prima di un secondo backend) · **Sforzo:** medio
+
+**Problema (gap di T22.10):** `formatForPrompt` e `formatRelevant` fanno parte del contratto `MemoryBackend`: tetto `memoryMaxChars`, selezione e nota finale sono implementati in `jsonBackend.ts`. Un secondo backend dovrebbe reimplementarli, con il rischio di riprodurre il difetto corretto in T22.11. Il contratto ha anche due metodi equivalenti, `remove` e `forgetFact`.
+
+**Proposta:** il backend fornisce solo la selezione ordinata (recenti, per rilevanza); il facade `MemoryStore` applica tetto e formattazione con `renderMemorySection`. Unificare `remove`/`forgetFact`.
+
+**Accettazione:** nessun backend contiene logica di budget; il backend volatile di `test_memory_backend_registry.ts` rispetta il tetto senza implementarlo; tre gate verdi.
+
+## T24.5 — Temi classici identici fra loro
+
+**Priorità:** media · **Sforzo:** basso-medio
+
+**Problema verificato:** i campi `primary`, `secondary`, `accent`, `borderFocused` e `borderUnfocused` di `TUI_THEMES` non sono letti da nessuna vista. Dopo T23.16 il tema raggiunge davvero le viste, ma solo LCARS ha una cornice propria: `cyan`, `neon`, `amber`, `matrix` e `minimal` producono schermate identiche, pur essendo offerti come scelte distinte in F7.
+
+**Proposta:** far passare i colori della palette classica a cornici e header (la stessa strada di `paneFrame`), oppure togliere i temi che non si distinguono. Niente campi di palette non usati.
+
+**Accettazione:** ogni tema offerto in F7 produce un frame diverso (test su `composeFrame`); nessun campo di palette morto; tre gate verdi.
+
+## T24.6 — Palette LCARS anche su widget e chat
+
+**Priorità:** bassa · **Sforzo:** medio
+
+Sotto LCARS sono a tema cornici, tab e barra dell'header; widget della sidebar (persona, metriche, LED), badge di stato dell'header e testo della chat mantengono colori cablati. Estendere la palette senza cablare colori nelle viste: i colori vengono dal tema, come per le cornici. Da coordinare con T24.5, che affronta lo stesso passaggio per i temi classici.
+
+## T24.7 — Layout F7: modifiche perse al riavvio
+
+**Priorità:** bassa · **Sforzo:** basso
+
+**Problema verificato:** in `layoutModals.ts` tema, preset, posizione, larghezza e widget modificano la configurazione attiva ma vengono salvati solo con la voce "Save"; "Reset" invece salva da solo. Chi cambia tema e riavvia lo ritrova com'era.
+
+**Proposta:** salvare a ogni modifica e togliere la voce "Save", oppure mantenerla e non salvare nemmeno su "Reset". Una sola regola.
+
+**Accettazione:** comportamento uniforme per tutte le voci F7, con test che usa una app home temporanea; tre gate verdi.
+
+## T24.8 — Igiene di TASKS.md e AGENTS.md
+
+**Priorità:** bassa · **Sforzo:** basso
+
+- Dashboard di `TASKS.md`: riga T19.3 duplicata; intestazione ferma a "100 suite automatizzate" e "Fase 10 … 11/13"; indice delle fasi da estendere a T23.13–T23.16 e alla fase 11.
+- `AGENTS.md`: metriche ferme a "96 automated test suites" (direttiva 6, indice dei file, cheatsheet) e conteggi di tool, ruoli e comandi da ricontare.
+
+Preferire numeri ricavati da comandi ripetibili (conteggio file, output di `npm test`) a numeri scritti a mano che invecchiano.
+
+## T24.9 — Sandbox di sistema per i tool generati (opzione B di T23.8)
+
+**Stato:** backlog · **Priorità:** bassa
+
+Il processo confinato di T23.8 protegge TSUKA ma non è una sandbox contro codice malevolo. Un isolamento più forte richiede meccanismi per piattaforma (bubblewrap/seccomp su Linux, AppContainer/Job Object su Windows, container dove disponibili) e non ha un equivalente uniforme. Riaprire solo se il self-authoring verrà usato con input non fidati; in quel caso rifare il confronto del checkpoint di T23.8 con i requisiti concreti.
 
 ---
 
