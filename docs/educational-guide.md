@@ -206,7 +206,7 @@ Several TSUKA changes are exactly the move from the first to the second: the jai
 
 The context window is your scarcest computational resource. TSUKA manages it via four mechanisms:
 
-1. **Token-Driven Pruning (`pruneHistory`)**: cuts history based on actual token limits (`maxHistoryTokens`) rather than message counts, with dynamic runtime calibration against `usage.prompt_tokens`.
+1. **Token-Driven Pruning (`pruneHistory`)**: cuts history based on actual token limits (`maxHistoryTokens`) rather than message counts, with dynamic runtime calibration against `usage.prompt_tokens`. Since the count is still an estimate, pruning keeps 10% of the window free (`historyHeadroomRatio`) for estimate error and the reply; without it a history pruned "exactly" to the limit was rejected by the server (12,596 real tokens against a 12,544 window).
 2. **Reasoning Isolation**: extracts `<think>` reasoning chunks for live display but strips them from persistent history to save context.
 3. **Persistent Shared Memory**: structured storage (`memory/memory.json`) storing facts, conventions, and lessons across sessions with weighted OR keyword search and score-based eviction.
 4. **Resumable Traces (`/continue`)**: long reasoning paths are persisted to `memory/thinking/*.md`, allowing explicit resumption of interrupted tasks.
@@ -373,7 +373,7 @@ As an agent harness scales beyond 80 test suites, maintainability becomes paramo
 
 *Code references: `src/tools/impl/spawnAgent.ts`, `src/core/subagentRunner.ts`, `src/core/taskPacket.ts`, `src/core/agentResult.ts`, `src/core/contextScheduler.ts`, `src/core/contextBudget.ts` (`getContextPressure`), `src/core/contextTracker.ts`, `src/core/agent.ts` (the loop's `prepare`/`delegate` branch)*
 
-> **Status:** the mechanism is complete and covered by tests; **automatic delegation is off by default** (`contextSchedulerEnabled: false`) and its benefit on real tasks **has not been measured yet** (checkpoint A, T24.3). This milestone explains how it works, not that it pays off.
+> **Status:** the mechanism is complete and covered by tests; **automatic delegation is off by default** (`contextSchedulerEnabled: false`) and stays off: checkpoint A (T24.3, section 12.7) showed no benefit. This milestone explains how it works and why, once measured, it does not pay off.
 
 #### 12.1 The problem: context is a resource that runs out
 
@@ -449,7 +449,17 @@ Three limits worth knowing, because they are also why the benefit must be measur
 }
 ```
 
-With a small-window model and a task that reads many files, `/context` shows when `prepare` and `delegate` fire and what the delegation cost. Running the same task with the scheduler on and off is exactly checkpoint A.
+With a small-window model and a task that reads many files, `/context` shows when `prepare` and `delegate` fire and what the delegation cost. Running the same task with the scheduler on and off is exactly checkpoint A, which `scripts/checkpoint-a.ts` runs unattended in a throwaway worktree.
+
+#### 12.7 What checkpoint A measured
+
+Three tasks (document `src/core/memory`, comment the files in `src/tools/webSearch`, explain a prompt's path) run with the scheduler off and on, twice each, with a neutral agent (2026-09-26):
+
+- **With realistic windows delegation never fires.** On a 20k window the tasks peak at 12–14k tokens: pressure 0.65, below the 0.70 threshold. At 32k and above it stays around 0.4. The window had to be cut to 12k to see it fire.
+- **When it fires, results do not improve.** With Ornith 9B, outcomes on and off are the same (1 of 2 either way on task B); on task C both delegations failed and the turn took 2–3 times longer.
+- **It is expensive.** The child spent 20,000–237,000 tokens to return about 200: an amplification of 90 to over 1,000.
+
+So automatic delegation stays off by default; `spawn_agent`, where the model decides what to split off, remains available. The checkpoint also found a real defect elsewhere: history pruning aimed at 100% of the window in *estimated* tokens, and the server counted more. It now keeps headroom (Milestone 5).
 
 The lesson beyond TSUKA: **delegating is designing an interface**. What goes in (the packet), what comes out (the structured result), what is lost (the history) and where shared state lives (the disk) matter more than having a second agent at all.
 

@@ -218,6 +218,8 @@ Il limite di contesto viene interrogato dinamicamente dal server LLM all'avvio (
 
 La stima interna dei token adotta un fattore iniziale di 3.5 caratteri per token e si **auto-calibra a runtime**, sincronizzandosi progressivamente con il valore reale di `usage.prompt_tokens` restituito dalle risposte delle API.
 
+Poiché resta una stima, la potatura non riempie la finestra fino all'ultimo token: lascia libero il 10% (`historyHeadroomRatio`) per l'errore di stima e per la risposta del modello. Senza quel margine una storia potata "esattamente" al limite veniva rifiutata dal server (12596 token reali contro una finestra di 12544).
+
 ```
 [System Prompt] ──► [Messaggi Iniziali] ──► [ ...Messaggi Prunati... ] ──► [Ultimi N Messaggi Intatti]
                                                     ▲
@@ -454,7 +456,7 @@ Quando un harness agentico cresce oltre le 80 suite di test, la sfida principale
 
 *Riferimenti nel codice: `src/tools/impl/spawnAgent.ts`, `src/core/subagentRunner.ts`, `src/core/taskPacket.ts`, `src/core/agentResult.ts`, `src/core/contextScheduler.ts`, `src/core/contextBudget.ts` (`getContextPressure`), `src/core/contextTracker.ts`, `src/core/agent.ts` (ramo `prepare`/`delegate` del ciclo)*
 
-> **Stato:** il meccanismo è completo e coperto dai test; la **delega automatica è spenta di default** (`contextSchedulerEnabled: false`) e il suo vantaggio su task reali **non è ancora stato misurato** (checkpoint A, T24.3). Questa tappa descrive come funziona, non promette che convenga.
+> **Stato:** il meccanismo è completo e coperto dai test; la **delega automatica è spenta di default** (`contextSchedulerEnabled: false`) e resta spenta: il checkpoint A (T24.3, sezione 12.7) non ha mostrato un vantaggio. Questa tappa descrive come funziona e perché, misurata, non conviene.
 
 #### 12.1 Il problema: il contesto è una risorsa che finisce
 
@@ -530,7 +532,17 @@ Tre limiti da conoscere, perché spiegano anche perché il vantaggio va misurato
 }
 ```
 
-Con un modello dalla finestra piccola e un compito che legge molti file, `/context` mostra quando scattano `prepare` e `delegate`, e quanto è costata la delega. Confrontare lo stesso compito con lo scheduler acceso e spento è esattamente il checkpoint A.
+Con un modello dalla finestra piccola e un compito che legge molti file, `/context` mostra quando scattano `prepare` e `delegate`, e quanto è costata la delega. Confrontare lo stesso compito con lo scheduler acceso e spento è esattamente il checkpoint A, che `scripts/checkpoint-a.ts` esegue da solo in un worktree usa e getta.
+
+#### 12.7 Cosa ha misurato il checkpoint A
+
+Tre compiti (documentare `src/core/memory`, commentare i file di `src/tools/webSearch`, spiegare il percorso di un prompt) eseguiti con lo scheduler spento e acceso, due volte ciascuno, con un agente neutro (26/09/2026):
+
+- **Con finestre realistiche la delega non parte.** Su una finestra di 20k token i compiti arrivano a un picco di 12–14k: pressione 0,65, sotto la soglia di 0,70. Con 32k e oltre resta intorno a 0,4. Per vederla scattare la finestra è stata ridotta a 12k.
+- **Quando parte, non migliora il risultato.** Con Ornith 9B gli esiti accesi e spenti sono uguali (1 su 2 in entrambi i casi sul compito B); sul compito C entrambe le deleghe sono fallite e il turno è durato da 2 a 3 volte di più.
+- **Costa molto.** Il figlio ha speso da 20.000 a 237.000 token per restituirne circa 200: un'amplificazione da 90 a oltre 1.000.
+
+Per questo la delega automatica resta spenta di default; `spawn_agent`, dove è il modello a decidere cosa separare, resta disponibile. Il checkpoint ha trovato anche un difetto vero in un'altra parte: la potatura della storia puntava al 100% della finestra su token *stimati*, e il server ne ha contati di più. Ora lascia un margine (Tappa 5).
 
 La lezione che resta, al di là di TSUKA: **delegare è progettare un'interfaccia**. Cosa entra (il packet), cosa esce (il risultato strutturato), cosa si perde (la storia) e dove vive lo stato condiviso (il disco) contano più del fatto di avere un secondo agente.
 
