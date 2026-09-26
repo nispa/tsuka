@@ -5,6 +5,7 @@ import * as path from 'path';
 import { randomUUID } from 'crypto';
 import { createDefaultRegistry } from '../src/tools/index';
 import { PermissionManager } from '../src/safety/permissions';
+import { overrideDefaultNetworkPolicy } from '../src/core/network';
 
 let passed = 0;
 let failed = 0;
@@ -97,7 +98,12 @@ async function run(): Promise<void> {
   const testHome = fs.mkdtempSync(path.join(os.tmpdir(), 'tsuka-download-config-'));
   const testDirectory = path.join(process.cwd(), 'output', `download-test-${randomUUID()}`);
   const priorHome = process.env.TSUKA_HOME;
-  const originalFetch = globalThis.fetch;
+  // Fake transport and resolver at the network boundary: no live DNS, no real sockets.
+  let transport: typeof fetch = async () => responseFromChunks([]);
+  const restoreNetwork = overrideDefaultNetworkPolicy({
+    fetch: (input, init) => transport(input, init),
+    lookupHost: async () => [{ address: '93.184.216.34', family: 4 }],
+  });
   process.env.TSUKA_HOME = testHome;
   fs.copyFileSync(path.join(process.cwd(), 'providers.json'), path.join(testHome, 'providers.json'));
   fs.mkdirSync(testDirectory, { recursive: true });
@@ -122,34 +128,34 @@ async function run(): Promise<void> {
     check('DL.1', downloadTool?.riskLevel === 'RESTRICTED', 'download_file remains a restricted tool');
     check('DL.2', !!schema?.function?.parameters, 'download_file schema is available');
 
-    globalThis.fetch = async () => responseFromChunks(['ab', 'c']);
+    transport = async () => responseFromChunks(['ab', 'c']);
     const missingHeaderPath = path.join('output', path.basename(testDirectory), 'missing-header.bin');
     const missingHeader = await registry.executeTool('download_file', { url: 'https://example.com/missing', path: missingHeaderPath }, permissionManager);
     check('DL.3', missingHeader.success && fs.readFileSync(path.join(testDirectory, 'missing-header.bin'), 'utf8') === 'abc', 'a missing Content-Length streams successfully');
 
     const existingPath = path.join(testDirectory, 'existing.bin');
     fs.writeFileSync(existingPath, 'original');
-    globalThis.fetch = async () => responseFromChunks(['ab', 'cde'], '2');
+    transport = async () => responseFromChunks(['ab', 'cde'], '2');
     const falseHeaderPath = path.join('output', path.basename(testDirectory), 'existing.bin');
     const falseHeader = await registry.executeTool('download_file', { url: 'https://example.com/false', path: falseHeaderPath }, permissionManager);
     check('DL.4', !falseHeader.success && fs.readFileSync(existingPath, 'utf8') === 'original' && noTemporaryFiles(testDirectory), 'a false Content-Length cannot bypass byte counting or replace an existing destination');
 
-    globalThis.fetch = async () => responseFromChunks(['a', 'b', 'cd']);
+    transport = async () => responseFromChunks(['a', 'b', 'cd']);
     const chunkedPath = path.join('output', path.basename(testDirectory), 'chunked.bin');
     const chunked = await registry.executeTool('download_file', { url: 'https://example.com/chunked', path: chunkedPath }, permissionManager);
     check('DL.5', chunked.success && fs.readFileSync(path.join(testDirectory, 'chunked.bin'), 'utf8') === 'abcd', 'chunked responses stream at the exact byte limit');
 
-    globalThis.fetch = async () => responseFromChunks(['abcde'], '5');
+    transport = async () => responseFromChunks(['abcde'], '5');
     const preflightPath = path.join('output', path.basename(testDirectory), 'existing.bin');
     const oversize = await registry.executeTool('download_file', { url: 'https://example.com/oversize', path: preflightPath }, permissionManager);
     check('DL.6', !oversize.success && fs.readFileSync(existingPath, 'utf8') === 'original' && noTemporaryFiles(testDirectory), 'an oversized header preserves an existing destination');
 
-    globalThis.fetch = async () => interruptedResponse();
+    transport = async () => interruptedResponse();
     const interruptedPath = path.join('output', path.basename(testDirectory), 'interrupted.bin');
     const interrupted = await registry.executeTool('download_file', { url: 'https://example.com/interrupted', path: interruptedPath }, permissionManager);
     check('DL.7', !interrupted.success && !fs.existsSync(path.join(testDirectory, 'interrupted.bin')) && noTemporaryFiles(testDirectory), 'an interrupted stream leaves no partial file');
 
-    globalThis.fetch = async () => delayedResponse(100);
+    transport = async () => delayedResponse(100);
     const abortController = new AbortController();
     const abortedPath = path.join('output', path.basename(testDirectory), 'aborted.bin');
     const pending = registry.executeTool('download_file', { url: 'https://example.com/aborted', path: abortedPath }, permissionManager, undefined, undefined, undefined, undefined, undefined, undefined, abortController.signal);
@@ -161,16 +167,16 @@ async function run(): Promise<void> {
     const timeoutConfig = JSON.parse(fs.readFileSync(configPath, 'utf8')) as Record<string, unknown>;
     timeoutConfig.downloadFetchTimeoutMs = 1_000;
     fs.writeFileSync(configPath, JSON.stringify(timeoutConfig));
-    globalThis.fetch = async () => delayedResponse(1_200);
+    transport = async () => delayedResponse(1_200);
     const timeoutPath = path.join('output', path.basename(testDirectory), 'timeout.bin');
     const timeoutResult = await registry.executeTool('download_file', { url: 'https://example.com/timeout', path: timeoutPath }, permissionManager);
     check('DL.9', !timeoutResult.success && timeoutResult.output.includes('Timeout') && !fs.existsSync(path.join(testDirectory, 'timeout.bin')) && noTemporaryFiles(testDirectory), 'a timeout during streaming cleans up the temporary file');
 
-    globalThis.fetch = async () => responseFromChunks(['abc']);
+    transport = async () => responseFromChunks(['abc']);
     const traversal = await registry.executeTool('download_file', { url: 'https://example.com/traversal', path: '../../../../outside.bin' }, permissionManager);
     check('DL.10', !traversal.success && traversal.output.includes('Access denied'), 'workspace traversal remains blocked before writing');
   } finally {
-    globalThis.fetch = originalFetch;
+    restoreNetwork();
     if (priorHome === undefined) delete process.env.TSUKA_HOME;
     else process.env.TSUKA_HOME = priorHome;
     fs.rmSync(testDirectory, { recursive: true, force: true });

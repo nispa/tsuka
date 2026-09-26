@@ -1,5 +1,7 @@
 /** Deterministic regression tests for the shared SSRF and redirect policy. */
-import { isPublicAddress, safeFetch, validateNetworkTarget } from '../src/core/network';
+import * as http from 'node:http';
+import { AddressInfo } from 'node:net';
+import { isPublicAddress, pinnedFetch, safeFetch, validateNetworkTarget } from '../src/core/network';
 
 let passed = 0;
 let failed = 0;
@@ -54,6 +56,43 @@ async function main(): Promise<void> {
 
   const loopFetch: typeof fetch = async () => response(302, 'https://safe.example/loop');
   check('NET.10', await rejects(safeFetch('https://safe.example', {}, { lookupHost: resolver, fetch: loopFetch, maxRedirects: 1 }), /redirect limit/), 'redirect loop is bounded');
+
+  // T23.7 closure — DNS rebinding: the preflight sees a public address, the connection
+  // would resolve the name again and get loopback. The guarded lookup validates the answer
+  // the socket actually uses, so the request fails before any connection is opened.
+  let resolutions = 0;
+  const rebinding = async () => (++resolutions === 1 ? [{ address: '93.184.216.34', family: 4 }] : [{ address: '127.0.0.1', family: 4 }]);
+  check('NET.11', await rejects(safeFetch('http://rebind.test/', {}, { lookupHost: rebinding }), /non-public/) && resolutions === 2,
+    'rebind after the preflight is denied at connect time (2 resolutions, no connection)');
+
+  // The pinned transport itself, against a real local server (address rule opened for the test).
+  let hits = 0;
+  const server = http.createServer((req, res) => {
+    hits++;
+    let body = '';
+    req.on('data', (chunk) => (body += chunk));
+    req.on('end', () => {
+      res.setHeader('x-echo-method', req.method || '');
+      res.setHeader('x-echo-encoding', String(req.headers['accept-encoding']));
+      res.setHeader('set-cookie', ['a=1', 'b=2']);
+      res.end(`body:${body}`);
+    });
+  });
+  await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+  const port = (server.address() as AddressInfo).port;
+  const local = { lookupHost: async () => [{ address: '127.0.0.1', family: 4 }] };
+  try {
+    // Denied case first: a keep-alive socket opened by the allowed request below would be
+    // reused without a new lookup (safe in production, where the address rule never changes).
+    check('NET.12', await rejects(pinnedFetch(new URL(`http://service.test:${port}/x`), {}, local), /non-public/) && hits === 0,
+      'with the default address rule a loopback answer never reaches the server');
+    const ok = await pinnedFetch(new URL(`http://service.test:${port}/x`), { method: 'POST', body: 'ping' }, { ...local, isAllowedAddress: () => true });
+    check('NET.13',
+      ok.status === 200 && (await ok.text()) === 'body:ping' && ok.headers.get('x-echo-method') === 'POST' && ok.headers.get('x-echo-encoding') === 'identity',
+      'pinned transport returns status, headers and streamed body, and asks for identity encoding');
+  } finally {
+    server.close();
+  }
 
   console.log(`\n=== Result: ${passed} passed, ${failed} failed ===`);
   process.exit(failed > 0 ? 1 : 0);

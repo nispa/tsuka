@@ -1,11 +1,37 @@
 import { lookup } from 'node:dns/promises';
-import { isIP } from 'node:net';
+import * as http from 'node:http';
+import * as https from 'node:https';
+import { isIP, LookupFunction } from 'node:net';
+import { Readable } from 'node:stream';
 import { TOOLS_DEFAULTS } from './constants';
 
+type HostResolver = (hostname: string) => Promise<Array<{ address: string; family: number }>>;
+
 export interface NetworkPolicy {
-  lookupHost?: (hostname: string) => Promise<Array<{ address: string; family: number }>>;
+  lookupHost?: HostResolver;
+  /** Test seam for the address rule; defaults to isPublicAddress. */
+  isAllowedAddress?: (address: string) => boolean;
+  /** Test seam replacing the pinned transport; production requests never set it. */
   fetch?: typeof globalThis.fetch;
   maxRedirects?: number;
+}
+
+const systemResolver: HostResolver = (hostname) => lookup(hostname, { all: true, verbatim: true });
+
+let defaultPolicy: NetworkPolicy = {};
+
+/**
+ * Replaces the policy used when a caller passes none, returning a restore function.
+ * Tools call safeFetch without a policy, so this is how their tests supply a fake
+ * transport and resolver instead of patching globalThis.fetch — which the pinned
+ * transport no longer uses — or depending on live DNS.
+ */
+export function overrideDefaultNetworkPolicy(policy: NetworkPolicy): () => void {
+  const previous = defaultPolicy;
+  defaultPolicy = policy;
+  return () => {
+    defaultPolicy = previous;
+  };
 }
 
 function ipv4ToNumber(address: string): number {
@@ -52,15 +78,82 @@ export async function validateNetworkTarget(target: URL, policy: NetworkPolicy =
     throw new Error(`URL port '${target.port}' is not allowed by the HTTP policy.`);
   }
 
-  const resolver = policy.lookupHost ?? (async (hostname: string) => lookup(hostname, { all: true, verbatim: true }));
+  const resolver = policy.lookupHost ?? systemResolver;
   const addresses = isIP(target.hostname) ? [{ address: target.hostname, family: isIP(target.hostname) }] : await resolver(target.hostname);
-  if (!addresses.length || addresses.some((entry) => !isPublicAddress(entry.address))) {
+  const allowed = policy.isAllowedAddress ?? isPublicAddress;
+  if (!addresses.length || addresses.some((entry) => !allowed(entry.address))) {
     throw new Error(`Host '${target.hostname}' resolves to a non-public address.`);
   }
 }
 
-export async function safeFetch(input: string | URL, init: RequestInit = {}, policy: NetworkPolicy = {}): Promise<Response> {
-  const requestFetch = policy.fetch ?? globalThis.fetch;
+/**
+ * DNS lookup performed by the socket itself. The preflight in validateNetworkTarget
+ * resolves the name once, but fetch would resolve it again when connecting — a DNS
+ * rebinding server can answer "public" to the first query and "127.0.0.1" to the
+ * second. Validating here, on the very answer the connection uses, closes that window.
+ */
+function guardedLookup(resolver: HostResolver, allowed: (address: string) => boolean): LookupFunction {
+  return (hostname, options, callback) => {
+    const deny = (error: Error) => (callback as (err: NodeJS.ErrnoException | null, address: string, family: number) => void)(error, '', 0);
+    resolver(hostname).then((addresses) => {
+      if (!addresses.length || addresses.some((entry) => !allowed(entry.address))) {
+        deny(new Error(`Host '${hostname}' resolves to a non-public address.`));
+      } else if (options.all) {
+        // Happy-eyeballs connections ask for every address; all of them passed the check.
+        (callback as (err: null, addresses: Array<{ address: string; family: number }>) => void)(null, addresses);
+      } else {
+        callback(null, addresses[0].address, addresses[0].family);
+      }
+    }, deny);
+  };
+}
+
+/**
+ * Minimal fetch over node:http(s) with the guarded lookup; global fetch cannot take a
+ * custom resolver without an external dispatcher. Redirects are never followed here —
+ * safeFetch walks them so every hop is validated.
+ */
+export function pinnedFetch(target: URL, init: RequestInit, policy: NetworkPolicy = {}): Promise<Response> {
+  if (init.body != null && typeof init.body !== 'string') {
+    return Promise.reject(new Error('The HTTP safety boundary only sends string request bodies.'));
+  }
+  const headers = new Headers(init.headers);
+  // fetch decompresses transparently, a raw socket does not: ask for identity so callers
+  // reading text or streaming bytes to disk always get the plain payload.
+  headers.set('accept-encoding', 'identity');
+  const client = target.protocol === 'https:' ? https : http;
+
+  return new Promise((resolve, reject) => {
+    const request = client.request(
+      target,
+      {
+        method: init.method ?? 'GET',
+        headers: Object.fromEntries(headers),
+        lookup: guardedLookup(policy.lookupHost ?? systemResolver, policy.isAllowedAddress ?? isPublicAddress),
+        signal: init.signal ?? undefined,
+      },
+      (response) => {
+        const responseHeaders = new Headers();
+        for (const [name, value] of Object.entries(response.headers)) {
+          for (const item of Array.isArray(value) ? value : value === undefined ? [] : [value]) responseHeaders.append(name, item);
+        }
+        const status = response.statusCode ?? 502;
+        const hasBody = status !== 204 && status !== 304 && init.method !== 'HEAD';
+        resolve(new Response(hasBody ? (Readable.toWeb(response) as ReadableStream) : null, {
+          status,
+          statusText: response.statusMessage,
+          headers: responseHeaders,
+        }));
+      }
+    );
+    request.on('error', reject);
+    request.end(init.body ?? undefined);
+  });
+}
+
+export async function safeFetch(input: string | URL, init: RequestInit = {}, callerPolicy: NetworkPolicy = {}): Promise<Response> {
+  const policy: NetworkPolicy = { ...defaultPolicy, ...callerPolicy };
+  const requestFetch = policy.fetch ?? ((url: string | URL | Request, options?: RequestInit) => pinnedFetch(new URL(url.toString()), options ?? {}, policy));
   const maxRedirects = policy.maxRedirects ?? TOOLS_DEFAULTS.httpMaxRedirects;
   let target = new URL(input.toString());
 
