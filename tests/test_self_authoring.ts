@@ -6,6 +6,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { createDefaultRegistry } from '../src/tools/index';
 import { PermissionManager } from '../src/safety/permissions';
+import { isCustomToolIsolationSupported } from '../src/tools/customToolRunner';
 
 import { homePath } from '../src/core/apphome';
 
@@ -38,6 +39,23 @@ async function main() {
   // Pulizia pre-test
   for (const p of [generatedPath, schemaPath]) {
     if (fs.existsSync(p)) fs.unlinkSync(p);
+  }
+
+  // Below Node 25 the runner fails closed, so the rest of the suite (which executes the
+  // generated modules) cannot run: pin the refusal instead of reporting false failures.
+  if (!isCustomToolIsolationSupported()) {
+    const refused = await registry.executeTool('create_tool', {
+      name: '__probe_tool',
+      description: 'probe',
+      executeBody: "return 'x';"
+    }, perm);
+    check('X4.U', !refused.success && /Node\.js >= 25/.test(refused.output) && !fs.existsSync(generatedPath),
+      `without the permission model create_tool refuses and writes nothing (${process.version})`);
+    console.log(`
+(skipped the execution checks: custom tools need Node.js >= 25, running ${process.version})`);
+    console.log(`
+=== Risultato: ${passed} passati, ${failed} falliti ===`);
+    process.exit(failed > 0 ? 1 : 0);
   }
 
   try {

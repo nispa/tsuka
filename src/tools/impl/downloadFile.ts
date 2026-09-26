@@ -58,6 +58,7 @@ export const downloadFileTool: Tool = {
     if (context?.signal?.aborted) controller.abort();
     else context?.signal?.addEventListener('abort', abortFromCaller, { once: true });
     let temporaryPath: string | undefined;
+    let sink: fs.WriteStream | undefined;
 
     try {
       const response = await safeFetch(targetUrl, {
@@ -106,10 +107,11 @@ export const downloadFileTool: Tool = {
           callback(null, chunk);
         }
       })();
+      sink = fs.createWriteStream(temporaryPath, { flags: 'wx' });
       await pipeline(
         Readable.fromWeb(response.body as import('stream/web').ReadableStream),
         byteCounter,
-        fs.createWriteStream(temporaryPath, { flags: 'wx' }),
+        sink,
         { signal: controller.signal }
       );
       fs.renameSync(temporaryPath, fullPath);
@@ -133,6 +135,10 @@ export const downloadFileTool: Tool = {
       clearTimeout(timeout);
       context?.signal?.removeEventListener('abort', abortFromCaller);
       if (temporaryPath) {
+        // pipeline can reject before the destroyed sink has finished opening (Node 20):
+        // unlinking then races the open, which recreates the .part file afterwards (or,
+        // on Windows, finds it still held). Wait for the close so the unlink is final.
+        if (sink && !sink.closed) await new Promise<void>((resolve) => sink!.once('close', () => resolve()));
         try { fs.unlinkSync(temporaryPath); } catch {}
       }
     }
