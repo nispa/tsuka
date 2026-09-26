@@ -12,6 +12,10 @@ Il modello propone le azioni; l'harness gestisce l'esecuzione dei tool, i permes
 
 Il progetto è anche un laboratorio per capire come funziona un agente: ciclo di esecuzione, registro dei tool, memoria e client dei provider sono moduli TypeScript separati, consultabili ed estendibili. Il nome *tsuka* (柄) indica l'impugnatura della spada giapponese: il modello è la lama intercambiabile.
 
+> **HARNESS**, *s.* Congegno col quale l'uomo convince una macchina di essere libera, e convince sé stesso che non lo è.
+>
+> — *alla maniera di Ambrose Bierce*, Il dizionario del diavolo
+
 ## Primi passi
 
 Servono Git, Node.js e npm, oltre all'accesso a un backend LLM. Il pacchetto richiede Node.js 18 o successivo; il progetto consiglia la versione 20 o successiva. TSUKA funziona su Windows, Linux e macOS.

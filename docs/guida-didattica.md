@@ -156,11 +156,15 @@ Inoltre, prima di eseguire qualsiasi funzione, gli argomenti forniti dal modello
 
 ---
 
-### Tappa 4 — Sistema di permessi: User-in-the-Loop
+### Tappa 4 — Permessi e confinamento
 
-*Riferimenti nel codice: `src/safety/permissions.ts`*
+*Riferimenti nel codice: `src/safety/permissions.ts`, `src/tools/impl/utils.ts` (`resolveSafePath`), `src/core/network.ts`, `src/core/subagentRunner.ts`, `src/tools/customToolRunner.ts`*
 
-Per garantire la sicurezza del sistema host, ogni tool dichiara un livello di rischio predefinito:
+Un agente agisce sul mondo attraverso i tool. Le domande di sicurezza sono quindi due, e vanno tenute separate: **chi decide se un'azione può partire** (permessi) e **fin dove può arrivare un'azione una volta partita** (confinamento).
+
+#### 4.1 Permessi: l'utente nel ciclo
+
+Ogni tool dichiara un livello di rischio:
 
 | Livello | Comportamento operativo | Esempi |
 |---|---|---|
@@ -168,12 +172,34 @@ Per garantire la sicurezza del sistema host, ogni tool dichiara un livello di ri
 | `RESTRICTED` | Richiede la conferma esplicita dell'utente (`[y/N/always]`). `delete_file` richiede sempre conferma; `write_file` ed `edit_file` possono essere autorizzati anche con `/sudo on`. | `write_file`, `delete_file`, `edit_file` |
 | `DANGEROUS` | Richiede una conferma per esecuzione per default. `execute_command` può essere autorizzato esplicitamente per la sessione con `/sudo on`, azionato dall'utente. | `execute_command` |
 
+Il livello può dipendere dagli argomenti: `execute_command` classifica il comando richiesto (una lettura innocua pesa meno di una composizione di comandi). I tool generati dal modello non possono abbassare il proprio livello: sono sempre `DANGEROUS`.
+
 `/sudo` è intenzionalmente un controllo della sessione, non un tool dell'agente: un modello non può abilitarlo. Espone `execute_command`, `write_file` ed `edit_file` oltre i filtri di ruolo e tier e ne bypassa i prompt all'interno della workspace jail; non eleva i privilegi del sistema operativo, non concede accesso ad altri tool e non bypassa le conferme di `delete_file`. `/sudo off`, `/reset` e un nuovo runtime revocano il controllo.
 
-A questo meccanismo di autorizzazione si affiancano tre ulteriori barriere di sicurezza:
-1. **Workspace Sandbox (Jail)**: tutte le operazioni di lettura e scrittura su filesystem possono essere circoscritte alla cartella di lavoro configurata.
-2. **Limitazione delle dimensioni di I/O**: limiti prefissati sui volumi di dati scambiati (es. massimo 5 MB per la lettura dei file, troncamento degli output da terminale a 50 KB) per non saturare la memoria dell'applicazione e il contesto del modello.
-3. **Oscuramento delle variabili d'ambiente riservate**: filtraggio preventivo di credenziali e token (`KEY|SECRET|TOKEN|PASSWORD|CREDENTIAL|AUTH`) per impedire che chiavi sensibili finiscano nel contesto inviato all'LLM e nei log del provider.
+#### 4.2 Confinamento: una mappa dei confini
+
+Una conferma dice *se* un'azione parte, non *dove* arriva. Per questo TSUKA affianca ai permessi una serie di confini, ciascuno pensato contro un rischio preciso. La cosa più utile da imparare è leggerli insieme, colonna per colonna: che cosa protegge ognuno e **dove smette di proteggere**.
+
+| Confine | Protegge da | Come | Dove non arriva |
+|---|---|---|---|
+| **Workspace jail** | Tool sui file che escono dal progetto | `resolveSafePath` risolve il percorso reale (`realpath`, quindi anche i symlink) e lo rifiuta se è fuori da `workspaceRoot` | Vale per i tool nativi sui file, non per un comando di shell o un server MCP |
+| **Policy di rete** (`safeFetch`) | Richieste verso la rete interna (SSRF), anche tramite redirect o DNS rebinding | Solo HTTP(S) su porte standard; ogni indirizzo risolto deve essere pubblico, controllato sulla stessa risposta DNS usata dal socket, a ogni redirect | Vale per `browse_url`, `download_file`, `web_search`, non per la shell |
+| **Perimetro dei sub-agenti** | Un figlio che ottiene tool che il padre non ha | Sia la delega automatica sia `spawn_agent` passano al figlio il perimetro dei tool del padre: il figlio può scegliere un altro ruolo, ma non ottiene tool in più | Memoria e blackboard, che il runner dà a ogni figlio, restano sempre disponibili |
+| **Processo separato per i tool generati** | Codice scritto dal modello che gira dentro TSUKA | Processo Node figlio con permission model: file solo nel workspace, niente rete né sottoprocessi, ambiente vuoto, limiti di tempo, memoria e output (vedi Tappa 9.1) | Il permission model di Node non è progettato contro codice volutamente malevolo |
+| **Staging dei blocchi paralleli** | Due agenti che scrivono lo stesso file nello stesso momento | Ogni ramo scrive in una cartella propria; il merge segnala i conflitti invece di sovrascrivere | È coerenza dei dati, non sicurezza |
+| **Limiti di I/O** | Saturare la memoria di TSUKA o il contesto del modello | Tetti su letture, output dei comandi e download; troncamento con paginazione | Non limitano che cosa viene letto, solo quanto |
+| **Oscuramento delle credenziali** | Chiavi che finiscono in un prompt o in un log | L'elenco variabili di `get_ps_info` filtra i nomi sensibili; log del provider ed errori della ricerca web oscurano le credenziali; i tool generati ricevono un ambiente vuoto | La shell e i server MCP ereditano l'ambiente completo: un comando può leggere una chiave |
+
+Due righe della tabella si ripetono quasi identiche nella colonna di destra: **la shell e i server MCP**. Non è un caso. Un comando di shell o un server esterno è un programma con i permessi del processo che lo lancia; nessun controllo sul testo del comando lo trasforma in una sandbox. Per questo `execute_command` resta `DANGEROUS`, i server MCP partono `RESTRICTED` salvo configurazione diversa, e `/sudo` è una scelta esplicita dell'utente.
+
+#### 4.3 Un controllo non è un confine
+
+Tutta la tappa si riassume in una distinzione che vale per qualunque harness:
+
+* un **controllo** esamina l'azione prima che parta (un pattern vietato, un percorso validato, un DNS risolto in anticipo) e può essere aggirato da ciò che non ha previsto: un percorso scritto in un altro modo, un DNS che cambia risposta fra il controllo e la connessione, `fs['read' + 'FileSync']` invece di `readFileSync`;
+* un **confine** toglie la possibilità stessa: un processo senza permesso di rete non può aprire un socket, comunque sia scritto il codice.
+
+Diversi interventi di TSUKA sono esattamente il passaggio dal primo al secondo: la jail è passata dal confronto fra stringhe al percorso reale, la policy di rete dal DNS risolto in anticipo al DNS usato dal socket, i tool generati da `node:vm` e una blocklist a un processo separato. Quando nemmeno un confine basta, come per la shell, la risposta onesta è dichiararlo e lasciare la decisione all'utente.
 
 ---
 
@@ -345,7 +371,7 @@ Anziché affidarsi a euristiche basate sul nome del file di modello, TSUKA adott
 
 ---
 
-### Tappa 9 — Estendibilità: Tool dinamici in sandbox ed ecosistema MCP
+### Tappa 9 — Estendibilità: Tool dinamici fuori processo ed ecosistema MCP
 
 *Riferimenti nel codice: `src/tools/impl/createTool.ts`, `src/tools/customToolRunner.ts`, `src/core/mcp/` (`types.ts`, `stdioTransport.ts`, `client.ts`, `adapter.ts`, `connectMcpServers.ts`)*
 
@@ -430,7 +456,7 @@ Quando un harness agentico cresce oltre le 80 suite di test, la sfida principale
 | **Ciclo ReAct & Function Calling** | Motore ricorsivo di esecuzione tra LLM e tool. |
 | **Astrazione Provider OpenAI-compatible** | Client unico per interagire con server locali e provider cloud. |
 | **Tool Registry dichiarativo** | Separazione tra logica esecutiva e schemi JSON di validazione. |
-| **Sistema di permessi multilivello** | Controllo degli accessi a salvaguardia del sistema operativo (*User-in-the-Loop*). |
+| **Permessi e confinamento** | Controllo degli accessi a salvaguardia del sistema operativo (*User-in-the-Loop*). |
 | **Streaming e UI reattiva** | Visualizzazione progressiva e gestione degli interrupt da tastiera (`Esc`). |
 | **Pruning token-driven della cronologia** | Gestione della finestra di contesto basata su token reali. |
 
