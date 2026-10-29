@@ -671,6 +671,12 @@ export class ConfigManager {
     return CLI_DEFAULTS.maxHistoryLines;
   }
 
+  /** Terminal bell on DANGEROUS confirmation prompts. Default: CLI_DEFAULTS.permissionBell (true). */
+  isPermissionBellEnabled(): boolean {
+    const value = this.config.permissionBell;
+    return typeof value === 'boolean' ? value : CLI_DEFAULTS.permissionBell;
+  }
+
   /**
    * Character threshold above which agent turn outputs in /goal are condensed. Default: 1500.
    */

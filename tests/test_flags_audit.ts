@@ -48,6 +48,7 @@ const CONFIG_CLASSIFICATION: Record<string, FlagCategory> = {
   sandbox: 'product',
   contextTrackerMaxEntries: 'diagnostic',
   cliMaxHistory: 'presentation',
+  permissionBell: 'presentation',
   goalCondensedHistoryCharLimit: 'product',
   firstTokenTimeoutMs: 'compatibility',
   llmMaxRetries: 'compatibility',

@@ -129,6 +129,8 @@ export interface AppConfig {
   contextDelegateAt?: number;
   /** Maximum command history lines retained in REPL history file. Default: 100. */
   cliMaxHistory?: number;
+  /** Ring the terminal bell when a DANGEROUS operation waits for confirmation. Default: true. */
+  permissionBell?: boolean;
   /** Character threshold above which agent turn outputs in /goal are condensed into persistent memory. Default: 1500. */
   goalCondensedHistoryCharLimit?: number;
   /** Timeout in ms to wait for the first streaming token before considering the LLM non-responsive. Default: 120000. */

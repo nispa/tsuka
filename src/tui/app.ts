@@ -84,7 +84,11 @@ export class TuiApp {
 
     this.screen = new TuiScreen();
     this.store = new TuiStore();
-    this.bridge = new TuiBridge(this.store, this.permissionManager);
+    this.bridge = new TuiBridge(this.store, this.permissionManager, {
+      ringBell: () => {
+        if (this.configManager.isPermissionBellEnabled()) this.screen.bell();
+      },
+    });
 
     this.setupTimeoutPrompt();
     // Restore the last /effort choice persisted in tsuka.config.json as the startup pin,

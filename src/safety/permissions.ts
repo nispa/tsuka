@@ -7,7 +7,15 @@ export interface PermissionPromptRequest {
   requesterLabel?: string;
 }
 
-export type PermissionPromptHandler = (req: PermissionPromptRequest) => Promise<'yes' | 'no' | 'always'>;
+/**
+ * Which prompts ring the terminal bell. Only DANGEROUS ones: RESTRICTED prompts are frequent
+ * (every write), and a bell on each would train the user to ignore it.
+ */
+export function shouldRingPermissionBell(riskLevel: RiskLevel): boolean {
+  return riskLevel === 'DANGEROUS';
+}
+
+export type PermissionPromptHandler =(req: PermissionPromptRequest) => Promise<'yes' | 'no' | 'always'>;
 
 export const SUDO_AUTHORIZED_TOOLS = ['execute_command', 'write_file', 'edit_file'] as const;
 export type SudoAuthorizedTool = typeof SUDO_AUTHORIZED_TOOLS[number];

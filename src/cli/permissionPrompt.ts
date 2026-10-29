@@ -1,11 +1,14 @@
 import prompts from 'prompts';
 import chalk from 'chalk';
 import { logSink } from '../core/logSink';
-import type { PermissionPromptHandler } from '../safety/permissions';
+import { shouldRingPermissionBell, type PermissionPromptHandler } from '../safety/permissions';
 import { InteractiveMenu } from './ui';
 
-/** Creates the terminal-owned renderer for permission decisions. */
-export function createCliPermissionPromptHandler(): PermissionPromptHandler {
+/**
+ * Creates the terminal-owned renderer for permission decisions. `ringBell` comes from the
+ * `permissionBell` config; it is off unless passed, so tests driving the handler stay silent.
+ */
+export function createCliPermissionPromptHandler(ringBell = false): PermissionPromptHandler {
   return async ({ toolName, details, riskLevel, requesterLabel }) => {
     const who = requesterLabel ? ` (${requesterLabel})` : '';
 
@@ -42,6 +45,7 @@ export function createCliPermissionPromptHandler(): PermissionPromptHandler {
 
     logSink.log(chalk.red.bold(`\n⚠️  [CRITICAL AUTHORIZATION REQUIRED]${who} The agent requests system command execution:`));
     logSink.log(`   Command: ${chalk.yellow(details)}`);
+    if (ringBell && shouldRingPermissionBell(riskLevel)) process.stdout.write('\x07');
     const response = await prompts({
       type: 'confirm',
       name: 'confirm',

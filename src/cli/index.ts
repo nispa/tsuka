@@ -110,7 +110,7 @@ async function main() {
 
   const runtime = await createHarnessRuntime({
     configManager,
-    permissionHandler: createCliPermissionPromptHandler(),
+    permissionHandler: createCliPermissionPromptHandler(configManager.isPermissionBellEnabled()),
     connectMcp: true,
   });
   const { permissionManager, registry, provider } = runtime;

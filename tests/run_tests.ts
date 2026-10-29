@@ -76,6 +76,7 @@ const suites = [
   'test_team_modes.ts',
   'test_goal_orchestrator.ts',
   'test_permission_queue.ts',
+  'test_permission_bell.ts',
   'test_parallel_workspace.ts',
   'test_blackboard.ts',
   'test_context_budget.ts',

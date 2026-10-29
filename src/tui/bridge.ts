@@ -7,7 +7,7 @@ import { TuiStore } from './store';
 import { TuiChatMessage } from './types';
 import { AgentEvent, AgentEventHandler } from '../core/agentEvents';
 import { StreamChannel } from '../core/thinkParser';
-import { PermissionManager, PermissionPromptRequest } from '../safety/permissions';
+import { PermissionManager, PermissionPromptRequest, shouldRingPermissionBell } from '../safety/permissions';
 import { setLogSink } from '../core/logSink';
 import { ChatStats, InferenceTelemetryEvent, setInferenceTelemetrySink } from '../core/provider';
 
@@ -25,9 +25,13 @@ export class TuiBridge {
   /** Last cumulative completion count reported per agent label ('' = main agent). */
   private reportedRunTokens: Map<string, number> = new Map();
 
-  constructor(store: TuiStore, permissionManager: PermissionManager) {
+  /** Terminal bell owned by the screen; the bridge only decides when a prompt deserves it. */
+  private ringBell?: () => void;
+
+  constructor(store: TuiStore, permissionManager: PermissionManager, options: { ringBell?: () => void } = {}) {
     this.store = store;
     this.permissionManager = permissionManager;
+    this.ringBell = options.ringBell;
     this.setupPermissionHandler();
     this.setupLogSink();
     this.setupInferenceTelemetry();
@@ -154,6 +158,8 @@ export class TuiBridge {
             doResolve('no');
           },
         });
+        // After the modal is up, so the sound announces something already on screen.
+        if (shouldRingPermissionBell(req.riskLevel)) this.ringBell?.();
       });
     });
   }

@@ -283,6 +283,8 @@ export const MCP_DEFAULTS = {
 export const CLI_DEFAULTS = {
   /** Command history lines retained in the REPL history file (cliMaxHistory). */
   maxHistoryLines: 100,
+  /** Terminal bell when a DANGEROUS operation waits for confirmation, in CLI and TUI (permissionBell). */
+  permissionBell: true,
 };
 
 /** Terminal UI layout defaults (tui/interaction/geometry.ts, tui/layoutComposer.ts). */

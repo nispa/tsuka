@@ -32,6 +32,11 @@ export class TuiScreen {
     this.height = process.stdout.rows || 24;
   }
 
+  /** BEL is non-printing: it never touches the double buffer, so it is safe mid-frame. */
+  bell(): void {
+    if (this.isRunning) process.stdout.write('\x07');
+  }
+
   start(): void {
     if (this.isRunning) return;
     this.isRunning = true;
