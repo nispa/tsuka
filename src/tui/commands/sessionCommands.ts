@@ -9,6 +9,7 @@ import * as path from 'path';
 import { copyToClipboard } from '../../core/platform';
 import { getContextPressure } from '../../core/contextBudget';
 import { ContextTracker } from '../../core/contextTracker';
+import { describeActiveSandbox, formatSandboxStatus } from '../../safety/sandbox';
 import { SystemModals } from '../modals';
 import { TuiCommandSpec } from './types';
 import { buildSessionMarkdown, defaultExportPath } from './sessionMarkdown';
@@ -155,7 +156,8 @@ export const SESSION_COMMANDS: TuiCommandSpec[] = [
           `• **Character**: ${state.activeAiName} (Role: \`${configManager.getActiveRole()}\`, Trait: \`${configManager.getActiveTrait()}\`)\n` +
           `• **Provider**: \`${state.activeProvider}\` (Model: \`${state.activeModel}\`)\n` +
           `• **Context Tokens**: ${state.stats.usedTokens} / ${state.stats.maxTokens} (${state.stats.percentage}%)\n` +
-          `• **Turns**: ${state.stats.turnCount} | **Tool Calls**: ${state.stats.toolCallsCount}`,
+          `• **Turns**: ${state.stats.turnCount} | **Tool Calls**: ${state.stats.toolCallsCount}\n` +
+          `• **Command Sandbox**: ${formatSandboxStatus(describeActiveSandbox())}`,
       });
     },
   },

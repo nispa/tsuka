@@ -72,5 +72,8 @@
     "@types/prompts": "^2.4.9",
     "tsx": "^4.16.2",
     "typescript": "^5.5.3"
+  },
+  "optionalDependencies": {
+    "@microsoft/mxc-sdk": "1.0.1"
   }
 }

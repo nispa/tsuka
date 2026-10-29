@@ -51,6 +51,7 @@ import { launchTui } from '../tui/index';
 import type { WorkflowDispatcher } from '../core/workflowDispatcher';
 import { createCliPermissionPromptHandler } from './permissionPrompt';
 import { setLogSink, logSink } from '../core/logSink';
+import { describeActiveSandbox, formatSandboxStatus } from '../safety/sandbox';
 
 export { RoleConfig, TraitConfig, CharacterConfig, TeamConfig };
 export { loadRole, loadTrait, loadCharacter, loadTeam, loadSystemPrompt, listAvailableItems };
@@ -102,6 +103,10 @@ async function main() {
   lockRawMode();
 
   CLITheme.banner();
+  // T25.2: say up front what runs shell commands; an unusable sandbox is a warning, never a host fallback.
+  const sandbox = describeActiveSandbox();
+  if (sandbox.available) CLITheme.info(`Command sandbox: ${formatSandboxStatus(sandbox)}`);
+  else CLITheme.warning(`Command sandbox: ${formatSandboxStatus(sandbox)}`);
 
   const runtime = await createHarnessRuntime({
     configManager,

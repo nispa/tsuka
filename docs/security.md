@@ -78,6 +78,21 @@ All filesystem operations (`read_file`, `write_file`, `edit_file`, `delete_file`
 * **Bounded Scans**: `grep_search` and `audit_code` share centralized depth, file-count, and byte ceilings and report blocked links or truncation.
 * **Residual Race Boundary**: Canonical validation narrows link-based escapes, but Node's path-based synchronous APIs cannot make validation and open one indivisible OS operation. Mutating workspace links concurrently remains outside the guarantee until descriptor-relative APIs are available cross-platform.
 
+### Command sandbox for `execute_command` (T25.1–T25.2, opt-in)
+
+The jail above covers the native file tools only. By default the shell is the `host` backend: it starts in the workspace without credentials, but runs with your privileges, and `cd ..` still leaves. Setting `"sandbox": { "backend": "mxc" }` in `tsuka.config.json` runs every `execute_command` inside a [Microsoft eXecution Containers](https://github.com/microsoft/mxc) container (optional dependency `@microsoft/mxc-sdk`, loaded only when selected):
+
+| What the container enforces | Verified on Windows 11 (ProcessContainer) |
+|---|---|
+| Read/write only in the effective workspace (a `PARALLEL` branch's staging folder when one is active, with the real workspace read-only) | ✅ writing next to the workspace or in the user profile is denied; reading a sibling file, `.gitconfig`, `.ssh` is denied |
+| Outbound network denied (`"network": "allow"` lifts it) | ✅ DNS resolution fails; the same request with `allow` returns HTTP 200 |
+| Exactly the credential-free environment of `buildChildEnv` | ✅ a credential canary does not arrive, ordinary variables do |
+| Timeout and cancellation stop the whole tree | ✅ the shell and a grandchild are gone, the grandchild's delayed write never happens |
+
+What it does **not** promise: it is the same kernel (a process container, not a VM); UI must stay enabled (`ui.disable: false`, otherwise PowerShell, node and git fail to start), with clipboard and input injection still denied; it adds ~190 ms per command. Toolchains that walk up to the drive root do not work yet: `npm` fails with `EPERM lstat 'C:\'` until the read profiles of T25.3; `git` works but cannot read your `.gitconfig`. Linux (bubblewrap) and macOS (seatbelt) are wired but **not verified**.
+
+**Fail closed and visible**: if `mxc` is configured but cannot run (Node older than 24.21 / 26.8, package missing, OS or container backend unavailable), `execute_command` returns an error naming the reason and the fix, and runs nothing; it never falls back to `host`. The active backend, or the reason it is unavailable, is shown in the CLI banner, in the TUI (startup notice and the *Shell* line of the agent widget), in `/info`, and in every `/team` and `/goal` workflow log. Confirmation tiers are unchanged under `mxc` (decision pending in T25.5).
+
 ---
 
 ## 🔑 3. Sensitive Data & Credential Masking

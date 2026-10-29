@@ -49,7 +49,7 @@ TUI App (src/tui/)   ToolRegistry.executeTool() ◄── Auto-Discovery (src/to
 | **Interactive TUI** | `src/tui/` | Zero-flicker full-screen terminal dashboard: double-buffered differential rendering, SGR 1006 mouse tracking, scrollbars, workspace file explorer, modal dialogues, and tabbed view routing. |
 | **Core Engine** | `src/core/` | Deterministic ReAct loop (`Agent`), HTTP LLM provider (`LLMProvider`), token context budgeter, blackboard (`AsyncLocalStorage`), persistent memory (`MemoryStore`), server discovery, and loop controller. |
 | **Tools** | `src/tools/` | Auto-discovery dynamic registry (`ToolRegistry`), tier gating, JSON Schema definitions (`tools_schemas/`), and 30 native TypeScript tool implementations (`src/tools/impl/`). |
-| **Safety** | `src/safety/` | 3-tier risk system (`SAFE`, `RESTRICTED`, `DANGEROUS`), serialized interactive permission queue (`enqueuePrompt`), workspace jail; self-authored tools (`create_tool`) run out of process under Node's permission model (`src/tools/customToolRunner.ts`). |
+| **Safety** | `src/safety/` | 3-tier risk system (`SAFE`, `RESTRICTED`, `DANGEROUS`), serialized interactive permission queue (`enqueuePrompt`), workspace jail, `ExecutionSandbox` contract for `execute_command` (`src/safety/sandbox/`, default backend `host`, opt-in `mxc` OS container); self-authored tools (`create_tool`) run out of process under Node's permission model (`src/tools/customToolRunner.ts`). |
 
 ---
 
@@ -145,7 +145,9 @@ harness/
 │   │   ├── customToolRunner.ts      # Out-of-process, permission-confined runner for self-authored tools
 │   │   └── impl/                    # 30 native tool implementations
 │   └── safety/
-│       └── permissions.ts           # PermissionManager: async FIFO prompt queue & bypass state
+│       ├── permissions.ts           # PermissionManager: async FIFO prompt queue & bypass state
+│       └── sandbox/                 # ExecutionSandbox contract, registry (sandbox.backend), default
+│                                    #   `host` backend and opt-in `mxc` backend (MXC OS container)
 ├── characters/                      # 24 Character JSON definitions (aiName + roles + trait)
 ├── roles/                           # 21 Role JSON definitions (systemPrompt + allowedTools + optional coreTools)
 ├── traits/                          # 9 Trait JSON definitions (tone + stylistic guidelines)

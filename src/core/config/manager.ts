@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import { declareCredentialEnvName } from '../credentials';
 import * as path from 'path';
 import { homePath, localWorkspacePath } from '../apphome';
-import { AGENT_DEFAULTS, CLI_DEFAULTS, CONFIG_DEFAULTS, CONTEXT_SCHEDULER_DEFAULTS, LLM_DEFAULTS, MEMORY_DEFAULTS, TOOLS_DEFAULTS } from '../constants';
+import { AGENT_DEFAULTS, CLI_DEFAULTS, CONFIG_DEFAULTS, CONTEXT_SCHEDULER_DEFAULTS, LLM_DEFAULTS, MEMORY_DEFAULTS, SANDBOX_DEFAULTS, TOOLS_DEFAULTS } from '../constants';
 import { logSink } from '../logSink';
 import { normalizeProviderClass } from '../cloudProvider';
 import { loadProviderCatalog, type ProviderDefinition } from '../providerCatalog';
@@ -70,6 +70,19 @@ function validateConfigShape(value: unknown): AppConfig {
       if (webSearch[field] !== undefined && (typeof webSearch[field] !== 'string' || !webSearch[field].trim())) {
         throw new Error(`Configuration field 'webSearch.${field}' must be a non-empty string.`);
       }
+    }
+  }
+
+  if (candidate.sandbox !== undefined) {
+    if (!candidate.sandbox || typeof candidate.sandbox !== 'object' || Array.isArray(candidate.sandbox)) {
+      throw new Error("Configuration field 'sandbox' must be an object.");
+    }
+    const { backend, network } = candidate.sandbox as Record<string, unknown>;
+    if (backend !== undefined && (typeof backend !== 'string' || !backend.trim())) {
+      throw new Error("Configuration field 'sandbox.backend' must be a non-empty string.");
+    }
+    if (network !== undefined && network !== 'deny' && network !== 'allow') {
+      throw new Error("Configuration field 'sandbox.network' must be 'deny' or 'allow'.");
     }
   }
 
@@ -556,6 +569,20 @@ export class ConfigManager {
   /** Executable custom tools are opt-in: their out-of-process confinement is defense in depth, not a sandbox. */
   isSelfAuthoringEnabled(): boolean {
     return this.config.selfAuthoringEnabled === true;
+  }
+
+  /**
+   * Execution sandbox name resolved against the registry in `src/safety/sandbox/registry.ts`.
+   * Default: SANDBOX_DEFAULTS.backend ('host').
+   */
+  getSandboxBackend(): string {
+    const value = this.config.sandbox?.backend;
+    return typeof value === 'string' && value.trim() ? value.trim().toLowerCase() : SANDBOX_DEFAULTS.backend;
+  }
+
+  /** Outbound network granted by confining sandbox backends. Default: SANDBOX_DEFAULTS.network ('deny'). */
+  getSandboxNetwork(): 'deny' | 'allow' {
+    return this.config.sandbox?.network ?? SANDBOX_DEFAULTS.network;
   }
 
   /** Credential-like variables explicitly allowed into execute_command's environment (T24.1). */

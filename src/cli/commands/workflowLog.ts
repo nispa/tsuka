@@ -4,6 +4,7 @@ import { homePath } from '../../core/apphome';
 import { ChatMessage } from '../../core/types';
 import { ProtocolLogEntry } from './strategies/common';
 import { BlackboardNote } from '../../core/blackboard';
+import { describeActiveSandbox } from '../../safety/sandbox';
 
 interface WorkflowLogInput {
   team: { name: string; displayName: string; mode?: string; members: string[]; orchestrator?: string };
@@ -40,7 +41,9 @@ export function writeWorkflowLog(input: WorkflowLogInput): void {
         typeof m.content === 'string' ? m.content.slice(0, 200) : ''
       ),
       protocolLog: turnLog,
-      blackboard
+      blackboard,
+      // T25.2: which backend ran the run's shell commands, or why it refused them.
+      sandbox: describeActiveSandbox()
     };
     fs.writeFileSync(
       path.join(logsDir, `${team.name}-${timestamp}.json`),
@@ -75,7 +78,8 @@ export function writeGoalLog(input: GoalLogInput): string | null {
       agents: input.agents,
       timestamp: new Date().toISOString(),
       stats: input.stats,
-      blackboard: input.blackboard
+      blackboard: input.blackboard,
+      sandbox: describeActiveSandbox()
     };
     fs.writeFileSync(fullPath, JSON.stringify(report, null, 2), 'utf-8');
     return filename;

@@ -152,6 +152,8 @@ export interface TuiState {
   activeModel: string;
   activeReasoningEffort?: string;
   activeEffortSource?: string;
+  /** Backend that runs execute_command (T25.2): name, and whether it can run at all. */
+  sandbox?: { name: string; available: boolean };
   characterRecommendedEffort?: string;
   activeSpawnedAgent: TuiSpawnedAgent | null;
   spawnedAgentsHistory: TuiSpawnedAgent[];

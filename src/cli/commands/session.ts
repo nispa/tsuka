@@ -3,6 +3,7 @@ import { resetSessionState } from '../../core/sessionReset';
 import { CLITheme } from '../ui';
 import chalk from 'chalk';
 import { ContextTracker } from '../../core/contextTracker';
+import { describeActiveSandbox, formatSandboxStatus } from '../../safety/sandbox';
 import { getModelProfile, getRecommendedEffort } from '../../core/modelProfile';
 import { sumMessageChars, getContextPressure } from '../../core/contextBudget';
 import { logSink } from '../../core/logSink';
@@ -26,6 +27,8 @@ export async function handleInfo(ctx: CommandCtx, _arg: string): Promise<void> {
   logSink.log(`- Server Endpoint: ${chalk.cyan(ctx.provider.getBaseUrl())}`);
   logSink.log(`- Active Model:    ${chalk.green(currentModel)}`);
   logSink.log(`- Context Window:  ${chalk.cyan(maxTokens.toLocaleString() + ' tok')} ${ctxSource}`);
+  const sandbox = describeActiveSandbox();
+  logSink.log(`- Command Sandbox: ${(sandbox.available ? chalk.green : chalk.red)(formatSandboxStatus(sandbox))}`);
   const profile = getModelProfile(currentModel);
   if (profile) {
     const tierColor = profile.tier === 'large' ? chalk.green : profile.tier === 'medium' ? chalk.yellow : chalk.red;

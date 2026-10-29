@@ -30,6 +30,11 @@ export class PersonaWidget {
     const effortColor = eff === 'xhigh' || eff === 'high' ? chalk.bold.hex('#e879f9') : eff === 'medium' ? chalk.bold.yellow : chalk.bold.green;
     const srcHint = state.activeEffortSource ? chalk.gray(` (${state.activeEffortSource})`) : '';
     lines.push(chalk.white(`  Effort: ${effortColor(eff)}${srcHint}`));
+    if (state.sandbox) {
+      const { name, available } = state.sandbox;
+      const shellColor = !available ? chalk.bold.red : name === 'host' ? chalk.gray : chalk.bold.green;
+      lines.push(chalk.white(`  Shell : ${shellColor(available ? name : `${name} ✘`)}`));
+    }
 
     if (state.characterRecommendedEffort && state.activeEffortSource !== 'persona') {
       lines.push(chalk.gray(`  Rec.  : ${state.characterRecommendedEffort} (persona)`));

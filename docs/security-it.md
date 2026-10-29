@@ -78,6 +78,21 @@ Tutte le operazioni sul filesystem (`read_file`, `write_file`, `edit_file`, `del
 * **Scansioni Bounded**: `grep_search` e `audit_code` condividono limiti centralizzati di profondità, numero file e byte e riportano link bloccati o troncamenti.
 * **Race Residua**: La canonicalizzazione riduce le evasioni tramite link, ma le API sincrone path-based di Node non rendono validazione e apertura una singola operazione OS. La modifica concorrente dei link resta fuori dalla garanzia finché non saranno disponibili API descriptor-relative multipiattaforma.
 
+### Sandbox dei comandi per `execute_command` (T25.1–T25.2, opt-in)
+
+La jail qui sopra copre solo i tool nativi sui file. Per default la shell è il backend `host`: parte nel workspace e senza credenziali, ma gira con i tuoi privilegi, e `cd ..` esce comunque. Con `"sandbox": { "backend": "mxc" }` in `tsuka.config.json` ogni `execute_command` gira dentro un container [Microsoft eXecution Containers](https://github.com/microsoft/mxc) (dipendenza opzionale `@microsoft/mxc-sdk`, caricata solo quando selezionata):
+
+| Cosa impone il container | Verificato su Windows 11 (ProcessContainer) |
+|---|---|
+| Lettura/scrittura solo nel workspace effettivo (la cartella di staging di un ramo `PARALLEL` quando è attivo, con il workspace reale in sola lettura) | ✅ scrittura accanto al workspace o nel profilo utente negata; lettura di un file fratello, di `.gitconfig`, di `.ssh` negata |
+| Rete in uscita negata (`"network": "allow"` la riapre) | ✅ la risoluzione DNS fallisce; la stessa richiesta con `allow` risponde HTTP 200 |
+| Esattamente l'ambiente senza credenziali di `buildChildEnv` | ✅ una variabile-credenziale canarino non arriva, le variabili ordinarie sì |
+| Timeout e annullamento fermano l'intero albero | ✅ la shell e un nipote terminano, la scrittura ritardata del nipote non avviene |
+
+Cosa **non** promette: è lo stesso kernel (un container di processo, non una VM); la UI deve restare abilitata (`ui.disable: false`, altrimenti PowerShell, node e git non partono), mentre clipboard e input injection restano negati; aggiunge ~190 ms a comando. I toolchain che risalgono fino alla radice del disco non funzionano ancora: `npm` fallisce con `EPERM lstat 'C:\'` fino ai profili di lettura di T25.3; `git` funziona ma non legge il tuo `.gitconfig`. Linux (bubblewrap) e macOS (seatbelt) sono collegati ma **non verificati**.
+
+**Fail closed e visibile**: se `mxc` è configurato ma non può girare (Node più vecchio di 24.21 / 26.8, pacchetto mancante, OS o backend del container non disponibile), `execute_command` restituisce un errore con il motivo e il rimedio, e non esegue nulla; non ricade mai su `host`. Il backend attivo, o il motivo per cui non lo è, compare nel banner della CLI, nella TUI (avviso all'avvio e riga *Shell* del widget dell'agente), in `/info` e in ogni workflow log di `/team` e `/goal`. I livelli di conferma non cambiano sotto `mxc` (decisione rinviata a T25.5).
+
 ---
 
 ## 🔑 3. Credenziali e Dati Sensibili

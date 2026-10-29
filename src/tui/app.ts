@@ -36,6 +36,7 @@ import { TuiFileItem, TuiFocus } from './types';
 import { TuiCommandController, TuiTurnRunner } from './controllers';
 import { setLogSink, resetLogSink } from '../core/logSink';
 import { setProgressSink } from '../core/progressSink';
+import { describeActiveSandbox, formatSandboxStatus } from '../safety/sandbox';
 import type { ISubagentRunner } from '../core/types';
 
 export interface TuiAppOptions {
@@ -286,6 +287,11 @@ export class TuiApp {
         generationStatus: { phase: gen?.phase ?? 'reasoning', agentName: gen?.agentName, toolName: gen?.toolName, detail: stripped },
       });
     });
+    // T25.2: which backend runs shell commands is a safety fact, so it is on screen from the
+    // start; a configured sandbox that cannot run is a warning, not a silent host fallback.
+    const sandbox = describeActiveSandbox();
+    this.store.setState({ sandbox: { name: sandbox.name, available: sandbox.available } });
+    this.store.notify(`Command sandbox: ${formatSandboxStatus(sandbox)}`, sandbox.available ? 'info' : 'warn');
     this.screen.start();
     this.screen.requestRender();
     this.discoverModelAtStartup().catch(() => {});

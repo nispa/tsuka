@@ -250,6 +250,25 @@ export const TOOLS_DEFAULTS = {
   maxConsecutiveValidationErrors: 3,
 };
 
+/** Execution sandbox defaults (src/safety/sandbox/, ConfigManager fallback). */
+export const SANDBOX_DEFAULTS = {
+  /** Backend that launches execute_command's shell when `sandbox.backend` is not set. */
+  backend: 'host',
+  /** Outbound network of a confining backend when `sandbox.network` is not set (T25.2). */
+  network: 'deny' as 'deny' | 'allow',
+  /**
+   * Oldest Node release per major line whose stdio streaming works under MXC (T25.0: 26.4
+   * fails with `backend_unavailable`, 26.12 works). Majors absent here are refused unless
+   * newer than every listed line.
+   */
+  mxcNodeMinimums: [
+    { major: 24, minor: 21 },
+    { major: 26, minor: 8 },
+  ],
+  /** Wait for a killed MXC container to report its exit before the tool resolves anyway. */
+  mxcKillSettleMs: 2_000,
+};
+
 /** MCP client defaults (src/core/mcp/, ConfigManager-independent). */
 export const MCP_DEFAULTS = {
   /** Wall-clock wait for the initialize handshake before a server is deemed broken. */

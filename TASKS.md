@@ -22,7 +22,7 @@
 ## 📊 Dashboard di Progetto & Stato Avanzamento
 
 - **Test Suite Totali**: **116 suite automatizzate** al 2026-09-26 (numero reale: ultima riga di `npm test`)
-- **Fase Attuale**: **Fase 11 — Seguiti della verifica di sicurezza e della TUI (T24)**. Fase 10 chiusa: T23.1–T23.16 fatti, T23.8 mitigato (processo confinato; il permission model di Node non protegge da codice malevolo).
+- **Fase Attuale**: **Fase 12 — Sandbox di sistema con MXC (T25)**, **prioritaria su ogni altro task aperto** (decisione del maintainer, 2026-10-23): i task 🔲 delle fasi precedenti (T24.6, T24.14) aspettano la chiusura di T25.1–T25.4. Fase 11 (T24) quasi chiusa; T24.9 assorbito in T25. Fase 10 chiusa: T23.1–T23.16 fatti, T23.8 mitigato (processo confinato; il permission model di Node non protegge da codice malevolo).
 - **Gate di Qualità**: TypeScript strict compilato su `dist/`, zero cicli di dipendenza, I/O logging disaccoppiato via `logSink`, memory jail attiva.
 
 ### 🧭 Indice Navigabile delle Fasi
@@ -38,6 +38,7 @@
 - [Fase 9 — Context Scheduler e Memoria Pluggable](#fase-9--context-scheduler-e-memoria-pluggable) (T22.1 – T22.17)
 - [Fase 10 — Audit-Driven Security & Reliability Hardening](#fase-10--audit-driven-security--reliability-hardening) (T23.1 – T23.16)
 - [Fase 11 — Seguiti della verifica di sicurezza e della TUI](#fase-11--seguiti-della-verifica-di-sicurezza-e-della-tui-t24) (T24.1 – T24.19)
+- [Fase 12 — Sandbox di sistema con MXC](#fase-12--sandbox-di-sistema-con-mxc-t25) (T25.0 – T25.5) — **prioritaria**
 
 ---
 
@@ -198,7 +199,7 @@
 | T24.6 | 🔲 Da fare | **Palette LCARS anche su widget e chat**: sotto LCARS cornici e header sono a tema, ma widget della sidebar, badge dell'header e testo della chat mantengono i colori propri. |
 | T24.7 | ✅ Fatto | **Layout F7: modifiche perse al riavvio**: ogni scelta in F7 (struttura, preset, tema, posizione, larghezza, widget, reset) viene applicata e salvata subito; tolta la voce "Save". Test su app home temporanea. |
 | T24.8 | ✅ Fatto | **Igiene di TASKS.md e AGENTS.md**: tolta la riga T19.3 duplicata; intestazione del dashboard allineata (116 suite, fase 11, fase 10 chiusa), indice delle fasi esteso a T23.16 e alla fase 11. In `AGENTS.md` una sola riga di metriche datata e con il comando per ricontarle; tolti i numeri che invecchiano da direttiva 6, indice dei file e cheatsheet. |
-| T24.9 | ⏸️ Backlog | **Sandbox di sistema per i tool generati (opzione B di T23.8)**: isolamento per piattaforma (seccomp/bubblewrap, AppContainer, container) oltre il processo confinato. Solo se il self-authoring verrà usato con input non fidati. |
+| T24.9 | ➡️ Assorbito in T25 | **Sandbox di sistema per i tool generati (opzione B di T23.8)**: riaperto il 2026-10-23 e allargato a `execute_command`; spike, piano e task nella Fase 12 (T25.0–T25.5). |
 | T24.10 | ✅ Fatto | **Layout pluggabili e plancia LCARS**: la struttura dello schermo diventa un plug-in (`TuiLayoutEngine`, `registerLayoutEngine`, campo `engine`); motori di serie `classic` e `console` (plancia TNG: colonna di pulsanti F1–F12, un gomito che incornicia conversazione e prompt, lettura dell'agente, colonna dati con widget di attività e file). Mouse e focus leggono le regioni del frame disegnato; Tab salta i pannelli assenti (prima finiva su pannelli invisibili, anche nel preset zen). Default: console LCARS. |
 | T24.11 | ✅ Fatto | **Suggerimenti nel prompt della TUI**: menu sopra il prompt con comandi, agenti, team, ruoli, tratti, provider, livelli di effort e `@menzioni`; ↑/↓ scelgono, Tab completa, Esc chiude, Invio invariato. Una sola tabella dati `ARGUMENTS` (`src/cli/commands/completion.ts`) condivisa da CLI e TUI al posto di due catene di `if` divergenti (la TUI non completava `/agent`); rimossa la lista morta di comandi in `Input.ts`. |
 | T24.12 | ✅ Fatto | **A capo automatico nel prompt della TUI**: il prompt divideva il testo solo sugli a capo veri e troncava ogni riga al bordo, quindi scrivendo a lungo testo e cursore sparivano; anche l'altezza contava solo i `
@@ -209,6 +210,12 @@
 | T24.17 | ✅ Fatto | **Unsloth scavalcato dal cloud a ogni avvio**: la prima richiesta a Unsloth Studio dopo un periodo di inattività impiega circa 2,5 s (poi 0,2 s), esattamente il timeout della sonda di avvio; la sonda falliva e il failover passava a OpenRouter (finestra 512k). Il provider configurato ora ha `DISCOVERY_DEFAULTS.configuredProbeTimeoutMs` (10 s); i candidati di riserva restano a 2,5 s. Test PF10 con un server che risponde dopo 3 s e rispetta l'abort. |
 | T24.18 | ✅ Fatto | **Potatura senza margine**: la storia veniva potata fino al 100% della finestra in token *stimati*; il server ne contava di più e rifiutava la richiesta (checkpoint A: 12596 reali contro 12544). Ora la potatura lascia libero `AGENT_DEFAULTS.historyHeadroomRatio` (10%) per errore di stima e risposta; la pressione resta misurata sull'intera finestra. Test T2.3f. |
 | T24.19 | ✅ Fatto | **CI rossa su Node 20 e modello di avvio**: `download_file` lasciava il `.part` perché l'unlink correva contro l'apertura dello stream (ora attende la chiusura); `test_self_authoring` verifica il rifiuto fail-closed sotto Node 25 invece di contarlo come errore; matrice CI con Node 26. Regola unica `chooseStartupModel` (RAM, poi config se elencato, poi primo elencato) per CLI, TUI e runner del checkpoint. Test PF11. |
+| T25.0 | ✅ Fatto | **Spike MXC su Windows** (2026-10-23, fuori dal repo): ProcessContainer disponibile; confinamento di filesystem, rete e ambiente verificato; streaming e `kill()` dell'albero funzionanti su Node 26.12; +~190 ms a comando. Vincoli trovati: `ui.disable: false` obbligatorio, Node ≥ 24.21 / ≥ 26.8, `npm` richiede la lettura della radice del disco. |
+| T25.1 | ✅ Fatto | **Contratto `ExecutionSandbox` e backend `host`**: `execute_command` lancia la shell attraverso un contratto con registro (`src/safety/sandbox/`, `sandbox.backend`, default `host`); lo spawn attuale è il backend `host`. Zero cambi di comportamento; backend sconosciuto o non disponibile rifiuta senza eseguire. Suite `test_execution_sandbox.ts` (9 check). |
+| T25.2 | ✅ Fatto | **Backend `mxc` per `execute_command`**: `@microsoft/mxc-sdk` 1.0.1 opzionale e caricato solo se selezionato; workspace effettivo unico percorso rw, rete negata (`sandbox.network`), rifiuto esplicito con motivo e rimedio se non disponibile; backend visibile in banner CLI, TUI, `/info`, workflow log. Integrazione reale verde su Windows 11 / Node 26.12 (8 check), contratto con SDK finto (18 check). |
+| T25.3 | 🔲 Da fare · **priorità 3** | **Policy di lettura dei toolchain**: insiemi di percorsi in sola lettura per node/npm, git, python ricavati con l'audit mode di MXC; risolto `EPERM lstat` sulla radice del disco senza aprire il profilo utente. Dipende da T25.2. |
+| T25.4 | 🔲 Da fare · **priorità 4** | **Tool generati dentro MXC**: `customToolRunner` sullo stesso contratto, con il permission model di Node come strato interno; chiude il rischio residuo di T23.8 dove MXC è disponibile. Dipende da T25.1, T25.2. |
+| T25.5 | ⏸️ Checkpoint | **Livelli di conferma sotto sandbox**: decisione del maintainer, con evidenze da T25.2–T25.3, se un comando confinato con rete negata possa costare meno conferme. Nessun codice prima della decisione. |
 `. Nuovo `src/tui/promptWrap.ts` (a capo visuale tra le parole, offset nel testo originale per il cursore, caratteri larghi misurati in colonne); `computeInputHeight` conta le righe visuali per la larghezza del pannello, il prompt cresce fino al massimo e poi scorre seguendo il cursore. Invio invia sempre il testo come una riga; Shift/Ctrl+Invio restano l'a capo vero. Suite `test_prompt_wrap.ts` (13 check). |
 
 Tutti i task pianificati e di backlog sono completati; la serie T15 (memoria, modelli <30B) è implementata e chiusa con 72 suite di test verdi. Pianificata la serie **T16 (benchmark significativi)** su architettura a due velocità: **`/benchmark` fast** (1 colpo/test, deterministico — resta il gate del tier) e **`/benchmark --deep`** (repliche con variazione del prompt, mediana+varianza, per validazione/calibrazione). Pianificato anche **T17.1** (retrieval BM25/TF-IDF), il primo livello del percorso di apprendimento documentato in `docs/memory.md` §12. Valore di ritorno — i benchmark attuali saturano in alto e non discriminano tra i modelli, ma il gating dei tool (`registry.ts`) dipende proprio da quel tier: se tutto diventa `large` il gating è codice morto. Restano da fare T14.24 (commenti tests/ in inglese), T14.25 (token di protocollo multi-agente) e le serie T16/T17.
@@ -5135,9 +5142,135 @@ Preferire numeri ricavati da comandi ripetibili (conteggio file, output di `npm 
 
 ## T24.9 — Sandbox di sistema per i tool generati (opzione B di T23.8)
 
-**Stato:** backlog · **Priorità:** bassa
+**Stato:** ➡️ assorbito in T25 (2026-10-23)
 
-Il processo confinato di T23.8 protegge TSUKA ma non è una sandbox contro codice malevolo. Un isolamento più forte richiede meccanismi per piattaforma (bubblewrap/seccomp su Linux, AppContainer/Job Object su Windows, container dove disponibili) e non ha un equivalente uniforme. Riaprire solo se il self-authoring verrà usato con input non fidati; in quel caso rifare il confronto del checkpoint di T23.8 con i requisiti concreti.
+Riaperto dopo l'uscita di MXC 1.0 e allargato da subito a `execute_command`, che è il buco più grande. Spike, piano e task: [Fase 12](#fase-12--sandbox-di-sistema-con-mxc-t25).
+
+---
+
+# FASE 12 — Sandbox di sistema con MXC (T25)
+
+**Priorità della fase:** prima di ogni altro task aperto (decisione del maintainer, 2026-10-23). Ordine di esecuzione: T25.1 → T25.2 → T25.3 → T25.4, poi il checkpoint T25.5.
+
+## Obiettivo e regole della fase
+
+Oggi `execute_command` lancia la shell con tutti i privilegi dell'utente. T18.1 l'ha portata nel workspace come directory di partenza (*"containment, not a jail: `cd ..` still leaves"*), T24.1 le ha tolto le credenziali, ma il confine vero è solo il classificatore più la conferma. I tool generati (T23.8) girano in un processo Node confinato, che per dichiarazione di Node non è una sandbox contro codice malevolo. L'opzione B di T23.8 (sandbox di sistema) era stata scartata perché ogni OS ha un meccanismo diverso e non c'era un'interfaccia uniforme.
+
+[Microsoft eXecution Containers](https://github.com/microsoft/mxc) (MIT; v1.0.0 del 7/10/2026, v1.0.1 del 17/10; sandbox locale di Copilot CLI) toglie quel blocco: un solo SDK Node (`@microsoft/mxc-sdk/v1`: `run`, `spawn`, `probe`, `getPlatformSupport`) sopra un backend di default per OS (`processcontainer` con PSEC nativo su Windows 11, `bubblewrap` + seccomp su Linux, `seatbelt` su macOS). Le policy negano tutto per default (filesystem rw/ro/denied, rete in uscita e in ingresso, UI), e se l'host non può applicarle MXC rifiuta di partire.
+
+Invarianti della fase:
+
+- **un contratto, più backend** (direttiva 8): i consumatori dipendono da `ExecutionSandbox`, mai dall'SDK di MXC; il backend si sceglie da configurazione;
+- **fail closed**: un backend configurato ma non disponibile rifiuta l'esecuzione con un errore esplicito, mai un ricadere silenzioso su `host`;
+- **degradazione visibile**: il backend attivo (e il motivo per cui non lo è) si vede all'avvio, nella TUI e nel risultato del tool quando rifiuta;
+- **nessuna promessa oltre le prove**: la documentazione descrive cosa è stato verificato su quale OS; i livelli di conferma non cambiano dentro questa fase senza T25.5;
+- **MXC resta opzionale**: `engines` resta `>=18` e la CI su Node 20 resta verde senza il pacchetto;
+- tunable in `constants.ts` (direttiva 9), log via `logSink` (direttiva 2), credenziali mai al processo (direttiva 4: `buildChildEnv` e `redactCredentials` restano sul percorso);
+- tre gate verdi a ogni task; aggiornare `docs/` (security, architecture, guide didattiche IT/EN) nel task che cambia il meccanismo.
+
+**Fuori scope della fase:** `get_ps_info` esegue comandi fissi di sola lettura sullo stato dell'host e dentro un container non vedrebbe i processi reali, quindi resta sul backend `host`. I server MCP restano processi dell'host: confinarli richiede policy per server ed è un task a sé.
+
+## T25.0 — Spike MXC su Windows
+
+**Stato:** ✅ Fatto (2026-10-23) · **Ambiente:** Windows 11 26300.9711, `@microsoft/mxc-sdk` 1.0.1, Node 26.4 di sistema e 26.12.1 portabile; script nello scratchpad, nessun file del repo toccato.
+
+| Verifica | Esito |
+|---|---|
+| Disponibilità (`getPlatformSupport`, `probe`) | ✅ `processcontainer`, tier `base-container`; disponibili anche `isolation_session` e `hyperlight` |
+| Avvio con UI negata (default) | ❌ ogni eseguibile che carica `user32.dll` (PowerShell, pwsh, node, whoami) esce con `0xC0000142` (STATUS_DLL_INIT_FAILED); parte solo `cmd.exe`. **Serve `ui: { disable: false }`**; clipboard e input injection restano negati separatamente |
+| Lettura e scrittura nel workspace | ✅ |
+| Scrittura fuori (`..\outside`, `%USERPROFILE%`) | ✅ negata, file assente sull'host |
+| Lettura fuori (file fratello, `.gitconfig`, `.ssh`) | ✅ negata |
+| Rete con `egress: deny` | ✅ negata (la risoluzione DNS fallisce); controllo con `allow`: HTTP 200 |
+| Ambiente | ✅ una variabile segreta dell'host non arriva al processo, né con l'ambiente di default né con uno esplicito; un ambiente esplicito deve contenere `SYSTEMROOT` e `LOCALAPPDATA`, altrimenti `policy_validation` |
+| `timeoutMs` | ✅ `timedOut: true` a 2 s |
+| Streaming stdout/stderr | ✅ chunk in tempo reale (cadenza di emissione rispettata, ~400 ms); ❌ su Node 26.4 `backend_unavailable`: richiede **Node ≥ 24.21 nella linea 24, ≥ 26.8 nella 26** |
+| `kill()` a metà esecuzione | ✅ shell e nipote (`node`) terminati in 120 ms, nessun processo orfano |
+| Latenza | ~340 ms a comando contro ~150-180 ms di uno spawn PowerShell diretto (+~190 ms) |
+| Toolchain | `git` funziona (avvisa su `.gitconfig` negato); `npm` fallisce con `EPERM lstat 'C:\'` senza lettura della radice del disco; con `C:\` in sola lettura funziona (solo diagnostica: apre troppo) |
+
+**Note di pacchetto:** l'SDK è solo ESM (`"type": "module"`), dipende da `koffi` (FFI) e `node-pty`, che hanno script di install, e include binari nativi x64/arm64 per i tre OS (~decine di MB).
+
+## T25.1 — Contratto `ExecutionSandbox` e backend `host`
+
+**Stato:** ✅ Fatto (2026-10-23) · **Priorità:** 1 (prima di ogni altro task aperto) · **Sforzo:** medio · **Dipende da:** nessuno
+
+**Esito:** `src/safety/sandbox/` con `types.ts` (contratto: `launch({ command, cwd, env })` → `SandboxProcess` con `onStdout`/`onStderr`, `exited`, `terminate(grace)`; `describe()`), `hostSandbox.ts` (spawn di `getShellConfig()` e `terminateTree`, invariati), `registry.ts` (`registerExecutionSandbox`, `getExecutionSandbox`; nome sconosciuto → errore che elenca i registrati, mai ricaduta su `host`). Config `sandbox.backend` validata in `ConfigManager` (`getSandboxBackend`), default in `SANDBOX_DEFAULTS.backend`. `executeCommand.ts` tiene timeout, abort, cap e messaggi e non importa più `child_process` né `getShellConfig`; con un backend sconosciuto o con `describe().available === false` restituisce un errore senza eseguire nulla (nuovo percorso, nessun messaggio esistente cambiato). Test `tests/test_execution_sandbox.ts`: backend finto riceve comando, `cwd` del workspace ed env senza canarino; `terminate` chiamato su timeout (con `commandTerminationGraceMs`) e una sola volta su abort; rifiuto per backend non disponibile e sconosciuto. Chiave `sandbox` classificata `product` in `test_flags_audit.ts`. Gate: 118 suite OK, build e typecheck verdi. `get_ps_info` e `StdioTransport` non toccati. Documentato in `docs/architecture.md` / `architecture-it.md` §13.
+
+**Problema:** `execute_command` (`src/tools/impl/executeCommand.ts`) contiene insieme la policy (timeout, cancellazione, cap dell'output) e il meccanismo (spawn di `getShellConfig()`, `terminateTree`). Per aggiungere un backend MXC senza duplicare la policy o mettere un `if` nel tool, il meccanismo deve stare dietro un contratto.
+
+**Intervento:**
+- `src/safety/sandbox/types.ts`: contratto `ExecutionSandbox` e un handle di processo neutro: avvio di una riga di comando con `cwd` ed `env`, stream di stdout/stderr, `terminate()` (albero intero, con grace period), una promessa d'uscita `{ exitCode }`. Più `describe()` (nome, disponibilità, motivo se non disponibile) per la visibilità. Nessun tipo di MXC o di `child_process` esce dal contratto.
+- `src/safety/sandbox/hostSandbox.ts`: il comportamento attuale, cioè `spawn` della shell di `getShellConfig()` e `terminateTree`, spostato senza modifiche.
+- `src/safety/sandbox/registry.ts`: registro per nome come per memoria e layout, con `host` di default; la scelta arriva da `ConfigManager` (`sandbox.backend`, default `"host"`).
+- `executeCommand.ts` mantiene timeout, abort, cap dell'output, log e messaggi; il processo lo ottiene dal backend attivo.
+
+**Accettazione:** con `host` tutte le suite esistenti invariate; un backend finto registrato in un test riceve comando, `cwd` ed `env` (`buildChildEnv`) e la sua terminazione è chiamata su timeout e su abort; il tool non importa più `child_process`; tre gate verdi. `docs/architecture` cita il contratto.
+
+**Cosa NON fare:** non toccare `get_ps_info` né `StdioTransport` (fuori scope); non introdurre MXC in questo task; non cambiare messaggi o valori di timeout.
+
+## T25.2 — Backend `mxc` per `execute_command`
+
+**Stato:** ✅ Fatto (2026-10-23) · **Priorità:** 2 · **Sforzo:** alto · **Dipende da:** T25.1 · **Prerequisito del maintainer:** Node di sistema ≥ 26.8 — soddisfatto (26.12.1)
+
+**Esito:**
+- **Pacchetto**: `@microsoft/mxc-sdk` `1.0.1` esatto in `optionalDependencies`. `require()` dell'SDK ESM da CommonJS funziona su Node 26 (sia con tsx sia da `dist/`), quindi niente `import()`. L'SDK è raggiunto solo tramite tipi strutturali locali (`MxcSdkLike`), così build e typecheck non dipendono dal pacchetto. npm 11 blocca gli script di install di `koffi`/`node-pty`, ma l'SDK funziona lo stesso (binari precompilati).
+- **`src/safety/sandbox/mxcSandbox.ts`**: `createMxcSandbox(deps)` con SDK, versione di Node, piattaforma e rete iniettabili. `buildMxcRequest` è puro: `readwritePaths` contiene solo il workspace effettivo (`getEffectiveRoot`). Il contratto ha un nuovo campo `workspaceRoot`; `cwd` resta quello di `host`, quindi in un ramo `PARALLEL` il workspace reale diventa sola lettura e una scrittura lì fallisce in modo visibile invece di scavalcare il merge. Il resto della policy: `egress.default` da `sandbox.network`; `ui.disable: false` con commento che rimanda a T25.0; ambiente di `buildChildEnv` con `SYSTEMROOT`/`LOCALAPPDATA` in una sola voce maiuscola. La riga di comando è la stessa invocazione di shell di `host` (quoting libuv su Windows, apici singoli su POSIX). Containment stabile per OS (`processcontainer`/`bubblewrap`/`seatbelt`), mai i backend sperimentali.
+- **Ciclo di vita**: lo spawn asincrono di MXC è adattato all'handle sincrono del contratto. Gli stream vengono presi prima di `wait()`; `exited` si risolve dopo `wait()` e dopo la chiusura di entrambi gli stream. Un `terminate()` arrivato prima che il container esista lo uccide appena parte; `kill()` è immediato (niente fase cooperativa) e l'attesa è limitata da `SANDBOX_DEFAULTS.mxcKillSettleMs`. `dispose()` sta sempre in `finally`.
+- **Disponibilità** (`describe()`): prima la versione di Node (`SANDBOX_DEFAULTS.mxcNodeMinimums`: ≥ 24.21 / ≥ 26.8; linee dispari o più vecchie rifiutate; major più nuove accettate), poi il caricamento del pacchetto (rimedio: `npm install --include=optional`), poi la piattaforma, poi `getPlatformSupport()`. Se non è disponibile, `execute_command` restituisce il motivo e non esegue nulla.
+- **Visibilità**: `describeActiveSandbox()` / `formatSandboxStatus()` nel registro, usati da banner CLI, notifica all'avvio della TUI, riga *Shell* del widget agente, `/info` CLI e TUI e campo `sandbox` dei workflow log `/team` e `/goal`.
+- **Config**: `sandbox.network` (`deny`|`allow`) validata; `getSandboxNetwork()`; default in `SANDBOX_DEFAULTS`.
+- **Test**: `tests/test_mxc_sandbox.ts` (18 check, SDK finto, gira ovunque) e `tests/test_mxc_integration.ts` (8 check reali: scrittura dentro sì, fuori e nel profilo no, lettura del file fratello negata, rete negata, canarino assente, quoting ed exit code, streaming in tempo reale, abort con nipote terminato). Fuori da Windows, o se MXC non è disponibile, il test si salta con un messaggio. Controllo manuale: con `network: "allow"` la stessa richiesta risponde 200, con `deny` fallisce la risoluzione DNS.
+- **CI**: la voce `26` della matrice prende già l'ultima 26.x (≥ 26.8); nessuna modifica. Su `windows-latest` + Node 26 l'integrazione gira se il runner espone ProcessContainer, altrimenti si salta.
+- **Docs**: `security.md`/`-it` (nuova sottosezione con le misure di T25.0 e di questo task, cosa non promette), guide didattiche IT/EN (riga nella mappa dei confini e paragrafo sul contratto), `architecture.md`/`-it` §13.
+- **Gate**: 120 suite OK, build e typecheck verdi.
+- **Annotazioni**: da Git Bash l'SDK lancia `whoami /user` e prende il `whoami` GNU, che stampa un errore su stderr; il probe riesce comunque. È un problema dell'SDK, non di TSUKA. Da PowerShell non succede.
+
+**Intervento:**
+- `@microsoft/mxc-sdk` in `optionalDependencies`, versione esatta. Caricamento pigro solo quando `sandbox.backend` è `"mxc"`. L'SDK è solo ESM: da CommonJS si usa `require()` (Node ≥ 22.12 carica ESM senza top-level await, e MXC richiede comunque ≥ 24.21), da verificare con build e typecheck; se non va, `import()` lasciato intatto da tsc.
+- `src/safety/sandbox/mxcSandbox.ts`: `spawn()` di MXC mappato sul contratto. Policy: radice effettiva del workspace (`getEffectiveRoot`, così copre lo staging dei blocchi paralleli) in lettura/scrittura; `network.egress.default: "deny"` con override in config (`sandbox.network: "deny" | "allow"`); `ui: { disable: false }` con un commento che rimanda a T25.0 (senza, nessun eseguibile con `user32` si avvia); ambiente da `buildChildEnv(passthrough)` più le variabili che MXC esige (`SYSTEMROOT`, `LOCALAPPDATA` su Windows); `terminate()` → `kill()`; `dispose()` sempre in `finally`.
+- Disponibilità: `getPlatformSupport()` più il controllo della versione di Node, con il motivo testuale. Configurato ma non disponibile: il tool restituisce un errore che dice perché e come risolvere (versione di Node, OS, `npm i` del pacchetto), senza eseguire nulla.
+- Visibilità: backend attivo (o motivo del rifiuto) nel banner CLI, nella TUI (widget o riga di stato) e nel workflow log; una riga in `/context` o nel comando di stato più vicino.
+- Tunable in `constants.ts` (`SANDBOX_DEFAULTS`: rete di default, soglie di Node); chiavi in `AppConfig` con validazione.
+
+**Accettazione:**
+- test di contratto con un SDK finto iniettato: policy costruita (percorsi, rete, UI, ambiente senza canarino), mappatura di stream, uscita, kill, dispose su ogni ramo, errore esplicito quando non disponibile;
+- `tests/test_mxc_integration.ts`: crea un workspace temporaneo e verifica scrittura dentro sì / fuori no, lettura di un file fratello negata, rete negata, canarino d'ambiente assente, streaming, abort con nipote terminato. **Saltato con messaggio visibile** quando MXC o la versione di Node mancano (così la CI su Node 20/22 resta verde);
+- CI: aggiungere Node 26.8+ alla matrice se la 26 attuale è inferiore; l'integrazione gira dove l'host la supporta, altrimenti si salta con un messaggio visibile;
+- `docs/security`, guide didattiche IT/EN: cosa contiene MXC, cosa no (stesso kernel, nessuna promessa VM), misure di T25.0;
+- tre gate verdi.
+
+**Cosa NON fare:** non cambiare i livelli di conferma (T25.5); non ricadere su `host` quando MXC fallisce; non usare backend sperimentali (`windows_sandbox`, `microvm`, `hyperlight`).
+
+## T25.3 — Policy di lettura dei toolchain
+
+**Stato:** 🔲 Da fare · **Priorità:** 3 · **Sforzo:** medio · **Dipende da:** T25.2
+
+**Problema (da T25.0):** con il solo workspace in lettura/scrittura `git` funziona ma `npm` fallisce (`EPERM lstat 'C:\'`), perché risolve i percorsi risalendo fino alla radice del disco. Concedere la radice in sola lettura apre tutto il disco, profilo utente compreso. Gli stessi problemi sono probabili per python, pip e i toolchain del workspace (che può stare su un altro disco, per esempio `F:\`).
+
+**Intervento:**
+- usare l'audit mode di MXC (`wxc-exec --audit`, solo con comandi fidati, come da documentazione) per ricavare gli accessi minimi di `node`, `npm`, `npx`, `git`, `python`/`pip`, `tsc`, `tsx` sul workspace reale;
+- profili dichiarativi in un file dati (non `if` nel codice; tabella → policy), selezionabili in config (`sandbox.toolchains: ["node", "git", ...]`), più `sandbox.readonlyPaths` per aggiunte dell'utente;
+- risolvere l'`lstat` della radice: verificare se `FilesystemPolicy` permette di concedere l'enumerazione della sola radice (`baseContainerSupportsEnumeratePaths` nel `probe`) senza la lettura ricorsiva, oppure combinare la radice in sola lettura con `deniedPaths` sul profilo utente (e verificare che le negazioni prevalgano);
+- `.gitconfig` dell'utente: lettura esplicita opzionale, spenta di default.
+
+**Accettazione:** nel test d'integrazione `npm --version`, `npm test` di un progetto fixture e `git status` funzionano con i profili attivi, mentre `.ssh` e un file fuori dal workspace restano negati; ogni profilo documenta i percorsi concessi e perché; tre gate verdi.
+
+## T25.4 — Tool generati dentro MXC
+
+**Stato:** 🔲 Da fare · **Priorità:** 4 · **Sforzo:** medio · **Dipende da:** T25.1, T25.2
+
+**Intervento:** `runCustomToolIsolated` (`src/tools/customToolRunner.ts`) passa dal contratto `ExecutionSandbox` invece di chiamare `spawn` direttamente. Con `mxc` attivo il figlio Node gira in un container con workspace in lettura/scrittura, rete negata e la cartella di `process.execPath` in sola lettura (verificato in T25.0). Il permission model di Node (`--permission`, `--allow-fs-*`, niente `--allow-net`) resta come strato interno, e restano il protocollo su stdin/stdout, i limiti e il rifiuto senza `--allow-net`.
+
+**Accettazione:** i 18 payload di `tests/test_custom_tool_isolation.ts` passano su `host` (invariato) e, dove MXC è disponibile, anche sotto `mxc`, con un caso in più: un payload che aggira il permission model resta comunque confinato da MXC (scrittura fuori dal workspace assente sull'host). Documentazione di self-authoring aggiornata: il rischio residuo di T23.8 si riduce dove MXC è attivo e resta tale dove non lo è. Tre gate verdi.
+
+**Cosa NON fare:** non rendere `create_tool` meno di `DANGEROUS`; non togliere il permission model interno.
+
+## T25.5 — Checkpoint: livelli di conferma sotto sandbox
+
+**Stato:** ⏸️ Checkpoint · **Esecutore:** maintainer · **Dipende da:** T25.2, T25.3
+
+Con un confine vero (filesystem limitato al workspace, rete negata, nessuna credenziale) parte delle conferme di `classifyCommandRisk` protegge da danni che il container già impedisce. Prima di toccare qualcosa: raccogliere con i test d'integrazione cosa resta possibile sotto `mxc` (distruzione *dentro* il workspace, consumo di CPU e memoria, processi lasciati vivi, uso della rete se riabilitata) e proporre al maintainer una tabella "comando × backend → livello". Nessuna modifica senza decisione esplicita; la scrittura distruttiva nel workspace resta confermata in ogni caso.
 
 ---
 

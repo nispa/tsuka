@@ -63,6 +63,14 @@ export interface McpServerConfigEntry {
   timeoutMs?: number;
 }
 
+/** Execution sandbox selection (T25.1); backends live in src/safety/sandbox/. */
+export interface SandboxConfig {
+  /** Registered sandbox that launches execute_command's shell. Default: host. */
+  backend?: string;
+  /** Outbound network for confining backends (mxc); host ignores it. Default: deny. */
+  network?: 'deny' | 'allow';
+}
+
 export interface AppConfig {
   activeProvider: string;
   /** Per-install endpoint/model overrides; provider definitions live in providers.json. */
@@ -109,6 +117,8 @@ export interface AppConfig {
    * from the shell's environment. Default: none.
    */
   commandEnvPassthrough?: string[];
+  /** Execution sandbox for execute_command (T25.1). Default: { backend: "host" }. */
+  sandbox?: SandboxConfig;
   /** Maximum number of activity records kept in the in-memory ContextTracker ring buffer. Default: 100. */
   contextTrackerMaxEntries?: number;
   /** Enables autonomous subagent delegation when context pressure crosses configured thresholds (T22.8). Default: false. */

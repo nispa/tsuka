@@ -1,13 +1,13 @@
-import { spawn } from 'child_process';
 import chalk from 'chalk';
 import { Tool, ToolExecutionContext } from '../registry';
-import { getShellConfig } from '../../core/platform';
 import { capForContext } from '../../core/contextBudget';
 import { logSink } from '../../core/logSink';
 import { ConfigManager } from '../../core/config';
 import { classifyCommandRisk } from '../../safety/commandRisk';
 import { TOOLS_DEFAULTS } from '../../core/constants';
 import { buildChildEnv } from '../../core/credentials';
+import { getEffectiveRoot } from './utils';
+import { ExecutionSandbox, getExecutionSandbox, SandboxProcess } from '../../safety/sandbox';
 
 
 export const executeCommandTool: Tool = {
@@ -22,8 +22,22 @@ export const executeCommandTool: Tool = {
     }
 
     return new Promise<string>((resolve) => {
-      const shellConfig = getShellConfig();
       const configManager = new ConfigManager();
+      // T25.1: the tool owns the policy (timeout, abort, output cap); the configured sandbox
+      // owns the mechanism. An unknown or unavailable backend refuses here, before anything
+      // runs — falling back to the unconfined host shell would defeat having asked for one.
+      let sandbox: ExecutionSandbox;
+      try {
+        sandbox = getExecutionSandbox(configManager.getSandboxBackend());
+      } catch (err: any) {
+        resolve(`[ERROR: ${err.message}]`);
+        return;
+      }
+      const status = sandbox.describe();
+      if (!status.available) {
+        resolve(`[ERROR: execution sandbox '${status.name}' is not available: ${status.reason ?? 'no reason given'}. Nothing was executed.]`);
+        return;
+      }
       const defaultTimeout = configManager.getCommandTimeoutMs();
       const requestedTimeout = typeof args.timeout_ms === 'number' && Number.isFinite(args.timeout_ms) && args.timeout_ms >= TOOLS_DEFAULTS.commandMinTimeoutMs
         ? Math.min(TOOLS_DEFAULTS.commandMaxTimeoutMs, Math.floor(args.timeout_ms))
@@ -36,18 +50,15 @@ export const executeCommandTool: Tool = {
       // a relative path in a command resolved against wherever TSUKA happened to be started.
       // This is containment, not a jail: `cd ..` still leaves, which is precisely why the
       // classifier above escalates anything it does not positively recognize.
-      let child;
+      let child: SandboxProcess;
       try {
-        child = spawn(
-          shellConfig.shell,
-          shellConfig.buildArgs(args.command),
-          {
-            ...shellConfig.spawnOptions,
-            cwd: configManager.getWorkspaceRoot(),
-            // T24.1: the shell never sees TSUKA's credentials unless the user named them.
-            env: buildChildEnv(configManager.getCommandEnvPassthrough()),
-          }
-        );
+        child = sandbox.launch({
+          command: args.command,
+          cwd: configManager.getWorkspaceRoot(),
+          workspaceRoot: getEffectiveRoot(),
+          // T24.1: the shell never sees TSUKA's credentials unless the user named them.
+          env: buildChildEnv(configManager.getCommandEnvPassthrough()),
+        });
       } catch (err: any) {
         resolve(`Error launching command: ${err.message}`);
         return;
@@ -71,7 +82,7 @@ export const executeCommandTool: Tool = {
 
       const terminateAndResolve = async (message: string, label: string) => {
         if (!claimTerminal()) return;
-        await shellConfig.terminateTree(child, TOOLS_DEFAULTS.commandTerminationGraceMs);
+        await child.terminate(TOOLS_DEFAULTS.commandTerminationGraceMs);
         resolve(capForContext(`${combinedOutput}\n${message}`, undefined, { label }));
       };
 
@@ -95,21 +106,19 @@ export const executeCommandTool: Tool = {
       context?.signal?.addEventListener('abort', onAbort, { once: true });
       if (context?.signal?.aborted) onAbort();
 
-      child.stdout.on('data', (data) => {
+      child.onStdout((text) => {
         if (terminalClaimed) return;
-        const text = data.toString();
         combinedOutput += text;
         logSink.write(chalk.white(text));
       });
 
-      child.stderr.on('data', (data) => {
+      child.onStderr((text) => {
         if (terminalClaimed) return;
-        const text = data.toString();
         combinedOutput += text;
         logSink.write(chalk.red(text));
       });
 
-      child.on('close', (code) => {
+      child.exited.then(({ exitCode: code }) => {
         if (!claimTerminal()) return;
         logSink.log(chalk.gray(`[Command completed with code: ${code}]`));
 
@@ -133,9 +142,7 @@ export const executeCommandTool: Tool = {
         } else {
           resolve(capForContext(`${resultOutput}\n[Process exited with code: ${code}]`, undefined, capOptions));
         }
-      });
-
-      child.on('error', (err) => {
+      }, (err) => {
         if (!claimTerminal()) return;
         resolve(`Error launching command: ${err.message}`);
       });
