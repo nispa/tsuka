@@ -22,6 +22,8 @@ export class TuiBridge {
   private lastTtftMs?: number;
   /** Prompt ingestion speed measured on the last completed turn. */
   private lastPrefillTokensPerSec?: number;
+  /** Last cumulative completion count reported per agent label ('' = main agent). */
+  private reportedRunTokens: Map<string, number> = new Map();
 
   constructor(store: TuiStore, permissionManager: PermissionManager) {
     this.store = store;
@@ -37,6 +39,7 @@ export class TuiBridge {
    * usage.prompt_tokens once the turn completes.
    */
   notifyTurnStart(promptTokensEstimate?: number): void {
+    this.reportedRunTokens.clear();
     this.store.setState({
       telemetry: {
         phase: 'prefill',
@@ -244,7 +247,16 @@ export class TuiBridge {
     return (stats, agentLabel) => {
       const currentState = this.store.getState();
       const maxTokens = currentState.stats.maxTokens || 8192;
-      const addedTokens = stats.tokenCount || stats.totalTokens || 0;
+      // Agent turn stats are cumulative and re-sent after every round: only the growth
+      // since the last report is new. A smaller value means a fresh run under that label.
+      const runTokens = stats.tokenCount || stats.totalTokens || 0;
+      const labelKey = agentLabel ?? '';
+      const seenTokens = this.reportedRunTokens.get(labelKey) ?? 0;
+      const addedTokens = runTokens >= seenTokens ? runTokens - seenTokens : runTokens;
+      this.reportedRunTokens.set(labelKey, runTokens);
+      // Occupancy is the last round's size, never the turn sum: each round resends the
+      // whole history, so summing rounds counted the same prompt once per tool round.
+      const contextTokens = stats.contextTokens ?? stats.totalTokens;
       const prevTotalSession = currentState.stats.totalSessionTokens || 0;
       const newTotalSession = prevTotalSession + addedTokens;
 
@@ -268,8 +280,7 @@ export class TuiBridge {
 
       if (agentLabel) {
         // Subagent tokens (active in-flight ephemeral context)
-        const prevSubTokens = currentState.stats.subagentUsedTokens || 0;
-        const currentSubTokens = prevSubTokens + addedTokens;
+        const currentSubTokens = contextTokens;
         const mainUsedTokens = currentState.stats.usedTokens || 0;
         const combined = mainUsedTokens + currentSubTokens;
         const percentage = Math.min(100, Math.round((combined / maxTokens) * 100));
@@ -285,11 +296,11 @@ export class TuiBridge {
       } else {
         // Main agent tokens
         const subTokens = currentState.stats.subagentUsedTokens || 0;
-        const combined = stats.totalTokens + subTokens;
+        const combined = contextTokens + subTokens;
         const percentage = Math.min(100, Math.round((combined / maxTokens) * 100));
 
         this.store.updateStats({
-          usedTokens: stats.totalTokens,
+          usedTokens: contextTokens,
           totalSessionTokens: newTotalSession,
           percentage,
         });
@@ -305,6 +316,7 @@ export class TuiBridge {
     // new event cannot be forgotten here — the compiler asks for its entry.
     const handlers: { [K in AgentEvent['type']]: (ev: Extract<AgentEvent, { type: K }>) => void } = {
       subagent_start: (ev) => {
+        this.reportedRunTokens.delete(ev.name);
         this.store.setSpawnedAgent({
           // Timestamp plus sequence: two spawns landing in the same millisecond used to
           // share an id, and the second one evicted the first from the roster.

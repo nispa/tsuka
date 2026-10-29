@@ -741,6 +741,7 @@ export class Agent implements ToolSetController {
             ? (stats as any).totalTokens
             : (roundPromptTokens + stats.tokenCount);
           cumStats.totalTokens += roundTotalTokens;
+          cumStats.contextTokens = roundTotalTokens;
           // TTFT of the first round: it is the latency the user actually waited for.
           if (cumStats.ttftMs === undefined && stats.ttftMs !== undefined) cumStats.ttftMs = stats.ttftMs;
           if (stats.prefillTokensPerSecond !== undefined) cumStats.prefillTokensPerSecond = stats.prefillTokensPerSecond;

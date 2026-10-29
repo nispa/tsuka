@@ -109,7 +109,13 @@ export interface ChatStats {
   /** Generation speed: tokens divided by the decode window only (prefill excluded). */
   tokensPerSecond: number;
   promptTokens: number;
+  /** Billed tokens: per call from the provider, summed over all rounds in Agent turn stats. */
   totalTokens: number;
+  /**
+   * Context window occupancy after the most recent round (its prompt plus its completion).
+   * Unlike totalTokens it is not summed across rounds: every round resends the whole history.
+   */
+  contextTokens?: number;
   /** Time to first token, measured from the start of the successful attempt (T14.9). */
   ttftMs?: number;
   /** Duration of the decode phase, from the first token to the end of the stream. */

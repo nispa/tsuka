@@ -270,6 +270,31 @@ function test(name: string, fn: () => void | Promise<void>) {
     assert.ok(thinkHeader[1].includes('THINKING') && thinkHeader[1].includes('@Geordi'), 'Header should display thinking subagent in status badge');
   });
 
+  // ── 5b. Multi-round turns: the gauge tracks the last round, not the sum of rounds ──
+  await test('TuiBridge: cumulative multi-round stats do not inflate context gauge or session total', () => {
+    const store = new TuiStore();
+    const bridge = new TuiBridge(store, new PermissionManager());
+    store.updateStats({ maxTokens: 32000, usedTokens: 0, subagentUsedTokens: 0, totalSessionTokens: 0 });
+    bridge.notifyTurnStart();
+    const onStats = bridge.createStatsHandler();
+
+    // Agent.run() re-sends cumulative turn stats after each of 4 rounds of ~8k prompt each:
+    // totalTokens reaches ~32k (100%) while the window actually holds ~8.4k.
+    const rounds = [[7800, 100], [8000, 150], [8200, 120], [8300, 80]];
+    let total = 0;
+    let completion = 0;
+    for (const [prompt, out] of rounds) {
+      total += prompt + out;
+      completion += out;
+      onStats({ durationMs: 10, tokenCount: completion, tokensPerSecond: 1, promptTokens: prompt, totalTokens: total, contextTokens: prompt + out });
+    }
+
+    const stats = store.getState().stats;
+    assert.strictEqual(stats.usedTokens, 8380, 'occupancy is the last round, not the turn sum');
+    assert.strictEqual(stats.percentage, 26);
+    assert.strictEqual(stats.totalSessionTokens, 450, 'each completion token is counted once');
+  });
+
   // ── 6. PersonaWidget & MetricsWidget Spawned Subagent Block ──
   await test('PersonaWidget & MetricsWidget: render spawned subagent box and token details', () => {
     const store = new TuiStore();
